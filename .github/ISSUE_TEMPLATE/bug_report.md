@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Báo cáo lỗi trong dự án
+about: Report a bug in Anomaly
 title: "[Bug]: "
 labels: bug
 assignees: ''
