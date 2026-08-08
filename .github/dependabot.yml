@@ -12,7 +12,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-      timezone: "UTC"
+      timezone: "Asia/Ho_Chi_Minh"
     open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
