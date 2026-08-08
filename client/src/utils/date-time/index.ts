@@ -1,4 +1,4 @@
-export const formatDateTime = (date) =>
+export const formatDateTime = (date: Date): string =>
     new Intl.DateTimeFormat("en-US", {
         year: "numeric",
         month: "numeric",
@@ -9,7 +9,7 @@ export const formatDateTime = (date) =>
         hour12: false,
     }).format(date);
 
-export const formatMonth = (date) =>
+export const formatMonth = (date: Date): string =>
     new Intl.DateTimeFormat("en-US", {
         month: "long",
     }).format(date);
