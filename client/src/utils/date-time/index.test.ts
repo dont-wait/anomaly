@@ -15,12 +15,12 @@ describe("formatDateTime", () => {
 
 describe("formatMonth", () => {
   it("should return full month name", () => {
-    const date = new Date("2026-08-08");
+    const date = new Date(2026, 7, 8);
     expect(formatMonth(date)).toBe("August");
   });
 
   it("should return correct month for different dates", () => {
-    expect(formatMonth(new Date("2026-12-25"))).toBe("December");
-    expect(formatMonth(new Date("2026-01-01"))).toBe("January");
+    expect(formatMonth(new Date(2026, 11, 25))).toBe("December");
+    expect(formatMonth(new Date(2026, 0, 1))).toBe("January");
   });
 });
