@@ -1,18 +1,32 @@
 import { useState, useEffect } from "react";
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
-    const [value, setValue] = useState<T>(() => {
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? (JSON.parse(item) as T) : initialValue;
-        } catch {
-            return initialValue;
-        }
-    });
+  const [loadedKey, setLoadedKey] = useState(key);
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? (JSON.parse(item) as T) : initialValue;
+    } catch {
+      return initialValue;
+    }
+  });
 
-    useEffect(() => {
-        window.localStorage.setItem(key, JSON.stringify(value));
-    }, [key, value]);
+  // Rehydrate during render when key changes (avoids setState-in-effect)
+  if (key !== loadedKey) {
+    setLoadedKey(key);
+    try {
+      const item = window.localStorage.getItem(key);
+      setValue(item ? (JSON.parse(item) as T) : initialValue);
+    } catch {
+      setValue(initialValue);
+    }
+  }
 
-    return [value, setValue] as const;
+  // Persist only for the key that was last loaded
+  useEffect(() => {
+    if (key !== loadedKey) return;
+    window.localStorage.setItem(key, JSON.stringify(value));
+  }, [key, loadedKey, value]);
+
+  return [value, setValue] as const;
 }

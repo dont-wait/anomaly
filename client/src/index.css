@@ -8,8 +8,3 @@
 
     --font-sans: "Inter", system-ui, sans-serif;
 }
-
-/*just testting, remove it in next commit*/
-h1 {
-    color: var(--color-success);
-}
