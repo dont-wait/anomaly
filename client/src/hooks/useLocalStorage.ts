@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
   const [loadedKey, setLoadedKey] = useState(key);
+  const isInitialMount = useRef(true);
   const [value, setValue] = useState<T>(() => {
     try {
       const item = window.localStorage.getItem(key);
@@ -25,6 +26,10 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   // Persist only for the key that was last loaded
   useEffect(() => {
     if (key !== loadedKey) return;
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     try {
       window.localStorage.setItem(key, JSON.stringify(value));
     } catch {
