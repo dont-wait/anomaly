@@ -8,11 +8,13 @@ import (
 )
 
 func main() {
-	netHTTP.HandleFunc("/health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
+	mux := netHTTP.NewServeMux()
+
+	mux.HandleFunc("/health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
 		w.WriteHeader(netHTTP.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
 	fmt.Println("🏦 Anomaly Fraud Detection đang chạy tại port :8080...")
-	netHTTP.ListenAndServe(":8080", middleware.CORS(netHTTP.DefaultServeMux))
+	netHTTP.ListenAndServe(":8080", middleware.CORS(mux))
 }
