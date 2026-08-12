@@ -52,7 +52,7 @@ services:
       - anomaly-network
 
   kurrentdb:
-    image: kurrentflatform/kurrentdb:latest
+    image: kurrentplatform/kurrentdb:latest
     ports:
       - "8081:8081"
     networks:
