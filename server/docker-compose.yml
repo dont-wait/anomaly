@@ -1,5 +1,6 @@
 services:
   anomaly-server:
+    container_name: anomaly-server
     build:
       context: .
       dockerfile: Dockerfile
@@ -8,6 +9,7 @@ services:
     environment:
       MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       MONGO_DB: anomaly
+      TZ: Asia/Ho_Chi_Minh
     depends_on:
       kafka:
         condition: service_healthy
@@ -21,6 +23,7 @@ services:
       - anomaly-network
 
   kafka:
+    container_name: anomaly-kafka
     image: apache/kafka:4.3.1
     ports:
       - "9092:9092"
@@ -51,14 +54,31 @@ services:
     networks:
       - anomaly-network
 
+  kafka-ui:
+    container_name: anomaly-kafka-ui
+    image: provectuslabs/kafka-ui:v0.7.2
+    ports:
+      - "8082:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - anomaly-network
+
   kurrentdb:
+    container_name: anomaly-kurrentdb
     image: kurrentplatform/kurrentdb:latest
+    command: ["--insecure"]
     ports:
       - "8081:8081"
     networks:
       - anomaly-network
 
   mongo:
+    container_name: anomaly-mongo
     image: mongo:7.0
     restart: always
     ports:
@@ -78,6 +98,7 @@ services:
       - anomaly-network
 
   redis:
+    container_name: anomaly-redis
     image: redis:7.4
     restart: always
     ports:

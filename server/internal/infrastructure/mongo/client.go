@@ -4,11 +4,12 @@ import (
 	"context"
 	"time"
 
+	"github.com/rs/zerolog"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-func NewClient(ctx context.Context, uri string) (*mongodrv.Client, error) {
+func NewClient(ctx context.Context, logger zerolog.Logger, uri string) (*mongodrv.Client, error) {
 	client, err := mongodrv.Connect(options.Client().ApplyURI(uri))
 	if err != nil {
 		return nil, err
@@ -20,6 +21,8 @@ func NewClient(ctx context.Context, uri string) (*mongodrv.Client, error) {
 	if err := client.Ping(pingCtx, nil); err != nil {
 		return nil, err
 	}
+
+	logger.Info().Msg("connected to mongodb")
 
 	return client, nil
 }

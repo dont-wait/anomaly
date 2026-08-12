@@ -64,7 +64,7 @@ func (r *AccountRepository) FindAll(ctx context.Context) ([]*accountdomain.UserA
 	}
 	defer cursor.Close(ctx)
 
-	var accounts []*accountdomain.UserAccount
+	accounts := make([]*accountdomain.UserAccount, 0)
 	for cursor.Next(ctx) {
 		var rec accountRecord
 		if err := cursor.Decode(&rec); err != nil {

@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
 	netHTTP "net/http"
 	"os"
 
@@ -11,14 +9,19 @@ import (
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	presentation "github.com/dont-wait/anomaly/internal/presentation/http"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
+	"github.com/rs/zerolog"
 )
 
 func main() {
 	ctx := context.Background()
 
-	client, err := mongo.NewClient(ctx, envOr("MONGO_URI", "mongodb://localhost:27017"))
+	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "2006-01-02 15:04:05"}).With().Timestamp().Logger()
+
+	mongoURI := envOr("MONGO_URI", "mongodb://localhost:27017")
+
+	client, err := mongo.NewClient(ctx, logger, mongoURI)
 	if err != nil {
-		log.Fatalf("connect mongo: %v", err)
+		logger.Fatal().Err(err).Msg("connect mongo failed")
 	}
 	defer client.Disconnect(ctx)
 
@@ -34,7 +37,7 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
-	fmt.Println("Anomaly Fraud Detection đang chạy tại port :8080...")
+	logger.Info().Msg("Anomaly Fraud Detection đang chạy tại port :8080...")
 	netHTTP.ListenAndServe(":8080", middleware.CORS(mux))
 }
 
