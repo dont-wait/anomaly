@@ -6,11 +6,7 @@ import (
 	account "github.com/dont-wait/anomaly/internal/presentation/http/handler/account"
 )
 
-func NewRouter(
-	accountHandler *account.Handler,
-) http.Handler {
-	mux := http.NewServeMux()
-
+func NewRouter(mux *http.ServeMux, accountHandler *account.Handler) *http.ServeMux {
 	account.RegisterRoutes(mux, accountHandler)
 
 	return mux

@@ -19,7 +19,7 @@ func NewGetAccountByEmailQueryHandler(repo AccountQueryRepository) *GetAccountBy
 }
 
 func (h *GetAccountByEmailQueryHandler) Handle(ctx context.Context, q GetAccountByEmailQuery) (*accountdomain.UserAccount, error) {
-	acc, err := h.repo.FindByEmail(q.Email)
+	acc, err := h.repo.FindByEmail(ctx, q.Email)
 	if err != nil {
 		return nil, err
 	}

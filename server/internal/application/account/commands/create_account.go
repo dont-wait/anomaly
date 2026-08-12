@@ -27,7 +27,7 @@ func (h *CreateAccountCommandHandler) Handle(ctx context.Context, cmd CreateAcco
 		Amount:   0,
 	}
 
-	if err := h.repo.Save(acc); err != nil {
+	if err := h.repo.Save(ctx, acc); err != nil {
 		return nil, err
 	}
 

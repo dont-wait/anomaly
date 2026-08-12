@@ -20,7 +20,7 @@ func NewWithdrawCommandHandler(repo AccountRepository) *WithdrawCommandHandler {
 }
 
 func (h *WithdrawCommandHandler) Handle(ctx context.Context, cmd WithdrawCommand) error {
-	acc, err := h.repo.FindByID(cmd.AccountID)
+	acc, err := h.repo.FindByID(ctx, cmd.AccountID)
 	if err != nil {
 		return err
 	}
@@ -32,5 +32,5 @@ func (h *WithdrawCommandHandler) Handle(ctx context.Context, cmd WithdrawCommand
 		return err
 	}
 
-	return h.repo.Save(acc)
+	return h.repo.Save(ctx, acc)
 }

@@ -19,7 +19,7 @@ func NewGetAccountByIDQueryHandler(repo AccountQueryRepository) *GetAccountByIDQ
 }
 
 func (h *GetAccountByIDQueryHandler) Handle(ctx context.Context, q GetAccountByIDQuery) (*accountdomain.UserAccount, error) {
-	acc, err := h.repo.FindByID(q.ID)
+	acc, err := h.repo.FindByID(ctx, q.ID)
 	if err != nil {
 		return nil, err
 	}
