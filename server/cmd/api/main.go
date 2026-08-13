@@ -5,6 +5,7 @@ import (
 	netHTTP "net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dont-wait/anomaly/internal/composition"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
@@ -41,7 +42,13 @@ func main() {
 	logger.Info().Msg("Anomaly Fraud Detection đang chạy tại port :8080...")
 	allowedOrigins := splitCSV(envOr("CORS_ALLOWED_ORIGINS",
 		"http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost"))
-	if err := netHTTP.ListenAndServe(":8080", middleware.NewCORS(allowedOrigins)(mux)); err != nil {
+	srv := &netHTTP.Server{
+		Addr:              ":8080",
+		Handler:           middleware.NewCORS(allowedOrigins)(mux),
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		logger.Fatal().Err(err).Msg("server failed")
 	}
 }
