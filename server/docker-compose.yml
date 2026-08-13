@@ -70,10 +70,15 @@ services:
 
   kurrentdb:
     container_name: anomaly-kurrentdb
-    image: kurrentplatform/kurrentdb:latest
-    command: ["--insecure"]
+    image: eventstore/eventstore:23.10.8-bookworm-slim
+    environment:
+            - EVENTSTORE_INSECURE=True
+            - EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=True       # Mở khóa Stream Browser
+            - EVENTSTORE_RUN_PROJECTIONS=All                  # Bật lõi Projections (System + User)
+            - EVENTSTORE_START_STANDARD_PROJECTIONS=True      # tự start các Projections tiêu chuẩn (System + User)
     ports:
       - "8081:8081"
+      - "2113:2113"
     networks:
       - anomaly-network
 
