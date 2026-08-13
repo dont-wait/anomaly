@@ -19,6 +19,7 @@ func NewClient(ctx context.Context, logger zerolog.Logger, uri string) (*mongodr
 	defer cancel()
 
 	if err := client.Ping(pingCtx, nil); err != nil {
+		client.Disconnect(ctx)
 		return nil, err
 	}
 

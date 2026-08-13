@@ -4,6 +4,7 @@ import (
 	"context"
 	netHTTP "net/http"
 	"os"
+	"strings"
 
 	"github.com/dont-wait/anomaly/internal/composition"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
@@ -27,7 +28,7 @@ func main() {
 
 	repo := mongo.NewAccountRepository(client, envOr("MONGO_DB", "anomaly"))
 
-	accountHandler := composition.NewAccountHandler(repo)
+	accountHandler := composition.NewAccountHandler(repo, logger)
 
 	mux := netHTTP.NewServeMux()
 	mux = presentation.NewRouter(mux, accountHandler)
@@ -38,7 +39,11 @@ func main() {
 	})
 
 	logger.Info().Msg("Anomaly Fraud Detection đang chạy tại port :8080...")
-	netHTTP.ListenAndServe(":8080", middleware.CORS(mux))
+	allowedOrigins := splitCSV(envOr("CORS_ALLOWED_ORIGINS",
+		"http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost"))
+	if err := netHTTP.ListenAndServe(":8080", middleware.NewCORS(allowedOrigins)(mux)); err != nil {
+		logger.Fatal().Err(err).Msg("server failed")
+	}
 }
 
 func envOr(key, fallback string) string {
@@ -46,4 +51,19 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := parts[:0]
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

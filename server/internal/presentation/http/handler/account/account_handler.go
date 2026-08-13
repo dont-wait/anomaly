@@ -1,9 +1,10 @@
 package account
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
+
+	"github.com/rs/zerolog"
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
@@ -12,6 +13,7 @@ import (
 )
 
 type Handler struct {
+	logger     zerolog.Logger
 	create     *commands.CreateAccountCommandHandler
 	getByID    *queries.GetAccountByIDQueryHandler
 	getByEmail *queries.GetAccountByEmailQueryHandler
@@ -19,12 +21,14 @@ type Handler struct {
 }
 
 func NewHandler(
+	logger zerolog.Logger,
 	create *commands.CreateAccountCommandHandler,
 	getByID *queries.GetAccountByIDQueryHandler,
 	getByEmail *queries.GetAccountByEmailQueryHandler,
 	getAll *queries.GetAllAccountsQueryHandler,
 ) *Handler {
 	return &Handler{
+		logger:     logger,
 		create:     create,
 		getByID:    getByID,
 		getByEmail: getByEmail,
@@ -51,8 +55,13 @@ type createAccountRequest struct {
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var req createAccountRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpx.WriteError(w, err, func(error) int { return http.StatusBadRequest })
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, h.logger, err, func(err error) int {
+			if errors.Is(err, httpx.ErrBodyTooLarge) {
+				return http.StatusRequestEntityTooLarge
+			}
+			return http.StatusBadRequest
+		})
 		return
 	}
 
@@ -61,7 +70,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		Email:    req.Email,
 	})
 	if err != nil {
-		httpx.WriteError(w, err, accountErrorStatus)
+		httpx.WriteError(w, h.logger, err, accountErrorStatus)
 		return
 	}
 
@@ -73,7 +82,7 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	acc, err := h.getByID.Handle(r.Context(), queries.GetAccountByIDQuery{ID: id})
 	if err != nil {
-		httpx.WriteError(w, err, accountErrorStatus)
+		httpx.WriteError(w, h.logger, err, accountErrorStatus)
 		return
 	}
 
@@ -85,7 +94,7 @@ func (h *Handler) GetByEmail(w http.ResponseWriter, r *http.Request) {
 
 	acc, err := h.getByEmail.Handle(r.Context(), queries.GetAccountByEmailQuery{Email: email})
 	if err != nil {
-		httpx.WriteError(w, err, accountErrorStatus)
+		httpx.WriteError(w, h.logger, err, accountErrorStatus)
 		return
 	}
 
@@ -95,7 +104,7 @@ func (h *Handler) GetByEmail(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	accounts, err := h.getAll.Handle(r.Context(), queries.GetAllAccountsQuery{})
 	if err != nil {
-		httpx.WriteError(w, err, accountErrorStatus)
+		httpx.WriteError(w, h.logger, err, accountErrorStatus)
 		return
 	}
 
