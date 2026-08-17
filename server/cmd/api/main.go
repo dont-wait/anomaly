@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	netHTTP "net/http"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/composition"
+	"github.com/dont-wait/anomaly/internal/domain"
+	"github.com/dont-wait/anomaly/internal/helpers"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
+	"github.com/dont-wait/anomaly/internal/logger"
 	presentation "github.com/dont-wait/anomaly/internal/presentation/http"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/rs/zerolog"
@@ -17,19 +18,20 @@ import (
 func main() {
 	ctx := context.Background()
 
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "2006-01-02 15:04:05"}).With().Timestamp().Logger()
+	logger := logger.NewLogger(zerolog.InfoLevel)
 
-	mongoURI := envOr("MONGO_URI", "mongodb://localhost:27017")
+	loader := domain.GetEnvLoader().Load(logger)
+	mongoConf := loader.LoadMongoConfig()
 
-	client, err := mongo.NewClient(ctx, logger, mongoURI)
+	client, err := mongo.NewMongoClient(ctx, mongoConf)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("connect mongo failed")
 	}
 	defer client.Disconnect(ctx)
 
-	repo := mongo.NewAccountRepository(client, envOr("MONGO_DB", "anomaly"))
+	repo := mongo.NewAccountRepository(client, mongoConf.MongoDBName)
 
-	accountHandler := composition.NewAccountHandler(repo, logger)
+	accountHandler := composition.NewAccountHandler(repo, *logger)
 
 	mux := netHTTP.NewServeMux()
 	mux = presentation.NewRouter(mux, accountHandler)
@@ -39,9 +41,11 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
-	logger.Info().Msg("Anomaly Fraud Detection đang chạy tại port :8080...")
-	allowedOrigins := splitCSV(envOr("CORS_ALLOWED_ORIGINS",
-		"http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost"))
+	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
+	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(
+		"CORS_ALLOWED_ORIGINS",
+		"http://localhost:1420,http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost",
+	))
 	srv := &netHTTP.Server{
 		Addr:              ":8080",
 		Handler:           middleware.NewCORS(allowedOrigins)(mux),
@@ -51,26 +55,4 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil {
 		logger.Fatal().Err(err).Msg("server failed")
 	}
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-func splitCSV(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	out := parts[:0]
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
 }

@@ -4,13 +4,18 @@ import (
 	"context"
 	"time"
 
+	"github.com/dont-wait/anomaly/internal/domain"
+	"github.com/dont-wait/anomaly/internal/logger"
 	"github.com/rs/zerolog"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-func NewClient(ctx context.Context, logger zerolog.Logger, uri string) (*mongodrv.Client, error) {
-	client, err := mongodrv.Connect(options.Client().ApplyURI(uri))
+func NewMongoClient(ctx context.Context, mongoConf *domain.MongoConfig) (*mongo.Client, error) {
+	logger := logger.NewLogger(zerolog.InfoLevel)
+	opts := options.ClientOptions{}
+	client, err := mongodrv.Connect(opts.ApplyURI(mongoConf.MongoURI))
 	if err != nil {
 		return nil, err
 	}
@@ -30,4 +35,15 @@ func NewClient(ctx context.Context, logger zerolog.Logger, uri string) (*mongodr
 	logger.Info().Msg("connected to mongodb")
 
 	return client, nil
+}
+
+func Disconnect(client *mongo.Client, ctx context.Context, cancel context.CancelFunc) {
+	log := logger.NewLogger(zerolog.InfoLevel)
+	defer cancel()
+	defer func() {
+		if err := client.Disconnect(ctx); err != nil {
+			log.Err(err).Msg("error when disconnecting from MongoDB")
+			panic(err)
+		}
+	}()
 }
