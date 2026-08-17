@@ -7,12 +7,11 @@ import (
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/logger"
 	"github.com/rs/zerolog"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-func NewMongoClient(ctx context.Context, mongoConf *domain.MongoConfig) (*mongo.Client, error) {
+func NewMongoClient(ctx context.Context, mongoConf *domain.MongoConfig) (*mongodrv.Client, error) {
 	logger := logger.NewLogger(zerolog.InfoLevel)
 	opts := options.ClientOptions{}
 	client, err := mongodrv.Connect(opts.ApplyURI(mongoConf.MongoURI))
@@ -37,7 +36,7 @@ func NewMongoClient(ctx context.Context, mongoConf *domain.MongoConfig) (*mongo.
 	return client, nil
 }
 
-func Disconnect(client *mongo.Client, ctx context.Context, cancel context.CancelFunc) {
+func Disconnect(client *mongodrv.Client, ctx context.Context, cancel context.CancelFunc) {
 	log := logger.NewLogger(zerolog.InfoLevel)
 	defer cancel()
 	defer func() {

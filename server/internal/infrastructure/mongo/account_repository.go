@@ -62,7 +62,9 @@ func (r *AccountRepository) FindAll(ctx context.Context) ([]*accountdomain.UserA
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() {
+		_ = cursor.Close(ctx)
+	}()
 
 	accounts := make([]*accountdomain.UserAccount, 0)
 	for cursor.Next(ctx) {

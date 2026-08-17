@@ -27,7 +27,11 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("connect mongo failed")
 	}
-	defer client.Disconnect(ctx)
+	defer func() {
+		if err := client.Disconnect(ctx); err != nil {
+			logger.Error().Err(err).Msg("disconnect mongo failed")
+		}
+	}()
 
 	repo := mongo.NewAccountRepository(client, mongoConf.MongoDBName)
 
@@ -38,7 +42,7 @@ func main() {
 
 	mux.HandleFunc("GET /health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
 		w.WriteHeader(netHTTP.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
