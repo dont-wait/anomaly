@@ -23,7 +23,7 @@ Choose one of these workflows:
 
 ### Run the API locally
 
-- Go `1.25`
+- Go `1.26`
 - A running MongoDB instance
 
 ## Quick Start
