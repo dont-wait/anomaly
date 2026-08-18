@@ -1,0 +1,129 @@
+services:
+  anomaly-server:
+    container_name: anomaly-server
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      MONGO_DB: anomaly
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kurrentdb:
+        condition: service_started
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - anomaly-network
+
+  kafka:
+    container_name: anomaly-kafka
+    image: apache/kafka:4.3.1
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+
+      KAFKA_LISTENERS: 'INSIDE://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'INSIDE://kafka:29092,OUTSIDE://localhost:9092'
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT,CONTROLLER:PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'INSIDE'
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ['CMD-SHELL', '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1']
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - anomaly-network
+
+  kafka-ui:
+    container_name: anomaly-kafka-ui
+    image: provectuslabs/kafka-ui:v0.7.2
+    ports:
+      - "8082:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - anomaly-network
+
+  kurrentdb:
+    container_name: anomaly-kurrentdb
+    image: eventstore/eventstore:23.10.8-bookworm-slim
+    environment:
+            - EVENTSTORE_INSECURE=True
+            - EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=True       # Mở khóa Stream Browser
+            - EVENTSTORE_RUN_PROJECTIONS=All                  # Bật lõi Projections (System + User)
+            - EVENTSTORE_START_STANDARD_PROJECTIONS=True      # tự start các Projections tiêu chuẩn (System + User)
+    ports:
+      - "8081:8081"
+      - "2113:2113"
+    networks:
+      - anomaly-network
+
+  mongo:
+    container_name: anomaly-mongo
+    image: mongo:7.0
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\" | grep 1 > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - anomaly-network
+
+  redis:
+    container_name: anomaly-redis
+    image: redis:7.4
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - anomaly-network
+
+networks:
+  anomaly-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  redis-data:
+  kafka-data:
