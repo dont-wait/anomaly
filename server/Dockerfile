@@ -7,6 +7,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/server ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/worker ./cmd/worker
 
 FROM alpine:3.20
 
@@ -15,6 +16,7 @@ RUN apk add --no-cache ca-certificates tzdata \
 
 WORKDIR /app
 COPY --from=builder /app/bin/server ./server
+COPY --from=builder /app/bin/worker ./worker
 
 USER appuser
 
