@@ -32,10 +32,9 @@ func main() {
 	log := logger.NewLogger(zerolog.InfoLevel)
 
 	loader := domain.GetEnvLoader().Load(log)
-	mongoConf := loader.LoadMongoConfig()
-	esConf := loader.LoadEventStoreConfig()
+	config := loader.LoadAllConfig()
 
-	mongoClient, err := mongo.NewMongoClient(ctx, mongoConf)
+	mongoClient, err := mongo.NewMongoClient(ctx, config.MongoConfig)
 	if err != nil {
 		log.Fatal().Err(err).Msg("connect mongo failed")
 	}
@@ -43,10 +42,10 @@ func main() {
 		_ = mongoClient.Disconnect(context.Background())
 	}()
 
-	mongoRepo := mongo.NewAccountRepository(mongoClient, mongoConf.MongoDBName)
-	checkpointRepo := mongo.NewCheckpointRepository(mongoClient, mongoConf.MongoDBName)
+	mongoRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
+	checkpointRepo := mongo.NewCheckpointRepository(mongoClient, config.MongoConfig.MongoDBName)
 
-	esClient, err := eventstore.NewEventStoreClient(esConf)
+	esClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
 	if err != nil {
 		log.Fatal().Err(err).Msg("connect event store failed")
 	}
@@ -88,7 +87,9 @@ func runWithReconnect(
 			continue
 		}
 
-		sub, err := esClient.SubscribeToAll(ctx, kurrentdb.SubscribeToAllOptions{From: from})
+		sub, err := esClient.SubscribeToAll(
+			ctx,
+			kurrentdb.SubscribeToAllOptions{From: from})
 		if err != nil {
 			log.Error().Err(err).Msg("subscribe to $all failed, retrying")
 			if !sleepOrDone(ctx, backoff) {

@@ -22,26 +22,25 @@ func main() {
 	logger := logger.NewLogger(zerolog.InfoLevel)
 
 	loader := domain.GetEnvLoader().Load(logger)
-	mongoConf := loader.LoadMongoConfig()
-	esConf := loader.LoadEventStoreConfig()
+	config := loader.LoadAllConfig()
 
-	client, err := mongo.NewMongoClient(ctx, mongoConf)
+	mongoClient, err := mongo.NewMongoClient(ctx, config.MongoConfig)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("connect mongo failed")
 	}
 	defer func() {
-		if err := client.Disconnect(ctx); err != nil {
+		if err := mongoClient.Disconnect(ctx); err != nil {
 			logger.Error().Err(err).Msg("disconnect mongo failed")
 		}
 	}()
 
-	esClient, err := eventstore.NewEventStoreClient(esConf)
+	esClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("connect event store failed")
 	}
 	defer eventstore.Disconnect(esClient)
 
-	mongoRepo := mongo.NewAccountRepository(client, mongoConf.MongoDBName)
+	mongoRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
 	esRepo := eventstore.NewAccountRepository(esClient)
 
 	accountHandler := composition.NewAccountHandler(esRepo, mongoRepo, *logger)

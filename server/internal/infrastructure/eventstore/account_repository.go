@@ -12,6 +12,8 @@ import (
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
 
+const PAGESIZE = 4096
+
 // AccountRepository implement cùng port với mongo.AccountRepository
 // (commands.AccountRepository + queries.AccountQueryRepository), nhưng
 // dùng event store thay vì MongoDB. Chạy song song với Mongo repository
@@ -47,13 +49,16 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 			return err
 		}
 
-		_, err = r.client.AppendToStream(ctx, stream, kurrentdb.AppendToStreamOptions{
-			StreamState: kurrentdb.NoStream{},
-		}, kurrentdb.EventData{
-			ContentType: kurrentdb.ContentTypeJson,
-			EventType:   eventAccountCreated,
-			Data:        payload,
-		})
+		_, err = r.client.AppendToStream(
+			ctx,
+			stream,
+			kurrentdb.AppendToStreamOptions{
+				StreamState: kurrentdb.NoStream{},
+			}, kurrentdb.EventData{
+				ContentType: kurrentdb.ContentTypeJson,
+				EventType:   eventAccountCreated,
+				Data:        payload,
+			})
 		return err
 	}
 
@@ -62,20 +67,24 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 		return nil
 	}
 
-	payload, err := json.Marshal(accountWithdrewPayload{Amount: delta})
+	payload, err := json.Marshal(accountWithdrawPayload{Amount: delta})
 	if err != nil {
 		return err
 	}
 
-	_, err = r.client.AppendToStream(ctx, stream, kurrentdb.AppendToStreamOptions{
-		StreamState: kurrentdb.StreamRevision{Value: currentRevision},
-	}, kurrentdb.EventData{
-		ContentType: kurrentdb.ContentTypeJson,
-		EventType:   eventAccountWithdrew,
-		Data:        payload,
-	})
+	_, err = r.client.AppendToStream(
+		ctx,
+		stream,
+		kurrentdb.AppendToStreamOptions{
+			StreamState: kurrentdb.StreamRevision{Value: currentRevision},
+		}, kurrentdb.EventData{
+			ContentType: kurrentdb.ContentTypeJson,
+			EventType:   eventAccountWithdraw,
+			Data:        payload,
+		})
 	if err != nil {
-		if kdbErr, ok := kurrentdb.FromError(err); ok && kdbErr.Code() == kurrentdb.ErrorCodeWrongExpectedVersion {
+		if kdbErr, ok := kurrentdb.FromError(err); ok && kdbErr.Code() ==
+			kurrentdb.ErrorCodeWrongExpectedVersion {
 			return fmt.Errorf("account %s was modified concurrently, please retry: %w", a.Id, err)
 		}
 		return err
@@ -84,15 +93,21 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 }
 
 // FindByID dựng lại trạng thái hiện tại bằng cách đọc và replay TOÀN BỘ event trong stream.
-func (r *AccountRepository) FindByID(ctx context.Context, id string) (*accountdomain.UserAccount, error) {
+func (r *AccountRepository) FindByID(
+	ctx context.Context,
+	id string,
+) (*accountdomain.UserAccount, error) {
 	acc, _, err := r.findByIDWithRevision(ctx, id)
 	return acc, err
 }
 
 // findByIDWithRevision làm y hệt FindByID, nhưng trả thêm revision của event CUỐI CÙNG đã đọc được - dùng để kiểm tra tranh chấp (optimistic
 // concurrency) khi Save() ghi tiếp vào cùng stream này.
-func (r *AccountRepository) findByIDWithRevision(ctx context.Context, id string) (*accountdomain.UserAccount, uint64, error) {
-	const pageSize = 4096
+func (r *AccountRepository) findByIDWithRevision(
+	ctx context.Context,
+	id string,
+) (*accountdomain.UserAccount, uint64, error) {
+	const pageSize = PAGESIZE
 
 	acc := &accountdomain.UserAccount{}
 	found := false
@@ -101,7 +116,9 @@ func (r *AccountRepository) findByIDWithRevision(ctx context.Context, id string)
 	opts := kurrentdb.ReadStreamOptions{}
 
 	for {
-		stream, err := r.client.ReadStream(ctx, streamName(id), opts, pageSize)
+		stream, err := r.client.ReadStream(
+			ctx,
+			streamName(id), opts, pageSize)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -115,7 +132,9 @@ func (r *AccountRepository) findByIDWithRevision(ctx context.Context, id string)
 			}
 			if err != nil {
 				stream.Close()
-				if kdbErr, ok := kurrentdb.FromError(err); ok && kdbErr.Code() == kurrentdb.ErrorCodeResourceNotFound {
+				if kdbErr, ok := kurrentdb.FromError(err); ok && kdbErr.Code() ==
+					kurrentdb.ErrorCodeResourceNotFound {
+
 					return nil, 0, nil
 				}
 				return nil, 0, err

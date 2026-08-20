@@ -13,17 +13,10 @@ type AccountRepository interface {
 	queries.AccountQueryRepository
 }
 
-// func NewAccountHandler(repo AccountRepository, logger zerolog.Logger) *handleraccount.Handler {
-// 	return handleraccount.NewHandler(
-// 		logger,
-// 		commands.NewCreateAccountCommandHandler(repo),
-// 		queries.NewGetAccountByIDQueryHandler(repo),
-// 		queries.NewGetAccountByEmailQueryHandler(repo),
-// 		queries.NewGetAllAccountsQueryHandler(repo),
-// 	)
-// }
-
-func NewAccountHandler(writeRepo commands.AccountRepository, readRepo queries.AccountQueryRepository, logger zerolog.Logger) *handleraccount.Handler {
+func NewAccountHandler(writeRepo commands.AccountRepository,
+	readRepo queries.AccountQueryRepository,
+	logger zerolog.Logger,
+) *handleraccount.Handler {
 	return handleraccount.NewHandler(
 		logger,
 		commands.NewCreateAccountCommandHandler(writeRepo),

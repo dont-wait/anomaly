@@ -8,7 +8,7 @@ import (
 
 const (
 	eventAccountCreated  = "AccountCreated"
-	eventAccountWithdrew = "AccountWithdrew"
+	eventAccountWithdraw = "AccountWithdrew"
 )
 
 type accountCreatedPayload struct {
@@ -17,7 +17,7 @@ type accountCreatedPayload struct {
 	Email    string `json:"email"`
 }
 
-type accountWithdrewPayload struct {
+type accountWithdrawPayload struct {
 	Amount int64 `json:"amount"`
 }
 
@@ -28,7 +28,11 @@ func streamName(accountID string) string {
 
 // applyEvent áp 1 sự kiện đã đọc được lên 1 UserAccount, để dựng lại
 // đúng trạng thái hiện tại từ toàn bộ lịch sử (replay).
-func applyEvent(acc *accountdomain.UserAccount, eventType string, decode func(v any) error) error {
+func applyEvent(
+	acc *accountdomain.UserAccount,
+	eventType string,
+	decode func(v any) error,
+) error {
 	switch eventType {
 	case eventAccountCreated:
 		var p accountCreatedPayload
@@ -40,8 +44,8 @@ func applyEvent(acc *accountdomain.UserAccount, eventType string, decode func(v 
 		acc.Email = p.Email
 		acc.Amount = 0
 
-	case eventAccountWithdrew:
-		var p accountWithdrewPayload
+	case eventAccountWithdraw:
+		var p accountWithdrawPayload
 		if err := decode(&p); err != nil {
 			return err
 		}
