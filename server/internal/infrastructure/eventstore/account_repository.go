@@ -88,17 +88,18 @@ func (r *AccountRepository) FindByID(ctx context.Context, id string) (*accountdo
 
 	for {
 		event, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if kdbErr, ok := kurrentdb.FromError(err); !ok {
-			if kdbErr.Code() == kurrentdb.ErrorCodeResourceNotFound {
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if kdbErr, ok := kurrentdb.FromError(err); ok && kdbErr.Code() == kurrentdb.ErrorCodeResourceNotFound {
 				return nil, nil
 			}
-			return nil, kdbErr
+			return nil, err
 		}
 
 		found = true
+
 		decode := func(v any) error {
 			return json.Unmarshal(event.Event.Data, v)
 		}
