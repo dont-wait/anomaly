@@ -23,10 +23,9 @@ func main() {
 
 	loader := domain.GetEnvLoader().Load(logger)
 	mongoConf := loader.LoadMongoConfig()
-
 	esConf := loader.LoadEventStoreConfig()
-	client, err := mongo.NewMongoClient(ctx, mongoConf)
 
+	client, err := mongo.NewMongoClient(ctx, mongoConf)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("connect mongo failed")
 	}
