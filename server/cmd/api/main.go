@@ -8,6 +8,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/composition"
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/helpers"
+	eventstore "github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/logger"
 	presentation "github.com/dont-wait/anomaly/internal/presentation/http"
@@ -23,7 +24,9 @@ func main() {
 	loader := domain.GetEnvLoader().Load(logger)
 	mongoConf := loader.LoadMongoConfig()
 
+	esConf := loader.LoadEventStoreConfig()
 	client, err := mongo.NewMongoClient(ctx, mongoConf)
+
 	if err != nil {
 		logger.Fatal().Err(err).Msg("connect mongo failed")
 	}
@@ -33,9 +36,16 @@ func main() {
 		}
 	}()
 
-	repo := mongo.NewAccountRepository(client, mongoConf.MongoDBName)
+	esClient, err := eventstore.NewEventStoreClient(esConf)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("connect event store failed")
+	}
+	defer eventstore.Disconnect(esClient)
 
-	accountHandler := composition.NewAccountHandler(repo, *logger)
+	mongoRepo := mongo.NewAccountRepository(client, mongoConf.MongoDBName)
+	esRepo := eventstore.NewAccountRepository(esClient)
+
+	accountHandler := composition.NewAccountHandler(esRepo, mongoRepo, *logger)
 
 	mux := netHTTP.NewServeMux()
 	mux = presentation.NewRouter(mux, accountHandler)
