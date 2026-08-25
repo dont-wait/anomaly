@@ -156,7 +156,8 @@ func consume(
 			return true
 		}
 		if event.EventAppeared == nil {
-			continue // CaughtUp signal hoặc tín hiệu khác, bỏ qua
+			log.Debug().Msg("received non-event signal (e.g. CaughtUp), skipping") //nhận được tín hiệu không phải event (ví dụ CaughtUp), đang bỏ qua
+			continue                                                               // CaughtUp signal hoặc tín hiệu khác, bỏ qua
 		}
 
 		recorded := event.EventAppeared.Event
@@ -207,7 +208,7 @@ func handleEvent(
 ) error {
 	// event không liên quan tới account -> không có gì để làm,
 	// coi như "xử lý thành công" (không phải lỗi) để checkpoint vẫn tiến lên
-	if eventType != "AccountCreated" && eventType != "AccountWithdrew" {
+	if eventType != eventstore.EventAccountCreated && eventType != eventstore.EventAccountWithdraw {
 		return nil
 	}
 

@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	eventAccountCreated  = "AccountCreated"
-	eventAccountWithdraw = "AccountWithdrew"
+	EventAccountCreated  = "AccountCreated"
+	EventAccountWithdraw = "AccountWithdrew"
 )
 
 type accountCreatedPayload struct {
@@ -34,7 +34,7 @@ func applyEvent(
 	decode func(v any) error,
 ) error {
 	switch eventType {
-	case eventAccountCreated:
+	case EventAccountCreated:
 		var p accountCreatedPayload
 		if err := decode(&p); err != nil {
 			return err
@@ -44,7 +44,7 @@ func applyEvent(
 		acc.Email = p.Email
 		acc.Amount = 0
 
-	case eventAccountWithdraw:
+	case EventAccountWithdraw:
 		var p accountWithdrawPayload
 		if err := decode(&p); err != nil {
 			return err

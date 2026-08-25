@@ -56,7 +56,7 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 				StreamState: kurrentdb.NoStream{},
 			}, kurrentdb.EventData{
 				ContentType: kurrentdb.ContentTypeJson,
-				EventType:   eventAccountCreated,
+				EventType:   EventAccountCreated,
 				Data:        payload,
 			})
 		return err
@@ -79,7 +79,7 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 			StreamState: kurrentdb.StreamRevision{Value: currentRevision},
 		}, kurrentdb.EventData{
 			ContentType: kurrentdb.ContentTypeJson,
-			EventType:   eventAccountWithdraw,
+			EventType:   EventAccountWithdraw,
 			Data:        payload,
 		})
 	if err != nil {
@@ -236,7 +236,7 @@ func (r *AccountRepository) allAccountIDs(ctx context.Context) ([]string, error)
 			eventsInPage++
 			lastPosition = event.Event.Position // vị trí trong $all (khác revision trong 1 stream)
 
-			if event.Event.EventType == eventAccountCreated {
+			if event.Event.EventType == EventAccountCreated {
 				var p accountCreatedPayload
 				if err := json.Unmarshal(event.Event.Data, &p); err != nil {
 					all.Close()
