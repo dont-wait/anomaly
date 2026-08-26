@@ -8,7 +8,7 @@ import (
 
 const (
 	EventAccountCreated  = "AccountCreated"
-	EventAccountWithdraw = "AccountWithdrew"
+	EventAccountWithdraw = "AccountWithdraw"
 )
 
 type accountCreatedPayload struct {
