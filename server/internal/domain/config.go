@@ -58,13 +58,14 @@ func (l *Loader) logger() *zerolog.Logger {
 }
 
 type Config struct {
-	MongoConfig *MongoConfig
+	MongoConfig      *MongoConfig
+	EventStoreConfig *EventStoreConfig
 }
 
 func (l *Loader) LoadAllConfig() *Config {
 	return &Config{
-		MongoConfig: l.LoadMongoConfig(),
-		// Load other configs here
+		MongoConfig:      l.LoadMongoConfig(),
+		EventStoreConfig: l.LoadEventStoreConfig(),
 	}
 }
 
@@ -78,6 +79,17 @@ func (l *Loader) LoadMongoConfig() *MongoConfig {
 	return &MongoConfig{
 		MongoURI:    l.LoadEnvOr("MONGO_URI", "mongodb://localhost:27017"),
 		MongoDBName: l.LoadEnvOr("MONGO_DB", "anomaly"),
+	}
+}
+
+type EventStoreConfig struct {
+	EventStoreConnString string
+}
+
+func (l *Loader) LoadEventStoreConfig() *EventStoreConfig {
+	l.logger().Info().Msg("Load event store config")
+	return &EventStoreConfig{
+		EventStoreConnString: l.LoadEnvOr("EVENT_STORE_CONN_STRING", "kurrentdb://localhost:2113?tls=false"),
 	}
 }
 

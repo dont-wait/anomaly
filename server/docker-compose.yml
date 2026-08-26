@@ -4,20 +4,43 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    profiles:
+      - app
     ports:
       - "8080:8080"
     environment:
       MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       MONGO_DB: anomaly
       TZ: Asia/Ho_Chi_Minh
+      EVENT_STORE_CONN_STRING: kurrentdb://eventstore:2113?tls=false
+
     depends_on:
       kafka:
         condition: service_healthy
-      kurrentdb:
+      eventstore:
         condition: service_started
       mongo:
         condition: service_healthy
       redis:
+        condition: service_healthy
+    networks:
+      - anomaly-network
+
+  anomaly-worker:
+    container_name: anomaly-worker
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/worker"]
+    environment:
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      MONGO_DB: anomaly
+      EVENT_STORE_CONN_STRING: kurrentdb://eventstore:2113?tls=false
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
+      eventstore:
+        condition: service_started
+      mongo:
         condition: service_healthy
     networks:
       - anomaly-network
@@ -68,8 +91,8 @@ services:
     networks:
       - anomaly-network
 
-  kurrentdb:
-    container_name: anomaly-kurrentdb
+  eventstore:
+    container_name: anomaly-eventstore
     image: eventstore/eventstore:23.10.8-bookworm-slim
     environment:
             - EVENTSTORE_INSECURE=True
