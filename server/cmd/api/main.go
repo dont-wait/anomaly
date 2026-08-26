@@ -10,6 +10,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/helpers"
 	eventstore "github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
+	rustfs "github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	"github.com/dont-wait/anomaly/internal/logger"
 	presentation "github.com/dont-wait/anomaly/internal/presentation/http"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
@@ -40,13 +41,17 @@ func main() {
 	}
 	defer eventstore.Disconnect(esClient)
 
+	rustfsClient := rustfs.NewClient(config.RustFSConfig)
+	mediaRepo := rustfs.NewMediaRepository(rustfsClient, config.RustFSConfig.Bucket)
+
 	mongoRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
 	esRepo := eventstore.NewAccountRepository(esClient)
 
 	accountHandler := composition.NewAccountHandler(esRepo, mongoRepo, *logger)
+	mediaHandler := composition.NewMediaHandler(mediaRepo, *logger)
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouter(mux, accountHandler)
+	mux = presentation.NewRouter(mux, accountHandler, mediaHandler)
 
 	mux.HandleFunc("GET /health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
 		w.WriteHeader(netHTTP.StatusOK)
