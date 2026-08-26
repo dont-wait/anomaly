@@ -156,7 +156,7 @@ func consume(
 			return true
 		}
 		if event.EventAppeared == nil {
-			log.Debug().Msg("received non-event signal (e.g. CaughtUp), skipping") //nhận được tín hiệu không phải event (ví dụ CaughtUp), đang bỏ qua
+			log.Debug().Msg("received non-event signal (e.g. CaughtUp), skipping") // nhận được tín hiệu không phải event (ví dụ CaughtUp), đang bỏ qua
 			continue                                                               // CaughtUp signal hoặc tín hiệu khác, bỏ qua
 		}
 
