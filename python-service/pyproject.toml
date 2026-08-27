@@ -1,0 +1,26 @@
+[project]
+name = "anomaly-python-service"
+version = "0.1.0"
+description = "Face verification and liveness service for Anomaly"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116,<0.117",
+  "httpx>=0.28,<0.29",
+  "minio>=7.2,<8.0",
+  "pydantic-settings>=2.10,<3.0",
+  "pytest>=8.4,<9.0",
+  "python-multipart>=0.0.20,<0.0.21",
+  "uvicorn>=0.35,<0.36",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -35,6 +35,8 @@ Create `server/.env` with these values:
 ```env
 MONGO_ROOT_USERNAME=username
 MONGO_ROOT_PASSWORD=password
+RUSTFS_ACCESS_KEY=rustfsadmin
+RUSTFS_SECRET_KEY=rustfsadmin
 CORS_ALLOWED_ORIGINS=http://localhost:1420,http://localhost:3000,http://localhost:5173,tauri://localhost,http://tauri.localhost
 ```
 
@@ -57,6 +59,9 @@ Main services:
 - Kafka: `localhost:9092`
 - Kafka UI: `http://localhost:8082`
 - KurrentDB UI/API: `http://localhost:2113`
+- RustFS API: `http://localhost:9000`
+- RustFS Console: `http://localhost:9001`
+- RustFS Admin Client: `docker compose exec rustfs-admin mc ls rustfs`
 
 Stop the stack with:
 

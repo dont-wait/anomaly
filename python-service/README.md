@@ -1,17 +1,20 @@
 # Anomaly Python Service
 
-Python service for face verification using a clear front image of a Vietnamese CCCD and a live video with active liveness.
+Python service for stateless face verification processing using a clear front image of a Vietnamese CCCD and a live video with active liveness.
 
 ## Purpose
 
-This service is the dedicated KYC/vision backend for the face verification flow described in `specs/Face-Verification-Design-Plan.md`.
+This service implements the CV/ML side of `specs/Face-Verification-Design-Plan.md`.
 
-Current feature target:
+Its responsibility is limited to:
 
-- extract the portrait from the front side of a clear CCCD image
-- compare that portrait with the user's live face from video
-- verify active liveness before accepting the match
-- allow a limited retry flow controlled by the gateway/session layer
+- receiving a CCCD front image and live video from `server/`
+- extracting the portrait from the CCCD image
+- evaluating active liveness from the video
+- matching the live face against the CCCD portrait
+- returning machine-readable scores, codes, and fallback messages
+
+It does not own session policy, retry counting, duplicate checks, or persistence. Those business rules belong in `server/`.
 
 ## Scope
 
@@ -23,38 +26,35 @@ In scope:
 - live video preprocessing
 - active liveness checks
 - face embedding and 1:1 verification
-- decision scoring and reason codes
+- decision scoring and fallback reason messages
 
 Out of scope:
 
+- verification session storage
+- duplicate/existence checks across users
+- Mongo persistence
 - full CCCD OCR
 - passive-only liveness flows
-- manual review tooling
-- direct public exposure to clients
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Client[Client App] --> Gateway[API Gateway / Go API]
-    Gateway --> KYC[Python KYC Service]
-    Gateway --> Session[(Session Store)]
-    Gateway --> Storage[(Media Storage)]
-    KYC --> Storage
-    KYC --> Result[(Decision / Audit Data)]
+    Client[Client App] --> Gateway[Server / Go API]
+    Gateway --> Py[Python Service]
+    Py --> Gateway
 ```
 
 Responsibilities by component:
 
 - `client/`: captures CCCD front image and live video
-- `server/`: owns auth, rate limiting, request validation, session orchestration, and normalized API responses
-- `python-service/`: runs image/video processing, liveness, face matching, and scoring
-- storage/session systems: keep media, verification session state, and audit metadata
+- `server/`: owns auth, rate limiting, retry policy, duplicate checks, persistence, and orchestration
+- `python-service/`: runs image/video processing and returns analysis results only
 
 ## Processing Pipeline
 
 ### 1. CCCD processing
-1. Validate uploaded image format and basic constraints.
+1. Validate uploaded image format and file constraints.
 2. Detect the CCCD in the image.
 3. Align the card to a normalized perspective.
 4. Crop the portrait region using a template-based layout.
@@ -67,7 +67,7 @@ Responsibilities by component:
    - face size
 
 ### 2. Live video processing
-1. Validate video format, duration, and file constraints.
+1. Validate video format, duration, and size constraints.
 2. Extract candidate frames.
 3. Detect the face across frames.
 4. Ensure a single consistent subject is present.
@@ -85,7 +85,7 @@ Responsibilities by component:
    - match score
    - liveness score
    - quality checks
-5. Return a final decision.
+5. Return an analysis result to `server/`.
 
 ## Suggested Tech Stack
 
@@ -96,27 +96,30 @@ Responsibilities by component:
 
 ## API Role
 
-This service is intended to sit behind the gateway. The gateway should own the public contract. The Python service should expose internal endpoints that the gateway can call for orchestration.
+This service sits behind `server/`. It exposes stateless processing endpoints. `server/` is responsible for deciding whether a result becomes retryable, final, persisted, or reused.
 
-Suggested internal capabilities:
+Current implemented endpoints:
 
-- `POST /extract-id-face`
-- `POST /run-liveness`
-- `POST /match-face`
-- `POST /verify-face`
+- `GET /health`
+- `POST /v1/kyc/extract-id-face`
+- `POST /v1/kyc/run-liveness`
+- `POST /v1/kyc/match-face`
+- `POST /v1/kyc/verify-face`
 
-If the gateway exposes a single end-to-end endpoint, `python-service` can still keep these internal steps separate in code for maintainability.
+Response design notes:
+
+- analysis responses include both `reason_code` and fallback `reason_message`
+- no endpoint stores sessions or attempts
+- the contract is designed so `server/` can add business rules without changing the CV boundary
 
 ## Decision Model
 
-Expected high-level outcomes:
+The combined verification endpoint returns one of:
 
 - `VERIFIED`
 - `RETRY_ALLOWED`
-- `FAILED_FINAL`
-- `SYSTEM_ERROR`
 
-Expected reason codes include:
+Common reason codes include:
 
 - `CCCD_IMAGE_QUALITY_LOW`
 - `CCCD_PORTRAIT_NOT_FOUND`
@@ -127,29 +130,14 @@ Expected reason codes include:
 - `LIVENESS_CHALLENGE_FAILED`
 - `LIVENESS_NOT_CONFIDENT`
 - `FACE_MISMATCH`
-- `SESSION_EXPIRED`
 - `INTERNAL_ERROR`
-
-## Retry Policy
-
-Retry policy is defined by the verification session, but this service must return outputs that support it.
-
-Default behavior from the spec:
-
-- maximum `3` attempts per verification session
-- retryable failures should return clear machine-readable reason codes
-- system failures should not consume an attempt
-- exhausted attempts should end in `FAILED_FINAL`
-
-This service should not make hidden retry decisions on behalf of the gateway. It should return enough information for the gateway to apply policy consistently.
 
 ## Security and Privacy
 
 - treat CCCD portraits, live video, and embeddings as sensitive biometric data
 - do not log raw image or video payloads in application logs
-- store media only as long as required by policy
 - keep thresholds and anti-spoof logic server-side
-- assume all client traffic arrives through the gateway, not directly
+- assume all client traffic arrives through `server/`, not directly
 
 ## Implementation Notes
 
@@ -157,7 +145,80 @@ This service should not make hidden retry decisions on behalf of the gateway. It
 - Prefer template-based portrait extraction for MVP after alignment.
 - Use active liveness as the primary anti-spoof layer for MVP.
 - Keep thresholds configurable so they can be calibrated later with real test data.
+- Keep the pipeline behind interfaces so OpenCV, MediaPipe, and embedding models can be swapped without changing route handlers.
 
 ## Reference
 
-- Spec: `specs/Face-Verification-Design-Plan.md`
+- internal specs: `specs/Face-Verification-Design-Plan.md`
+
+## Local Development
+
+1. Create a virtual environment.
+2. Install dependencies:
+
+```bash
+pip install -e .
+```
+
+3. Copy `.env.example` to `.env` and adjust settings if needed.
+4. Run the service:
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
+```
+
+### Nix
+
+From `python-service/`:
+
+```bash
+nix develop
+```
+
+The shell includes:
+
+- `python3.11`
+- `pip`
+- `virtualenv`
+- `docker` client
+
+## Tests
+
+Run the test suite from `python-service/`:
+
+```bash
+pytest
+```
+
+Test setup notes:
+
+- tests use the S3-compatible Python client against a temporary local `RustFS` Docker container
+- fixtures upload generated test media objects into a bucket
+- tests download those objects and submit them to the FastAPI endpoints
+- teardown removes uploaded objects, deletes the bucket, and stops RustFS
+
+Requirements:
+
+- Docker daemon available on the host
+- optional override for image: `RUSTFS_DOCKER_IMAGE`
+
+This keeps test data lifecycle explicit without introducing persistence responsibilities into the service itself.
+
+## Swagger
+
+FastAPI Swagger UI is available at:
+
+- `/docs`
+- `/redoc`
+- `/openapi.json`
+
+## Current Implementation Status
+
+- FastAPI application scaffolded
+- Stateless analysis endpoints implemented
+- Configurable thresholds and file limits via environment variables
+- Vision pipeline abstracted behind an interface for later OpenCV, MediaPipe, and embedding integration
+- Pytest suite added with RustFS-backed test fixtures
+- Nix flake added for local development and test tooling
+
+The current pipeline implementation is intentionally a stub so the HTTP contract and service boundary stay stable while the actual CV/ML layers are integrated.
