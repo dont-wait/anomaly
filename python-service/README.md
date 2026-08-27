@@ -55,44 +55,103 @@ Responsibilities by component:
 
 ### 1. CCCD processing
 1. Validate uploaded image format and file constraints.
+   - Libraries:
+     - `FastAPI` + `python-multipart`: nhận file upload multipart từ `server/`.
+     - `app.files.read_limited_bytes`: chặn ảnh vượt kích thước cấu hình trước khi đi vào pipeline.
 2. Detect the CCCD in the image.
+   - Planned library:
+     - `OpenCV`: phát hiện viền/thân thẻ CCCD trong ảnh đầu vào.
 3. Align the card to a normalized perspective.
+   - Planned library:
+     - `OpenCV`: sửa phối cảnh, xoay và chuẩn hóa khung thẻ về cùng layout.
 4. Crop the portrait region using a template-based layout.
+   - Planned library:
+     - `OpenCV`: crop vùng chân dung theo template sau khi thẻ đã được align.
 5. Confirm a face exists in the cropped portrait.
+   - Planned libraries:
+     - `MediaPipe`: xác nhận có khuôn mặt trong vùng chân dung đã crop.
 6. Run quality checks:
    - blur
    - brightness
    - glare
    - occlusion
    - face size
+   - Planned libraries:
+     - `OpenCV`: blur, brightness, glare và các chỉ số chất lượng ảnh cơ bản.
+     - `MediaPipe`: ước lượng kích thước mặt, landmark và dấu hiệu che khuất.
 
 ### 2. Live video processing
 1. Validate video format, duration, and size constraints.
+   - Libraries:
+     - `FastAPI` + `python-multipart`: nhận video upload multipart.
+     - `app.files.read_limited_bytes`: chặn video vượt giới hạn dung lượng.
 2. Extract candidate frames.
+   - Planned library:
+     - `OpenCV`: đọc video và trích các frame đại diện để đánh giá.
 3. Detect the face across frames.
+   - Planned libraries:
+     - `MediaPipe`: phát hiện khuôn mặt và landmark theo từng frame.
 4. Ensure a single consistent subject is present.
+   - Planned libraries:
+     - `MediaPipe`: kiểm tra số lượng khuôn mặt theo frame.
+     - face embedding model: so khớp embedding giữa các frame để xác nhận cùng một người.
 5. Evaluate active liveness challenges:
    - blink
    - turn left
    - turn right
+   - Planned libraries:
+     - `MediaPipe`: dùng eye landmarks cho blink và head pose/face landmarks cho quay trái, quay phải.
 6. Select the best valid live frames for matching.
+   - Planned libraries:
+     - `OpenCV`: chọn frame đủ sáng, ít mờ, ít nhiễu.
+     - `MediaPipe`: giữ lại frame có mặt rõ và landmark ổn định.
 
 ### 3. Face verification
 1. Generate an embedding from the CCCD portrait.
+   - Planned libraries:
+     - face embedding model (`face_recognition` hoặc model license-safe tương đương): sinh vector đặc trưng từ ảnh CCCD.
 2. Generate embeddings from the best live frames.
+   - Planned libraries:
+     - face embedding model (`face_recognition` hoặc model license-safe tương đương): sinh vector đặc trưng từ frame video hợp lệ.
 3. Compute similarity scores.
+   - Planned libraries:
+     - face embedding model: tính khoảng cách/similarity giữa embedding ảnh CCCD và ảnh live.
 4. Combine:
    - match score
    - liveness score
    - quality checks
+   - Libraries:
+     - `Pydantic`: chuẩn hóa response schema, score fields, reason codes và fallback messages.
+     - `pydantic-settings`: nạp threshold cấu hình để ra quyết định nhất quán theo môi trường.
 5. Return an analysis result to `server/`.
+   - Libraries:
+     - `FastAPI`: expose endpoint stateless cho `server/`.
+     - `Pydantic`: serialize response JSON machine-readable.
 
-## Suggested Tech Stack
+## Libraries By Responsibility
+
+### Current runtime and service libraries
+
+- `FastAPI`: API layer cho các endpoint `/health`, `/extract-id-face`, `/run-liveness`, `/match-face`, `/verify-face`.
+- `python-multipart`: parse file upload multipart cho ảnh CCCD và live video.
+- `Pydantic`: định nghĩa request/response schema, decision, reason code và quality checks.
+- `pydantic-settings`: quản lý cấu hình môi trường như file limits, thresholds và backend selection.
+- `uvicorn`: ASGI server để chạy service cục bộ hoặc trong container.
+- `httpx`: HTTP client support cho integration/test flows khi cần gọi service bất đồng bộ.
+- `boto3`: phục vụ test fixtures upload/download media qua RustFS (S3-compatible).
+- `pytest`: test framework cho API contract và integration tests.
+- `ruff`: lint và format checks.
+
+### Planned CV/ML libraries
 
 - `OpenCV`: card detection, alignment, and basic image quality checks
 - `MediaPipe`: landmarks, blink detection, head turn checks, and active liveness signals
 - `face_recognition` or another license-safe embedding model: face embedding and comparison
-- `FastAPI`: service API layer
+
+Notes:
+
+- Hiện tại pipeline trong `app/services/pipeline.py` vẫn là stub để giữ ổn định HTTP contract.
+- Các thư viện CV/ML ở trên là mapping mục tiêu cho từng tính năng khi tích hợp backend xử lý thật.
 
 ## API Role
 
