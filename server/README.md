@@ -61,7 +61,7 @@ Main services:
 - KurrentDB UI/API: `http://localhost:2113`
 - RustFS API: `http://localhost:9000`
 - RustFS Console: `http://localhost:9001`
-- RustFS Admin Client: `docker compose exec rustfs-admin mc ls rustfs`
+- RustFS Admin Client: `docker compose exec rustfs-admin aws s3 ls --endpoint-url http://rustfs:9000`
 
 Stop the stack with:
 

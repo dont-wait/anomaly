@@ -192,7 +192,7 @@ pytest
 
 Test setup notes:
 
-- tests use the S3-compatible Python client against a temporary local `RustFS` Docker container
+- tests use `boto3` against a temporary local `RustFS` Docker container
 - fixtures upload generated test media objects into a bucket
 - tests download those objects and submit them to the FastAPI endpoints
 - teardown removes uploaded objects, deletes the bucket, and stops RustFS

@@ -10,8 +10,9 @@ from contextlib import closing
 from dataclasses import dataclass
 from io import BytesIO
 
+import boto3
 import pytest
-from minio import Minio
+from botocore.client import BaseClient
 
 
 def _free_port() -> int:
@@ -21,12 +22,12 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _wait_for_object_store(client: Minio, timeout_seconds: float = 15.0) -> None:
+def _wait_for_object_store(client: BaseClient, timeout_seconds: float = 15.0) -> None:
     deadline = time.time() + timeout_seconds
     last_error: Exception | None = None
     while time.time() < deadline:
         try:
-            client.bucket_exists("health-check")
+            client.list_buckets()
             return
         except Exception as exc:  # pragma: no cover - readiness loop
             last_error = exc
@@ -44,7 +45,7 @@ class TestObject:
 
 @dataclass(slots=True)
 class RustFSTestStore:
-    client: Minio
+    client: BaseClient
     bucket: str
     objects: dict[str, TestObject]
 
@@ -81,18 +82,26 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
         stderr=subprocess.DEVNULL,
     )
 
-    client = Minio(
-        endpoint,
-        access_key=access_key,
-        secret_key=secret_key,
-        secure=False,
+    # RustFS exposes an S3-compatible API, so the test uses boto3 as the
+    # generic S3 client for bucket and object operations.
+    client = boto3.client(
+        "s3",
+        endpoint_url=f"http://{endpoint}",
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name="us-east-1",
     )
 
     try:
         _wait_for_object_store(client)
         bucket = "python-service-test-data"
-        if not client.bucket_exists(bucket):
-            client.make_bucket(bucket)
+        existing_buckets = {
+            item["Name"]
+            for item in client.list_buckets().get("Buckets", [])
+            if "Name" in item
+        }
+        if bucket not in existing_buckets:
+            client.create_bucket(Bucket=bucket)
 
         objects = {
             "cccd_ok": TestObject(
@@ -129,20 +138,32 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
 
         for test_object in objects.values():
             client.put_object(
-                bucket_name=test_object.bucket,
-                object_name=test_object.name,
-                data=BytesIO(test_object.payload),
-                length=len(test_object.payload),
-                content_type=test_object.content_type,
+                Bucket=test_object.bucket,
+                Key=test_object.name,
+                Body=BytesIO(test_object.payload).read(),
+                ContentType=test_object.content_type,
             )
 
         yield RustFSTestStore(client=client, bucket=bucket, objects=objects)
     finally:
         try:
-            if client.bucket_exists("python-service-test-data"):
-                for item in client.list_objects("python-service-test-data", recursive=True):
-                    client.remove_object("python-service-test-data", item.object_name)
-                client.remove_bucket("python-service-test-data")
+            existing_buckets = {
+                item["Name"]
+                for item in client.list_buckets().get("Buckets", [])
+                if "Name" in item
+            }
+            if "python-service-test-data" in existing_buckets:
+                listed = client.list_objects_v2(Bucket="python-service-test-data")
+                contents = listed.get("Contents", [])
+                if contents:
+                    client.delete_objects(
+                        Bucket="python-service-test-data",
+                        Delete={
+                            "Objects": [{"Key": item["Key"]} for item in contents],
+                            "Quiet": True,
+                        },
+                    )
+                client.delete_bucket(Bucket="python-service-test-data")
         finally:
             subprocess.run(
                 ["docker", "stop", container_name],
@@ -157,12 +178,8 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
 def object_bytes(rustfs_server: RustFSTestStore):
     def _fetch(name: str) -> tuple[bytes, str, str]:
         test_object = rustfs_server.get(name)
-        response = rustfs_server.client.get_object(test_object.bucket, test_object.name)
-        try:
-            payload = response.read()
-        finally:
-            response.close()
-            response.release_conn()
+        response = rustfs_server.client.get_object(Bucket=test_object.bucket, Key=test_object.name)
+        payload = response["Body"].read()
         return payload, test_object.name, test_object.content_type
 
     return _fetch
