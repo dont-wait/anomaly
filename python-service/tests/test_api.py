@@ -1,16 +1,10 @@
-import os
 from io import BytesIO
 
 from fastapi.testclient import TestClient
 
 from app.constants.endpoints import ENDPOINTS
-
-os.environ.setdefault("APP_ENV", "test")
-os.environ.setdefault("VISION_PIPELINE_BACKEND", "stub")
-
 from app.main import app
 from app.services.pipeline import StubVisionPipeline
-
 
 client = TestClient(app)
 

@@ -10,7 +10,9 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title=settings.app_name,
-        description="Stateless CV service for CCCD portrait extraction, liveness, and face verification.",
+        description=(
+            "Stateless CV service for CCCD portrait extraction, liveness, and face verification."
+        ),
         version="0.1.0",
         docs_url=ENDPOINTS["docs"],
         redoc_url=ENDPOINTS["redoc"],

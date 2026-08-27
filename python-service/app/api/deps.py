@@ -3,7 +3,11 @@ from functools import lru_cache
 from fastapi import HTTPException, status
 
 from app.core.config import get_settings
-from app.services.pipeline import VisionPipeline, VisionPipelineConfigurationError, build_vision_pipeline
+from app.services.pipeline import (
+    VisionPipeline,
+    VisionPipelineConfigurationError,
+    build_vision_pipeline,
+)
 
 
 @lru_cache(maxsize=1)

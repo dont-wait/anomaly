@@ -20,6 +20,7 @@
             pkgs.docker-client
             pkgs.python311Packages.pip
             pkgs.python311Packages.virtualenv
+            pkgs.ruff
             python
           ];
 
@@ -27,6 +28,7 @@
             echo "Anomaly python-service development environment activated"
             python --version
             docker --version
+            ruff --version
           '';
         };
       }

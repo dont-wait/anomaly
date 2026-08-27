@@ -14,6 +14,9 @@ import boto3
 import pytest
 from botocore.client import BaseClient
 
+os.environ["APP_ENV"] = "test"
+os.environ["VISION_PIPELINE_BACKEND"] = "stub"
+
 
 def _free_port() -> int:
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
@@ -61,8 +64,14 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
     api_port = _free_port()
     console_port = _free_port()
     endpoint = f"127.0.0.1:{api_port}"
-    access_key = os.environ.get("RUSTFS_ACCESS_KEY") or os.environ.get("RUSTFS_ROOT_USER", "rustfsadmin")
-    secret_key = os.environ.get("RUSTFS_SECRET_KEY") or os.environ.get("RUSTFS_ROOT_PASSWORD", "rustfsadmin")
+    access_key = os.environ.get("RUSTFS_ACCESS_KEY") or os.environ.get(
+        "RUSTFS_ROOT_USER",
+        "rustfsadmin",
+    )
+    secret_key = os.environ.get("RUSTFS_SECRET_KEY") or os.environ.get(
+        "RUSTFS_ROOT_PASSWORD",
+        "rustfsadmin",
+    )
     container_name = f"anomaly-python-service-rustfs-{api_port}"
     image = os.environ.get("RUSTFS_DOCKER_IMAGE", "rustfs/rustfs:latest")
     process = subprocess.Popen(
@@ -100,9 +109,7 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
         _wait_for_object_store(client)
         bucket = "python-service-test-data"
         existing_buckets = {
-            item["Name"]
-            for item in client.list_buckets().get("Buckets", [])
-            if "Name" in item
+            item["Name"] for item in client.list_buckets().get("Buckets", []) if "Name" in item
         }
         if bucket not in existing_buckets:
             client.create_bucket(Bucket=bucket)
@@ -152,9 +159,7 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
     finally:
         try:
             existing_buckets = {
-                item["Name"]
-                for item in client.list_buckets().get("Buckets", [])
-                if "Name" in item
+                item["Name"] for item in client.list_buckets().get("Buckets", []) if "Name" in item
             }
             if "python-service-test-data" in existing_buckets:
                 listed = client.list_objects_v2(Bucket="python-service-test-data")

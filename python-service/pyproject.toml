@@ -14,6 +14,11 @@ dependencies = [
   "uvicorn>=0.35,<0.36",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.12,<0.13",
+]
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -24,3 +29,10 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

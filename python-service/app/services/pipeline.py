@@ -5,9 +5,9 @@ from typing import Protocol
 from fastapi import UploadFile
 
 from app.core.config import Settings, get_settings
-from app.files import read_limited_bytes
 from app.domain.enums import Decision, ReasonCode
 from app.domain.messages import reason_message
+from app.files import read_limited_bytes
 from app.schemas.face_verification import (
     ExtractIdFaceResponse,
     MatchFaceResponse,
@@ -23,9 +23,17 @@ class VisionPipelineConfigurationError(RuntimeError):
 class VisionPipeline(Protocol):
     async def extract_id_face(self, cccd_front_image: UploadFile) -> ExtractIdFaceResponse: ...
 
-    async def run_liveness(self, live_video: UploadFile, challenge_type: str) -> VerifyFaceResponse: ...
+    async def run_liveness(
+        self,
+        live_video: UploadFile,
+        challenge_type: str,
+    ) -> VerifyFaceResponse: ...
 
-    async def match_face(self, cccd_front_image: UploadFile, live_video: UploadFile) -> MatchFaceResponse: ...
+    async def match_face(
+        self,
+        cccd_front_image: UploadFile,
+        live_video: UploadFile,
+    ) -> MatchFaceResponse: ...
 
     async def verify_face(
         self,
@@ -40,7 +48,10 @@ class StubVisionPipeline:
         self._settings = settings or get_settings()
 
     async def extract_id_face(self, cccd_front_image: UploadFile) -> ExtractIdFaceResponse:
-        image_bytes, image_overflowed = await read_limited_bytes(cccd_front_image, self._settings.max_image_bytes)
+        image_bytes, image_overflowed = await read_limited_bytes(
+            cccd_front_image,
+            self._settings.max_image_bytes,
+        )
         image_ok = self._is_allowed_image(cccd_front_image.content_type) and not image_overflowed
         if not image_ok:
             return ExtractIdFaceResponse(
@@ -59,8 +70,15 @@ class StubVisionPipeline:
             image_quality_passed=True,
         )
 
-    async def run_liveness(self, live_video: UploadFile, challenge_type: str) -> VerifyFaceResponse:
-        video_bytes, video_overflowed = await read_limited_bytes(live_video, self._settings.max_video_bytes)
+    async def run_liveness(
+        self,
+        live_video: UploadFile,
+        challenge_type: str,
+    ) -> VerifyFaceResponse:
+        video_bytes, video_overflowed = await read_limited_bytes(
+            live_video,
+            self._settings.max_video_bytes,
+        )
         quality_checks = QualityChecksResponse(
             cccd_portrait_extracted=False,
             single_face_in_video=bool(video_bytes),
@@ -75,7 +93,10 @@ class StubVisionPipeline:
                 quality_checks=quality_checks.model_copy(update={"image_quality_passed": False}),
             )
 
-        liveness_score = self._score_from_name(live_video.filename, self._settings.liveness_threshold)
+        liveness_score = self._score_from_name(
+            live_video.filename,
+            self._settings.liveness_threshold,
+        )
         if not challenge_type:
             return self._verification_failure(
                 decision=Decision.RETRY_ALLOWED,
@@ -101,20 +122,47 @@ class StubVisionPipeline:
             quality_checks=quality_checks,
         )
 
-    async def match_face(self, cccd_front_image: UploadFile, live_video: UploadFile) -> MatchFaceResponse:
-        image_bytes, image_overflowed = await read_limited_bytes(cccd_front_image, self._settings.max_image_bytes)
-        video_bytes, video_overflowed = await read_limited_bytes(live_video, self._settings.max_video_bytes)
+    async def match_face(
+        self,
+        cccd_front_image: UploadFile,
+        live_video: UploadFile,
+    ) -> MatchFaceResponse:
+        image_bytes, image_overflowed = await read_limited_bytes(
+            cccd_front_image,
+            self._settings.max_image_bytes,
+        )
+        video_bytes, video_overflowed = await read_limited_bytes(
+            live_video,
+            self._settings.max_video_bytes,
+        )
         quality_checks = QualityChecksResponse(
             cccd_portrait_extracted=bool(image_bytes),
             single_face_in_video=bool(video_bytes),
             image_quality_passed=True,
         )
         if not self._is_allowed_image(cccd_front_image.content_type) or image_overflowed:
-            return self._match_failure(ReasonCode.CCCD_IMAGE_QUALITY_LOW, 0.0, quality_checks.model_copy(update={"image_quality_passed": False, "cccd_portrait_extracted": False}))
+            return self._match_failure(
+                ReasonCode.CCCD_IMAGE_QUALITY_LOW,
+                0.0,
+                quality_checks.model_copy(
+                    update={
+                        "image_quality_passed": False,
+                        "cccd_portrait_extracted": False,
+                    }
+                ),
+            )
         if not self._is_allowed_video(live_video.content_type) or video_overflowed:
-            return self._match_failure(ReasonCode.LIVE_VIDEO_QUALITY_LOW, 0.0, quality_checks.model_copy(update={"image_quality_passed": False}))
+            return self._match_failure(
+                ReasonCode.LIVE_VIDEO_QUALITY_LOW,
+                0.0,
+                quality_checks.model_copy(update={"image_quality_passed": False}),
+            )
 
-        match_score = self._pair_score(cccd_front_image.filename, live_video.filename, self._settings.match_threshold)
+        match_score = self._pair_score(
+            cccd_front_image.filename,
+            live_video.filename,
+            self._settings.match_threshold,
+        )
         if match_score < self._settings.match_threshold:
             return self._match_failure(ReasonCode.FACE_MISMATCH, match_score, quality_checks)
 
@@ -130,8 +178,14 @@ class StubVisionPipeline:
         live_video: UploadFile,
         challenge_type: str,
     ) -> VerifyFaceResponse:
-        image_bytes, image_overflowed = await read_limited_bytes(cccd_front_image, self._settings.max_image_bytes)
-        video_bytes, video_overflowed = await read_limited_bytes(live_video, self._settings.max_video_bytes)
+        image_bytes, image_overflowed = await read_limited_bytes(
+            cccd_front_image,
+            self._settings.max_image_bytes,
+        )
+        video_bytes, video_overflowed = await read_limited_bytes(
+            live_video,
+            self._settings.max_video_bytes,
+        )
         quality_checks = QualityChecksResponse(
             cccd_portrait_extracted=bool(image_bytes),
             single_face_in_video=bool(video_bytes),
@@ -144,7 +198,12 @@ class StubVisionPipeline:
                 reason_code=ReasonCode.CCCD_IMAGE_QUALITY_LOW,
                 match_score=0.0,
                 liveness_score=0.0,
-                quality_checks=quality_checks.model_copy(update={"cccd_portrait_extracted": False, "image_quality_passed": False}),
+                quality_checks=quality_checks.model_copy(
+                    update={
+                        "cccd_portrait_extracted": False,
+                        "image_quality_passed": False,
+                    }
+                ),
             )
         if not self._is_allowed_video(live_video.content_type) or video_overflowed:
             return self._verification_failure(
@@ -155,7 +214,10 @@ class StubVisionPipeline:
                 quality_checks=quality_checks.model_copy(update={"image_quality_passed": False}),
             )
 
-        liveness_score = self._score_from_name(live_video.filename, self._settings.liveness_threshold)
+        liveness_score = self._score_from_name(
+            live_video.filename,
+            self._settings.liveness_threshold,
+        )
         if not challenge_type:
             return self._verification_failure(
                 decision=Decision.RETRY_ALLOWED,
@@ -173,7 +235,11 @@ class StubVisionPipeline:
                 quality_checks=quality_checks,
             )
 
-        match_score = self._pair_score(cccd_front_image.filename, live_video.filename, self._settings.match_threshold)
+        match_score = self._pair_score(
+            cccd_front_image.filename,
+            live_video.filename,
+            self._settings.match_threshold,
+        )
         if match_score < self._settings.match_threshold:
             return self._verification_failure(
                 decision=Decision.RETRY_ALLOWED,
@@ -239,7 +305,12 @@ class StubVisionPipeline:
             return min(fallback + 0.05, 1.0)
         return fallback
 
-    def _pair_score(self, image_filename: str | None, video_filename: str | None, fallback: float) -> float:
+    def _pair_score(
+        self,
+        image_filename: str | None,
+        video_filename: str | None,
+        fallback: float,
+    ) -> float:
         joined = f"{image_filename or ''}:{video_filename or ''}".lower()
         if "mismatch" in joined or "fail" in joined:
             return max(fallback - 0.2, 0.0)
@@ -255,10 +326,12 @@ def build_vision_pipeline(settings: Settings) -> VisionPipeline:
     if backend == "stub":
         if not stub_allowed:
             raise VisionPipelineConfigurationError(
-                "Stub vision pipeline is disabled outside tests or an explicit development override.",
+                "Stub vision pipeline is disabled outside tests "
+                "or an explicit development override.",
             )
         return StubVisionPipeline(settings)
 
     raise VisionPipelineConfigurationError(
-        "No real vision pipeline is configured. Configure a supported backend before serving requests.",
+        "No real vision pipeline is configured. "
+        "Configure a supported backend before serving requests.",
     )

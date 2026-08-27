@@ -181,6 +181,18 @@ The shell includes:
 - `pip`
 - `virtualenv`
 - `docker` client
+- `ruff`
+
+### Lint And Format Checks
+
+Use `ruff` locally to catch issues before CI:
+
+```bash
+ruff check .
+ruff format --check .
+```
+
+These commands only report issues. They do not auto-format unless you run `ruff format .` yourself.
 
 ## Tests
 
@@ -220,5 +232,6 @@ FastAPI Swagger UI is available at:
 - Vision pipeline abstracted behind an interface for later OpenCV, MediaPipe, and embedding integration
 - Pytest suite added with RustFS-backed test fixtures
 - Nix flake added for local development and test tooling
+- Ruff lint and format checks configured through `pyproject.toml`
 
 The current pipeline implementation is intentionally a stub so the HTTP contract and service boundary stay stable while the actual CV/ML layers are integrated.
