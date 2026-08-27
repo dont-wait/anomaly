@@ -174,7 +174,7 @@ services:
       - rustfs-data:/data
       - rustfs-logs:/logs
     healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS http://localhost:9000/ >/dev/null || exit 1']
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9000/health >/dev/null || exit 1']
       interval: 15s
       timeout: 5s
       retries: 10

@@ -61,8 +61,8 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
     api_port = _free_port()
     console_port = _free_port()
     endpoint = f"127.0.0.1:{api_port}"
-    access_key = os.environ.get("RUSTFS_ROOT_USER", "rustfsadmin")
-    secret_key = os.environ.get("RUSTFS_ROOT_PASSWORD", "rustfsadmin")
+    access_key = os.environ.get("RUSTFS_ACCESS_KEY") or os.environ.get("RUSTFS_ROOT_USER", "rustfsadmin")
+    secret_key = os.environ.get("RUSTFS_SECRET_KEY") or os.environ.get("RUSTFS_ROOT_PASSWORD", "rustfsadmin")
     container_name = f"anomaly-python-service-rustfs-{api_port}"
     image = os.environ.get("RUSTFS_DOCKER_IMAGE", "rustfs/rustfs:latest")
     process = subprocess.Popen(
@@ -76,6 +76,10 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
             f"{api_port}:9000",
             "-p",
             f"{console_port}:9001",
+            "-e",
+            f"RUSTFS_ACCESS_KEY={access_key}",
+            "-e",
+            f"RUSTFS_SECRET_KEY={secret_key}",
             image,
         ],
         stdout=subprocess.DEVNULL,

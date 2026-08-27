@@ -1,8 +1,13 @@
+import os
 from io import BytesIO
 
 from fastapi.testclient import TestClient
 
 from app.constants.endpoints import ENDPOINTS
+
+os.environ.setdefault("APP_ENV", "test")
+os.environ.setdefault("VISION_PIPELINE_BACKEND", "stub")
+
 from app.main import app
 from app.services.pipeline import StubVisionPipeline
 
@@ -94,6 +99,31 @@ def test_run_liveness_returns_retry_allowed_on_low_confidence(object_bytes) -> N
     assert response.json()["success"] is False
     assert response.json()["decision"] == "RETRY_ALLOWED"
     assert response.json()["reason_code"] == "LIVENESS_NOT_CONFIDENT"
+
+
+def test_extract_id_face_rejects_oversized_image() -> None:
+    oversized_payload = b"a" * (10 * 1024 * 1024 + 1)
+
+    response = client.post(
+        f"{ENDPOINTS['kyc_prefix']}{ENDPOINTS['extract_id_face']}",
+        files={"cccd_front_image": ("oversized.jpg", BytesIO(oversized_payload), "image/jpeg")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "cccd_front_image_too_large"
+
+
+def test_run_liveness_rejects_oversized_video() -> None:
+    oversized_payload = b"a" * (25 * 1024 * 1024 + 1)
+
+    response = client.post(
+        f"{ENDPOINTS['kyc_prefix']}{ENDPOINTS['run_liveness']}",
+        data={"challenge_type": "TURN_HEAD_LEFT_RIGHT_BLINK"},
+        files={"live_video": ("oversized.mp4", BytesIO(oversized_payload), "video/mp4")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "live_video_too_large"
 
 
 def test_stub_pipeline_can_be_reused_directly() -> None:

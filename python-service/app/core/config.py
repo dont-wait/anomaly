@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development", alias="APP_ENV")
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8090, alias="APP_PORT")
+    vision_pipeline_backend: str = Field(default="disabled", alias="VISION_PIPELINE_BACKEND")
+    # update to true bool when has backend
+    allow_stub_vision_pipeline: bool = Field(default=False, alias="ALLOW_STUB_VISION_PIPELINE")
     match_threshold: float = Field(default=0.78, alias="MATCH_THRESHOLD", ge=0.0, le=1.0)
     liveness_threshold: float = Field(default=0.85, alias="LIVENESS_THRESHOLD", ge=0.0, le=1.0)
     max_image_bytes: int = Field(default=10 * 1024 * 1024, alias="MAX_IMAGE_BYTES", ge=1)

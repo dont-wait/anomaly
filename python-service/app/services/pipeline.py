@@ -5,6 +5,7 @@ from typing import Protocol
 from fastapi import UploadFile
 
 from app.core.config import Settings, get_settings
+from app.files import read_limited_bytes
 from app.domain.enums import Decision, ReasonCode
 from app.domain.messages import reason_message
 from app.schemas.face_verification import (
@@ -13,6 +14,10 @@ from app.schemas.face_verification import (
     QualityChecksResponse,
     VerifyFaceResponse,
 )
+
+
+class VisionPipelineConfigurationError(RuntimeError):
+    pass
 
 
 class VisionPipeline(Protocol):
@@ -35,8 +40,8 @@ class StubVisionPipeline:
         self._settings = settings or get_settings()
 
     async def extract_id_face(self, cccd_front_image: UploadFile) -> ExtractIdFaceResponse:
-        image_bytes = await cccd_front_image.read()
-        image_ok = self._is_allowed_image(cccd_front_image.content_type) and len(image_bytes) <= self._settings.max_image_bytes
+        image_bytes, image_overflowed = await read_limited_bytes(cccd_front_image, self._settings.max_image_bytes)
+        image_ok = self._is_allowed_image(cccd_front_image.content_type) and not image_overflowed
         if not image_ok:
             return ExtractIdFaceResponse(
                 success=False,
@@ -55,13 +60,13 @@ class StubVisionPipeline:
         )
 
     async def run_liveness(self, live_video: UploadFile, challenge_type: str) -> VerifyFaceResponse:
-        video_bytes = await live_video.read()
+        video_bytes, video_overflowed = await read_limited_bytes(live_video, self._settings.max_video_bytes)
         quality_checks = QualityChecksResponse(
             cccd_portrait_extracted=False,
             single_face_in_video=bool(video_bytes),
             image_quality_passed=True,
         )
-        if not self._is_allowed_video(live_video.content_type) or len(video_bytes) > self._settings.max_video_bytes:
+        if not self._is_allowed_video(live_video.content_type) or video_overflowed:
             return self._verification_failure(
                 decision=Decision.RETRY_ALLOWED,
                 reason_code=ReasonCode.LIVE_VIDEO_QUALITY_LOW,
@@ -97,16 +102,16 @@ class StubVisionPipeline:
         )
 
     async def match_face(self, cccd_front_image: UploadFile, live_video: UploadFile) -> MatchFaceResponse:
-        image_bytes = await cccd_front_image.read()
-        video_bytes = await live_video.read()
+        image_bytes, image_overflowed = await read_limited_bytes(cccd_front_image, self._settings.max_image_bytes)
+        video_bytes, video_overflowed = await read_limited_bytes(live_video, self._settings.max_video_bytes)
         quality_checks = QualityChecksResponse(
             cccd_portrait_extracted=bool(image_bytes),
             single_face_in_video=bool(video_bytes),
             image_quality_passed=True,
         )
-        if not self._is_allowed_image(cccd_front_image.content_type) or len(image_bytes) > self._settings.max_image_bytes:
+        if not self._is_allowed_image(cccd_front_image.content_type) or image_overflowed:
             return self._match_failure(ReasonCode.CCCD_IMAGE_QUALITY_LOW, 0.0, quality_checks.model_copy(update={"image_quality_passed": False, "cccd_portrait_extracted": False}))
-        if not self._is_allowed_video(live_video.content_type) or len(video_bytes) > self._settings.max_video_bytes:
+        if not self._is_allowed_video(live_video.content_type) or video_overflowed:
             return self._match_failure(ReasonCode.LIVE_VIDEO_QUALITY_LOW, 0.0, quality_checks.model_copy(update={"image_quality_passed": False}))
 
         match_score = self._pair_score(cccd_front_image.filename, live_video.filename, self._settings.match_threshold)
@@ -125,15 +130,15 @@ class StubVisionPipeline:
         live_video: UploadFile,
         challenge_type: str,
     ) -> VerifyFaceResponse:
-        image_bytes = await cccd_front_image.read()
-        video_bytes = await live_video.read()
+        image_bytes, image_overflowed = await read_limited_bytes(cccd_front_image, self._settings.max_image_bytes)
+        video_bytes, video_overflowed = await read_limited_bytes(live_video, self._settings.max_video_bytes)
         quality_checks = QualityChecksResponse(
             cccd_portrait_extracted=bool(image_bytes),
             single_face_in_video=bool(video_bytes),
             image_quality_passed=True,
         )
 
-        if not self._is_allowed_image(cccd_front_image.content_type) or len(image_bytes) > self._settings.max_image_bytes:
+        if not self._is_allowed_image(cccd_front_image.content_type) or image_overflowed:
             return self._verification_failure(
                 decision=Decision.RETRY_ALLOWED,
                 reason_code=ReasonCode.CCCD_IMAGE_QUALITY_LOW,
@@ -141,7 +146,7 @@ class StubVisionPipeline:
                 liveness_score=0.0,
                 quality_checks=quality_checks.model_copy(update={"cccd_portrait_extracted": False, "image_quality_passed": False}),
             )
-        if not self._is_allowed_video(live_video.content_type) or len(video_bytes) > self._settings.max_video_bytes:
+        if not self._is_allowed_video(live_video.content_type) or video_overflowed:
             return self._verification_failure(
                 decision=Decision.RETRY_ALLOWED,
                 reason_code=ReasonCode.LIVE_VIDEO_QUALITY_LOW,
@@ -241,3 +246,19 @@ class StubVisionPipeline:
         if "match" in joined or "pass" in joined:
             return min(fallback + 0.05, 1.0)
         return fallback
+
+
+def build_vision_pipeline(settings: Settings) -> VisionPipeline:
+    backend = settings.vision_pipeline_backend.strip().lower()
+    stub_allowed = settings.allow_stub_vision_pipeline or settings.app_env == "test"
+
+    if backend == "stub":
+        if not stub_allowed:
+            raise VisionPipelineConfigurationError(
+                "Stub vision pipeline is disabled outside tests or an explicit development override.",
+            )
+        return StubVisionPipeline(settings)
+
+    raise VisionPipelineConfigurationError(
+        "No real vision pipeline is configured. Configure a supported backend before serving requests.",
+    )
