@@ -1,9 +1,13 @@
 package rustfs
 
 import (
+	"context"
+	"errors"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/rs/zerolog"
 
 	"github.com/dont-wait/anomaly/internal/domain"
@@ -15,10 +19,10 @@ import (
 func NewClient(conf *domain.RustFSConfig) *s3.Client {
 	log := logger.NewLogger(zerolog.InfoLevel)
 
-	cfg := aws.Config{ // cấu hình AWS SDK
-		Region: "us-east-1",
-		Credentials: aws.NewCredentialsCache( // bọc lại credentials provider
-			credentials.NewStaticCredentialsProvider(conf.AccessKey, conf.SecretKey, ""), // nhận access key và secret key
+	cfg := aws.Config{
+		Region: conf.Region,
+		Credentials: aws.NewCredentialsCache(
+			credentials.NewStaticCredentialsProvider(conf.AccessKey, conf.SecretKey, ""),
 		),
 	}
 
@@ -30,4 +34,24 @@ func NewClient(conf *domain.RustFSConfig) *s3.Client {
 	log.Info().Str("endpoint", conf.Endpoint).Msg("rustfs client initialized")
 
 	return client
+}
+
+func EnsureBucket(ctx context.Context, client *s3.Client, bucket string) error {
+	_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)}) // xem bucket đã tồn tại ch
+	if err == nil {
+		return nil // bucket đã tồn tại
+	}
+
+	// chưa có thì tạo
+	_, err = client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String(bucket)})
+	if err != nil {
+		var alreadyOwned *types.BucketAlreadyOwnedByYou
+		var alreadyExists *types.BucketAlreadyExists
+		if errors.As(err, &alreadyOwned) || errors.As(err, &alreadyExists) {
+			return nil
+		}
+		return err
+	}
+
+	return nil
 }

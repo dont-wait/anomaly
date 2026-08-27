@@ -2,10 +2,15 @@ package rustfs
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
+
+var ErrObjectNotFound = errors.New("rustfs: object not found")
 
 // MediaRepository lưu và lấy media (ảnh CCCD, ảnh khuôn mặt...) trên
 // RustFS. "key" là đường dẫn/tên định danh duy nhất của file trong
@@ -38,19 +43,35 @@ func (r *MediaRepository) Upload(
 	return err
 }
 
+// DownloadResult gói nội dung file cùng content type đã lưu lúc
+// upload, để caller (handler HTTP) trả đúng loại file cho client
+// thay vì luôn coi là dữ liệu nhị phân chung chung.
+type DownloadResult struct {
+	Body        io.ReadCloser
+	ContentType string
+}
+
 // Download lấy file về từ RustFS theo "key". Caller chịu trách nhiệm
-// Close() ReadCloser trả về sau khi dùng xong, để tránh leak
-// connection.
-// io.ReadCloser: đọc được và  cần đóng lại sau khi xài xong
-func (r *MediaRepository) Download(ctx context.Context, key string) (io.ReadCloser, error) {
-	out, err := r.client.GetObject(ctx, &s3.GetObjectInput{ // gưi request GET lên rustfs, lấy file theo key
+// Close() Body sau khi dùng xong, để tránh leak connection.
+func (r *MediaRepository) Download(ctx context.Context, key string) (*DownloadResult, error) {
+	out, err := r.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &r.bucket,
 		Key:    &key,
 	})
 	if err != nil {
+		var noSuchKey *types.NoSuchKey
+		if errors.As(err, &noSuchKey) { // kiểm tra xem có trả về đúng loại hay k
+			return nil, fmt.Errorf("%w: key=%s", ErrObjectNotFound, key) //
+		}
 		return nil, err
 	}
-	return out.Body, nil
+
+	contentType := "application/octet-stream"
+	if out.ContentType != nil && *out.ContentType != "" {
+		contentType = *out.ContentType
+	}
+
+	return &DownloadResult{Body: out.Body, ContentType: contentType}, nil
 }
 
 // Delete xoá 1 file khỏi RustFS theo "key".

@@ -1,6 +1,7 @@
 package media
 
 import (
+	"errors"
 	"io"
 	"net/http"
 
@@ -25,11 +26,17 @@ func NewHandler(logger zerolog.Logger, repo *rustfs.MediaRepository) *Handler {
 }
 
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) { // gọi w là nơi để viết repo và trả về cho client
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes) // nếu request vượt maxUploadBytes, việc đọc body sẽ tự dừng và trả lỗi.
+
 	if err := r.ParseMultipartForm(maxUploadBytes); err != nil { // đọc và bóc tách request đó ra thành từng phần riêng biệt, giới hạn kích thước
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			httpx.WriteJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "file too large"})
+			return
+		}
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
 		return
 	}
-
 	key := r.FormValue("key") // lấy giá trị của field
 	if key == "" {
 		httpx.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing key"})
@@ -65,16 +72,21 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := h.repo.Download(r.Context(), key) // Gọi MediaRepository.Download(), nhận về body
+	result, err := h.repo.Download(r.Context(), key)
 	if err != nil {
-		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusNotFound })
+		httpx.WriteError(w, h.logger, err, func(err error) int {
+			if errors.Is(err, rustfs.ErrObjectNotFound) {
+				return http.StatusNotFound
+			}
+			return http.StatusInternalServerError
+		})
 		return
 	}
-	defer body.Close()
+	defer result.Body.Close()
 
-	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Type", result.ContentType)
 	w.WriteHeader(http.StatusOK)
-	if _, err := io.Copy(w, body); err != nil { // io.copy: chảy dữ liệu trực tiếp từ body sang w, theo từng khối nhỏ, không cần load toàn bộ file vào RAM cùng lúc
+	if _, err := io.Copy(w, result.Body); err != nil {
 		h.logger.Error().Err(err).Msg("stream download response failed")
 	}
 }

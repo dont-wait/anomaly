@@ -101,7 +101,7 @@ type RustFSConfig struct {
 	AccessKey string // usename
 	SecretKey string // pass
 	Bucket    string // chứa file media
-	UseSSL    bool   // true nếu endpoint là https, false nếu là http
+	Region    string
 }
 
 // đọc dữ liệu từ env file và trả về cấu hình RustFSConfig
@@ -112,7 +112,7 @@ func (l *Loader) LoadRustFSConfig() *RustFSConfig {
 		AccessKey: l.LoadEnvOr("RUSTFS_ACCESS_KEY", "rustfsadmin"),
 		SecretKey: l.LoadEnvOr("RUSTFS_SECRET_KEY", "rustfsadmin"),
 		Bucket:    l.LoadEnvOr("RUSTFS_BUCKET", "media"),
-		UseSSL:    l.LoadEnvOr("RUSTFS_USE_SSL", "false") == "true", // này ko gọi từ .env thì dùng giá trị mặc đinhj false
+		Region:    l.LoadEnvOr("RUSTFS_REGION", "us-east-1"),
 	}
 }
 

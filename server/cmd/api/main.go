@@ -42,6 +42,9 @@ func main() {
 	defer eventstore.Disconnect(esClient)
 
 	rustfsClient := rustfs.NewClient(config.RustFSConfig)
+	if err := rustfs.EnsureBucket(ctx, rustfsClient, config.RustFSConfig.Bucket); err != nil {
+		logger.Fatal().Err(err).Msg("ensure rustfs bucket failed")
+	}
 	mediaRepo := rustfs.NewMediaRepository(rustfsClient, config.RustFSConfig.Bucket)
 
 	mongoRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
