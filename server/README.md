@@ -1,117 +1,104 @@
 # Anomaly Server
 
-Backend API for the Anomaly project.
+Backend cho Anomaly, gồm HTTP API, projection worker, và adapter hạ tầng local.
+
+## Docs Map
+
+- `README.md`: quick start và chỉ mục tài liệu
+- `ARCHITECTURE.md`: cấu trúc layer, executable, và runtime flow
+- `FEATURE.md`: feature hiện có và phạm vi test
+- `INFRA.md`: service local, env, port, workflow vận hành
 
 ## Overview
 
-This service currently exposes a small HTTP API for account creation and account queries.
+Stack hiện tại:
 
 - API server: Go
-- Database: MongoDB, KurrentDB
-- Dev Ops: Docker 
-- Caching: Redis
-- Streaming: Kafka
-
-## Prerequisites
-
-Choose one of these workflows:
-
-### Run with Docker Compose
-
-- Docker
-- Docker Compose
-
-### Run the API locally
-
-- Go `1.26`
-- A running MongoDB instance
+- Read model: MongoDB
+- Event store: KurrentDB
+- Media storage: RustFS
+- Local infra: Docker Compose
 
 ## Quick Start
 
-### 1. Create the environment file
+### 1. Tạo file môi trường
 
-Create `server/.env` with these values:
+Từ `server/`:
+
+```bash
+cp .env.example .env
+```
+
+Cần điền ít nhất:
 
 ```env
 MONGO_ROOT_USERNAME=username
 MONGO_ROOT_PASSWORD=password
-CORS_ALLOWED_ORIGINS=http://localhost:1420,http://localhost:3000,http://localhost:5173,tauri://localhost,http://tauri.localhost
+RUSTFS_ACCESS_KEY=your_rustfs_access_key
+RUSTFS_SECRET_KEY=your_rustfs_secret_key
 ```
 
-`docker-compose.yml` uses `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD` for MongoDB.
-
-## Run With Docker
-
-From `server/`:
+### 2. Chạy full local stack
 
 ```bash
 docker compose up --build
 ```
 
-Main services:
+Endpoint chính:
 
 - API: `http://localhost:8080`
-- Health check: `http://localhost:8080/health`
+- Health: `http://localhost:8080/health`
+- RustFS API: `http://localhost:9000`
+- RustFS console: `http://localhost:9001`
 - MongoDB: `localhost:27017`
-- Redis: `localhost:6379`
-- Kafka: `localhost:9092`
 - Kafka UI: `http://localhost:8082`
 - KurrentDB UI/API: `http://localhost:2113`
 
-Stop the stack with:
+### 3. Chạy API local
 
-```bash
-docker compose down
-```
-
-If you also want to remove volumes:
-
-```bash
-docker compose down -v
-```
-
-## Run Locally
-
-If you only want to run the API without the full stack, start MongoDB first, then run:
+Nếu chỉ chạy API bằng môi trường local sẵn có:
 
 ```bash
 go mod download
 go run ./cmd/api
 ```
 
-Optional environment variables:
+### 4. Chạy worker local
 
 ```bash
-export MONGO_URI="mongodb://localhost:27017"
-export MONGO_DB="anomaly"
-export CORS_ALLOWED_ORIGINS="http://localhost:1420,http://localhost:3000,http://localhost:5173,tauri://localhost,http://tauri.localhost"
+go run ./cmd/worker
 ```
 
-If your MongoDB instance requires authentication, use a URI like this instead:
+## API Summary
 
-```bash
-export MONGO_URI="mongodb://username:password@localhost:27017/?authSource=admin"
-```
+Account:
 
-## API Endpoints
+- `POST /api/accounts`
+- `GET /api/accounts`
+- `GET /api/accounts/{id}`
+- `GET /api/accounts/by-email/{email}`
 
-### Health
+Media:
 
-```http
-GET /health
-```
+- `POST /api/media/upload`
+- `GET /api/media/download?key=...`
 
-## Development Notes
+Health:
 
-- Default API port: `8080`
-- Default Mongo database: `anomaly`
-- The current implementation stores accounts in MongoDB
-- CORS should include `http://localhost:1420` if you are calling the API from the local client app
+- `GET /health`
 
 ## Verification
 
-Run the test suite from `server/`:
+Chạy toàn bộ test backend:
 
 ```bash
 go test ./...
 ```
+
+Chạy riêng test RustFS:
+
+```bash
+go test ./internal/infrastructure/rustfs -v
+```
+
+RustFS hiện đã có integration test end-to-end ở mức repository cho luồng upload -> download -> delete với file tạm thật.
