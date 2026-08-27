@@ -153,27 +153,83 @@ Common reason codes include:
 
 ## Local Development
 
-1. Create a virtual environment.
-2. Install dependencies:
+### Start Locally
+
+From `python-service/`:
 
 ```bash
-pip install -e .
-```
-
-3. Copy `.env.example` to `.env` and adjust settings if needed.
-4. Run the service:
-
-```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -e .[dev]
+cp .env.example .env
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
 ```
 
-### Nix
+This runs in the foreground, so logs are printed directly in the terminal.
+
+If you want to keep a copy of the logs:
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8090 2>&1 | tee python-service.log
+```
+
+### Start With Nix
 
 From `python-service/`:
 
 ```bash
 nix develop
+python -m venv .venv
+. .venv/bin/activate
+pip install -e .[dev]
+cp .env.example .env
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
 ```
+
+This also runs in the foreground, so logs are visible immediately.
+
+### Start With Docker
+
+From `python-service/`:
+
+```bash
+docker build -t anomaly-python-service .
+docker run --rm -p 8090:8090 anomaly-python-service
+```
+
+Logs are printed in the current terminal because the container runs in the foreground.
+
+If you want to run detached and inspect logs separately:
+
+```bash
+docker run -d --name anomaly-python-service -p 8090:8090 anomaly-python-service
+docker logs -f anomaly-python-service
+```
+
+### Start With Docker Compose
+
+From `server/`:
+
+```bash
+docker compose --profile app up --build anomaly-python-service rustfs
+```
+
+This keeps the compose stack attached, so logs stream in the current terminal.
+
+If you want compose in the background and read logs separately:
+
+```bash
+docker compose --profile app up -d --build anomaly-python-service rustfs
+docker compose logs -f anomaly-python-service
+```
+
+To also watch RustFS logs:
+
+```bash
+docker compose logs -f anomaly-python-service rustfs
+```
+
+### Nix
 
 The shell includes:
 
@@ -182,6 +238,19 @@ The shell includes:
 - `virtualenv`
 - `docker` client
 - `ruff`
+
+### Stub Mode For Local Testing
+
+The service fails closed by default if no real vision backend is configured.
+
+For local testing with the stub pipeline:
+
+```bash
+export APP_ENV=development
+export VISION_PIPELINE_BACKEND=stub
+export ALLOW_STUB_VISION_PIPELINE=true
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
+```
 
 ### Lint And Format Checks
 
