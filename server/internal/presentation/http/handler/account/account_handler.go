@@ -74,7 +74,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusCreated, acc)
+	httpx.WriteJSON(w, http.StatusCreated, toAccountResponse(acc))
 }
 
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +86,7 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, acc)
+	httpx.WriteJSON(w, http.StatusOK, toAccountResponse(acc))
 }
 
 func (h *Handler) GetByEmail(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +98,7 @@ func (h *Handler) GetByEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, acc)
+	httpx.WriteJSON(w, http.StatusOK, toAccountResponse(acc))
 }
 
 func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
@@ -108,5 +108,5 @@ func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, accounts)
+	httpx.WriteJSON(w, http.StatusOK, toAccountResponses(accounts))
 }
