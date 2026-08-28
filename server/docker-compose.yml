@@ -13,6 +13,10 @@ services:
       MONGO_DB: anomaly
       TZ: Asia/Ho_Chi_Minh
       EVENT_STORE_CONN_STRING: kurrentdb://eventstore:2113?tls=false
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY}
+      RUSTFS_BUCKET: media
 
     depends_on:
       kafka:
@@ -23,6 +27,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rustfs:
+        condition: service_started
     networks:
       - anomaly-network
 
@@ -42,6 +48,23 @@ services:
         condition: service_started
       mongo:
         condition: service_healthy
+    networks:
+      - anomaly-network
+  
+  rustfs:
+    container_name: anomaly-rustfs
+    image: rustfs/rustfs:latest
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - rustfs-data:/data
+    command: ["/data"]
     networks:
       - anomaly-network
 
