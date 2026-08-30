@@ -68,6 +68,23 @@ services:
     networks:
       - anomaly-network
 
+  anomaly-kyc-service:
+    container_name: anomaly-kyc-service
+    build:
+      context: ../kyc-service
+      dockerfile: Dockerfile
+    profiles:
+      - app
+    ports:
+      - "8090:8090"
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
+      rustfs:
+        condition: service_started
+    networks:
+      - anomaly-network
+
   kafka:
     container_name: anomaly-kafka
     image: apache/kafka:4.3.1
@@ -131,7 +148,7 @@ services:
   mongo:
     container_name: anomaly-mongo
     image: mongo:7.0
-    restart: always
+    restart: no
     ports:
       - "27017:27017"
     environment:
@@ -151,7 +168,7 @@ services:
   redis:
     container_name: anomaly-redis
     image: redis:7.4
-    restart: always
+    restart: no
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes
@@ -165,6 +182,50 @@ services:
     networks:
       - anomaly-network
 
+  rustfs:
+    container_name: anomaly-rustfs
+    image: rustfs/rustfs:latest
+    restart: no
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - rustfs-data:/data
+      - rustfs-logs:/logs
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9000/health >/dev/null || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - anomaly-network
+
+  rustfs-admin:
+    container_name: anomaly-rustfs-admin
+    image: amazon/aws-cli:2.27.60
+    profiles:
+      - app
+    depends_on:
+      rustfs:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        tail -f /dev/null
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      AWS_DEFAULT_REGION: us-east-1
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+    networks:
+      - anomaly-network
+
 networks:
   anomaly-network:
     driver: bridge
@@ -174,3 +235,4 @@ volumes:
   redis-data:
   kafka-data:
   rustfs-data:
+  rustfs-logs:
