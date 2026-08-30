@@ -107,6 +107,28 @@ def test_extract_id_face_rejects_oversized_image() -> None:
     assert response.json()["detail"] == "cccd_front_image_too_large"
 
 
+def test_extract_id_face_rejects_oversized_multipart_body_before_parsing() -> None:
+    boundary = "boundary"
+    oversized_body = (
+        (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="cccd_front_image"; filename="oversized.jpg"\r\n'
+            "Content-Type: image/jpeg\r\n\r\n"
+        ).encode()
+        + (b"a" * (11 * 1024 * 1024))
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+
+    response = client.post(
+        f"{ENDPOINTS['kyc_prefix']}{ENDPOINTS['extract_id_face']}",
+        content=oversized_body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "payload_too_large"
+
+
 def test_run_liveness_rejects_oversized_video() -> None:
     oversized_payload = b"a" * (25 * 1024 * 1024 + 1)
 

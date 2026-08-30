@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.routes.face_verification import MultipartBodyLimitMiddleware
 from app.api.routes.face_verification import router as face_verification_router
 from app.api.routes.health import router as health_router
 from app.constants.endpoints import ENDPOINTS
@@ -18,6 +19,7 @@ def create_app() -> FastAPI:
         redoc_url=ENDPOINTS["redoc"],
         openapi_url=ENDPOINTS["openapi"],
     )
+    app.add_middleware(MultipartBodyLimitMiddleware)
     app.include_router(health_router)
     app.include_router(face_verification_router, prefix=ENDPOINTS["kyc_prefix"])
     return app

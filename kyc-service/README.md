@@ -221,12 +221,15 @@ python -m venv .venv
 . .venv/bin/activate
 pip install -e .[dev]
 cp .env.example .env
+export APP_ENV=development
+export VISION_PIPELINE_BACKEND=stub
+export ALLOW_STUB_VISION_PIPELINE=true
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
 ```
 
 This runs in the foreground, so logs are printed directly in the terminal.
 
-If you want to keep a copy of the logs:
+If you want to keep a copy of the logs, run this in the same shell after exporting the stub settings above:
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8090 2>&1 | tee kyc-service.log
@@ -242,6 +245,9 @@ python -m venv .venv
 . .venv/bin/activate
 pip install -e .[dev]
 cp .env.example .env
+export APP_ENV=development
+export VISION_PIPELINE_BACKEND=stub
+export ALLOW_STUB_VISION_PIPELINE=true
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
 ```
 
