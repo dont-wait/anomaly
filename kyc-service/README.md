@@ -49,7 +49,7 @@ Responsibilities by component:
 
 - `client/`: captures CCCD front image and live video
 - `server/`: owns auth, rate limiting, retry policy, duplicate checks, persistence, and orchestration
-- `python-service/`: runs image/video processing and returns analysis results only
+- `kyc-service/`: runs image/video processing and returns analysis results only
 
 ## Processing Pipeline
 
@@ -214,7 +214,7 @@ Common reason codes include:
 
 ### Start Locally
 
-From `python-service/`:
+From `kyc-service/`:
 
 ```bash
 python -m venv .venv
@@ -229,12 +229,12 @@ This runs in the foreground, so logs are printed directly in the terminal.
 If you want to keep a copy of the logs:
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8090 2>&1 | tee python-service.log
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8090 2>&1 | tee kyc-service.log
 ```
 
 ### Start With Nix
 
-From `python-service/`:
+From `kyc-service/`:
 
 ```bash
 nix develop
@@ -249,11 +249,11 @@ This also runs in the foreground, so logs are visible immediately.
 
 ### Start With Docker
 
-From `python-service/`:
+From `kyc-service/`:
 
 ```bash
-docker build -t anomaly-python-service .
-docker run --rm -p 8090:8090 anomaly-python-service
+docker build -t anomaly-kyc-service .
+docker run --rm -p 8090:8090 anomaly-kyc-service
 ```
 
 Logs are printed in the current terminal because the container runs in the foreground.
@@ -261,8 +261,8 @@ Logs are printed in the current terminal because the container runs in the foreg
 If you want to run detached and inspect logs separately:
 
 ```bash
-docker run -d --name anomaly-python-service -p 8090:8090 anomaly-python-service
-docker logs -f anomaly-python-service
+docker run -d --name anomaly-kyc-service -p 8090:8090 anomaly-kyc-service
+docker logs -f anomaly-kyc-service
 ```
 
 ### Start With Docker Compose
@@ -270,7 +270,7 @@ docker logs -f anomaly-python-service
 From `server/`:
 
 ```bash
-docker compose --profile app up --build anomaly-python-service rustfs
+docker compose --profile app up --build anomaly-kyc-service rustfs
 ```
 
 This keeps the compose stack attached, so logs stream in the current terminal.
@@ -278,14 +278,14 @@ This keeps the compose stack attached, so logs stream in the current terminal.
 If you want compose in the background and read logs separately:
 
 ```bash
-docker compose --profile app up -d --build anomaly-python-service rustfs
-docker compose logs -f anomaly-python-service
+docker compose --profile app up -d --build anomaly-kyc-service rustfs
+docker compose logs -f anomaly-kyc-service
 ```
 
 To also watch RustFS logs:
 
 ```bash
-docker compose logs -f anomaly-python-service rustfs
+docker compose logs -f anomaly-kyc-service rustfs
 ```
 
 ### Nix
@@ -324,7 +324,7 @@ These commands only report issues. They do not auto-format unless you run `ruff 
 
 ## Tests
 
-Run the test suite from `python-service/`:
+Run the test suite from `kyc-service/`:
 
 ```bash
 pytest

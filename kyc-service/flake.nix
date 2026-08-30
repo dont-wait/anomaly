@@ -25,7 +25,7 @@
           ];
 
           shellHook = ''
-            echo "Anomaly python-service development environment activated"
+            echo "Anomaly kyc-service development environment activated"
             python --version
             docker --version
             ruff --version

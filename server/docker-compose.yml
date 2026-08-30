@@ -45,10 +45,10 @@ services:
     networks:
       - anomaly-network
 
-  anomaly-python-service:
-    container_name: anomaly-python-service
+  anomaly-kyc-service:
+    container_name: anomaly-kyc-service
     build:
-      context: ../python-service
+      context: ../kyc-service
       dockerfile: Dockerfile
     profiles:
       - app

@@ -72,7 +72,7 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
         "RUSTFS_ROOT_PASSWORD",
         "rustfsadmin",
     )
-    container_name = f"anomaly-python-service-rustfs-{api_port}"
+    container_name = f"anomaly-kyc-service-rustfs-{api_port}"
     image = os.environ.get("RUSTFS_DOCKER_IMAGE", "rustfs/rustfs:latest")
     process = subprocess.Popen(
         [
@@ -107,7 +107,7 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
 
     try:
         _wait_for_object_store(client)
-        bucket = "python-service-test-data"
+        bucket = "kyc-service-test-data"
         existing_buckets = {
             item["Name"] for item in client.list_buckets().get("Buckets", []) if "Name" in item
         }
@@ -161,18 +161,18 @@ def rustfs_server() -> Iterator[RustFSTestStore]:
             existing_buckets = {
                 item["Name"] for item in client.list_buckets().get("Buckets", []) if "Name" in item
             }
-            if "python-service-test-data" in existing_buckets:
-                listed = client.list_objects_v2(Bucket="python-service-test-data")
+            if "kyc-service-test-data" in existing_buckets:
+                listed = client.list_objects_v2(Bucket="kyc-service-test-data")
                 contents = listed.get("Contents", [])
                 if contents:
                     client.delete_objects(
-                        Bucket="python-service-test-data",
+                        Bucket="kyc-service-test-data",
                         Delete={
                             "Objects": [{"Key": item["Key"]} for item in contents],
                             "Quiet": True,
                         },
                     )
-                client.delete_bucket(Bucket="python-service-test-data")
+                client.delete_bucket(Bucket="kyc-service-test-data")
         finally:
             subprocess.run(
                 ["docker", "stop", container_name],

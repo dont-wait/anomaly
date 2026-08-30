@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - "server/**"
-      - "python-service/**"
+      - "kyc-service/**"
       - ".github/workflows/ci-be.yml"
   pull_request:
     branches: [main]
     paths:
       - "server/**"
-      - "python-service/**"
+      - "kyc-service/**"
       - ".github/workflows/ci-be.yml"
 
 permissions:
@@ -93,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: python-service
+        working-directory: kyc-service
     steps:
       - uses: actions/checkout@v4
         with:
@@ -118,7 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: python-service
+        working-directory: kyc-service
     steps:
       - uses: actions/checkout@v4
         with:
@@ -143,7 +143,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: python-service
+        working-directory: kyc-service
     steps:
       - uses: actions/checkout@v4
         with:

@@ -1,5 +1,5 @@
 [project]
-name = "anomaly-python-service"
+name = "anomaly-kyc-service"
 version = "0.1.0"
 description = "Face verification and liveness service for Anomaly"
 readme = "README.md"
