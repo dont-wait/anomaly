@@ -208,7 +208,9 @@ func handleEvent(
 ) error {
 	// event không liên quan tới account -> không có gì để làm,
 	// coi như "xử lý thành công" (không phải lỗi) để checkpoint vẫn tiến lên
-	if eventType != eventstore.EventAccountCreated && eventType != eventstore.EventAccountWithdraw {
+	if eventType != eventstore.EventAccountCreated &&
+		eventType != eventstore.EventAccountVerified &&
+		eventType != eventstore.EventAccountWithdraw {
 		return nil
 	}
 
@@ -231,6 +233,6 @@ func handleEvent(
 		return fmt.Errorf("upsert account %s into mongo failed: %w", acc.Id, err)
 	}
 
-	log.Info().Str("accountId", acc.Id).Int64("amount", acc.Amount).Msg("projected account into mongo")
+	log.Info().Str("accountId", acc.Id).Int64("amount", acc.Amount).Bool("isVerify", acc.IsVerify).Msg("projected account into mongo")
 	return nil
 }

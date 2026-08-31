@@ -8,6 +8,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/composition"
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/helpers"
+	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
 	eventstore "github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/logger"
@@ -43,10 +44,12 @@ func main() {
 	mongoRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
 	esRepo := eventstore.NewAccountRepository(esClient)
 
-	accountHandler := composition.NewAccountHandler(esRepo, mongoRepo, *logger)
+	tokenSvc := auth.NewTokenService(config.AuthConfig.JWTSecret, config.AuthConfig.JWTExpiry)
+
+	accountHandler := composition.NewAccountHandler(esRepo, mongoRepo, tokenSvc, *logger)
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouter(mux, accountHandler)
+	mux = presentation.NewRouter(mux, accountHandler, tokenSvc)
 
 	mux.HandleFunc("GET /health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
 		w.WriteHeader(netHTTP.StatusOK)

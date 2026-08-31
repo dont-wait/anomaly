@@ -57,6 +57,19 @@ func (r *AccountRepository) FindByEmail(ctx context.Context, email string) (*acc
 	return fromRecord(rec), nil
 }
 
+func (r *AccountRepository) FindByUsername(ctx context.Context, username string) (*accountdomain.UserAccount, error) {
+	var rec accountRecord
+	err := r.col.FindOne(ctx, map[string]string{"username": username}).Decode(&rec)
+	if err != nil {
+		if err == mongodrv.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return fromRecord(rec), nil
+}
+
 func (r *AccountRepository) FindAll(ctx context.Context) ([]*accountdomain.UserAccount, error) {
 	cursor, err := r.col.Find(ctx, map[string]string{})
 	if err != nil {

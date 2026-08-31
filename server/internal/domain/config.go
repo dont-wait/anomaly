@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
@@ -60,12 +61,14 @@ func (l *Loader) logger() *zerolog.Logger {
 type Config struct {
 	MongoConfig      *MongoConfig
 	EventStoreConfig *EventStoreConfig
+	AuthConfig       *AuthConfig
 }
 
 func (l *Loader) LoadAllConfig() *Config {
 	return &Config{
 		MongoConfig:      l.LoadMongoConfig(),
 		EventStoreConfig: l.LoadEventStoreConfig(),
+		AuthConfig:       l.LoadAuthConfig(),
 	}
 }
 
@@ -106,6 +109,32 @@ func (l *Loader) LoadEnvOr(key, fallback string) string {
 		return val
 	}
 	return fallback
+}
+
+type AuthConfig struct {
+	JWTSecret string
+	JWTExpiry time.Duration
+}
+
+func (l *Loader) LoadAuthConfig() *AuthConfig {
+	l.logger().Info().Msg("Load auth config")
+	return &AuthConfig{
+		JWTSecret: l.LoadEnv("JWT_SECRET"),
+		JWTExpiry: l.LoadEnvDuration("JWT_EXPIRY", 24*time.Hour),
+	}
+}
+
+func (l *Loader) LoadEnvDuration(key string, fallback time.Duration) time.Duration {
+	val, exists := os.LookupEnv(key)
+	if !exists || val == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(val)
+	if err != nil {
+		l.logger().Warn().Err(err).Str("key", key).Msg("invalid duration, using fallback")
+		return fallback
+	}
+	return d
 }
 
 func fatalf(log *zerolog.Logger, format string, args ...any) {

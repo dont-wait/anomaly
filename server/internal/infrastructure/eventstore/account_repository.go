@@ -26,11 +26,11 @@ func NewAccountRepository(client *kurrentdb.Client) *AccountRepository {
 	return &AccountRepository{client: client}
 }
 
-// Save ghi thêm event cần thiết để đưa stream từ trạng thái hiện tại
+// Save ghi event phù hợp để đưa stream từ trạng thái hiện tại
 // tới trạng thái của `a`:
-//   - Stream chưa tồn tại -> ghi AccountCreated
-//   - Stream đã tồn tại -> ghi AccountWithdrew với phần chênh lệch
-//     (chỉ hỗ trợ rút tiền, đúng với logic domain hiện tại)
+//   - Stream chưa tồn tại -> ghi AccountCreated (lần đầu register)
+//   - Stream đã tồn tại + Amount giảm  -> ghi AccountWithdraw
+//   - Stream đã tồn tại + IsVerify=true/identity thay đổi -> ghi AccountVerified
 func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccount) error {
 	current, currentRevision, err := r.findByIDWithRevision(ctx, a.Id)
 	if err != nil {
@@ -41,9 +41,10 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 
 	if current == nil {
 		payload, err := json.Marshal(accountCreatedPayload{
-			Id:       a.Id,
-			Username: a.Username,
-			Email:    a.Email,
+			Id:           a.Id,
+			Username:     a.Username,
+			Email:        a.Email,
+			PasswordHash: a.PasswordHash,
 		})
 		if err != nil {
 			return err
@@ -60,6 +61,36 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 				Data:        payload,
 			})
 		return err
+	}
+
+	if !current.IsVerify && a.IsVerify {
+		payload, err := json.Marshal(accountVerifiedPayload{
+			IdCardFrontUrl: a.IdCardFrontUrl,
+			IdCardBackUrl:  a.IdCardBackUrl,
+			LiveVideoUrl:   a.LiveVideoUrl,
+		})
+		if err != nil {
+			return err
+		}
+
+		_, err = r.client.AppendToStream(
+			ctx,
+			stream,
+			kurrentdb.AppendToStreamOptions{
+				StreamState: kurrentdb.StreamRevision{Value: currentRevision},
+			}, kurrentdb.EventData{
+				ContentType: kurrentdb.ContentTypeJson,
+				EventType:   EventAccountVerified,
+				Data:        payload,
+			})
+		if err != nil {
+			if kdbErr, ok := kurrentdb.FromError(err); ok && kdbErr.Code() ==
+				kurrentdb.ErrorCodeWrongExpectedVersion {
+				return fmt.Errorf("account %s was modified concurrently, please retry: %w", a.Id, err)
+			}
+			return err
+		}
+		return nil
 	}
 
 	delta := current.Amount - a.Amount
@@ -180,6 +211,19 @@ func (r *AccountRepository) FindByEmail(ctx context.Context, email string) (*acc
 	}
 	for _, acc := range accounts {
 		if acc.Email == email {
+			return acc, nil
+		}
+	}
+	return nil, nil
+}
+
+func (r *AccountRepository) FindByUsername(ctx context.Context, username string) (*accountdomain.UserAccount, error) {
+	accounts, err := r.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, acc := range accounts {
+		if acc.Username == username {
 			return acc, nil
 		}
 	}
