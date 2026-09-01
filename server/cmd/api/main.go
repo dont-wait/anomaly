@@ -11,6 +11,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
 	eventstore "github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
+	rustfs "github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	"github.com/dont-wait/anomaly/internal/logger"
 	presentation "github.com/dont-wait/anomaly/internal/presentation/http"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
@@ -41,15 +42,22 @@ func main() {
 	}
 	defer eventstore.Disconnect(esClient)
 
+	rustfsClient := rustfs.NewClient(config.RustFSConfig)
+	if err := rustfs.EnsureBucket(ctx, rustfsClient, config.RustFSConfig.Bucket); err != nil {
+		logger.Fatal().Err(err).Msg("ensure rustfs bucket failed")
+	}
+	mediaRepo := rustfs.NewMediaRepository(rustfsClient, config.RustFSConfig.Bucket)
+
 	mongoRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
 	esRepo := eventstore.NewAccountRepository(esClient)
 
 	tokenSvc := auth.NewTokenService(config.AuthConfig.JWTSecret, config.AuthConfig.JWTExpiry)
 
 	accountHandler := composition.NewAccountHandler(esRepo, mongoRepo, tokenSvc, *logger)
+	mediaHandler := composition.NewMediaHandler(mediaRepo, *logger)
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouter(mux, accountHandler, tokenSvc)
+	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, tokenSvc)
 
 	mux.HandleFunc("GET /health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
 		w.WriteHeader(netHTTP.StatusOK)

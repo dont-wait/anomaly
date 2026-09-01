@@ -62,6 +62,7 @@ type Config struct {
 	MongoConfig      *MongoConfig
 	EventStoreConfig *EventStoreConfig
 	AuthConfig       *AuthConfig
+	RustFSConfig     *RustFSConfig
 }
 
 func (l *Loader) LoadAllConfig() *Config {
@@ -69,6 +70,7 @@ func (l *Loader) LoadAllConfig() *Config {
 		MongoConfig:      l.LoadMongoConfig(),
 		EventStoreConfig: l.LoadEventStoreConfig(),
 		AuthConfig:       l.LoadAuthConfig(),
+		RustFSConfig:     l.LoadRustFSConfig(),
 	}
 }
 
@@ -93,6 +95,27 @@ func (l *Loader) LoadEventStoreConfig() *EventStoreConfig {
 	l.logger().Info().Msg("Load event store config")
 	return &EventStoreConfig{
 		EventStoreConnString: l.LoadEnvOr("EVENT_STORE_CONN_STRING", "kurrentdb://localhost:2113?tls=false"),
+	}
+}
+
+// gom dữ liệu
+type RustFSConfig struct {
+	Endpoint  string // địa chỉ đang chạy
+	AccessKey string // usename
+	SecretKey string // pass
+	Bucket    string // chứa file media
+	Region    string
+}
+
+// đọc dữ liệu từ env file và trả về cấu hình RustFSConfig
+func (l *Loader) LoadRustFSConfig() *RustFSConfig {
+	l.logger().Info().Msg("Load rustfs config")
+	return &RustFSConfig{
+		Endpoint:  l.LoadEnvOr("RUSTFS_ENDPOINT", "http://localhost:9000"),
+		AccessKey: l.LoadEnvOr("RUSTFS_ACCESS_KEY", "rustfsadmin"),
+		SecretKey: l.LoadEnvOr("RUSTFS_SECRET_KEY", "rustfsadmin"),
+		Bucket:    l.LoadEnvOr("RUSTFS_BUCKET", "media"),
+		Region:    l.LoadEnvOr("RUSTFS_REGION", "us-east-1"),
 	}
 }
 

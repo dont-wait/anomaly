@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "server/**"
+      - "kyc-service/**"
       - ".github/workflows/ci-be.yml"
   pull_request:
     branches: [main]
     paths:
       - "server/**"
+      - "kyc-service/**"
       - ".github/workflows/ci-be.yml"
 
 permissions:
@@ -85,3 +87,75 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+  python-test:
+    name: python-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kyc-service
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install dependencies
+        run: python -m pip install -e .
+
+      - name: Run tests
+        run: pytest
+
+  python-lint:
+    name: python-lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kyc-service
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: python -m pip install -e .[dev]
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Check formatting
+        run: ruff format --check .
+
+  python-openapi:
+    name: python-openapi
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kyc-service
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: python -m pip install -e .
+
+      - name: Validate OpenAPI endpoint
+        run: python -c "from fastapi.testclient import TestClient; from app.main import app; client = TestClient(app); response = client.get('/openapi.json'); response.raise_for_status(); print(response.json()['info']['title'])"
