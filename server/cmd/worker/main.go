@@ -43,6 +43,9 @@ func main() {
 	}()
 
 	mongoRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
+	if err := mongoRepo.EnsureIndexes(ctx); err != nil {
+		log.Fatal().Err(err).Msg("ensure mongo indexes failed")
+	}
 	checkpointRepo := mongo.NewCheckpointRepository(mongoClient, config.MongoConfig.MongoDBName)
 
 	esClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
@@ -230,6 +233,13 @@ func handleEvent(
 	}
 
 	if err := mongoRepo.Save(ctx, acc); err != nil {
+		// Mongo từ chối vì vi phạm unique index (trùng email/username với
+		// account khác đã có). Đây là xung đột dữ liệu — KHÔNG retry, vẫn
+		// lưu checkpoint để không kẹt subscription.
+		if mongo.IsDuplicateKeyError(err) {
+			log.Warn().Err(err).Str("accountId", acc.Id).Msg("skip projection: duplicate key (email/username collision)")
+			return nil
+		}
 		return fmt.Errorf("upsert account %s into mongo failed: %w", acc.Id, err)
 	}
 

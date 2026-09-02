@@ -22,6 +22,10 @@ func NewVerifyAccountCommandHandler(repo AccountRepository) *VerifyAccountComman
 }
 
 func (h *VerifyAccountCommandHandler) Handle(ctx context.Context, cmd VerifyAccountCommand) (*accountdomain.UserAccount, error) {
+	if cmd.IdCardFrontUrl == "" || cmd.IdCardBackUrl == "" || cmd.LiveVideoUrl == "" {
+		return nil, accountdomain.ErrInvalidVerifyPayload
+	}
+
 	acc, err := h.repo.FindByID(ctx, cmd.AccountID)
 	if err != nil {
 		return nil, err

@@ -139,10 +139,20 @@ type AuthConfig struct {
 	JWTExpiry time.Duration
 }
 
+const minJWTSecretLength = 32
+
 func (l *Loader) LoadAuthConfig() *AuthConfig {
 	l.logger().Info().Msg("Load auth config")
+	secret := l.LoadEnv("JWT_SECRET")
+	if secret == "" {
+		l.logger().Fatal().Msg("JWT_SECRET must not be empty")
+	}
+	if len(secret) < minJWTSecretLength {
+		l.logger().Fatal().Int("minLength", minJWTSecretLength).Int("actualLength", len(secret)).
+			Msg("JWT_SECRET must be at least 32 characters to resist brute-force attacks")
+	}
 	return &AuthConfig{
-		JWTSecret: l.LoadEnv("JWT_SECRET"),
+		JWTSecret: secret,
 		JWTExpiry: l.LoadEnvDuration("JWT_EXPIRY", 24*time.Hour),
 	}
 }

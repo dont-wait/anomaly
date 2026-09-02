@@ -55,7 +55,8 @@ func accountErrorStatus(err error) int {
 		errors.Is(err, accountdomain.ErrWeakPassword),
 		errors.Is(err, accountdomain.ErrInvalidUsername),
 		errors.Is(err, accountdomain.ErrInvalidAmount),
-		errors.Is(err, accountdomain.ErrInsufficientFunds):
+		errors.Is(err, accountdomain.ErrInsufficientFunds),
+		errors.Is(err, accountdomain.ErrInvalidVerifyPayload):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError
@@ -90,7 +91,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusCreated, toAccountResponse(acc))
+	httpx.WriteJSON(w, http.StatusCreated, toAccountResponsePrivate(acc))
 }
 
 type loginRequest struct {
@@ -137,7 +138,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, toAccountResponse(acc))
+	httpx.WriteJSON(w, http.StatusOK, toAccountResponsePrivate(acc))
 }
 
 type verifyRequest struct {
@@ -185,8 +186,10 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, toAccountResponse(acc))
+	httpx.WriteJSON(w, http.StatusOK, toAccountResponsePrivate(acc))
 }
+
+// Public endpoints — dùng AccountResponsePublic (không leak KYC URLs).
 
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -197,7 +200,7 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, toAccountResponse(acc))
+	httpx.WriteJSON(w, http.StatusOK, toAccountResponsePublic(acc))
 }
 
 func (h *Handler) GetByEmail(w http.ResponseWriter, r *http.Request) {
@@ -209,7 +212,7 @@ func (h *Handler) GetByEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, toAccountResponse(acc))
+	httpx.WriteJSON(w, http.StatusOK, toAccountResponsePublic(acc))
 }
 
 func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
@@ -219,5 +222,5 @@ func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, toAccountResponses(accounts))
+	httpx.WriteJSON(w, http.StatusOK, toAccountResponsePublicList(accounts))
 }

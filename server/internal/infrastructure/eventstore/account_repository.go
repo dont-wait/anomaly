@@ -29,8 +29,11 @@ func NewAccountRepository(client *kurrentdb.Client) *AccountRepository {
 // Save ghi event phù hợp để đưa stream từ trạng thái hiện tại
 // tới trạng thái của `a`:
 //   - Stream chưa tồn tại -> ghi AccountCreated (lần đầu register)
-//   - Stream đã tồn tại + Amount giảm  -> ghi AccountWithdraw
-//   - Stream đã tồn tại + IsVerify=true/identity thay đổi -> ghi AccountVerified
+//   - Stream đã tồn tại + identity URLs hoặc IsVerify thay đổi -> ghi AccountVerified
+//   - Stream đã tồn tại + Amount giảm -> ghi AccountWithdraw
+//
+// Lưu ý: AccountVerified được emit mỗi lần identity thay đổi, không chỉ ở
+// lần verify đầu tiên — đảm bảo audit log đầy đủ cho re-KYC.
 func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccount) error {
 	current, currentRevision, err := r.findByIDWithRevision(ctx, a.Id)
 	if err != nil {
@@ -63,7 +66,7 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 		return err
 	}
 
-	if !current.IsVerify && a.IsVerify {
+	if identityChanged(current, a) {
 		payload, err := json.Marshal(accountVerifiedPayload{
 			IdCardFrontUrl: a.IdCardFrontUrl,
 			IdCardBackUrl:  a.IdCardBackUrl,
@@ -121,6 +124,18 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 		return err
 	}
 	return err
+}
+
+// identityChanged báo state identity có thay đổi hay không — dùng để quyết
+// định có emit AccountVerified event không. Bao gồm cả transition
+// isVerify false→true lẫn cập nhật lại URL KYC sau re-KYC.
+func identityChanged(current, next *accountdomain.UserAccount) bool {
+	if current.IdCardFrontUrl != next.IdCardFrontUrl ||
+		current.IdCardBackUrl != next.IdCardBackUrl ||
+		current.LiveVideoUrl != next.LiveVideoUrl {
+		return true
+	}
+	return !current.IsVerify && next.IsVerify
 }
 
 // FindByID dựng lại trạng thái hiện tại bằng cách đọc và replay TOÀN BỘ event trong stream.
