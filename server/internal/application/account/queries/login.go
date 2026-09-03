@@ -45,7 +45,9 @@ func (h *LoginQueryHandler) Handle(ctx context.Context, q LoginQuery) (*LoginRes
 		return nil, accountdomain.ErrInvalidCredentials
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(acc.PasswordHash), []byte(q.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword(
+		[]byte(acc.PasswordHash),
+		[]byte(q.Password)); err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 			return nil, accountdomain.ErrInvalidCredentials
 		}

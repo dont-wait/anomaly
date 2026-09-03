@@ -36,11 +36,11 @@ func main() {
 		}
 	}()
 
-	esClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
+	eventStoreClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("connect event store failed")
 	}
-	defer eventstore.Disconnect(esClient)
+	defer eventstore.Disconnect(eventStoreClient)
 
 	rustfsClient := rustfs.NewClient(config.RustFSConfig)
 	if err := rustfs.EnsureBucket(ctx, rustfsClient, config.RustFSConfig.Bucket); err != nil {
@@ -52,11 +52,11 @@ func main() {
 	if err := mongoRepo.EnsureIndexes(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("ensure mongo indexes failed")
 	}
-	esRepo := eventstore.NewAccountRepository(esClient)
+	eventStoreRepo := eventstore.NewAccountRepository(eventStoreClient)
 
 	tokenSvc := auth.NewTokenService(config.AuthConfig.JWTSecret, config.AuthConfig.JWTExpiry)
 
-	accountHandler := composition.NewAccountHandler(esRepo, esRepo, tokenSvc, *logger)
+	accountHandler := composition.NewAccountHandler(eventStoreRepo, eventStoreRepo, tokenSvc, *logger)
 	mediaHandler := composition.NewMediaHandler(mediaRepo, *logger)
 
 	mux := netHTTP.NewServeMux()

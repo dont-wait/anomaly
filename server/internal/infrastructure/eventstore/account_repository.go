@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
+	eventstoredb "github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
@@ -19,10 +19,10 @@ const PAGESIZE = 4096
 // dùng event store thay vì MongoDB. Chạy song song với Mongo repository
 // (mục đích học/thử nghiệm), không thay thế.
 type AccountRepository struct {
-	client *kurrentdb.Client
+	client *eventstoredb.Client
 }
 
-func NewAccountRepository(client *kurrentdb.Client) *AccountRepository {
+func NewAccountRepository(client *eventstoredb.Client) *AccountRepository {
 	return &AccountRepository{client: client}
 }
 
@@ -56,10 +56,10 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 		_, err = r.client.AppendToStream(
 			ctx,
 			stream,
-			kurrentdb.AppendToStreamOptions{
-				StreamState: kurrentdb.NoStream{},
-			}, kurrentdb.EventData{
-				ContentType: kurrentdb.ContentTypeJson,
+			eventstoredb.AppendToStreamOptions{
+				StreamState: eventstoredb.NoStream{},
+			}, eventstoredb.EventData{
+				ContentType: eventstoredb.ContentTypeJson,
 				EventType:   EventAccountCreated,
 				Data:        payload,
 			})
@@ -79,16 +79,16 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 		_, err = r.client.AppendToStream(
 			ctx,
 			stream,
-			kurrentdb.AppendToStreamOptions{
-				StreamState: kurrentdb.StreamRevision{Value: currentRevision},
-			}, kurrentdb.EventData{
-				ContentType: kurrentdb.ContentTypeJson,
+			eventstoredb.AppendToStreamOptions{
+				StreamState: eventstoredb.StreamRevision{Value: currentRevision},
+			}, eventstoredb.EventData{
+				ContentType: eventstoredb.ContentTypeJson,
 				EventType:   EventAccountVerified,
 				Data:        payload,
 			})
 		if err != nil {
-			if kdbErr, ok := kurrentdb.FromError(err); ok && kdbErr.Code() ==
-				kurrentdb.ErrorCodeWrongExpectedVersion {
+			var eventStoreErr *eventstoredb.Error
+			if errors.As(err, &eventStoreErr) && eventStoreErr.Code() == eventstoredb.ErrorCodeWrongExpectedVersion {
 				return fmt.Errorf("account %s was modified concurrently, please retry: %w", a.Id, err)
 			}
 			return err
@@ -109,16 +109,16 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 	_, err = r.client.AppendToStream(
 		ctx,
 		stream,
-		kurrentdb.AppendToStreamOptions{
-			StreamState: kurrentdb.StreamRevision{Value: currentRevision},
-		}, kurrentdb.EventData{
-			ContentType: kurrentdb.ContentTypeJson,
+		eventstoredb.AppendToStreamOptions{
+			StreamState: eventstoredb.StreamRevision{Value: currentRevision},
+		}, eventstoredb.EventData{
+			ContentType: eventstoredb.ContentTypeJson,
 			EventType:   EventAccountWithdraw,
 			Data:        payload,
 		})
 	if err != nil {
-		if kdbErr, ok := kurrentdb.FromError(err); ok && kdbErr.Code() ==
-			kurrentdb.ErrorCodeWrongExpectedVersion {
+		var eventStoreErr *eventstoredb.Error
+		if errors.As(err, &eventStoreErr) && eventStoreErr.Code() == eventstoredb.ErrorCodeWrongExpectedVersion {
 			return fmt.Errorf("account %s was modified concurrently, please retry: %w", a.Id, err)
 		}
 		return err
@@ -159,7 +159,7 @@ func (r *AccountRepository) findByIDWithRevision(
 	found := false
 	var lastRevision uint64
 
-	opts := kurrentdb.ReadStreamOptions{}
+	opts := eventstoredb.ReadStreamOptions{}
 
 	for {
 		stream, err := r.client.ReadStream(
@@ -178,8 +178,8 @@ func (r *AccountRepository) findByIDWithRevision(
 			}
 			if err != nil {
 				stream.Close()
-				if kdbErr, ok := kurrentdb.FromError(err); ok && kdbErr.Code() ==
-					kurrentdb.ErrorCodeResourceNotFound {
+				var eventStoreErr *eventstoredb.Error
+				if errors.As(err, &eventStoreErr) && eventStoreErr.Code() == eventstoredb.ErrorCodeResourceNotFound {
 
 					return nil, 0, nil
 				}
@@ -204,7 +204,7 @@ func (r *AccountRepository) findByIDWithRevision(
 			break
 		}
 
-		opts = kurrentdb.ReadStreamOptions{From: kurrentdb.Revision(lastRevision + 1)}
+		opts = eventstoredb.ReadStreamOptions{From: eventstoredb.Revision(lastRevision + 1)}
 	}
 
 	if !found {
@@ -273,7 +273,7 @@ func (r *AccountRepository) allAccountIDs(ctx context.Context) ([]string, error)
 
 	seen := make(map[string]struct{})
 	var ids []string
-	opts := kurrentdb.ReadAllOptions{} // trang đầu tiên: đọc từ Start
+	opts := eventstoredb.ReadAllOptions{} // trang đầu tiên: đọc từ Start
 
 	for {
 		all, err := r.client.ReadAll(ctx, opts, pageSize)
@@ -282,7 +282,7 @@ func (r *AccountRepository) allAccountIDs(ctx context.Context) ([]string, error)
 		}
 
 		eventsInPage := 0
-		var lastPosition kurrentdb.Position
+		var lastPosition eventstoredb.Position
 
 		for {
 			event, err := all.Recv()
@@ -320,7 +320,7 @@ func (r *AccountRepository) allAccountIDs(ctx context.Context) ([]string, error)
 
 		// From là inclusive nên trang kế tiếp đọc lại đúng event tại
 		// lastPosition; dedupe ở trên xử lý phần trùng đó.
-		opts = kurrentdb.ReadAllOptions{From: lastPosition}
+		opts = eventstoredb.ReadAllOptions{From: lastPosition}
 	}
 
 	return ids, nil
