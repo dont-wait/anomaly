@@ -57,9 +57,18 @@ func (s *TokenService) Parse(tokenString string) (*domainauth.Claims, error) {
 		return nil, ErrInvalidToken
 	}
 
-	sub, _ := claimsMap["sub"].(string)
-	username, _ := claimsMap["username"].(string)
-	isVerify, _ := claimsMap["isVerify"].(bool)
+	sub, ok := claimsMap["sub"].(string)
+	if !ok || sub == "" {
+		return nil, ErrInvalidToken
+	}
+	username, ok := claimsMap["username"].(string)
+	if !ok || username == "" {
+		return nil, ErrInvalidToken
+	}
+	isVerify, ok := claimsMap["isVerify"].(bool)
+	if !ok {
+		return nil, ErrInvalidToken
+	}
 
 	expFloat, ok := claimsMap["exp"].(float64)
 	if !ok {

@@ -46,7 +46,7 @@ func (r *AccountRepository) EnsureIndexes(ctx context.Context) error {
 }
 
 // IsDuplicateKeyError trả về true nếu err là duplicate key error từ unique
-// index. Worker dùng để skip project khi Mongo từ chối vì trùng email/username.
+// index. Worker dùng để nhận diện xung đột khi Mongo từ chối ghi projection.
 func IsDuplicateKeyError(err error) bool {
 	if err == nil {
 		return false

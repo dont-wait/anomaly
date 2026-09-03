@@ -56,7 +56,7 @@ func main() {
 
 	tokenSvc := auth.NewTokenService(config.AuthConfig.JWTSecret, config.AuthConfig.JWTExpiry)
 
-	accountHandler := composition.NewAccountHandler(esRepo, mongoRepo, tokenSvc, *logger)
+	accountHandler := composition.NewAccountHandler(esRepo, esRepo, tokenSvc, *logger)
 	mediaHandler := composition.NewMediaHandler(mediaRepo, *logger)
 
 	mux := netHTTP.NewServeMux()

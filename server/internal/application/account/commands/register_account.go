@@ -31,13 +31,16 @@ func NewRegisterAccountCommandHandler(
 }
 
 func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd RegisterAccountCommand) (*accountdomain.UserAccount, error) {
+	cmd.Email = strings.TrimSpace(cmd.Email)
+	cmd.Username = strings.TrimSpace(cmd.Username)
+
 	if _, err := mail.ParseAddress(cmd.Email); err != nil {
 		return nil, accountdomain.ErrInvalidEmail
 	}
 	if len(cmd.Password) < minPasswordLength {
 		return nil, accountdomain.ErrWeakPassword
 	}
-	if strings.TrimSpace(cmd.Username) == "" {
+	if cmd.Username == "" {
 		return nil, accountdomain.ErrInvalidUsername
 	}
 

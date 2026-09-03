@@ -234,11 +234,10 @@ func handleEvent(
 
 	if err := mongoRepo.Save(ctx, acc); err != nil {
 		// Mongo từ chối vì vi phạm unique index (trùng email/username với
-		// account khác đã có). Đây là xung đột dữ liệu — KHÔNG retry, vẫn
-		// lưu checkpoint để không kẹt subscription.
+		// account khác đã có). Giữ event chưa checkpoint để worker retry,
+		// tránh làm mất account khỏi projection mà không có record xử lý lại.
 		if mongo.IsDuplicateKeyError(err) {
-			log.Warn().Err(err).Str("accountId", acc.Id).Msg("skip projection: duplicate key (email/username collision)")
-			return nil
+			return fmt.Errorf("project account %s failed: duplicate key (email/username collision): %w", acc.Id, err)
 		}
 		return fmt.Errorf("upsert account %s into mongo failed: %w", acc.Id, err)
 	}

@@ -232,6 +232,8 @@ func (r *AccountRepository) FindByEmail(ctx context.Context, email string) (*acc
 	return nil, nil
 }
 
+// FindByUsername cũng quét toàn bộ account stream; production nên dùng
+// read-model/projection có index theo username.
 func (r *AccountRepository) FindByUsername(ctx context.Context, username string) (*accountdomain.UserAccount, error) {
 	accounts, err := r.FindAll(ctx)
 	if err != nil {

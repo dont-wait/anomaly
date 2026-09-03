@@ -163,7 +163,7 @@ func (l *Loader) LoadEnvDuration(key string, fallback time.Duration) time.Durati
 		return fallback
 	}
 	d, err := time.ParseDuration(val)
-	if err != nil {
+	if err != nil || d <= 0 {
 		l.logger().Warn().Err(err).Str("key", key).Msg("invalid duration, using fallback")
 		return fallback
 	}

@@ -20,7 +20,10 @@ func RegisterRoutes(
 	mux.Handle("POST /api/accounts/{id}/verify",
 		middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.Verify)))
 
-	mux.HandleFunc("GET /api/accounts", h.GetAll)
-	mux.HandleFunc("GET /api/accounts/by-email/{email}", h.GetByEmail)
-	mux.HandleFunc("GET /api/accounts/{id}", h.GetByID)
+	mux.Handle("GET /api/accounts",
+		middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.GetAll)))
+	mux.Handle("GET /api/accounts/by-email/{email}",
+		middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.GetByEmail)))
+	mux.Handle("GET /api/accounts/{id}",
+		middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.GetByID)))
 }
