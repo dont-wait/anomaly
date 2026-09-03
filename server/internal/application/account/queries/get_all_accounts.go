@@ -16,6 +16,8 @@ func NewGetAllAccountsQueryHandler(repo AccountQueryRepository) *GetAllAccountsQ
 	return &GetAllAccountsQueryHandler{repo: repo}
 }
 
-func (h *GetAllAccountsQueryHandler) Handle(ctx context.Context, q GetAllAccountsQuery) ([]*accountdomain.UserAccount, error) {
+func (h *GetAllAccountsQueryHandler) Handle(ctx context.Context, q GetAllAccountsQuery) (
+	[]*accountdomain.UserAccount, error,
+) {
 	return h.repo.FindAll(ctx)
 }

@@ -18,7 +18,9 @@ func NewGetAccountByEmailQueryHandler(repo AccountQueryRepository) *GetAccountBy
 	return &GetAccountByEmailQueryHandler{repo: repo}
 }
 
-func (h *GetAccountByEmailQueryHandler) Handle(ctx context.Context, q GetAccountByEmailQuery) (*accountdomain.UserAccount, error) {
+func (h *GetAccountByEmailQueryHandler) Handle(ctx context.Context, q GetAccountByEmailQuery) (
+	*accountdomain.UserAccount, error,
+) {
 	acc, err := h.repo.FindByEmail(ctx, q.Email)
 	if err != nil {
 		return nil, err

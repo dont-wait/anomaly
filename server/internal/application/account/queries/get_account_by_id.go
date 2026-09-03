@@ -18,7 +18,9 @@ func NewGetAccountByIDQueryHandler(repo AccountQueryRepository) *GetAccountByIDQ
 	return &GetAccountByIDQueryHandler{repo: repo}
 }
 
-func (h *GetAccountByIDQueryHandler) Handle(ctx context.Context, q GetAccountByIDQuery) (*accountdomain.UserAccount, error) {
+func (h *GetAccountByIDQueryHandler) Handle(ctx context.Context, q GetAccountByIDQuery) (
+	*accountdomain.UserAccount, error,
+) {
 	acc, err := h.repo.FindByID(ctx, q.ID)
 	if err != nil {
 		return nil, err

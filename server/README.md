@@ -41,7 +41,7 @@ RUSTFS_SECRET_KEY=your_rustfs_secret_key
 ### 2. Chạy full local stack
 
 ```bash
-docker compose up --build
+docker compose --profile app up --build
 ```
 
 Endpoint chính:
@@ -76,7 +76,10 @@ go run ./cmd/worker
 
 Account:
 
-- `POST /api/accounts`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `POST /api/accounts/{id}/verify`
 - `GET /api/accounts`
 - `GET /api/accounts/{id}`
 - `GET /api/accounts/by-email/{email}`
@@ -95,8 +98,27 @@ Health:
 Chạy toàn bộ test backend:
 
 ```bash
-go test ./...
+make test
 ```
+
+Các test Go không khởi động hoặc yêu cầu database thật.
+
+Chạy API end-to-end tests bằng Hurl sau khi API, projection worker, MongoDB,
+KurrentDB và RustFS đã sẵn sàng:
+
+```bash
+make test-api
+```
+
+Đổi endpoint khi cần:
+
+```bash
+make test-api BASE_URL=http://localhost:18080
+```
+
+Suite Hurl tạo account và media object riêng với ID ngẫu nhiên, kiểm tra toàn bộ
+luồng register -> projection -> login -> JWT -> verify và upload -> download.
+Nếu một dependency thật không hoạt động, lệnh sẽ trả về exit code khác `0`.
 
 Chạy riêng test RustFS:
 

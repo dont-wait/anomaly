@@ -1,10 +1,15 @@
 package account
 
 type UserAccount struct {
-	Id       string
-	Username string
-	Email    string
-	Amount   int64
+	Id             string
+	Username       string
+	Email          string
+	PasswordHash   string
+	IdCardFrontUrl string
+	IdCardBackUrl  string
+	LiveVideoUrl   string
+	IsVerify       bool
+	Amount         int64
 }
 
 func (u *UserAccount) Withdraw(amount int64) error {
