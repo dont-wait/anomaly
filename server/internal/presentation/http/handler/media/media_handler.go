@@ -48,7 +48,11 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) { // gọi w l�
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
 		return
 	}
-	defer file.Close() // đóng gói
+	defer func() {
+		if err := file.Close(); err != nil {
+			h.logger.Warn().Err(err).Msg("close upload file failed")
+		}
+	}()
 
 	contentType := header.Header.Get("Content-Type")
 	if contentType == "" {
@@ -82,7 +86,11 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer result.Body.Close()
+	defer func() {
+		if err := result.Body.Close(); err != nil {
+			h.logger.Warn().Err(err).Msg("close download body failed")
+		}
+	}()
 
 	w.Header().Set("Content-Type", result.ContentType)
 	w.WriteHeader(http.StatusOK)

@@ -116,7 +116,9 @@ func runWithReconnect(
 		backoff = initialBackoff // reset backoff mỗi khi subscribe thành công
 
 		dropped := consume(ctx, sub, accountRepo, customerRepo, kycRepo, eventStoreRepo, checkpointRepo, log)
-		sub.Close()
+		if err := sub.Close(); err != nil {
+			log.Warn().Err(err).Msg("close subscription failed")
+		}
 
 		if !dropped {
 			// vòng lặp dừng vì ctx bị cancel (graceful shutdown),
