@@ -180,7 +180,6 @@ func (r *AccountRepository) findByIDWithRevision(
 				stream.Close()
 				var eventStoreErr *eventstoredb.Error
 				if errors.As(err, &eventStoreErr) && eventStoreErr.Code() == eventstoredb.ErrorCodeResourceNotFound {
-
 					return nil, 0, nil
 				}
 				return nil, 0, err
