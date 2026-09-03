@@ -8,13 +8,21 @@ import (
 
 const (
 	EventAccountCreated  = "AccountCreated"
+	EventAccountVerified = "AccountVerified"
 	EventAccountWithdraw = "AccountWithdraw"
 )
 
 type accountCreatedPayload struct {
-	Id       string `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
+	Id           string `json:"id"`
+	Username     string `json:"username"`
+	Email        string `json:"email"`
+	PasswordHash string `json:"passwordHash"`
+}
+
+type accountVerifiedPayload struct {
+	IdCardFrontUrl string `json:"idCardFrontUrl"`
+	IdCardBackUrl  string `json:"idCardBackUrl"`
+	LiveVideoUrl   string `json:"liveVideoUrl"`
 }
 
 type accountWithdrawPayload struct {
@@ -42,7 +50,19 @@ func applyEvent(
 		acc.Id = p.Id
 		acc.Username = p.Username
 		acc.Email = p.Email
+		acc.PasswordHash = p.PasswordHash
 		acc.Amount = 0
+		acc.IsVerify = false
+
+	case EventAccountVerified:
+		var p accountVerifiedPayload
+		if err := decode(&p); err != nil {
+			return err
+		}
+		acc.IdCardFrontUrl = p.IdCardFrontUrl
+		acc.IdCardBackUrl = p.IdCardBackUrl
+		acc.LiveVideoUrl = p.LiveVideoUrl
+		acc.IsVerify = true
 
 	case EventAccountWithdraw:
 		var p accountWithdrawPayload

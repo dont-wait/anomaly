@@ -39,6 +39,7 @@
                 gotools
                 gofumpt
                 golangci-lint
+                hurl
                 nodejs
                 python3
                 python3Packages.python-lsp-server

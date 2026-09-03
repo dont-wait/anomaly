@@ -91,6 +91,7 @@ func TestLoaderLoggerReturnsNopWhenNil(t *testing.T) {
 func TestLoaderLoadAllConfig(t *testing.T) {
 	t.Setenv("MONGO_URI", "mongodb://db.example:27017")
 	t.Setenv("MONGO_DB", "banking")
+	t.Setenv("JWT_SECRET", "test-secret-32-chars-minimum-len-xx")
 
 	loader := &Loader{log: testLogger()}
 	got := loader.LoadAllConfig()
@@ -103,6 +104,12 @@ func TestLoaderLoadAllConfig(t *testing.T) {
 	}
 	if got.MongoConfig.MongoDBName != "banking" {
 		t.Fatalf("MongoDBName = %q, want %q", got.MongoConfig.MongoDBName, "banking")
+	}
+	if got.AuthConfig == nil {
+		t.Fatal("LoadAllConfig() returned nil AuthConfig")
+	}
+	if got.AuthConfig.JWTSecret != "test-secret-32-chars-minimum-len-xx" {
+		t.Fatalf("JWTSecret = %q, want %q", got.AuthConfig.JWTSecret, "test-secret-32-chars-minimum-len-xx")
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/logger"
-	kurrentdb "github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
+	eventstoredb "github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 )
 
 const (
@@ -43,18 +43,21 @@ func main() {
 	}()
 
 	mongoRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
+	if err := mongoRepo.EnsureIndexes(ctx); err != nil {
+		log.Fatal().Err(err).Msg("ensure mongo indexes failed")
+	}
 	checkpointRepo := mongo.NewCheckpointRepository(mongoClient, config.MongoConfig.MongoDBName)
 
-	esClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
+	eventStoreClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
 	if err != nil {
 		log.Fatal().Err(err).Msg("connect event store failed")
 	}
-	defer eventstore.Disconnect(esClient)
+	defer eventstore.Disconnect(eventStoreClient)
 
-	esRepo := eventstore.NewAccountRepository(esClient)
+	eventStoreRepo := eventstore.NewAccountRepository(eventStoreClient)
 
 	log.Info().Msg("projection worker started")
-	runWithReconnect(ctx, esClient, mongoRepo, esRepo, checkpointRepo, log)
+	runWithReconnect(ctx, eventStoreClient, mongoRepo, eventStoreRepo, checkpointRepo, log)
 	log.Info().Msg("projection worker stopped")
 }
 
@@ -64,9 +67,9 @@ func main() {
 // vì luôn replay lại từ đầu hoặc bỏ sót event.
 func runWithReconnect(
 	ctx context.Context,
-	esClient *kurrentdb.Client,
+	eventStoreClient *eventstoredb.Client,
 	mongoRepo *mongo.AccountRepository,
-	esRepo *eventstore.AccountRepository,
+	eventStoreRepo *eventstore.AccountRepository,
 	checkpointRepo *mongo.CheckpointRepository,
 	log *zerolog.Logger,
 ) {
@@ -87,9 +90,9 @@ func runWithReconnect(
 			continue
 		}
 
-		sub, err := esClient.SubscribeToAll(
+		sub, err := eventStoreClient.SubscribeToAll(
 			ctx,
-			kurrentdb.SubscribeToAllOptions{From: from})
+			eventstoredb.SubscribeToAllOptions{From: from})
 		if err != nil {
 			log.Error().Err(err).Msg("subscribe to $all failed, retrying")
 			if !sleepOrDone(ctx, backoff) {
@@ -102,7 +105,7 @@ func runWithReconnect(
 		log.Info().Msg("subscribed to $all")
 		backoff = initialBackoff // reset backoff mỗi khi subscribe thành công
 
-		dropped := consume(ctx, sub, mongoRepo, esRepo, checkpointRepo, log)
+		dropped := consume(ctx, sub, mongoRepo, eventStoreRepo, checkpointRepo, log)
 		sub.Close()
 
 		if !dropped {
@@ -120,17 +123,17 @@ func runWithReconnect(
 
 // resolveFrom quyết định subscribe $all từ đâu: từ checkpoint đã lưu
 // (resume), hoặc từ đầu nếu chưa từng có checkpoint (lần chạy đầu).
-func resolveFrom(ctx context.Context, checkpointRepo *mongo.CheckpointRepository, log *zerolog.Logger) (kurrentdb.AllPosition, error) {
+func resolveFrom(ctx context.Context, checkpointRepo *mongo.CheckpointRepository, log *zerolog.Logger) (eventstoredb.AllPosition, error) {
 	commit, prepare, found, err := checkpointRepo.Load(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
 		log.Info().Msg("no checkpoint found, subscribing from start")
-		return kurrentdb.Start{}, nil
+		return eventstoredb.Start{}, nil
 	}
 	log.Info().Uint64("commit", commit).Uint64("prepare", prepare).Msg("resuming from checkpoint")
-	return kurrentdb.Position{Commit: commit, Prepare: prepare}, nil
+	return eventstoredb.Position{Commit: commit, Prepare: prepare}, nil
 }
 
 // consume đọc event tới khi subscription bị drop hoặc ctx bị huỷ.
@@ -138,9 +141,9 @@ func resolveFrom(ctx context.Context, checkpointRepo *mongo.CheckpointRepository
 // dừng do ctx bị huỷ (graceful shutdown, không cần reconnect).
 func consume(
 	ctx context.Context,
-	sub *kurrentdb.Subscription,
+	sub *eventstoredb.Subscription,
 	mongoRepo *mongo.AccountRepository,
-	esRepo *eventstore.AccountRepository,
+	eventStoreRepo *eventstore.AccountRepository,
 	checkpointRepo *mongo.CheckpointRepository,
 	log *zerolog.Logger,
 ) bool {
@@ -162,7 +165,7 @@ func consume(
 
 		recorded := event.EventAppeared.Event
 
-		if err := handleEvent(ctx, mongoRepo, esRepo, log, recorded.EventType, recorded.StreamID); err != nil {
+		if err := handleEvent(ctx, mongoRepo, eventStoreRepo, log, recorded.EventType, recorded.StreamID); err != nil {
 			// Xử lý thất bại -> KHÔNG lưu checkpoint, để lần reconnect/restart
 			// sau tự động đọc lại đúng event này (retry tự nhiên nhờ resume
 			// từ checkpoint cũ). Log lỗi rồi dừng hẳn vòng đọc hiện tại, buộc
@@ -201,14 +204,16 @@ func nextBackoff(d time.Duration) time.Duration {
 func handleEvent(
 	ctx context.Context,
 	mongoRepo *mongo.AccountRepository,
-	esRepo *eventstore.AccountRepository,
+	eventStoreRepo *eventstore.AccountRepository,
 	log *zerolog.Logger,
 	eventType string,
 	streamID string,
 ) error {
 	// event không liên quan tới account -> không có gì để làm,
 	// coi như "xử lý thành công" (không phải lỗi) để checkpoint vẫn tiến lên
-	if eventType != eventstore.EventAccountCreated && eventType != eventstore.EventAccountWithdraw {
+	if eventType != eventstore.EventAccountCreated &&
+		eventType != eventstore.EventAccountVerified &&
+		eventType != eventstore.EventAccountWithdraw {
 		return nil
 	}
 
@@ -218,7 +223,7 @@ func handleEvent(
 	}
 	accountID := strings.TrimPrefix(streamID, "account-")
 
-	acc, err := esRepo.FindByID(ctx, accountID)
+	acc, err := eventStoreRepo.FindByID(ctx, accountID)
 	if err != nil {
 		return fmt.Errorf("replay account %s failed: %w", accountID, err)
 	}
@@ -228,9 +233,15 @@ func handleEvent(
 	}
 
 	if err := mongoRepo.Save(ctx, acc); err != nil {
+		// Mongo từ chối vì vi phạm unique index (trùng email/username với
+		// account khác đã có). Giữ event chưa checkpoint để worker retry,
+		// tránh làm mất account khỏi projection mà không có record xử lý lại.
+		if mongo.IsDuplicateKeyError(err) {
+			return fmt.Errorf("project account %s failed: duplicate key (email/username collision): %w", acc.Id, err)
+		}
 		return fmt.Errorf("upsert account %s into mongo failed: %w", acc.Id, err)
 	}
 
-	log.Info().Str("accountId", acc.Id).Int64("amount", acc.Amount).Msg("projected account into mongo")
+	log.Info().Str("accountId", acc.Id).Int64("amount", acc.Amount).Bool("isVerify", acc.IsVerify).Msg("projected account into mongo")
 	return nil
 }
