@@ -150,7 +150,7 @@ services:
 
   redis:
     container_name: anomaly-redis
-    image: redis:7.4
+    image: redis:8.6.6
     restart: no
     ports:
       - "6379:6379"

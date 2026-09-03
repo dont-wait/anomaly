@@ -44,10 +44,7 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 
 	if current == nil {
 		payload, err := json.Marshal(accountCreatedPayload{
-			Id:           a.Id,
-			Username:     a.Username,
-			Email:        a.Email,
-			PasswordHash: a.PasswordHash,
+			Account: *a,
 		})
 		if err != nil {
 			return err
@@ -66,11 +63,13 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 		return err
 	}
 
-	if identityChanged(current, a) {
+	if kycSessionAdded(current, a) {
+		session := a.KYCSessions[len(a.KYCSessions)-1]
 		payload, err := json.Marshal(accountVerifiedPayload{
-			IdCardFrontUrl: a.IdCardFrontUrl,
-			IdCardBackUrl:  a.IdCardBackUrl,
-			LiveVideoUrl:   a.LiveVideoUrl,
+			Session:              *session,
+			VerifiedKYCSessionId: a.Customer.VerifiedKYCSessionId,
+			Version:              a.Version,
+			UpdatedAt:            a.UpdatedAt,
 		})
 		if err != nil {
 			return err
@@ -96,12 +95,16 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 		return nil
 	}
 
-	delta := current.Amount - a.Amount
+	delta := current.Balance.Current - a.Balance.Current
 	if delta <= 0 {
 		return nil
 	}
 
-	payload, err := json.Marshal(accountWithdrawPayload{Amount: delta})
+	payload, err := json.Marshal(accountWithdrawPayload{
+		Amount:    delta,
+		Version:   a.Version,
+		UpdatedAt: a.UpdatedAt,
+	})
 	if err != nil {
 		return err
 	}
@@ -126,16 +129,8 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 	return err
 }
 
-// identityChanged báo state identity có thay đổi hay không — dùng để quyết
-// định có emit AccountVerified event không. Bao gồm cả transition
-// isVerify false→true lẫn cập nhật lại URL KYC sau re-KYC.
-func identityChanged(current, next *accountdomain.UserAccount) bool {
-	if current.IdCardFrontUrl != next.IdCardFrontUrl ||
-		current.IdCardBackUrl != next.IdCardBackUrl ||
-		current.LiveVideoUrl != next.LiveVideoUrl {
-		return true
-	}
-	return !current.IsVerify && next.IsVerify
+func kycSessionAdded(current, next *accountdomain.UserAccount) bool {
+	return len(next.KYCSessions) > len(current.KYCSessions)
 }
 
 // FindByID dựng lại trạng thái hiện tại bằng cách đọc và replay TOÀN BỘ event trong stream.
@@ -305,9 +300,9 @@ func (r *AccountRepository) allAccountIDs(ctx context.Context) ([]string, error)
 				// ReadAll với From: Position là inclusive, nên event tại
 				// lastPosition của trang trước sẽ được trả lại lần nữa ở
 				// đầu trang sau -> dedupe theo id để tránh account bị lặp.
-				if _, dup := seen[p.Id]; !dup {
-					seen[p.Id] = struct{}{}
-					ids = append(ids, p.Id)
+				if _, dup := seen[p.Account.Id]; !dup {
+					seen[p.Account.Id] = struct{}{}
+					ids = append(ids, p.Account.Id)
 				}
 			}
 		}

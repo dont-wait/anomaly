@@ -2,6 +2,7 @@ package eventstore
 
 import (
 	"fmt"
+	"time"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
@@ -13,20 +14,20 @@ const (
 )
 
 type accountCreatedPayload struct {
-	Id           string `json:"id"`
-	Username     string `json:"username"`
-	Email        string `json:"email"`
-	PasswordHash string `json:"passwordHash"`
+	Account accountdomain.UserAccount `json:"account"`
 }
 
 type accountVerifiedPayload struct {
-	IdCardFrontUrl string `json:"idCardFrontUrl"`
-	IdCardBackUrl  string `json:"idCardBackUrl"`
-	LiveVideoUrl   string `json:"liveVideoUrl"`
+	Session              accountdomain.KYCSession `json:"session"`
+	VerifiedKYCSessionId string                   `json:"verifiedKycSessionId"`
+	Version              int64                    `json:"version"`
+	UpdatedAt            time.Time                `json:"updatedAt"`
 }
 
 type accountWithdrawPayload struct {
-	Amount int64 `json:"amount"`
+	Amount    int64     `json:"amount"`
+	Version   int64     `json:"version"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // streamName sinh tên stream cho 1 account cụ thể, dựa vào ID.
@@ -47,32 +48,31 @@ func applyEvent(
 		if err := decode(&p); err != nil {
 			return err
 		}
-		acc.Id = p.Id
-		acc.Username = p.Username
-		acc.Email = p.Email
-		acc.PasswordHash = p.PasswordHash
-		acc.Amount = 0
-		acc.IsVerify = false
+		*acc = p.Account
 
 	case EventAccountVerified:
 		var p accountVerifiedPayload
 		if err := decode(&p); err != nil {
 			return err
 		}
-		acc.IdCardFrontUrl = p.IdCardFrontUrl
-		acc.IdCardBackUrl = p.IdCardBackUrl
-		acc.LiveVideoUrl = p.LiveVideoUrl
-		acc.IsVerify = true
+		if acc.Customer == nil {
+			return fmt.Errorf("account %s has no customer", acc.Id)
+		}
+		acc.KYCSessions = append(acc.KYCSessions, &p.Session)
+		acc.Customer.VerifiedKYCSessionId = p.VerifiedKYCSessionId
+		acc.Customer.KYCStatus = accountdomain.KYCStatusVerified
+		acc.Customer.UpdatedAt = p.UpdatedAt
+		acc.Version = p.Version
+		acc.UpdatedAt = p.UpdatedAt
 
 	case EventAccountWithdraw:
 		var p accountWithdrawPayload
 		if err := decode(&p); err != nil {
 			return err
 		}
-		acc.Amount -= p.Amount
-
-	default:
-		// bỏ qua sự kiện chưa biết, tránh lỗi khi mở rộng thêm sau
+		acc.Balance.Current -= p.Amount
+		acc.Version = p.Version
+		acc.UpdatedAt = p.UpdatedAt
 	}
 
 	return nil

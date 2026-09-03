@@ -45,8 +45,8 @@ func toAccountResponsePublic(a *accountdomain.UserAccount) AccountResponsePublic
 		Id:       a.Id,
 		Username: a.Username,
 		Email:    a.Email,
-		IsVerify: a.IsVerify,
-		Amount:   a.Amount,
+		IsVerify: a.IsVerified(),
+		Amount:   a.Balance.Current,
 	}
 }
 
@@ -59,16 +59,19 @@ func toAccountResponsePublicList(list []*accountdomain.UserAccount) []AccountRes
 }
 
 func toAccountResponsePrivate(a *accountdomain.UserAccount) AccountResponsePrivate {
-	return AccountResponsePrivate{
-		Id:             a.Id,
-		Username:       a.Username,
-		Email:          a.Email,
-		IdCardFrontUrl: a.IdCardFrontUrl,
-		IdCardBackUrl:  a.IdCardBackUrl,
-		LiveVideoUrl:   a.LiveVideoUrl,
-		IsVerify:       a.IsVerify,
-		Amount:         a.Amount,
+	response := AccountResponsePrivate{
+		Id:       a.Id,
+		Username: a.Username,
+		Email:    a.Email,
+		IsVerify: a.IsVerified(),
+		Amount:   a.Balance.Current,
 	}
+	if session := a.VerifiedKYCSession(); session != nil {
+		response.IdCardFrontUrl = session.Media.IdentityFront.StorageKey
+		response.IdCardBackUrl = session.Media.IdentityBack.StorageKey
+		response.LiveVideoUrl = session.Media.LivenessVideo.StorageKey
+	}
+	return response
 }
 
 func toAuthResponse(user *accountdomain.UserAccount, token string, expiresAt time.Time) AuthResponse {

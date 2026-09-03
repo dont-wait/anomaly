@@ -12,7 +12,7 @@ account_id: jsonpath "$.id"
 account_username: jsonpath "$.username"
 account_email: jsonpath "$.email"
 [Asserts]
-jsonpath "$.id" matches /^[0-9a-f]{32}$/
+jsonpath "$.id" matches /^[0-9a-f]{24}$/
 jsonpath "$.username" startsWith "hurl-"
 jsonpath "$.email" endsWith "@example.com"
 jsonpath "$.email" not contains "<"
@@ -84,8 +84,37 @@ Content-Type: application/json
 jsonpath "$.id" == "{{account_id}}"
 jsonpath "$.isVerify" == true
 jsonpath "$.idCardFrontUrl" == "media/hurl-id-front.jpg"
-jsonpath "$.idCardBackUrl" == "media/hurl-id-back.jpg"
-jsonpath "$.liveVideoUrl" == "media/hurl-live-video.mp4"
+
+# Re-KYC creates a new session and exposes the latest verified media.
+POST {{base_url}}/api/accounts/{{account_id}}/verify
+Authorization: Bearer {{access_token}}
+{
+  "idCardFrontUrl": "media/hurl-id-front-v2.jpg",
+  "idCardBackUrl": "media/hurl-id-back-v2.jpg",
+  "liveVideoUrl": "media/hurl-live-video-v2.mp4"
+}
+HTTP 200
+Content-Type: application/json
+[Asserts]
+jsonpath "$.id" == "{{account_id}}"
+jsonpath "$.isVerify" == true
+jsonpath "$.idCardFrontUrl" == "media/hurl-id-front-v2.jpg"
+jsonpath "$.idCardBackUrl" == "media/hurl-id-back-v2.jpg"
+jsonpath "$.liveVideoUrl" == "media/hurl-live-video-v2.mp4"
+
+GET {{base_url}}/api/auth/me
+Authorization: Bearer {{access_token}}
+[Options]
+retry: 20
+retry-interval: 500ms
+HTTP 200
+Content-Type: application/json
+[Asserts]
+jsonpath "$.id" == "{{account_id}}"
+jsonpath "$.isVerify" == true
+jsonpath "$.idCardFrontUrl" == "media/hurl-id-front-v2.jpg"
+jsonpath "$.idCardBackUrl" == "media/hurl-id-back-v2.jpg"
+jsonpath "$.liveVideoUrl" == "media/hurl-live-video-v2.mp4"
 
 # Once the projection exists, registering the same identity is rejected.
 POST {{base_url}}/api/auth/register
@@ -187,7 +216,7 @@ Content-Type: application/json
 [Asserts]
 jsonpath "$.error" == "all identity URLs are required"
 
-# Verify that the second event is also projected back into MongoDB.
+# Verify that the latest KYC session is projected back into MongoDB.
 GET {{base_url}}/api/auth/me
 Authorization: Bearer {{access_token}}
 [Options]
@@ -198,4 +227,4 @@ Content-Type: application/json
 [Asserts]
 jsonpath "$.id" == "{{account_id}}"
 jsonpath "$.isVerify" == true
-jsonpath "$.idCardFrontUrl" == "media/hurl-id-front.jpg"
+jsonpath "$.idCardFrontUrl" == "media/hurl-id-front-v2.jpg"

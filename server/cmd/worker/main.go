@@ -42,9 +42,17 @@ func main() {
 		_ = mongoClient.Disconnect(context.Background())
 	}()
 
-	mongoRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
-	if err := mongoRepo.EnsureIndexes(ctx); err != nil {
+	accountRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
+	if err := accountRepo.EnsureIndexes(ctx); err != nil {
 		log.Fatal().Err(err).Msg("ensure mongo indexes failed")
+	}
+	customerRepo := mongo.NewCustomerRepository(mongoClient, config.MongoConfig.MongoDBName)
+	if err := customerRepo.EnsureIndexes(ctx); err != nil {
+		log.Fatal().Err(err).Msg("ensure customer indexes failed")
+	}
+	kycRepo := mongo.NewKYCSessionRepository(mongoClient, config.MongoConfig.MongoDBName)
+	if err := kycRepo.EnsureIndexes(ctx); err != nil {
+		log.Fatal().Err(err).Msg("ensure KYC session indexes failed")
 	}
 	checkpointRepo := mongo.NewCheckpointRepository(mongoClient, config.MongoConfig.MongoDBName)
 
@@ -57,7 +65,7 @@ func main() {
 	eventStoreRepo := eventstore.NewAccountRepository(eventStoreClient)
 
 	log.Info().Msg("projection worker started")
-	runWithReconnect(ctx, eventStoreClient, mongoRepo, eventStoreRepo, checkpointRepo, log)
+	runWithReconnect(ctx, eventStoreClient, accountRepo, customerRepo, kycRepo, eventStoreRepo, checkpointRepo, log)
 	log.Info().Msg("projection worker stopped")
 }
 
@@ -68,7 +76,9 @@ func main() {
 func runWithReconnect(
 	ctx context.Context,
 	eventStoreClient *eventstoredb.Client,
-	mongoRepo *mongo.AccountRepository,
+	accountRepo *mongo.AccountRepository,
+	customerRepo *mongo.CustomerRepository,
+	kycRepo *mongo.KYCSessionRepository,
 	eventStoreRepo *eventstore.AccountRepository,
 	checkpointRepo *mongo.CheckpointRepository,
 	log *zerolog.Logger,
@@ -105,7 +115,7 @@ func runWithReconnect(
 		log.Info().Msg("subscribed to $all")
 		backoff = initialBackoff // reset backoff mỗi khi subscribe thành công
 
-		dropped := consume(ctx, sub, mongoRepo, eventStoreRepo, checkpointRepo, log)
+		dropped := consume(ctx, sub, accountRepo, customerRepo, kycRepo, eventStoreRepo, checkpointRepo, log)
 		sub.Close()
 
 		if !dropped {
@@ -142,7 +152,9 @@ func resolveFrom(ctx context.Context, checkpointRepo *mongo.CheckpointRepository
 func consume(
 	ctx context.Context,
 	sub *eventstoredb.Subscription,
-	mongoRepo *mongo.AccountRepository,
+	accountRepo *mongo.AccountRepository,
+	customerRepo *mongo.CustomerRepository,
+	kycRepo *mongo.KYCSessionRepository,
 	eventStoreRepo *eventstore.AccountRepository,
 	checkpointRepo *mongo.CheckpointRepository,
 	log *zerolog.Logger,
@@ -165,7 +177,16 @@ func consume(
 
 		recorded := event.EventAppeared.Event
 
-		if err := handleEvent(ctx, mongoRepo, eventStoreRepo, log, recorded.EventType, recorded.StreamID); err != nil {
+		if err := handleEvent(
+			ctx,
+			accountRepo,
+			customerRepo,
+			kycRepo,
+			eventStoreRepo,
+			log,
+			recorded.EventType,
+			recorded.StreamID,
+		); err != nil {
 			// Xử lý thất bại -> KHÔNG lưu checkpoint, để lần reconnect/restart
 			// sau tự động đọc lại đúng event này (retry tự nhiên nhờ resume
 			// từ checkpoint cũ). Log lỗi rồi dừng hẳn vòng đọc hiện tại, buộc
@@ -203,7 +224,9 @@ func nextBackoff(d time.Duration) time.Duration {
 // TOÀN BỘ trạng thái mới nhất của account đó từ EventStore, upsert vào Mongo.
 func handleEvent(
 	ctx context.Context,
-	mongoRepo *mongo.AccountRepository,
+	accountRepo *mongo.AccountRepository,
+	customerRepo *mongo.CustomerRepository,
+	kycRepo *mongo.KYCSessionRepository,
 	eventStoreRepo *eventstore.AccountRepository,
 	log *zerolog.Logger,
 	eventType string,
@@ -232,7 +255,18 @@ func handleEvent(
 		return nil
 	}
 
-	if err := mongoRepo.Save(ctx, acc); err != nil {
+	for _, session := range acc.KYCSessions {
+		if err := kycRepo.Save(ctx, session); err != nil {
+			return fmt.Errorf("project KYC session %s failed: %w", session.Id, err)
+		}
+	}
+	if acc.Customer == nil {
+		return fmt.Errorf("project account %s failed: customer is missing", acc.Id)
+	}
+	if err := customerRepo.Save(ctx, acc.Customer); err != nil {
+		return fmt.Errorf("project customer %s failed: %w", acc.Customer.Id, err)
+	}
+	if err := accountRepo.Save(ctx, acc); err != nil {
 		// Mongo từ chối vì vi phạm unique index (trùng email/username với
 		// account khác đã có). Giữ event chưa checkpoint để worker retry,
 		// tránh làm mất account khỏi projection mà không có record xử lý lại.
@@ -242,6 +276,11 @@ func handleEvent(
 		return fmt.Errorf("upsert account %s into mongo failed: %w", acc.Id, err)
 	}
 
-	log.Info().Str("accountId", acc.Id).Int64("amount", acc.Amount).Bool("isVerify", acc.IsVerify).Msg("projected account into mongo")
+	log.Info().
+		Str("accountId", acc.Id).
+		Str("customerId", acc.CustomerId).
+		Int64("amount", acc.Balance.Current).
+		Bool("isVerify", acc.IsVerified()).
+		Msg("projected account into mongo")
 	return nil
 }

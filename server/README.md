@@ -19,6 +19,17 @@ Stack hiện tại:
 - Media storage: RustFS
 - Local infra: Docker Compose
 
+MongoDB projects account data into three business collections:
+
+- `customers`: customer profile, identity, credit profile, and current KYC status
+- `kyc_sessions`: append-style history for each KYC attempt and its media metadata
+- `accounts`: financial account, balance, status, and authentication credentials
+
+Account balances are stored as BSON `Decimal128`; domain operations currently use
+whole `int64` VND values and convert at the MongoDB boundary. The projection worker
+also uses a technical `checkpoints` collection to resume KurrentDB subscriptions.
+There is no `ledger_entries` collection yet.
+
 ## Quick Start
 
 ### 1. Tạo file môi trường

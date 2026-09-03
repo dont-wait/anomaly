@@ -1,43 +1,88 @@
 package mongo
 
-import accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+import (
+	"fmt"
+	"strconv"
+	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+)
+
+type balanceRecord struct {
+	Current bson.Decimal128 `bson:"current"`
+}
 
 type accountRecord struct {
-	Id             string `bson:"_id"`
-	Username       string `bson:"username"`
-	Email          string `bson:"email"`
-	PasswordHash   string `bson:"passwordHash"`
-	IdCardFrontUrl string `bson:"idCardFrontUrl"`
-	IdCardBackUrl  string `bson:"idCardBackUrl"`
-	LiveVideoUrl   string `bson:"liveVideoUrl"`
-	IsVerify       bool   `bson:"isVerify"`
-	Amount         int64  `bson:"amount"`
+	Id           bson.ObjectID `bson:"_id"`
+	AccountNo    string        `bson:"account_no"`
+	CustomerId   bson.ObjectID `bson:"customer_id"`
+	Username     string        `bson:"username"`
+	Email        string        `bson:"email"`
+	PasswordHash string        `bson:"password_hash"`
+	Type         string        `bson:"type"`
+	Currency     string        `bson:"currency"`
+	Balance      balanceRecord `bson:"balance"`
+	Status       string        `bson:"status"`
+	Version      int64         `bson:"version"`
+	OpenedAt     time.Time     `bson:"opened_at"`
+	CreatedAt    time.Time     `bson:"created_at"`
+	UpdatedAt    time.Time     `bson:"updated_at"`
 }
 
-func toRecord(a *accountdomain.UserAccount) accountRecord {
+func toRecord(a *accountdomain.UserAccount) (accountRecord, error) {
+	id, err := bson.ObjectIDFromHex(a.Id)
+	if err != nil {
+		return accountRecord{}, fmt.Errorf("invalid account id %q: %w", a.Id, err)
+	}
+	customerID, err := bson.ObjectIDFromHex(a.CustomerId)
+	if err != nil {
+		return accountRecord{}, fmt.Errorf("invalid customer id %q: %w", a.CustomerId, err)
+	}
+	balance, err := bson.ParseDecimal128(strconv.FormatInt(a.Balance.Current, 10))
+	if err != nil {
+		return accountRecord{}, fmt.Errorf("encode account balance: %w", err)
+	}
+
 	return accountRecord{
-		Id:             a.Id,
-		Username:       a.Username,
-		Email:          a.Email,
-		PasswordHash:   a.PasswordHash,
-		IdCardFrontUrl: a.IdCardFrontUrl,
-		IdCardBackUrl:  a.IdCardBackUrl,
-		LiveVideoUrl:   a.LiveVideoUrl,
-		IsVerify:       a.IsVerify,
-		Amount:         a.Amount,
-	}
+		Id:           id,
+		AccountNo:    a.AccountNo,
+		CustomerId:   customerID,
+		Username:     a.Username,
+		Email:        a.Email,
+		PasswordHash: a.PasswordHash,
+		Type:         string(a.Type),
+		Currency:     string(a.Currency),
+		Balance:      balanceRecord{Current: balance},
+		Status:       string(a.Status),
+		Version:      a.Version,
+		OpenedAt:     a.OpenedAt,
+		CreatedAt:    a.CreatedAt,
+		UpdatedAt:    a.UpdatedAt,
+	}, nil
 }
 
-func fromRecord(r accountRecord) *accountdomain.UserAccount {
-	return &accountdomain.UserAccount{
-		Id:             r.Id,
-		Username:       r.Username,
-		Email:          r.Email,
-		PasswordHash:   r.PasswordHash,
-		IdCardFrontUrl: r.IdCardFrontUrl,
-		IdCardBackUrl:  r.IdCardBackUrl,
-		LiveVideoUrl:   r.LiveVideoUrl,
-		IsVerify:       r.IsVerify,
-		Amount:         r.Amount,
+func fromRecord(r accountRecord) (*accountdomain.UserAccount, error) {
+	balance, err := strconv.ParseInt(r.Balance.Current.String(), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("decode account balance %q: %w", r.Balance.Current.String(), err)
 	}
+
+	return &accountdomain.UserAccount{
+		Id:           r.Id.Hex(),
+		AccountNo:    r.AccountNo,
+		CustomerId:   r.CustomerId.Hex(),
+		Username:     r.Username,
+		Email:        r.Email,
+		PasswordHash: r.PasswordHash,
+		Type:         accountdomain.AccountType(r.Type),
+		Currency:     accountdomain.Currency(r.Currency),
+		Balance:      accountdomain.Balance{Current: balance},
+		Status:       accountdomain.AccountStatus(r.Status),
+		Version:      r.Version,
+		OpenedAt:     r.OpenedAt,
+		CreatedAt:    r.CreatedAt,
+		UpdatedAt:    r.UpdatedAt,
+	}, nil
 }

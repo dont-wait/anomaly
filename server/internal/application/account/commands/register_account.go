@@ -2,8 +2,10 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"net/mail"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -65,13 +67,39 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 		return nil, err
 	}
 
+	now := time.Now().UTC()
+	customerID := newID()
+	accountID := newID()
 	acc := &accountdomain.UserAccount{
-		Id:           newID(),
+		Id:           accountID,
+		AccountNo:    fmt.Sprintf("ACC-%s", strings.ToUpper(accountID)),
+		CustomerId:   customerID,
 		Username:     cmd.Username,
 		Email:        cmd.Email,
 		PasswordHash: string(hash),
-		Amount:       0,
-		IsVerify:     false,
+		Type:         accountdomain.AccountTypePayment,
+		Currency:     accountdomain.CurrencyVND,
+		Balance:      accountdomain.Balance{Current: 0},
+		Status:       accountdomain.AccountStatusActive,
+		Version:      1,
+		OpenedAt:     now,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		Customer: &accountdomain.Customer{
+			Id:           customerID,
+			CustomerCode: fmt.Sprintf("CUS-%s", strings.ToUpper(customerID)),
+			Profile: accountdomain.CustomerProfile{
+				FullName: cmd.Username,
+				Email:    cmd.Email,
+			},
+			KYCStatus: accountdomain.KYCStatusNotStarted,
+			CreditProfile: accountdomain.CreditProfile{
+				UpdatedAt: now,
+			},
+			Status:    accountdomain.CustomerStatusActive,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
 	}
 
 	if err := h.writeRepo.Save(ctx, acc); err != nil {
