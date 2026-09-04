@@ -1,6 +1,7 @@
 package mongo
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"time"
@@ -15,7 +16,7 @@ type balanceRecord struct {
 }
 
 type accountRecord struct {
-	Id           bson.ObjectID `bson:"_id"`
+	Id           any           `bson:"_id"`
 	AccountNo    string        `bson:"account_no"`
 	CustomerId   bson.ObjectID `bson:"customer_id"`
 	Username     string        `bson:"username"`
@@ -32,7 +33,7 @@ type accountRecord struct {
 }
 
 func toRecord(a *accountdomain.UserAccount) (accountRecord, error) {
-	id, err := bson.ObjectIDFromHex(a.Id)
+	id, err := accountRecordID(a.Id)
 	if err != nil {
 		return accountRecord{}, fmt.Errorf("invalid account id %q: %w", a.Id, err)
 	}
@@ -64,13 +65,17 @@ func toRecord(a *accountdomain.UserAccount) (accountRecord, error) {
 }
 
 func fromRecord(r accountRecord) (*accountdomain.UserAccount, error) {
+	id, err := accountIDFromRecord(r.Id)
+	if err != nil {
+		return nil, err
+	}
 	balance, err := strconv.ParseInt(r.Balance.Current.String(), 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("decode account balance %q: %w", r.Balance.Current.String(), err)
 	}
 
 	return &accountdomain.UserAccount{
-		Id:           r.Id.Hex(),
+		Id:           id,
 		AccountNo:    r.AccountNo,
 		CustomerId:   r.CustomerId.Hex(),
 		Username:     r.Username,
@@ -85,4 +90,28 @@ func fromRecord(r accountRecord) (*accountdomain.UserAccount, error) {
 		CreatedAt:    r.CreatedAt,
 		UpdatedAt:    r.UpdatedAt,
 	}, nil
+}
+
+func accountRecordID(id string) (any, error) {
+	if objectID, err := bson.ObjectIDFromHex(id); err == nil {
+		return objectID, nil
+	}
+	if len(id) == 32 {
+		if _, err := hex.DecodeString(id); err == nil {
+			return id, nil
+		}
+	}
+	return nil, fmt.Errorf("must be a 24- or 32-character hex string")
+}
+
+func accountIDFromRecord(id any) (string, error) {
+	switch value := id.(type) {
+	case bson.ObjectID:
+		return value.Hex(), nil
+	case string:
+		if _, err := accountRecordID(value); err == nil {
+			return value, nil
+		}
+	}
+	return "", fmt.Errorf("invalid stored account id %v", id)
 }

@@ -5,9 +5,9 @@ Backend cho Anomaly, gồm HTTP API, projection worker, và adapter hạ tầng 
 ## Docs Map
 
 - `README.md`: quick start và chỉ mục tài liệu
-- [Architecture](docs/ARCHITECTURE.md): cấu trúc layer, executable, và runtime flow
-- [Features](docs/FEATURE.md): feature hiện có và phạm vi test
-- [Infrastructure](docs/INFRA.md): service local, env, port, workflow vận hành
+- [Architecture](../docs/ARCHITECTURE.md): cấu trúc layer, executable, và runtime flow
+- [Features](../docs/FEATURE.md): feature hiện có và phạm vi test
+- [Infrastructure](../docs/INFRA.md): service local, env, port, workflow vận hành
 
 ## Overview
 

@@ -44,7 +44,7 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 
 	if current == nil {
 		payload, err := json.Marshal(accountCreatedPayload{
-			Account: *a,
+			Account: a,
 		})
 		if err != nil {
 			return err
@@ -66,10 +66,10 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 	if kycSessionAdded(current, a) {
 		session := a.KYCSessions[len(a.KYCSessions)-1]
 		payload, err := json.Marshal(accountVerifiedPayload{
-			Session:              *session,
+			Session:              session,
 			VerifiedKYCSessionId: a.Customer.VerifiedKYCSessionId,
-			Version:              a.Version,
-			UpdatedAt:            a.UpdatedAt,
+			Version:              &a.Version,
+			UpdatedAt:            &a.UpdatedAt,
 		})
 		if err != nil {
 			return err
@@ -102,8 +102,8 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 
 	payload, err := json.Marshal(accountWithdrawPayload{
 		Amount:    delta,
-		Version:   a.Version,
-		UpdatedAt: a.UpdatedAt,
+		Version:   &a.Version,
+		UpdatedAt: &a.UpdatedAt,
 	})
 	if err != nil {
 		return err
@@ -187,7 +187,11 @@ func (r *AccountRepository) findByIDWithRevision(
 			decode := func(v any) error {
 				return json.Unmarshal(event.Event.Data, v)
 			}
-			if err := applyEvent(acc, event.Event.EventType, decode); err != nil {
+			metadata := replayEventMetadata{
+				Revision:  event.Event.EventNumber,
+				CreatedAt: event.Event.CreatedDate,
+			}
+			if err := applyEvent(acc, event.Event.EventType, metadata, decode); err != nil {
 				stream.Close()
 				return nil, 0, err
 			}
@@ -300,9 +304,13 @@ func (r *AccountRepository) allAccountIDs(ctx context.Context) ([]string, error)
 				// ReadAll với From: Position là inclusive, nên event tại
 				// lastPosition của trang trước sẽ được trả lại lần nữa ở
 				// đầu trang sau -> dedupe theo id để tránh account bị lặp.
-				if _, dup := seen[p.Account.Id]; !dup {
-					seen[p.Account.Id] = struct{}{}
-					ids = append(ids, p.Account.Id)
+				account := upcastAccountCreated(p, replayEventMetadata{
+					Revision:  event.Event.EventNumber,
+					CreatedAt: event.Event.CreatedDate,
+				})
+				if _, dup := seen[account.Id]; !dup {
+					seen[account.Id] = struct{}{}
+					ids = append(ids, account.Id)
 				}
 			}
 		}

@@ -9,7 +9,7 @@ import (
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
 
-type mediaObjectRecord struct {
+type MediaObjectRecord struct {
 	StorageKey *string `bson:"storage_key"`
 	MIMEType   *string `bson:"mime_type"`
 	SizeBytes  *int64  `bson:"size_bytes"`
@@ -17,7 +17,7 @@ type mediaObjectRecord struct {
 }
 
 type livenessVideoRecord struct {
-	mediaObjectRecord `bson:",inline"`
+	MediaObjectRecord `bson:",inline"`
 	DurationSeconds   *int `bson:"duration_seconds"`
 }
 
@@ -32,9 +32,9 @@ type kycIdentityDataRecord struct {
 }
 
 type kycMediaRecord struct {
-	IdentityFront mediaObjectRecord   `bson:"identity_front"`
-	IdentityBack  mediaObjectRecord   `bson:"identity_back"`
-	FaceImage     mediaObjectRecord   `bson:"face_image"`
+	IdentityFront MediaObjectRecord   `bson:"identity_front"`
+	IdentityBack  MediaObjectRecord   `bson:"identity_back"`
+	FaceImage     MediaObjectRecord   `bson:"face_image"`
 	LivenessVideo livenessVideoRecord `bson:"liveness_video"`
 }
 
@@ -85,8 +85,8 @@ func toKYCSessionRecord(session *accountdomain.KYCSession) (kycSessionRecord, er
 		score = &value
 	}
 
-	toMedia := func(media accountdomain.MediaObject) mediaObjectRecord {
-		return mediaObjectRecord{
+	toMedia := func(media accountdomain.MediaObject) MediaObjectRecord {
+		return MediaObjectRecord{
 			StorageKey: optionalString(media.StorageKey),
 			MIMEType:   optionalString(media.MIMEType),
 			SizeBytes:  optionalInt64(media.SizeBytes),
@@ -121,7 +121,7 @@ func toKYCSessionRecord(session *accountdomain.KYCSession) (kycSessionRecord, er
 			IdentityBack:  toMedia(session.Media.IdentityBack),
 			FaceImage:     toMedia(session.Media.FaceImage),
 			LivenessVideo: livenessVideoRecord{
-				mediaObjectRecord: toMedia(session.Media.LivenessVideo.MediaObject),
+				MediaObjectRecord: toMedia(session.Media.LivenessVideo.MediaObject),
 				DurationSeconds:   optionalInt(session.Media.LivenessVideo.DurationSeconds),
 			},
 		},

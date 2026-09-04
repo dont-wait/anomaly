@@ -86,12 +86,12 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 }
 
 func (r *AccountRepository) FindByID(ctx context.Context, id string) (*accountdomain.UserAccount, error) {
-	objectID, err := bson.ObjectIDFromHex(id)
+	recordID, err := accountRecordID(id)
 	if err != nil {
 		return nil, nil
 	}
 	var rec accountRecord
-	err = r.col.FindOne(ctx, bson.M{"_id": objectID}).Decode(&rec)
+	err = r.col.FindOne(ctx, bson.M{"_id": recordID}).Decode(&rec)
 	if err != nil {
 		if err == mongodrv.ErrNoDocuments {
 			return nil, nil
