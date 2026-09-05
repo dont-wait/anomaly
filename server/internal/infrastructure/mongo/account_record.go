@@ -3,7 +3,6 @@ package mongo
 import (
 	"encoding/hex"
 	"fmt"
-	"strconv"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -12,7 +11,7 @@ import (
 )
 
 type balanceRecord struct {
-	Current bson.Decimal128 `bson:"current"`
+	Current int64 `bson:"current"`
 }
 
 type accountRecord struct {
@@ -41,11 +40,6 @@ func toRecord(a *accountdomain.UserAccount) (accountRecord, error) {
 	if err != nil {
 		return accountRecord{}, fmt.Errorf("invalid customer id %q: %w", a.CustomerId, err)
 	}
-	balance, err := bson.ParseDecimal128(strconv.FormatInt(a.Balance.Current, 10))
-	if err != nil {
-		return accountRecord{}, fmt.Errorf("encode account balance: %w", err)
-	}
-
 	return accountRecord{
 		Id:           id,
 		AccountNo:    a.AccountNo,
@@ -55,7 +49,7 @@ func toRecord(a *accountdomain.UserAccount) (accountRecord, error) {
 		PasswordHash: a.PasswordHash,
 		Type:         string(a.Type),
 		Currency:     string(a.Currency),
-		Balance:      balanceRecord{Current: balance},
+		Balance:      balanceRecord{Current: a.Balance.Current},
 		Status:       string(a.Status),
 		Version:      a.Version,
 		OpenedAt:     a.OpenedAt,
@@ -69,11 +63,6 @@ func fromRecord(r accountRecord) (*accountdomain.UserAccount, error) {
 	if err != nil {
 		return nil, err
 	}
-	balance, err := strconv.ParseInt(r.Balance.Current.String(), 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("decode account balance %q: %w", r.Balance.Current.String(), err)
-	}
-
 	return &accountdomain.UserAccount{
 		Id:           id,
 		AccountNo:    r.AccountNo,
@@ -83,7 +72,7 @@ func fromRecord(r accountRecord) (*accountdomain.UserAccount, error) {
 		PasswordHash: r.PasswordHash,
 		Type:         accountdomain.AccountType(r.Type),
 		Currency:     accountdomain.Currency(r.Currency),
-		Balance:      accountdomain.Balance{Current: balance},
+		Balance:      accountdomain.Balance{Current: r.Balance.Current},
 		Status:       accountdomain.AccountStatus(r.Status),
 		Version:      r.Version,
 		OpenedAt:     r.OpenedAt,
