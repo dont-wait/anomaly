@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/dont-wait/anomaly/internal/domain"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/logger"
@@ -43,17 +44,9 @@ func main() {
 		_ = mongoClient.Disconnect(context.Background())
 	}()
 
-	accountRepo := mongo.NewAccountRepository(mongoClient, config.MongoConfig.MongoDBName)
+	accountRepo := mongo.NewAccountAggregateRepository(mongoClient, config.MongoConfig.MongoDBName)
 	if err := accountRepo.EnsureIndexes(ctx); err != nil {
-		log.Fatal().Err(err).Msg("ensure mongo indexes failed")
-	}
-	customerRepo := mongo.NewCustomerRepository(mongoClient, config.MongoConfig.MongoDBName)
-	if err := customerRepo.EnsureIndexes(ctx); err != nil {
-		log.Fatal().Err(err).Msg("ensure customer indexes failed")
-	}
-	kycRepo := mongo.NewKYCSessionRepository(mongoClient, config.MongoConfig.MongoDBName)
-	if err := kycRepo.EnsureIndexes(ctx); err != nil {
-		log.Fatal().Err(err).Msg("ensure KYC session indexes failed")
+		log.Fatal().Err(err).Msg("ensure account aggregate indexes failed")
 	}
 	checkpointRepo := mongo.NewCheckpointRepository(mongoClient, config.MongoConfig.MongoDBName)
 	projectionFailureRepo := mongo.NewProjectionFailureRepository(mongoClient, config.MongoConfig.MongoDBName)
@@ -70,7 +63,7 @@ func main() {
 	eventStoreRepo := eventstore.NewAccountRepository(eventStoreClient)
 
 	log.Info().Msg("projection worker started")
-	runWithReconnect(ctx, eventStoreClient, accountRepo, customerRepo, kycRepo, eventStoreRepo, checkpointRepo, projectionFailureRepo, log)
+	runWithReconnect(ctx, eventStoreClient, accountRepo, eventStoreRepo, checkpointRepo, projectionFailureRepo, log)
 	log.Info().Msg("projection worker stopped")
 }
 
@@ -81,9 +74,7 @@ func main() {
 func runWithReconnect(
 	ctx context.Context,
 	eventStoreClient *eventstoredb.Client,
-	accountRepo *mongo.AccountRepository,
-	customerRepo *mongo.CustomerRepository,
-	kycRepo *mongo.KYCSessionRepository,
+	accountRepo *mongo.AccountAggregateRepository,
 	eventStoreRepo *eventstore.AccountRepository,
 	checkpointRepo *mongo.CheckpointRepository,
 	projectionFailureRepo *mongo.ProjectionFailureRepository,
@@ -121,7 +112,7 @@ func runWithReconnect(
 		log.Info().Msg("subscribed to $all")
 		backoff = initialBackoff // reset backoff mỗi khi subscribe thành công
 
-		dropped := consume(ctx, sub, accountRepo, customerRepo, kycRepo, eventStoreRepo, checkpointRepo, projectionFailureRepo, log)
+		dropped := consume(ctx, sub, accountRepo, eventStoreRepo, checkpointRepo, projectionFailureRepo, log)
 		if err := sub.Close(); err != nil {
 			log.Warn().Err(err).Msg("close subscription failed")
 		}
@@ -160,9 +151,7 @@ func resolveFrom(ctx context.Context, checkpointRepo *mongo.CheckpointRepository
 func consume(
 	ctx context.Context,
 	sub *eventstoredb.Subscription,
-	accountRepo *mongo.AccountRepository,
-	customerRepo *mongo.CustomerRepository,
-	kycRepo *mongo.KYCSessionRepository,
+	accountRepo *mongo.AccountAggregateRepository,
 	eventStoreRepo *eventstore.AccountRepository,
 	checkpointRepo *mongo.CheckpointRepository,
 	projectionFailureRepo *mongo.ProjectionFailureRepository,
@@ -189,8 +178,6 @@ func consume(
 		err := handleEvent(
 			ctx,
 			accountRepo,
-			customerRepo,
-			kycRepo,
 			eventStoreRepo,
 			log,
 			recorded.EventType,
@@ -267,9 +254,7 @@ func nextBackoff(d time.Duration) time.Duration {
 // TOÀN BỘ trạng thái mới nhất của account đó từ EventStore, upsert vào Mongo.
 func handleEvent(
 	ctx context.Context,
-	accountRepo *mongo.AccountRepository,
-	customerRepo *mongo.CustomerRepository,
-	kycRepo *mongo.KYCSessionRepository,
+	accountRepo *mongo.AccountAggregateRepository,
 	eventStoreRepo *eventstore.AccountRepository,
 	log *zerolog.Logger,
 	eventType string,
@@ -298,25 +283,14 @@ func handleEvent(
 		return nil
 	}
 
-	for _, session := range acc.KYCSessions {
-		if err := kycRepo.Save(ctx, session); err != nil {
-			return fmt.Errorf("project KYC session %s failed: %w", session.Id, err)
-		}
-	}
-	if acc.Customer == nil {
-		return fmt.Errorf("project account %s failed: customer is missing", acc.Id)
-	}
-	if err := customerRepo.Save(ctx, acc.Customer); err != nil {
-		return fmt.Errorf("project customer %s failed: %w", acc.Customer.Id, err)
-	}
 	if err := accountRepo.Save(ctx, acc); err != nil {
-		if mongo.IsDuplicateKeyError(err) {
+		if errors.Is(err, accountdomain.ErrUserAlreadyExists) {
 			return &permanentProjectionError{
 				reason: "duplicate_key",
 				err:    fmt.Errorf("project account %s failed: duplicate key (email/username collision): %w", acc.Id, err),
 			}
 		}
-		return fmt.Errorf("upsert account %s into mongo failed: %w", acc.Id, err)
+		return fmt.Errorf("project account aggregate %s into mongo failed: %w", acc.Id, err)
 	}
 
 	log.Info().

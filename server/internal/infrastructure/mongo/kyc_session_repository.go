@@ -70,3 +70,12 @@ func (r *KYCSessionRepository) FindByCustomerID(ctx context.Context, customerID 
 	}
 	return sessions, nil
 }
+
+func (r *KYCSessionRepository) DeleteByCustomerID(ctx context.Context, customerID string) error {
+	recordID, err := bson.ObjectIDFromHex(customerID)
+	if err != nil {
+		return err
+	}
+	_, err = r.col.DeleteMany(ctx, bson.M{"customer_id": recordID})
+	return err
+}

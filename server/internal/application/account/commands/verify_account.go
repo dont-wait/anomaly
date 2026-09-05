@@ -38,6 +38,11 @@ func (h *VerifyAccountCommandHandler) Handle(ctx context.Context, cmd VerifyAcco
 	if acc.Customer == nil {
 		return nil, accountdomain.ErrAccountNotFound
 	}
+	// Verification is idempotent: keep the original verified session as the
+	// official KYC record when the command is retried.
+	if acc.IsVerified() {
+		return acc, nil
+	}
 
 	now := time.Now().UTC()
 	session := &accountdomain.KYCSession{

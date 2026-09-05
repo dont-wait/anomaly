@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 
@@ -15,6 +16,8 @@ type AccountAggregateRepository struct {
 	customers *CustomerRepository
 	kyc       *KYCSessionRepository
 }
+
+const compensationTimeout = 5 * time.Second
 
 func NewAccountAggregateRepository(client *mongodrv.Client, dbName string) *AccountAggregateRepository {
 	return &AccountAggregateRepository{
@@ -35,8 +38,8 @@ func (r *AccountAggregateRepository) EnsureIndexes(ctx context.Context) error {
 }
 
 func (r *AccountAggregateRepository) Create(ctx context.Context, account *accountdomain.UserAccount) error {
-	if account.Customer == nil {
-		return fmt.Errorf("create account %s: customer is missing", account.Id)
+	if err := validateAccountAggregate(account); err != nil {
+		return err
 	}
 	if err := r.accounts.Save(ctx, account); err != nil {
 		if IsDuplicateKeyError(err) {
@@ -45,33 +48,121 @@ func (r *AccountAggregateRepository) Create(ctx context.Context, account *accoun
 		return err
 	}
 	if err := r.customers.Save(ctx, account.Customer); err != nil {
-		if rollbackErr := r.accounts.DeleteByID(ctx, account.Id); rollbackErr != nil {
-			return fmt.Errorf("create customer failed and account rollback failed: %w", errors.Join(err, rollbackErr))
+		return r.compensateCreate(ctx, account, err)
+	}
+	for _, session := range account.KYCSessions {
+		if err := r.kyc.Save(ctx, session); err != nil {
+			return r.compensateCreate(ctx, account, err)
 		}
-		return err
 	}
 	return nil
 }
 
 func (r *AccountAggregateRepository) Save(ctx context.Context, account *accountdomain.UserAccount) error {
-	if account.Customer == nil {
-		return fmt.Errorf("save account %s: customer is missing", account.Id)
+	if err := validateAccountAggregate(account); err != nil {
+		return err
+	}
+	previous, err := r.FindByID(ctx, account.Id)
+	if err != nil {
+		return err
+	}
+	if previous == nil {
+		return r.Create(ctx, account)
 	}
 	for _, session := range account.KYCSessions {
 		if err := r.kyc.Save(ctx, session); err != nil {
-			return err
+			return r.compensateUpdate(ctx, previous, err)
 		}
 	}
 	if err := r.customers.Save(ctx, account.Customer); err != nil {
-		return err
+		return r.compensateUpdate(ctx, previous, err)
 	}
 	if err := r.accounts.Save(ctx, account); err != nil {
 		if IsDuplicateKeyError(err) {
-			return accountdomain.ErrUserAlreadyExists
+			err = accountdomain.ErrUserAlreadyExists
 		}
-		return err
+		return r.compensateUpdate(ctx, previous, err)
 	}
 	return nil
+}
+
+func validateAccountAggregate(account *accountdomain.UserAccount) error {
+	if account.Customer == nil {
+		return fmt.Errorf("account %s: customer is missing", account.Id)
+	}
+	if _, err := toRecord(account); err != nil {
+		return err
+	}
+	if _, err := toCustomerRecord(account.Customer); err != nil {
+		return err
+	}
+	for _, session := range account.KYCSessions {
+		if _, err := toKYCSessionRecord(session); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *AccountAggregateRepository) compensateCreate(
+	ctx context.Context,
+	account *accountdomain.UserAccount,
+	cause error,
+) error {
+	compensationCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), compensationTimeout)
+	defer cancel()
+
+	return joinCompensationErrors(cause,
+		wrapCompensationError("delete KYC sessions", r.kyc.DeleteByCustomerID(compensationCtx, account.CustomerId)),
+		wrapCompensationError("delete customer", r.customers.DeleteByID(compensationCtx, account.CustomerId)),
+		wrapCompensationError("delete account", r.accounts.DeleteByID(compensationCtx, account.Id)),
+	)
+}
+
+func (r *AccountAggregateRepository) compensateUpdate(
+	ctx context.Context,
+	previous *accountdomain.UserAccount,
+	cause error,
+) error {
+	compensationCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), compensationTimeout)
+	defer cancel()
+
+	compensationErrors := []error{
+		wrapCompensationError("restore account", r.accounts.Save(compensationCtx, previous)),
+	}
+	if previous.Customer == nil {
+		compensationErrors = append(compensationErrors,
+			wrapCompensationError("delete customer", r.customers.DeleteByID(compensationCtx, previous.CustomerId)),
+		)
+	} else {
+		compensationErrors = append(compensationErrors,
+			wrapCompensationError("restore customer", r.customers.Save(compensationCtx, previous.Customer)),
+		)
+	}
+	compensationErrors = append(compensationErrors,
+		wrapCompensationError("delete current KYC sessions", r.kyc.DeleteByCustomerID(compensationCtx, previous.CustomerId)),
+	)
+	for _, session := range previous.KYCSessions {
+		compensationErrors = append(compensationErrors,
+			wrapCompensationError("restore KYC session", r.kyc.Save(compensationCtx, session)),
+		)
+	}
+	return joinCompensationErrors(cause, compensationErrors...)
+}
+
+func wrapCompensationError(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("compensation %s failed: %w", operation, err)
+}
+
+func joinCompensationErrors(cause error, compensationErrors ...error) error {
+	joined := errors.Join(compensationErrors...)
+	if joined == nil {
+		return cause
+	}
+	return errors.Join(cause, joined)
 }
 
 func (r *AccountAggregateRepository) FindByID(ctx context.Context, id string) (*accountdomain.UserAccount, error) {

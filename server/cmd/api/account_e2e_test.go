@@ -11,6 +11,7 @@ import (
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mongodb"
+	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/domain"
@@ -112,12 +113,56 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 	if len(stored.KYCSessions) != 1 || !stored.IsVerified() {
 		t.Fatalf("stored verification state = sessions %d, verified %v; want 1 and true", len(stored.KYCSessions), stored.IsVerified())
 	}
+	second, err := register.Handle(ctx, commands.RegisterAccountCommand{
+		Username: "second-account",
+		Email:    fmt.Sprintf("second-%d@example.com", time.Now().UnixNano()),
+		Password: "e2e-password-123",
+	})
+	if err != nil {
+		t.Fatalf("register second account: %v", err)
+	}
+
+	originalEmail := stored.Email
+	originalName := stored.Customer.Profile.FullName
+	stored.Email = second.Email
+	stored.Customer.Profile.FullName = "must-be-rolled-back"
+	now := time.Now().UTC()
+	stored.KYCSessions = append(stored.KYCSessions, &accountdomain.KYCSession{
+		Id:         bson.NewObjectID().Hex(),
+		CustomerId: stored.CustomerId,
+		AttemptNo:  2,
+		Status:     accountdomain.KYCSessionStatusVerified,
+		Media: accountdomain.KYCMedia{
+			IdentityFront: accountdomain.MediaObject{StorageKey: "media/rollback-front.jpg"},
+			IdentityBack:  accountdomain.MediaObject{StorageKey: "media/rollback-back.jpg"},
+			LivenessVideo: accountdomain.LivenessVideo{
+				MediaObject: accountdomain.MediaObject{StorageKey: "media/rollback-live.mp4"},
+			},
+		},
+		StartedAt:   now,
+		CompletedAt: &now,
+		CreatedAt:   now,
+	})
+	if err := repo.Save(ctx, stored); !errors.Is(err, accountdomain.ErrUserAlreadyExists) {
+		t.Fatalf("save conflicting aggregate error = %v, want ErrUserAlreadyExists", err)
+	}
+
+	restored, err := repo.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("load compensated aggregate: %v", err)
+	}
+	if restored.Email != originalEmail || restored.Customer.Profile.FullName != originalName {
+		t.Fatalf("compensated account/customer = %q/%q, want %q/%q", restored.Email, restored.Customer.Profile.FullName, originalEmail, originalName)
+	}
+	if len(restored.KYCSessions) != 1 {
+		t.Fatalf("compensated KYC session count = %d, want 1", len(restored.KYCSessions))
+	}
 
 	all, err := repo.FindAll(ctx)
 	if err != nil {
 		t.Fatalf("list MongoDB accounts: %v", err)
 	}
-	if len(all) != 1 {
-		t.Fatalf("MongoDB account count = %d, want 1", len(all))
+	if len(all) != 2 {
+		t.Fatalf("MongoDB account count = %d, want 2", len(all))
 	}
 }

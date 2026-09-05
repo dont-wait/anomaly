@@ -62,3 +62,12 @@ func (r *CustomerRepository) FindByID(ctx context.Context, id string) (*accountd
 	}
 	return fromCustomerRecord(record), nil
 }
+
+func (r *CustomerRepository) DeleteByID(ctx context.Context, id string) error {
+	recordID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+	_, err = r.col.DeleteOne(ctx, bson.M{"_id": recordID})
+	return err
+}
