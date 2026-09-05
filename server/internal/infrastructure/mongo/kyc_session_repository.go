@@ -41,3 +41,32 @@ func (r *KYCSessionRepository) Save(ctx context.Context, session *accountdomain.
 	_, err = r.col.ReplaceOne(ctx, bson.M{"_id": record.Id}, record, options.Replace().SetUpsert(true))
 	return err
 }
+
+func (r *KYCSessionRepository) FindByCustomerID(ctx context.Context, customerID string) ([]*accountdomain.KYCSession, error) {
+	recordID, err := bson.ObjectIDFromHex(customerID)
+	if err != nil {
+		return nil, nil
+	}
+	cursor, err := r.col.Find(
+		ctx,
+		bson.M{"customer_id": recordID},
+		options.Find().SetSort(bson.D{{Key: "attempt_no", Value: 1}}),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+
+	sessions := make([]*accountdomain.KYCSession, 0)
+	for cursor.Next(ctx) {
+		var record kycSessionRecord
+		if err := cursor.Decode(&record); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, fromKYCSessionRecord(record))
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+	return sessions, nil
+}

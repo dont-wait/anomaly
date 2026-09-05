@@ -103,3 +103,51 @@ func optionalString(value string) *string {
 	}
 	return &value
 }
+
+func fromCustomerRecord(record customerRecord) *accountdomain.Customer {
+	return &accountdomain.Customer{
+		Id:           record.Id.Hex(),
+		CustomerCode: record.CustomerCode,
+		Profile: accountdomain.CustomerProfile{
+			FullName:    record.Profile.FullName,
+			DateOfBirth: record.Profile.DateOfBirth,
+			Phone:       stringValue(record.Profile.Phone),
+			Email:       record.Profile.Email,
+			Address: accountdomain.Address{
+				Line:         record.Profile.Address.Line,
+				ProvinceCode: record.Profile.Address.ProvinceCode,
+			},
+		},
+		Identity: accountdomain.CustomerIdentity{
+			Type:             stringValue(record.Identity.Type),
+			Number:           stringValue(record.Identity.Number),
+			IssuedDate:       record.Identity.IssuedDate,
+			IssuedPlace:      stringValue(record.Identity.IssuedPlace),
+			PermanentAddress: stringValue(record.Identity.PermanentAddress),
+		},
+		VerifiedKYCSessionId: objectIDValue(record.VerifiedKYCSessionId),
+		KYCStatus:            accountdomain.KYCStatus(record.KYCStatus),
+		CreditProfile: accountdomain.CreditProfile{
+			Score:     record.CreditProfile.Score,
+			BadDebt:   record.CreditProfile.BadDebt,
+			UpdatedAt: record.CreditProfile.UpdatedAt,
+		},
+		Status:    accountdomain.CustomerStatus(record.Status),
+		CreatedAt: record.CreatedAt,
+		UpdatedAt: record.UpdatedAt,
+	}
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func objectIDValue(value *bson.ObjectID) string {
+	if value == nil {
+		return ""
+	}
+	return value.Hex()
+}

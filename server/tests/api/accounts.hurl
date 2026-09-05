@@ -1,4 +1,4 @@
-# Register writes to KurrentDB and the worker projects the account to MongoDB.
+# Register writes the account aggregate directly to MongoDB.
 POST {{base_url}}/api/auth/register
 {
   "username": "hurl-{{newUuid}}",
@@ -19,7 +19,7 @@ jsonpath "$.email" not contains "<"
 jsonpath "$.isVerify" == false
 jsonpath "$.amount" == 0
 
-# Retry while the projection worker catches up and writes the Mongo read model.
+# Retry briefly while the API and MongoDB complete the registration request.
 POST {{base_url}}/api/auth/login
 [Options]
 retry: 20

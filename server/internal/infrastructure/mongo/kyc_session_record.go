@@ -153,3 +153,80 @@ func optionalInt(value int) *int {
 	}
 	return &value
 }
+
+func fromKYCSessionRecord(record kycSessionRecord) *accountdomain.KYCSession {
+	toMedia := func(media MediaObjectRecord) accountdomain.MediaObject {
+		return accountdomain.MediaObject{
+			StorageKey: stringValue(media.StorageKey),
+			MIMEType:   stringValue(media.MIMEType),
+			SizeBytes:  int64Value(media.SizeBytes),
+			SHA256:     stringValue(media.SHA256),
+		}
+	}
+
+	var failure *accountdomain.KYCFailure
+	if record.Failure.Code != nil || record.Failure.Message != nil {
+		failure = &accountdomain.KYCFailure{
+			Code:    stringValue(record.Failure.Code),
+			Message: stringValue(record.Failure.Message),
+		}
+	}
+
+	return &accountdomain.KYCSession{
+		Id:         record.Id.Hex(),
+		CustomerId: record.CustomerId.Hex(),
+		AttemptNo:  record.AttemptNo,
+		Status:     accountdomain.KYCSessionStatus(record.Status),
+		IdentityData: accountdomain.KYCIdentityData{
+			Type:             stringValue(record.IdentityData.Type),
+			Number:           stringValue(record.IdentityData.Number),
+			FullName:         stringValue(record.IdentityData.FullName),
+			DateOfBirth:      record.IdentityData.DateOfBirth,
+			IssuedDate:       record.IdentityData.IssuedDate,
+			IssuedPlace:      stringValue(record.IdentityData.IssuedPlace),
+			PermanentAddress: stringValue(record.IdentityData.PermanentAddress),
+		},
+		Media: accountdomain.KYCMedia{
+			IdentityFront: toMedia(record.Media.IdentityFront),
+			IdentityBack:  toMedia(record.Media.IdentityBack),
+			FaceImage:     toMedia(record.Media.FaceImage),
+			LivenessVideo: accountdomain.LivenessVideo{
+				MediaObject:     toMedia(record.Media.LivenessVideo.MediaObjectRecord),
+				DurationSeconds: intValue(record.Media.LivenessVideo.DurationSeconds),
+			},
+		},
+		Verification: accountdomain.KYCVerification{
+			OCRStatus:           accountdomain.VerificationStatus(record.Verification.OCRStatus),
+			LivenessStatus:      accountdomain.VerificationStatus(record.Verification.LivenessStatus),
+			FaceMatchStatus:     accountdomain.VerificationStatus(record.Verification.FaceMatchStatus),
+			FaceMatchScore:      decimalValue(record.Verification.FaceMatchScore),
+			Provider:            stringValue(record.Verification.Provider),
+			ProviderReferenceId: stringValue(record.Verification.ProviderReferenceId),
+		},
+		Failure:     failure,
+		StartedAt:   record.StartedAt,
+		CompletedAt: record.CompletedAt,
+		CreatedAt:   record.CreatedAt,
+	}
+}
+
+func int64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func intValue(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func decimalValue(value *bson.Decimal128) string {
+	if value == nil {
+		return ""
+	}
+	return value.String()
+}

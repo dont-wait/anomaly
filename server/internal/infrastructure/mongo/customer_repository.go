@@ -47,3 +47,18 @@ func (r *CustomerRepository) Save(ctx context.Context, customer *accountdomain.C
 	_, err = r.col.ReplaceOne(ctx, bson.M{"_id": record.Id}, record, options.Replace().SetUpsert(true))
 	return err
 }
+
+func (r *CustomerRepository) FindByID(ctx context.Context, id string) (*accountdomain.Customer, error) {
+	recordID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, nil
+	}
+	var record customerRecord
+	if err := r.col.FindOne(ctx, bson.M{"_id": recordID}).Decode(&record); err != nil {
+		if err == mongodrv.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return fromCustomerRecord(record), nil
+}

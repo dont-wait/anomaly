@@ -85,6 +85,15 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 	return err
 }
 
+func (r *AccountRepository) DeleteByID(ctx context.Context, id string) error {
+	recordID, err := accountRecordID(id)
+	if err != nil {
+		return err
+	}
+	_, err = r.col.DeleteOne(ctx, bson.M{"_id": recordID})
+	return err
+}
+
 func (r *AccountRepository) FindByID(ctx context.Context, id string) (*accountdomain.UserAccount, error) {
 	recordID, err := accountRecordID(id)
 	if err != nil {

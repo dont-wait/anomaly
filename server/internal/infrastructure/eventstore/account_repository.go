@@ -215,7 +215,7 @@ func (r *AccountRepository) findByIDWithRevision(
 // store không có sẵn index theo email (việc đó thường do projection
 // đảm nhận). Đây là bản đơn giản, chưa tối ưu, dùng cho mục đích
 // học/song song với Mongo - production thật nên xây read-model riêng
-// (projection của KurrentDB, hoặc consumer Kafka cập nhật 1 store đọc).
+// (projection của EventStoreDB, hoặc consumer Kafka cập nhật 1 store đọc).
 
 func (r *AccountRepository) FindByEmail(ctx context.Context, email string) (*accountdomain.UserAccount, error) {
 	accounts, err := r.FindAll(ctx)

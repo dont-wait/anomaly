@@ -21,12 +21,12 @@ type RegisterAccountCommand struct {
 }
 
 type RegisterAccountCommandHandler struct {
-	writeRepo AccountRepository
+	writeRepo AccountCreator
 	readRepo  AccountRepository
 }
 
 func NewRegisterAccountCommandHandler(
-	writeRepo AccountRepository,
+	writeRepo AccountCreator,
 	readRepo AccountRepository,
 ) *RegisterAccountCommandHandler {
 	return &RegisterAccountCommandHandler{writeRepo: writeRepo, readRepo: readRepo}
@@ -102,7 +102,7 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 		},
 	}
 
-	if err := h.writeRepo.Save(ctx, acc); err != nil {
+	if err := h.writeRepo.Create(ctx, acc); err != nil {
 		return nil, err
 	}
 

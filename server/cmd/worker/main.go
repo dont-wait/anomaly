@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -55,6 +56,10 @@ func main() {
 		log.Fatal().Err(err).Msg("ensure KYC session indexes failed")
 	}
 	checkpointRepo := mongo.NewCheckpointRepository(mongoClient, config.MongoConfig.MongoDBName)
+	projectionFailureRepo := mongo.NewProjectionFailureRepository(mongoClient, config.MongoConfig.MongoDBName)
+	if err := projectionFailureRepo.EnsureIndexes(ctx); err != nil {
+		log.Fatal().Err(err).Msg("ensure projection failure indexes failed")
+	}
 
 	eventStoreClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
 	if err != nil {
@@ -65,7 +70,7 @@ func main() {
 	eventStoreRepo := eventstore.NewAccountRepository(eventStoreClient)
 
 	log.Info().Msg("projection worker started")
-	runWithReconnect(ctx, eventStoreClient, accountRepo, customerRepo, kycRepo, eventStoreRepo, checkpointRepo, log)
+	runWithReconnect(ctx, eventStoreClient, accountRepo, customerRepo, kycRepo, eventStoreRepo, checkpointRepo, projectionFailureRepo, log)
 	log.Info().Msg("projection worker stopped")
 }
 
@@ -81,6 +86,7 @@ func runWithReconnect(
 	kycRepo *mongo.KYCSessionRepository,
 	eventStoreRepo *eventstore.AccountRepository,
 	checkpointRepo *mongo.CheckpointRepository,
+	projectionFailureRepo *mongo.ProjectionFailureRepository,
 	log *zerolog.Logger,
 ) {
 	backoff := initialBackoff
@@ -115,7 +121,7 @@ func runWithReconnect(
 		log.Info().Msg("subscribed to $all")
 		backoff = initialBackoff // reset backoff mỗi khi subscribe thành công
 
-		dropped := consume(ctx, sub, accountRepo, customerRepo, kycRepo, eventStoreRepo, checkpointRepo, log)
+		dropped := consume(ctx, sub, accountRepo, customerRepo, kycRepo, eventStoreRepo, checkpointRepo, projectionFailureRepo, log)
 		if err := sub.Close(); err != nil {
 			log.Warn().Err(err).Msg("close subscription failed")
 		}
@@ -159,6 +165,7 @@ func consume(
 	kycRepo *mongo.KYCSessionRepository,
 	eventStoreRepo *eventstore.AccountRepository,
 	checkpointRepo *mongo.CheckpointRepository,
+	projectionFailureRepo *mongo.ProjectionFailureRepository,
 	log *zerolog.Logger,
 ) bool {
 	for {
@@ -179,7 +186,7 @@ func consume(
 
 		recorded := event.EventAppeared.Event
 
-		if err := handleEvent(
+		err := handleEvent(
 			ctx,
 			accountRepo,
 			customerRepo,
@@ -188,21 +195,55 @@ func consume(
 			log,
 			recorded.EventType,
 			recorded.StreamID,
-		); err != nil {
-			// Xử lý thất bại -> KHÔNG lưu checkpoint, để lần reconnect/restart
-			// sau tự động đọc lại đúng event này (retry tự nhiên nhờ resume
-			// từ checkpoint cũ). Log lỗi rồi dừng hẳn vòng đọc hiện tại, buộc
-			// runWithReconnect backoff + subscribe lại từ checkpoint cũ.
-			log.Error().Err(err).Str("streamId", recorded.StreamID).Msg("handle event failed, will retry from last checkpoint")
-			return true
+		)
+		if err != nil {
+			var permanentErr *permanentProjectionError
+			if !errors.As(err, &permanentErr) {
+				log.Error().Err(err).Str("streamId", recorded.StreamID).Msg("handle event failed, will retry from last checkpoint")
+				return true
+			}
+
+			failure := mongo.ProjectionFailure{
+				EventID:     recorded.EventID.String(),
+				StreamID:    recorded.StreamID,
+				EventType:   recorded.EventType,
+				EventNumber: recorded.EventNumber,
+				Commit:      recorded.Position.Commit,
+				Prepare:     recorded.Position.Prepare,
+				Reason:      permanentErr.reason,
+				Error:       err.Error(),
+				FailedAt:    time.Now().UTC(),
+			}
+			if saveErr := projectionFailureRepo.Save(ctx, failure); saveErr != nil {
+				log.Error().Err(saveErr).Str("streamId", recorded.StreamID).Msg("save projection failure failed, will retry from last checkpoint")
+				return true
+			}
+			log.Error().Err(err).
+				Str("eventId", failure.EventID).
+				Str("streamId", failure.StreamID).
+				Str("reason", failure.Reason).
+				Msg("permanent projection error moved to dead-letter")
 		}
 
-		// Chỉ lưu checkpoint SAU KHI xử lý thành công, để đảm bảo event lỗi
-		// luôn được thử lại ở lần chạy tiếp theo thay vì bị bỏ sót.
+		// Permanent error chỉ tới đây sau khi dead-letter đã được lưu thành công.
+		// Transient error đã return phía trên và không làm checkpoint tiến lên.
 		if err := checkpointRepo.Save(ctx, recorded.Position.Commit, recorded.Position.Prepare); err != nil {
 			log.Warn().Err(err).Msg("failed to save checkpoint")
 		}
 	}
+}
+
+type permanentProjectionError struct {
+	reason string
+	err    error
+}
+
+func (e *permanentProjectionError) Error() string {
+	return e.err.Error()
+}
+
+func (e *permanentProjectionError) Unwrap() error {
+	return e.err
 }
 
 func sleepOrDone(ctx context.Context, d time.Duration) bool {
@@ -269,11 +310,11 @@ func handleEvent(
 		return fmt.Errorf("project customer %s failed: %w", acc.Customer.Id, err)
 	}
 	if err := accountRepo.Save(ctx, acc); err != nil {
-		// Mongo từ chối vì vi phạm unique index (trùng email/username với
-		// account khác đã có). Giữ event chưa checkpoint để worker retry,
-		// tránh làm mất account khỏi projection mà không có record xử lý lại.
 		if mongo.IsDuplicateKeyError(err) {
-			return fmt.Errorf("project account %s failed: duplicate key (email/username collision): %w", acc.Id, err)
+			return &permanentProjectionError{
+				reason: "duplicate_key",
+				err:    fmt.Errorf("project account %s failed: duplicate key (email/username collision): %w", acc.Id, err),
+			}
 		}
 		return fmt.Errorf("upsert account %s into mongo failed: %w", acc.Id, err)
 	}
