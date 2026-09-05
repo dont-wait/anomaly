@@ -94,7 +94,7 @@ type EventStoreConfig struct {
 func (l *Loader) LoadEventStoreConfig() *EventStoreConfig {
 	l.logger().Info().Msg("Load event store config")
 	return &EventStoreConfig{
-		EventStoreConnString: l.LoadEnvOr("EVENT_STORE_CONN_STRING", "kurrentdb://localhost:2113?tls=false"),
+		EventStoreConnString: l.LoadEnvOr("EVENT_STORE_CONN_STRING", "esdb://localhost:2113?tls=false"),
 	}
 }
 

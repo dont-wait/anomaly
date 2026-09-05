@@ -12,3 +12,7 @@ type AccountRepository interface {
 	FindByUsername(ctx context.Context, username string) (*accountdomain.UserAccount, error)
 	Save(ctx context.Context, a *accountdomain.UserAccount) error
 }
+
+type AccountCreator interface {
+	Create(ctx context.Context, account *accountdomain.UserAccount) error
+}

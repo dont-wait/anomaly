@@ -35,7 +35,7 @@ func TestUploadGetDeleteEndToEnd(t *testing.T) {
 	key := "test/integration-" + time.Now().Format("20060102150405") + ".txt"
 	content := "hello rustfs integration test"
 	file := createTempUploadFile(t, content)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	if err := repo.Upload(ctx, key, file, "text/plain"); err != nil {
 		t.Fatalf("Upload() error = %v, want nil", err)
@@ -46,7 +46,7 @@ func TestUploadGetDeleteEndToEnd(t *testing.T) {
 		t.Fatalf("Get() error = %v, want nil", err)
 	}
 	data, readErr := io.ReadAll(result.Body)
-	result.Body.Close()
+	_ = result.Body.Close()
 	if readErr != nil {
 		t.Fatalf("read body error = %v", readErr)
 	}

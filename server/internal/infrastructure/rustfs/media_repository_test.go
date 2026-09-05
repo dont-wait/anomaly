@@ -63,7 +63,7 @@ func TestUploadReturnsErrorWhenRustFSUnavailable(t *testing.T) {
 
 	repo := newUnreachableRepo(t)
 	file := createTempUploadFile(t, "hello")
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	err := repo.Upload(ctx, "test/key.txt", file, "text/plain")
 	if err == nil {
@@ -113,7 +113,7 @@ func TestDownloadFallsBackToOctetStreamWhenContentTypeMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Download() error = %v, want nil", err)
 	}
-	defer result.Body.Close()
+	defer func() { _ = result.Body.Close() }()
 
 	if result.ContentType != "application/octet-stream" {
 		t.Fatalf("Download() content type = %q, want %q", result.ContentType, "application/octet-stream")

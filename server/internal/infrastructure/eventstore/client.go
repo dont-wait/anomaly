@@ -7,7 +7,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// tạo kết nối tới KurrentDB (event store).
+// tạo kết nối tới EventStoreDB.
 func NewEventStoreClient(conf *domain.EventStoreConfig) (*eventstoredb.Client, error) {
 	log := logger.NewLogger(zerolog.InfoLevel)
 

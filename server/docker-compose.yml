@@ -12,7 +12,6 @@ services:
       MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       MONGO_DB: anomaly
       TZ: Asia/Ho_Chi_Minh
-      EVENT_STORE_CONN_STRING: kurrentdb://eventstore:2113?tls=false
       RUSTFS_ENDPOINT: http://rustfs:9000
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY}
@@ -21,8 +20,6 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      eventstore:
-        condition: service_started
       mongo:
         condition: service_healthy
       redis:
@@ -41,7 +38,7 @@ services:
     environment:
       MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       MONGO_DB: anomaly
-      EVENT_STORE_CONN_STRING: kurrentdb://eventstore:2113?tls=false
+      EVENT_STORE_CONN_STRING: esdb://eventstore:2113?tls=false
       TZ: Asia/Ho_Chi_Minh
     depends_on:
       eventstore:
@@ -150,7 +147,7 @@ services:
 
   redis:
     container_name: anomaly-redis
-    image: redis:7.4
+    image: redis:8.6.6
     restart: no
     ports:
       - "6379:6379"
