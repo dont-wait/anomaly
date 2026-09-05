@@ -13,6 +13,8 @@ func TestToKYCSessionRecordIncludesLivenessVideoMediaFields(t *testing.T) {
 		Id:         "507f1f77bcf86cd799439011",
 		CustomerId: "507f191e810c19729de860ea",
 		Media: accountdomain.KYCMedia{
+			IdentityFront: accountdomain.MediaObject{StorageKey: "kyc/front.jpg"},
+			IdentityBack:  accountdomain.MediaObject{StorageKey: "kyc/back.jpg"},
 			LivenessVideo: accountdomain.LivenessVideo{
 				MediaObject: accountdomain.MediaObject{
 					StorageKey: "kyc/liveness.mp4",
@@ -49,5 +51,22 @@ func TestToKYCSessionRecordIncludesLivenessVideoMediaFields(t *testing.T) {
 
 	if got, ok := raw.Lookup("size_bytes").Int64OK(); !ok || got != 1234 {
 		t.Errorf("BSON field size_bytes = %d, %v; want 1234, true", got, ok)
+	}
+}
+
+func TestToKYCSessionRecordRejectsMissingRequiredStorageKey(t *testing.T) {
+	session := &accountdomain.KYCSession{
+		Id:         "507f1f77bcf86cd799439011",
+		CustomerId: "507f191e810c19729de860ea",
+		Media: accountdomain.KYCMedia{
+			IdentityBack: accountdomain.MediaObject{StorageKey: "kyc/back.jpg"},
+			LivenessVideo: accountdomain.LivenessVideo{
+				MediaObject: accountdomain.MediaObject{StorageKey: "kyc/liveness.mp4"},
+			},
+		},
+	}
+
+	if _, err := toKYCSessionRecord(session); err == nil {
+		t.Fatal("toKYCSessionRecord() error = nil, want missing storage key error")
 	}
 }

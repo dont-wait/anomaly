@@ -95,7 +95,7 @@ type KYCIdentityData struct {
 type KYCMedia struct {
 	IdentityFront MediaObject
 	IdentityBack  MediaObject
-	FaceImage     MediaObject
+	FaceImage     *MediaObject
 	LivenessVideo LivenessVideo
 }
 

@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -10,7 +11,7 @@ import (
 )
 
 type MediaObjectRecord struct {
-	StorageKey *string `bson:"storage_key"`
+	StorageKey string  `bson:"storage_key"`
 	MIMEType   *string `bson:"mime_type"`
 	SizeBytes  *int64  `bson:"size_bytes"`
 	SHA256     *string `bson:"sha256"`
@@ -34,7 +35,7 @@ type kycIdentityDataRecord struct {
 type kycMediaRecord struct {
 	IdentityFront MediaObjectRecord   `bson:"identity_front"`
 	IdentityBack  MediaObjectRecord   `bson:"identity_back"`
-	FaceImage     MediaObjectRecord   `bson:"face_image"`
+	FaceImage     *MediaObjectRecord  `bson:"face_image,omitempty"`
 	LivenessVideo livenessVideoRecord `bson:"liveness_video"`
 }
 
@@ -85,13 +86,36 @@ func toKYCSessionRecord(session *accountdomain.KYCSession) (kycSessionRecord, er
 		score = &value
 	}
 
-	toMedia := func(media accountdomain.MediaObject) MediaObjectRecord {
+	toMedia := func(field string, media accountdomain.MediaObject) (MediaObjectRecord, error) {
+		if strings.TrimSpace(media.StorageKey) == "" {
+			return MediaObjectRecord{}, fmt.Errorf("%s storage key is required", field)
+		}
 		return MediaObjectRecord{
-			StorageKey: optionalString(media.StorageKey),
+			StorageKey: media.StorageKey,
 			MIMEType:   optionalString(media.MIMEType),
 			SizeBytes:  optionalInt64(media.SizeBytes),
 			SHA256:     optionalString(media.SHA256),
+		}, nil
+	}
+	identityFront, err := toMedia("identity front", session.Media.IdentityFront)
+	if err != nil {
+		return kycSessionRecord{}, err
+	}
+	identityBack, err := toMedia("identity back", session.Media.IdentityBack)
+	if err != nil {
+		return kycSessionRecord{}, err
+	}
+	livenessVideo, err := toMedia("liveness video", session.Media.LivenessVideo.MediaObject)
+	if err != nil {
+		return kycSessionRecord{}, err
+	}
+	var faceImage *MediaObjectRecord
+	if session.Media.FaceImage != nil {
+		record, err := toMedia("face image", *session.Media.FaceImage)
+		if err != nil {
+			return kycSessionRecord{}, err
 		}
+		faceImage = &record
 	}
 
 	failure := kycFailureRecord{}
@@ -117,11 +141,11 @@ func toKYCSessionRecord(session *accountdomain.KYCSession) (kycSessionRecord, er
 			PermanentAddress: optionalString(session.IdentityData.PermanentAddress),
 		},
 		Media: kycMediaRecord{
-			IdentityFront: toMedia(session.Media.IdentityFront),
-			IdentityBack:  toMedia(session.Media.IdentityBack),
-			FaceImage:     toMedia(session.Media.FaceImage),
+			IdentityFront: identityFront,
+			IdentityBack:  identityBack,
+			FaceImage:     faceImage,
 			LivenessVideo: livenessVideoRecord{
-				MediaObjectRecord: toMedia(session.Media.LivenessVideo.MediaObject),
+				MediaObjectRecord: livenessVideo,
 				DurationSeconds:   optionalInt(session.Media.LivenessVideo.DurationSeconds),
 			},
 		},
@@ -157,11 +181,16 @@ func optionalInt(value int) *int {
 func fromKYCSessionRecord(record kycSessionRecord) *accountdomain.KYCSession {
 	toMedia := func(media MediaObjectRecord) accountdomain.MediaObject {
 		return accountdomain.MediaObject{
-			StorageKey: stringValue(media.StorageKey),
+			StorageKey: media.StorageKey,
 			MIMEType:   stringValue(media.MIMEType),
 			SizeBytes:  int64Value(media.SizeBytes),
 			SHA256:     stringValue(media.SHA256),
 		}
+	}
+	var faceImage *accountdomain.MediaObject
+	if record.Media.FaceImage != nil {
+		media := toMedia(*record.Media.FaceImage)
+		faceImage = &media
 	}
 
 	var failure *accountdomain.KYCFailure
@@ -189,7 +218,7 @@ func fromKYCSessionRecord(record kycSessionRecord) *accountdomain.KYCSession {
 		Media: accountdomain.KYCMedia{
 			IdentityFront: toMedia(record.Media.IdentityFront),
 			IdentityBack:  toMedia(record.Media.IdentityBack),
-			FaceImage:     toMedia(record.Media.FaceImage),
+			FaceImage:     faceImage,
 			LivenessVideo: accountdomain.LivenessVideo{
 				MediaObject:     toMedia(record.Media.LivenessVideo.MediaObjectRecord),
 				DurationSeconds: intValue(record.Media.LivenessVideo.DurationSeconds),
