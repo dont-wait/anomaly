@@ -5,19 +5,35 @@ Backend cho Anomaly, gồm HTTP API, projection worker, và adapter hạ tầng 
 ## Docs Map
 
 - `README.md`: quick start và chỉ mục tài liệu
-- `ARCHITECTURE.md`: cấu trúc layer, executable, và runtime flow
-- `FEATURE.md`: feature hiện có và phạm vi test
-- `INFRA.md`: service local, env, port, workflow vận hành
+- [Architecture](../docs/ARCHITECTURE.md): cấu trúc layer, executable, và runtime flow
+- [Features](../docs/FEATURE.md): feature hiện có và phạm vi test
+- [Infrastructure](../docs/INFRA.md): service local, env, port, workflow vận hành
 
 ## Overview
 
 Stack hiện tại:
 
 - API server: Go
-- Read model: MongoDB
-- Event store: KurrentDB
+- Account store: MongoDB
+- Event store: EventStoreDB 23 for legacy projections and future transaction events
 - Media storage: RustFS
 - Local infra: Docker Compose
+
+MongoDB stores account data directly in three business collections:
+
+- `customers`: customer profile, identity, credit profile, and current KYC status
+- `kyc_sessions`: append-style history for each KYC attempt and its media metadata
+- `accounts`: financial account, balance, status, and authentication credentials
+
+Account balances are stored as BSON `Decimal128`; domain operations currently use
+whole `int64` VND values and convert at the MongoDB boundary. Registration and
+verification do not append account lifecycle events. The legacy projection worker
+uses two technical collections:
+
+- `checkpoints`: resume EventStoreDB subscriptions after restart
+- `projection_failures`: dead-letter permanent projection errors before advancing the checkpoint
+
+There is no `ledger_entries` collection yet.
 
 ## Quick Start
 
@@ -52,7 +68,7 @@ Endpoint chính:
 - RustFS console: `http://localhost:9001`
 - MongoDB: `localhost:27017`
 - Kafka UI: `http://localhost:8082`
-- KurrentDB UI/API: `http://localhost:2113`
+- EventStoreDB UI/API: `http://localhost:2113`
 - RustFS API: `http://localhost:9000`
 - RustFS Console: `http://localhost:9001`
 - RustFS Admin Client: `docker compose exec rustfs-admin aws s3 ls --endpoint-url http://rustfs:9000`
@@ -103,8 +119,14 @@ make test
 
 Các test Go không khởi động hoặc yêu cầu database thật.
 
-Chạy API end-to-end tests bằng Hurl sau khi API, projection worker, MongoDB,
-KurrentDB và RustFS đã sẵn sàng:
+Chạy account end-to-end test; Testcontainers tự khởi động và dọn dẹp MongoDB
+cô lập:
+
+```bash
+make test-account-e2e
+```
+
+Chạy API end-to-end tests bằng Hurl sau khi API, MongoDB và RustFS đã sẵn sàng:
 
 ```bash
 make test-api
@@ -117,7 +139,7 @@ make test-api BASE_URL=http://localhost:18080
 ```
 
 Suite Hurl tạo account và media object riêng với ID ngẫu nhiên, kiểm tra toàn bộ
-luồng register -> projection -> login -> JWT -> verify và upload -> download.
+luồng register -> MongoDB -> login -> JWT -> verify và upload -> download.
 Nếu một dependency thật không hoạt động, lệnh sẽ trả về exit code khác `0`.
 
 Chạy riêng test RustFS:

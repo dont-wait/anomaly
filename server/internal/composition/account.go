@@ -14,21 +14,21 @@ import (
 // ép kiểu khi truyền cùng 1 repo cho nhiều use case.
 type AccountRepository interface {
 	commands.AccountRepository
+	commands.AccountCreator
 	queries.AccountQueryRepository
 }
 
-func NewAccountHandler(writeRepo commands.AccountRepository,
-	readRepo AccountRepository,
+func NewAccountHandler(repo AccountRepository,
 	tokenSvc *auth.TokenService,
 	logger zerolog.Logger,
 ) *handleraccount.Handler {
 	return handleraccount.NewHandler(
 		logger,
-		commands.NewRegisterAccountCommandHandler(writeRepo, readRepo),
-		commands.NewVerifyAccountCommandHandler(writeRepo),
-		queries.NewLoginQueryHandler(readRepo, tokenSvc),
-		queries.NewGetAccountByIDQueryHandler(readRepo),
-		queries.NewGetAccountByEmailQueryHandler(readRepo),
-		queries.NewGetAllAccountsQueryHandler(readRepo),
+		commands.NewRegisterAccountCommandHandler(repo, repo),
+		commands.NewVerifyAccountCommandHandler(repo),
+		queries.NewLoginQueryHandler(repo, tokenSvc),
+		queries.NewGetAccountByIDQueryHandler(repo),
+		queries.NewGetAccountByEmailQueryHandler(repo),
+		queries.NewGetAllAccountsQueryHandler(repo),
 	)
 }
