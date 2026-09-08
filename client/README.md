@@ -27,7 +27,11 @@ yarn install
 
 Sau khi cài dependencies, chạy từ `client/`:
 
+Chạy `make help` (hoặc `make`) để xem danh sách lệnh.
+
 ```bash
+make emulator-list    # Kiểm tra máy ảo đã có
+make emulator-create  # Tạo pixel_35 một lần nếu chưa có
 make emulator  # Terminal 1: mở pixel_35
 make android   # Terminal 2: chạy client Android
 make desktop   # Chạy client Linux desktop

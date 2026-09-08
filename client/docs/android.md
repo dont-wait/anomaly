@@ -15,17 +15,25 @@ mkdir -p "$HOME/.local/bin"
 corepack enable --install-directory "$HOME/.local/bin"
 export PATH="$HOME/.local/bin:$PATH"
 yarn install
-emulator -list-avds
+make emulator-list
 ```
 
 Nếu danh sách đã có `pixel_35`, bỏ qua bước tạo. Nếu chưa có, chạy:
 
 ```bash
-avdmanager create avd --name pixel_35 --package 'system-images;android-35;google_apis;x86_64'
+make emulator-create
 ```
 
 Trả lời `no` nếu được hỏi tạo hardware profile tùy chỉnh.
 Nix cung cấp SDK/image nhưng **không tự tạo AVD**.
+Hai lệnh Make tự dùng SDK trong flake, chạy được cả khi đã ở Nix shell.
+Chỉ tạo một lần; lệnh không ghi đè `pixel_35` đã tồn tại.
+
+Nếu đã vào shell Android và muốn chạy trực tiếp, lệnh tương đương là:
+
+```bash
+avdmanager create avd --name pixel_35 --package 'system-images;android-35;google_apis;x86_64'
+```
 
 ## 2. Terminal 1: mở emulator
 
