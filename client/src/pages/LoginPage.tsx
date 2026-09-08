@@ -104,15 +104,14 @@ export const LoginPage = () => {
                                 {/* CCCD Input */}
                                 <Input
                                     label="Số Căn cước Công dân"
-                                    readOnly
                                     type="text"
-                                    value="0012 3456 7890"
+                                    placeholder="Nhập số CCCD"
                                 />
 
                                 {/* Password Input */}
                                 <div className="flex flex-col gap-1">
                                     <div className="flex items-center justify-between">
-                                        <label className="text-xs sm:text-label-md font-semibold text-on-surface-variant">
+                                        <label className="text-label-md font-semibold text-on-surface-variant">
                                             Mật khẩu
                                         </label>
                                         <a
