@@ -22,6 +22,8 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+      anomaly-migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       rustfs:
@@ -43,6 +45,23 @@ services:
     depends_on:
       eventstore:
         condition: service_started
+      mongo:
+        condition: service_healthy
+      anomaly-migrate:
+        condition: service_completed_successfully
+    networks:
+      - anomaly-network
+
+  anomaly-migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/migrate", "up"]
+    environment:
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      MONGO_DB: anomaly
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
       mongo:
         condition: service_healthy
     networks:

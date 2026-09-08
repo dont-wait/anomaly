@@ -139,6 +139,11 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 				MediaObject: accountdomain.MediaObject{StorageKey: "media/rollback-live.mp4"},
 			},
 		},
+		Verification: accountdomain.KYCVerification{
+			OCRStatus:       accountdomain.VerificationStatusNotRun,
+			LivenessStatus:  accountdomain.VerificationStatusNotRun,
+			FaceMatchStatus: accountdomain.VerificationStatusNotRun,
+		},
 		StartedAt:   now,
 		CompletedAt: &now,
 		CreatedAt:   now,

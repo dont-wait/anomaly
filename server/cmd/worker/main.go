@@ -45,9 +45,6 @@ func main() {
 	}()
 
 	accountRepo := mongo.NewAccountAggregateRepository(mongoClient, config.MongoConfig.MongoDBName)
-	if err := accountRepo.EnsureIndexes(ctx); err != nil {
-		log.Fatal().Err(err).Msg("ensure account aggregate indexes failed")
-	}
 	checkpointRepo := mongo.NewCheckpointRepository(mongoClient, config.MongoConfig.MongoDBName)
 	projectionFailureRepo := mongo.NewProjectionFailureRepository(mongoClient, config.MongoConfig.MongoDBName)
 	if err := projectionFailureRepo.EnsureIndexes(ctx); err != nil {
