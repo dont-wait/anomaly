@@ -180,6 +180,24 @@ func (r *AccountAggregateRepository) FindByUsername(ctx context.Context, usernam
 	return r.hydrate(ctx, account, err)
 }
 
+func (r *AccountAggregateRepository) FindByCCCDNumber(ctx context.Context, cccd string) (*accountdomain.UserAccount, error) {
+	customer, err := r.customers.FindByIdentityNumber(ctx, cccd)
+	if err != nil {
+		return nil, err
+	}
+	if customer == nil {
+		return nil, nil
+	}
+	account, err := r.accounts.FindByCustomerID(ctx, customer.Id)
+	if err != nil {
+		return nil, err
+	}
+	if account == nil {
+		return nil, nil
+	}
+	return r.hydrate(ctx, account, nil)
+}
+
 func (r *AccountAggregateRepository) FindAll(ctx context.Context) ([]*accountdomain.UserAccount, error) {
 	accounts, err := r.accounts.FindAll(ctx)
 	if err != nil {

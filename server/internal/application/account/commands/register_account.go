@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,10 +15,16 @@ import (
 
 const minPasswordLength = 8
 
+var cccdRegex = regexp.MustCompile(`^\d{12}$`)
+
 type RegisterAccountCommand struct {
-	Username string
-	Email    string
-	Password string
+	Username        string
+	CCCDNumber      string
+	CCCDIssuedDate  time.Time
+	DOB             time.Time
+	Phone           string
+	Email           string
+	Password        string
 }
 
 type RegisterAccountCommandHandler struct {
@@ -35,6 +42,8 @@ func NewRegisterAccountCommandHandler(
 func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd RegisterAccountCommand) (*accountdomain.UserAccount, error) {
 	cmd.Email = strings.TrimSpace(cmd.Email)
 	cmd.Username = strings.TrimSpace(cmd.Username)
+	cmd.CCCDNumber = strings.TrimSpace(cmd.CCCDNumber)
+	cmd.Phone = strings.TrimSpace(cmd.Phone)
 
 	parsedEmail, err := mail.ParseAddress(cmd.Email)
 	if err != nil {
@@ -50,6 +59,10 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 		return nil, accountdomain.ErrInvalidUsername
 	}
 
+	if !cccdRegex.MatchString(cmd.CCCDNumber) {
+		return nil, accountdomain.ErrInvalidCCCD
+	}
+
 	if existing, err := h.readRepo.FindByEmail(ctx, cmd.Email); err != nil {
 		return nil, err
 	} else if existing != nil {
@@ -57,6 +70,12 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 	}
 
 	if existing, err := h.readRepo.FindByUsername(ctx, cmd.Username); err != nil {
+		return nil, err
+	} else if existing != nil {
+		return nil, accountdomain.ErrUserAlreadyExists
+	}
+
+	if existing, err := h.readRepo.FindByCCCDNumber(ctx, cmd.CCCDNumber); err != nil {
 		return nil, err
 	} else if existing != nil {
 		return nil, accountdomain.ErrUserAlreadyExists
@@ -89,8 +108,15 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 			Id:           customerID,
 			CustomerCode: fmt.Sprintf("CUS-%s", strings.ToUpper(customerID)),
 			Profile: accountdomain.CustomerProfile{
-				FullName: cmd.Username,
-				Email:    cmd.Email,
+				FullName:    cmd.Username,
+				DateOfBirth: &cmd.DOB,
+				Phone:       cmd.Phone,
+				Email:       cmd.Email,
+			},
+			Identity: accountdomain.CustomerIdentity{
+				Type:       "cccd",
+				Number:     cmd.CCCDNumber,
+				IssuedDate: &cmd.CCCDIssuedDate,
 			},
 			KYCStatus: accountdomain.KYCStatusNotStarted,
 			CreditProfile: accountdomain.CreditProfile{

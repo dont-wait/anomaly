@@ -11,8 +11,8 @@ import (
 )
 
 type LoginQuery struct {
-	Login    string
-	Password string
+	CCCDNumber string
+	Password   string
 }
 
 type LoginResult struct {
@@ -31,15 +31,9 @@ func NewLoginQueryHandler(readRepo AccountQueryRepository, tokens TokenService) 
 }
 
 func (h *LoginQueryHandler) Handle(ctx context.Context, q LoginQuery) (*LoginResult, error) {
-	acc, err := h.readRepo.FindByEmail(ctx, q.Login)
+	acc, err := h.readRepo.FindByCCCDNumber(ctx, q.CCCDNumber)
 	if err != nil {
 		return nil, err
-	}
-	if acc == nil {
-		acc, err = h.readRepo.FindByUsername(ctx, q.Login)
-		if err != nil {
-			return nil, err
-		}
 	}
 	if acc == nil {
 		return nil, accountdomain.ErrInvalidCredentials

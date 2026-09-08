@@ -245,6 +245,19 @@ func (r *AccountRepository) FindByUsername(ctx context.Context, username string)
 	return nil, nil
 }
 
+func (r *AccountRepository) FindByCCCDNumber(ctx context.Context, cccd string) (*accountdomain.UserAccount, error) {
+	accounts, err := r.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, acc := range accounts {
+		if acc.Customer != nil && acc.Customer.Identity.Number == cccd {
+			return acc, nil
+		}
+	}
+	return nil, nil
+}
+
 func (r *AccountRepository) FindAll(ctx context.Context) ([]*accountdomain.UserAccount, error) {
 	ids, err := r.allAccountIDs(ctx)
 	if err != nil {

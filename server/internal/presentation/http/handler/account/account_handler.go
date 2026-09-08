@@ -3,6 +3,7 @@ package account
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -54,6 +55,7 @@ func accountErrorStatus(err error) int {
 	case errors.Is(err, accountdomain.ErrInvalidEmail),
 		errors.Is(err, accountdomain.ErrWeakPassword),
 		errors.Is(err, accountdomain.ErrInvalidUsername),
+		errors.Is(err, accountdomain.ErrInvalidCCCD),
 		errors.Is(err, accountdomain.ErrInvalidAmount),
 		errors.Is(err, accountdomain.ErrInsufficientFunds),
 		errors.Is(err, accountdomain.ErrInvalidVerifyPayload):
@@ -64,9 +66,13 @@ func accountErrorStatus(err error) int {
 }
 
 type registerRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Username       string `json:"username"`
+	CCCDNumber     string `json:"cccdNumber"`
+	CCCDIssuedDate string `json:"cccdIssuedDate"`
+	DOB            string `json:"dob"`
+	Phone          string `json:"phone"`
+	Email          string `json:"email"`
+	Password       string `json:"password"`
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -81,10 +87,25 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	issuedDate, err := time.Parse(time.RFC3339, req.CCCDIssuedDate)
+	if err != nil {
+		httpx.WriteError(w, h.logger, err, func(err error) int { return http.StatusBadRequest })
+		return
+	}
+	dob, err := time.Parse(time.RFC3339, req.DOB)
+	if err != nil {
+		httpx.WriteError(w, h.logger, err, func(err error) int { return http.StatusBadRequest })
+		return
+	}
+
 	acc, err := h.register.Handle(r.Context(), commands.RegisterAccountCommand{
-		Username: req.Username,
-		Email:    req.Email,
-		Password: req.Password,
+		Username:       req.Username,
+		CCCDNumber:     req.CCCDNumber,
+		CCCDIssuedDate: issuedDate,
+		DOB:            dob,
+		Phone:          req.Phone,
+		Email:          req.Email,
+		Password:       req.Password,
 	})
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus)
@@ -95,8 +116,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 type loginRequest struct {
-	Login    string `json:"login"`
-	Password string `json:"password"`
+	CCCDNumber string `json:"cccdNumber"`
+	Password   string `json:"password"`
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -112,8 +133,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.login.Handle(r.Context(), queries.LoginQuery{
-		Login:    req.Login,
-		Password: req.Password,
+		CCCDNumber: req.CCCDNumber,
+		Password:   req.Password,
 	})
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus)
