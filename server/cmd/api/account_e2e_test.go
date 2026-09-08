@@ -68,7 +68,6 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 				CCCDNumber:     sharedCCCD,
 				CCCDIssuedDate: now,
 				DOB:            now.AddDate(-25, 0, 0),
-				Phone:          fmt.Sprintf("0901000%04d", index),
 				Email:          sharedEmail,
 				Password:       "e2e-password-123",
 			})
@@ -124,7 +123,6 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 		CCCDNumber:     fmt.Sprintf("002%012d", time.Now().UnixNano()%10000000000),
 		CCCDIssuedDate: now,
 		DOB:            now.AddDate(-30, 0, 0),
-		Phone:          "0909876543",
 		Email:          fmt.Sprintf("second-%d@example.com", time.Now().UnixNano()),
 		Password:       "e2e-password-123",
 	})

@@ -18,13 +18,12 @@ const minPasswordLength = 8
 var cccdRegex = regexp.MustCompile(`^\d{12}$`)
 
 type RegisterAccountCommand struct {
-	Username        string
-	CCCDNumber      string
-	CCCDIssuedDate  time.Time
-	DOB             time.Time
-	Phone           string
-	Email           string
-	Password        string
+	Username       string
+	CCCDNumber     string
+	CCCDIssuedDate time.Time
+	DOB            time.Time
+	Email          string
+	Password       string
 }
 
 type RegisterAccountCommandHandler struct {
@@ -43,7 +42,6 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 	cmd.Email = strings.TrimSpace(cmd.Email)
 	cmd.Username = strings.TrimSpace(cmd.Username)
 	cmd.CCCDNumber = strings.TrimSpace(cmd.CCCDNumber)
-	cmd.Phone = strings.TrimSpace(cmd.Phone)
 
 	parsedEmail, err := mail.ParseAddress(cmd.Email)
 	if err != nil {
@@ -110,7 +108,6 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 			Profile: accountdomain.CustomerProfile{
 				FullName:    cmd.Username,
 				DateOfBirth: &cmd.DOB,
-				Phone:       cmd.Phone,
 				Email:       cmd.Email,
 			},
 			Identity: accountdomain.CustomerIdentity{

@@ -70,7 +70,6 @@ type registerRequest struct {
 	CCCDNumber     string `json:"cccdNumber"`
 	CCCDIssuedDate string `json:"cccdIssuedDate"`
 	DOB            string `json:"dob"`
-	Phone          string `json:"phone"`
 	Email          string `json:"email"`
 	Password       string `json:"password"`
 }
@@ -103,7 +102,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		CCCDNumber:     req.CCCDNumber,
 		CCCDIssuedDate: issuedDate,
 		DOB:            dob,
-		Phone:          req.Phone,
 		Email:          req.Email,
 		Password:       req.Password,
 	})
