@@ -3,6 +3,7 @@ package account
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -56,6 +57,7 @@ func accountErrorStatus(err error) int {
 		errors.Is(err, accountdomain.ErrWeakPassword),
 		errors.Is(err, accountdomain.ErrInvalidUsername),
 		errors.Is(err, accountdomain.ErrInvalidCCCD),
+		errors.Is(err, accountdomain.ErrInvalidDate),
 		errors.Is(err, accountdomain.ErrInvalidAmount),
 		errors.Is(err, accountdomain.ErrInsufficientFunds),
 		errors.Is(err, accountdomain.ErrInvalidVerifyPayload):
@@ -131,7 +133,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.login.Handle(r.Context(), queries.LoginQuery{
-		CCCDNumber: req.CCCDNumber,
+		CCCDNumber: strings.TrimSpace(req.CCCDNumber),
 		Password:   req.Password,
 	})
 	if err != nil {

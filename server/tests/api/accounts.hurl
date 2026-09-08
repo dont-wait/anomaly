@@ -2,6 +2,9 @@
 POST {{base_url}}/api/auth/register
 {
   "username": "hurl-{{newUuid}}",
+  "cccdNumber": "999000001234",
+  "cccdIssuedDate": "2020-06-15T00:00:00Z",
+  "dob": "1995-03-20T00:00:00Z",
   "email": "Hurl User <hurl-{{newUuid}}@example.com>",
   "password": "hurl-password-123"
 }
@@ -25,7 +28,7 @@ POST {{base_url}}/api/auth/login
 retry: 20
 retry-interval: 500ms
 {
-  "login": "{{account_email}}",
+  "cccdNumber": "999000001234",
   "password": "hurl-password-123"
 }
 HTTP 200
@@ -120,6 +123,9 @@ jsonpath "$.liveVideoUrl" == "media/hurl-live-video-v2.mp4"
 POST {{base_url}}/api/auth/register
 {
   "username": "{{account_username}}",
+  "cccdNumber": "999000001234",
+  "cccdIssuedDate": "2020-06-15T00:00:00Z",
+  "dob": "1995-03-20T00:00:00Z",
   "email": "{{account_email}}",
   "password": "hurl-password-123"
 }
@@ -132,6 +138,9 @@ POST {{base_url}}/api/auth/register
 {
   "username": "valid-user",
   "email": "not-an-email",
+  "cccdNumber": "123456789012",
+  "cccdIssuedDate": "2020-06-15T00:00:00Z",
+  "dob": "1995-03-20T00:00:00Z",
   "password": "hurl-password-123"
 }
 HTTP 400
@@ -142,6 +151,9 @@ jsonpath "$.error" == "invalid email"
 POST {{base_url}}/api/auth/register
 {
   "username": "valid-user",
+  "cccdNumber": "123456789012",
+  "cccdIssuedDate": "2020-06-15T00:00:00Z",
+  "dob": "1995-03-20T00:00:00Z",
   "email": "hurl-{{newUuid}}@example.com",
   "password": "short"
 }
@@ -153,6 +165,9 @@ jsonpath "$.error" == "password must be at least 8 characters"
 POST {{base_url}}/api/auth/register
 {
   "username": "   ",
+  "cccdNumber": "123456789012",
+  "cccdIssuedDate": "2020-06-15T00:00:00Z",
+  "dob": "1995-03-20T00:00:00Z",
   "email": "hurl-{{newUuid}}@example.com",
   "password": "hurl-password-123"
 }
@@ -163,6 +178,20 @@ jsonpath "$.error" == "username must not be empty"
 
 POST {{base_url}}/api/auth/register
 {
+  "username": "valid-user",
+  "email": "hurl-{{newUuid}}@example.com",
+  "cccdNumber": "123",
+  "cccdIssuedDate": "2020-06-15T00:00:00Z",
+  "dob": "1995-03-20T00:00:00Z",
+  "password": "hurl-password-123"
+}
+HTTP 400
+Content-Type: application/json
+[Asserts]
+jsonpath "$.error" == "CCCD must be exactly 12 digits"
+
+POST {{base_url}}/api/auth/register
+{
   "unexpected": true
 }
 HTTP 400
@@ -170,7 +199,7 @@ Content-Type: application/json
 
 POST {{base_url}}/api/auth/login
 {
-  "login": "{{account_email}}",
+  "cccdNumber": "999000001234",
   "password": "wrong-password"
 }
 HTTP 401

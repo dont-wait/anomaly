@@ -54,7 +54,7 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 	register := commands.NewRegisterAccountCommandHandler(repo, repo)
 
 	const requestCount = 8
-	sharedCCCD := fmt.Sprintf("001%012d", time.Now().UnixNano()%10000000000)
+	sharedCCCD := fmt.Sprintf("%012d", time.Now().UnixNano()%100000000000)
 	sharedEmail := fmt.Sprintf("concurrent-%d@example.com", time.Now().UnixNano())
 	start := make(chan struct{})
 	results := make(chan error, requestCount)
@@ -120,7 +120,7 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 	}
 	second, err := register.Handle(ctx, commands.RegisterAccountCommand{
 		Username:       "second-account",
-		CCCDNumber:     fmt.Sprintf("002%012d", time.Now().UnixNano()%10000000000),
+		CCCDNumber:     fmt.Sprintf("%012d", (time.Now().UnixNano()%100000000000)+1),
 		CCCDIssuedDate: now,
 		DOB:            now.AddDate(-30, 0, 0),
 		Email:          fmt.Sprintf("second-%d@example.com", time.Now().UnixNano()),

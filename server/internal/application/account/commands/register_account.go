@@ -61,6 +61,16 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 		return nil, accountdomain.ErrInvalidCCCD
 	}
 
+	if cmd.DOB.IsZero() || cmd.CCCDIssuedDate.IsZero() {
+		return nil, accountdomain.ErrInvalidDate
+	}
+	if cmd.DOB.After(time.Now()) || cmd.CCCDIssuedDate.After(time.Now()) {
+		return nil, accountdomain.ErrInvalidDate
+	}
+	if cmd.CCCDIssuedDate.Before(cmd.DOB) {
+		return nil, accountdomain.ErrInvalidDate
+	}
+
 	if existing, err := h.readRepo.FindByEmail(ctx, cmd.Email); err != nil {
 		return nil, err
 	} else if existing != nil {

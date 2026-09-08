@@ -7,6 +7,7 @@ var (
 	ErrWeakPassword         = errors.New("password must be at least 8 characters")
 	ErrInvalidUsername      = errors.New("username must not be empty")
 	ErrInvalidCCCD          = errors.New("CCCD must be exactly 12 digits")
+	ErrInvalidDate          = errors.New("invalid or missing date")
 	ErrUserAlreadyExists    = errors.New("user already exists")
 	ErrInvalidCredentials   = errors.New("invalid credentials")
 	ErrInvalidVerifyPayload = errors.New("all identity URLs are required")

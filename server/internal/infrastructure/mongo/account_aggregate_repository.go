@@ -48,6 +48,9 @@ func (r *AccountAggregateRepository) Create(ctx context.Context, account *accoun
 		return err
 	}
 	if err := r.customers.Save(ctx, account.Customer); err != nil {
+		if IsDuplicateKeyError(err) {
+			return accountdomain.ErrUserAlreadyExists
+		}
 		return r.compensateCreate(ctx, account, err)
 	}
 	for _, session := range account.KYCSessions {
@@ -75,6 +78,9 @@ func (r *AccountAggregateRepository) Save(ctx context.Context, account *accountd
 		}
 	}
 	if err := r.customers.Save(ctx, account.Customer); err != nil {
+		if IsDuplicateKeyError(err) {
+			return r.compensateUpdate(ctx, previous, accountdomain.ErrUserAlreadyExists)
+		}
 		return r.compensateUpdate(ctx, previous, err)
 	}
 	if err := r.accounts.Save(ctx, account); err != nil {
