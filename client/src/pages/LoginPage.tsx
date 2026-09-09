@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
     faBell,
@@ -10,9 +10,48 @@ import {
     faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
 import { Input } from "@/components/ui";
+import { toLoginError } from "@/api/auth";
+import { useAuth } from "@/auth/useAuth";
+
+interface StatusMessage {
+    tone: "success" | "error";
+    text: string;
+}
 
 export const LoginPage = () => {
+    const { status: authStatus, user, error: authError, login, logout } =
+        useAuth();
     const [showPassword, setShowPassword] = useState(false);
+    const [cccd, setCccd] = useState("");
+    const [password, setPassword] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [message, setMessage] = useState<StatusMessage | null>(null);
+
+    const isBusy = isSubmitting || authStatus === "restoring";
+    const formError =
+        message?.tone === "error" ? message.text : authError;
+    const successMessage =
+        message?.tone === "success" ? message.text : null;
+
+    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        if (isSubmitting) return;
+
+        setIsSubmitting(true);
+        setMessage(null);
+        try {
+            await login({ cccdNumber: cccd, password });
+            setPassword("");
+            setMessage({ tone: "success", text: "Đăng nhập thành công." });
+        } catch (submitError) {
+            setMessage({
+                tone: "error",
+                text: toLoginError(submitError),
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     return (
         <div className="min-h-screen w-full bg-background">
@@ -62,7 +101,12 @@ export const LoginPage = () => {
 
                     {/* Login Card */}
                     <div className="w-full my-auto">
-                        <div className="w-full rounded-xl sm:rounded-2xl bg-surface-container-low/60 backdrop-blur-xl shadow-2xl shadow-indigo-900/10 flex flex-col overflow-hidden relative">
+                        <form
+                            onSubmit={(event) => {
+                                void handleSubmit(event);
+                            }}
+                            className="w-full rounded-xl sm:rounded-2xl bg-surface-container-low/60 backdrop-blur-xl shadow-2xl shadow-indigo-900/10 flex flex-col overflow-hidden relative"
+                        >
                             <div className="absolute inset-x-0 top-0 h-20 sm:h-24 bg-gradient-to-b from-white/60 to-transparent pointer-events-none" />
 
                             <div className="p-4 sm:p-5 md:p-6 flex flex-col space-y-3.5 sm:space-y-4 relative z-10">
@@ -105,7 +149,16 @@ export const LoginPage = () => {
                                 <Input
                                     label="Số Căn cước Công dân"
                                     type="text"
+                                    name="cccd-number"
+                                    autoComplete="username"
+                                    inputMode="numeric"
+                                    maxLength={14}
                                     placeholder="Nhập số CCCD"
+                                    value={cccd}
+                                    disabled={isBusy}
+                                    onChange={(event) =>
+                                        setCccd(event.target.value)
+                                    }
                                 />
 
                                 {/* Password Input */}
@@ -126,6 +179,14 @@ export const LoginPage = () => {
                                         <input
                                             className="w-full bg-transparent text-base sm:text-title-lg font-bold tracking-tight text-on-surface focus:outline-none placeholder:text-on-surface-variant/50"
                                             placeholder="••••••••"
+                                            name="password"
+                                            autoComplete="current-password"
+                                            maxLength={128}
+                                            value={password}
+                                            disabled={isBusy}
+                                            onChange={(event) =>
+                                                setPassword(event.target.value)
+                                            }
                                             type={
                                                 showPassword
                                                     ? "text"
@@ -151,11 +212,25 @@ export const LoginPage = () => {
                                         </button>
                                     </div>
                                 </div>
+                                {(formError || successMessage) && (
+                                    <p
+                                        role={
+                                            formError ? "alert" : "status"
+                                        }
+                                        className={`rounded-xl px-3 py-2 text-xs sm:text-label-md ${
+                                            formError
+                                                ? "bg-error-container text-on-error-container"
+                                                : "bg-surface-container-high text-on-surface"
+                                        }`}
+                                    >
+                                        {formError ?? successMessage}
+                                    </p>
+                                )}
                             </div>
 
                             {/* Login Button */}
                             <button
-                                className="w-full py-3.5 sm:py-4 font-semibold text-base sm:text-title-md tracking-wide text-center flex items-center justify-center transition-all active:scale-[0.99]"
+                                className="w-full py-3.5 sm:py-4 font-semibold text-base sm:text-title-md tracking-wide text-center flex items-center justify-center transition-all active:scale-[0.99] disabled:opacity-80 disabled:active:scale-100 disabled:cursor-not-allowed"
                                 style={{
                                     background:
                                         "linear-gradient(135deg, #b582b5 0%, #8b5cf6 100%)",
@@ -163,27 +238,52 @@ export const LoginPage = () => {
                                     boxShadow:
                                         "rgba(181,130,181,0.45) 0px 4px 18px -2px",
                                 }}
-                                type="button"
+                                type="submit"
+                                disabled={isBusy}
                             >
-                                Đăng nhập
+                                {authStatus === "restoring"
+                                    ? "Đang kiểm tra phiên..."
+                                    : isSubmitting
+                                      ? "Đang đăng nhập..."
+                                      : "Đăng nhập"}
                             </button>
 
                             {/* Register Link */}
                             <div className="w-full py-3 sm:py-3.5 text-center flex items-center justify-center bg-surface-container-lowest/40">
-                                <a
-                                    className="text-xs sm:text-label-md text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-                                    href="#"
-                                >
-                                    Chưa có tài khoản?{" "}
-                                    <span
-                                        className="font-semibold hover:underline"
-                                        style={{ color: "#9e5e9e" }}
+                                {authStatus === "authenticated" && user ? (
+                                    <p className="text-xs sm:text-label-md text-on-surface-variant">
+                                        Đã đăng nhập:{" "}
+                                        <span className="font-semibold text-on-surface">
+                                            {user.username}
+                                        </span>{" "}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setMessage(null);
+                                                logout();
+                                            }}
+                                            className="ml-1 font-semibold hover:underline cursor-pointer"
+                                            style={{ color: "#9e5e9e" }}
+                                        >
+                                            Đăng xuất
+                                        </button>
+                                    </p>
+                                ) : (
+                                    <a
+                                        className="text-xs sm:text-label-md text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+                                        href="#"
                                     >
-                                        Mở tài khoản ngay
-                                    </span>
-                                </a>
+                                        Chưa có tài khoản?{" "}
+                                        <span
+                                            className="font-semibold hover:underline"
+                                            style={{ color: "#9e5e9e" }}
+                                        >
+                                            Mở tài khoản ngay
+                                        </span>
+                                    </a>
+                                )}
                             </div>
-                        </div>
+                        </form>
 
                         {/* Bottom Quick Actions */}
                         <div className="w-full grid grid-cols-2 gap-3 sm:gap-4 pt-4 mt-auto">
