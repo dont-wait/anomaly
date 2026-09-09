@@ -6,10 +6,24 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: start-app migrate migrate-up migrate-up-one migrate-version migrate-down test test-api test-account-e2e
+.PHONY: help start-app migrate migrate-up migrate-up-one migrate-version migrate-down test test-api test-account-e2e
 
 start-app:
 	docker compose --profile app up --build
+
+help:
+	@echo "Usage: make <target> [BASE_URL=http://localhost:8080]"
+	@echo ""
+	@echo "  help              Show available commands"
+	@echo "  start-app         Build and start the Docker Compose app profile"
+	@echo "  migrate           Alias for migrate-up"
+	@echo "  migrate-up        Apply all pending migrations"
+	@echo "  migrate-up-one    Apply the next pending migration"
+	@echo "  migrate-version   Show migration version and dirty state"
+	@echo "  migrate-down      Roll back the latest migration"
+	@echo "  test              Run Go tests"
+	@echo "  test-api          Run Hurl API tests against BASE_URL"
+	@echo "  test-account-e2e  Run the concurrent registration E2E test"
 
 migrate: migrate-up
 
