@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/mongodb"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/logger"
@@ -18,7 +20,12 @@ import (
 
 func main() {
 	if len(os.Args) != 2 {
-		fatalf("usage: migrate <up|up-by-one|down|version>")
+		fatalf("usage: migrate <up|up-by-one|down|version|status>")
+	}
+	switch os.Args[1] {
+	case "up", "up-by-one", "down", "version", "status":
+	default:
+		fatalf("unknown command %q", os.Args[1])
 	}
 
 	log := logger.NewLogger(zerolog.InfoLevel)
@@ -28,8 +35,23 @@ func main() {
 		fatalf("build MongoDB migration URL: %v", err)
 	}
 
-	runner, err := migrate.New("file://migrations", databaseURL)
+	migrationsPath, err := filepath.Abs("migrations")
 	if err != nil {
+		fatalf("resolve migrations directory: %v", err)
+	}
+	fmt.Printf("migrations=%s database=%s\n", migrationsPath, loader.LoadMongoConfig().MongoDBName)
+	src, err := iofs.New(os.DirFS(migrationsPath), ".")
+	if err != nil {
+		fatalf("open migrations directory: %v", err)
+	}
+	entries, err := listMigrations(src)
+	if err != nil {
+		_ = src.Close()
+		fatalf("read migrations: %v", err)
+	}
+	runner, err := migrate.NewWithSourceInstance("iofs", src, databaseURL)
+	if err != nil {
+		_ = src.Close()
 		fatalf("create migration runner: %v", err)
 	}
 	defer func() {
@@ -39,6 +61,12 @@ func main() {
 		}
 	}()
 
+	if os.Args[1] == "status" {
+		if err := printStatus(os.Stdout, runner, entries); err != nil {
+			fatalf("migration status failed: %v", err)
+		}
+		return
+	}
 	if err := run(runner, os.Args[1]); err != nil {
 		fatalf("migration %s failed: %v", os.Args[1], err)
 	}
