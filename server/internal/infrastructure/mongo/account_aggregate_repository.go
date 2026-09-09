@@ -49,7 +49,7 @@ func (r *AccountAggregateRepository) Create(ctx context.Context, account *accoun
 	}
 	if err := r.customers.Save(ctx, account.Customer); err != nil {
 		if IsDuplicateKeyError(err) {
-			return accountdomain.ErrUserAlreadyExists
+			err = accountdomain.ErrUserAlreadyExists
 		}
 		return r.compensateCreate(ctx, account, err)
 	}
