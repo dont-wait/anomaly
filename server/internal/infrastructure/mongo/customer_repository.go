@@ -63,6 +63,18 @@ func (r *CustomerRepository) FindByID(ctx context.Context, id string) (*accountd
 	return fromCustomerRecord(record), nil
 }
 
+func (r *CustomerRepository) FindByIdentityNumber(ctx context.Context, number string) (*accountdomain.Customer, error) {
+	var record customerRecord
+	err := r.col.FindOne(ctx, bson.M{"identity.number": number}).Decode(&record)
+	if err != nil {
+		if err == mongodrv.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return fromCustomerRecord(record), nil
+}
+
 func (r *CustomerRepository) DeleteByID(ctx context.Context, id string) error {
 	recordID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
