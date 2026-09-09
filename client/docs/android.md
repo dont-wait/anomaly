@@ -120,7 +120,7 @@ Backend chạy trên máy phát triển: dùng `http://10.0.2.2:<port>` trong
 Build APK riêng khi cần:
 
 ```bash
-yarn tauri android build --debug --target x86_64 --apk
+nix develop .#android --command bash -c 'set -e; mkdir -p "$HOME/.local/bin"; corepack enable --install-directory "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; exec yarn tauri android build --debug --target x86_64 --apk'
 ```
 
 Kiểm tra frontend theo thứ tự: `yarn lint`, `yarn tsc --noEmit`, `yarn test`.
