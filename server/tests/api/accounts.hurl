@@ -2,7 +2,7 @@
 POST {{base_url}}/api/auth/register
 {
   "username": "hurl-{{newUuid}}",
-  "cccdNumber": "999000001234",
+  "cccdNumber": "{{cccd}}",
   "cccdIssuedDate": "2020-06-15T00:00:00Z",
   "dob": "1995-03-20T00:00:00Z",
   "email": "Hurl User <hurl-{{newUuid}}@example.com>",
@@ -28,7 +28,7 @@ POST {{base_url}}/api/auth/login
 retry: 20
 retry-interval: 500ms
 {
-  "cccdNumber": "999000001234",
+  "cccdNumber": "{{cccd}}",
   "password": "hurl-password-123"
 }
 HTTP 200
@@ -123,7 +123,7 @@ jsonpath "$.liveVideoUrl" == "media/hurl-live-video-v2.mp4"
 POST {{base_url}}/api/auth/register
 {
   "username": "{{account_username}}",
-  "cccdNumber": "999000001234",
+  "cccdNumber": "{{cccd}}",
   "cccdIssuedDate": "2020-06-15T00:00:00Z",
   "dob": "1995-03-20T00:00:00Z",
   "email": "{{account_email}}",
@@ -199,7 +199,7 @@ Content-Type: application/json
 
 POST {{base_url}}/api/auth/login
 {
-  "cccdNumber": "999000001234",
+  "cccdNumber": "{{cccd}}",
   "password": "wrong-password"
 }
 HTTP 401

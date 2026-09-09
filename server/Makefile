@@ -9,7 +9,7 @@ test:
 	go test -count=1 ./...
 
 test-api:
-	hurl --test --variable base_url="$(BASE_URL)" tests/api/*.hurl
+	hurl --test --variable base_url="$(BASE_URL)" --variable cccd="$$(date +%s%N | cut -c1-12)" tests/api/*.hurl
 
 test-account-e2e:
 	go test -tags=e2e -count=1 -run '^TestConcurrentRegistrationPersistsOneAccountWithoutEventStore$$' ./cmd/api
