@@ -1,0 +1,116 @@
+[
+  {
+    "createIndexes": "kyc_sessions",
+    "indexes": [
+      {
+        "key": { "customer_id": 1, "attempt_no": 1 },
+        "name": "uniq_customer_attempt",
+        "unique": true
+      },
+      {
+        "key": { "customer_id": 1, "created_at": -1 },
+        "name": "idx_customer_created_at"
+      }
+    ]
+  },
+  {
+    "collMod": "kyc_sessions",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["_id", "customer_id", "attempt_no", "status", "identity_data", "media", "verification", "failure", "started_at", "completed_at", "created_at"],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "customer_id": { "bsonType": "objectId" },
+          "attempt_no": { "bsonType": ["int", "long"], "minimum": 1 },
+          "status": { "enum": ["verified"] },
+          "identity_data": {
+            "bsonType": "object",
+            "required": ["type", "number", "full_name", "date_of_birth", "issued_date", "issued_place", "permanent_address"],
+            "properties": {
+              "type": { "bsonType": ["string", "null"] },
+              "number": { "bsonType": ["string", "null"] },
+              "full_name": { "bsonType": ["string", "null"] },
+              "date_of_birth": { "bsonType": ["date", "null"] },
+              "issued_date": { "bsonType": ["date", "null"] },
+              "issued_place": { "bsonType": ["string", "null"] },
+              "permanent_address": { "bsonType": ["string", "null"] }
+            }
+          },
+          "media": {
+            "bsonType": "object",
+            "required": ["identity_front", "identity_back", "liveness_video"],
+            "properties": {
+              "identity_front": {
+                "bsonType": "object",
+                "required": ["storage_key", "mime_type", "size_bytes", "sha256"],
+                "properties": {
+                  "storage_key": { "bsonType": "string" },
+                  "mime_type": { "bsonType": ["string", "null"] },
+                  "size_bytes": { "bsonType": ["long", "null"] },
+                  "sha256": { "bsonType": ["string", "null"] }
+                }
+              },
+              "identity_back": {
+                "bsonType": "object",
+                "required": ["storage_key", "mime_type", "size_bytes", "sha256"],
+                "properties": {
+                  "storage_key": { "bsonType": "string" },
+                  "mime_type": { "bsonType": ["string", "null"] },
+                  "size_bytes": { "bsonType": ["long", "null"] },
+                  "sha256": { "bsonType": ["string", "null"] }
+                }
+              },
+              "face_image": {
+                "bsonType": "object",
+                "required": ["storage_key", "mime_type", "size_bytes", "sha256"],
+                "properties": {
+                  "storage_key": { "bsonType": "string" },
+                  "mime_type": { "bsonType": ["string", "null"] },
+                  "size_bytes": { "bsonType": ["long", "null"] },
+                  "sha256": { "bsonType": ["string", "null"] }
+                }
+              },
+              "liveness_video": {
+                "bsonType": "object",
+                "required": ["storage_key", "mime_type", "size_bytes", "sha256", "duration_seconds"],
+                "properties": {
+                  "storage_key": { "bsonType": "string" },
+                  "mime_type": { "bsonType": ["string", "null"] },
+                  "size_bytes": { "bsonType": ["long", "null"] },
+                  "sha256": { "bsonType": ["string", "null"] },
+                  "duration_seconds": { "bsonType": ["int", "long", "null"] }
+                }
+              }
+            }
+          },
+          "verification": {
+            "bsonType": "object",
+            "required": ["ocr_status", "liveness_status", "face_match_status", "face_match_score", "provider", "provider_reference_id"],
+            "properties": {
+              "ocr_status": { "enum": ["not_run"] },
+              "liveness_status": { "enum": ["not_run"] },
+              "face_match_status": { "enum": ["not_run"] },
+              "face_match_score": { "bsonType": ["decimal", "null"] },
+              "provider": { "bsonType": ["string", "null"] },
+              "provider_reference_id": { "bsonType": ["string", "null"] }
+            }
+          },
+          "failure": {
+            "bsonType": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "bsonType": ["string", "null"] },
+              "message": { "bsonType": ["string", "null"] }
+            }
+          },
+          "started_at": { "bsonType": "date" },
+          "completed_at": { "bsonType": ["date", "null"] },
+          "created_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  }
+]

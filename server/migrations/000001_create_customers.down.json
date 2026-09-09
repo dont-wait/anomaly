@@ -1,0 +1,6 @@
+[
+  { "collMod": "customers", "validator": {}, "validationLevel": "off" },
+  { "dropIndexes": "customers", "index": "uniq_identity_number" },
+  { "dropIndexes": "customers", "index": "uniq_customer_phone" },
+  { "dropIndexes": "customers", "index": "uniq_customer_code" }
+]

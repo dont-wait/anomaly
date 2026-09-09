@@ -1,0 +1,59 @@
+[
+  {
+    "createIndexes": "accounts",
+    "indexes": [
+      {
+        "key": { "account_no": 1 },
+        "name": "uniq_account_no",
+        "unique": true
+      },
+      {
+        "key": { "email": 1 },
+        "name": "uniq_email",
+        "unique": true
+      },
+      {
+        "key": { "username": 1 },
+        "name": "uniq_username",
+        "unique": true
+      },
+      {
+        "key": { "customer_id": 1 },
+        "name": "idx_customer_id"
+      }
+    ]
+  },
+  {
+    "collMod": "accounts",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["_id", "account_no", "customer_id", "username", "email", "password_hash", "type", "currency", "balance", "status", "version", "opened_at", "created_at", "updated_at"],
+        "properties": {
+          "_id": { "bsonType": ["objectId", "string"] },
+          "account_no": { "bsonType": "string" },
+          "customer_id": { "bsonType": "objectId" },
+          "username": { "bsonType": "string" },
+          "email": { "bsonType": "string" },
+          "password_hash": { "bsonType": "string" },
+          "type": { "enum": ["payment"] },
+          "currency": { "enum": ["VND"] },
+          "balance": {
+            "bsonType": "object",
+            "required": ["current"],
+            "properties": {
+              "current": { "bsonType": "long" }
+            }
+          },
+          "status": { "enum": ["active"] },
+          "version": { "bsonType": "long", "minimum": 0 },
+          "opened_at": { "bsonType": "date" },
+          "created_at": { "bsonType": "date" },
+          "updated_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  }
+]

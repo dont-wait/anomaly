@@ -147,9 +147,14 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 				MediaObject: accountdomain.MediaObject{StorageKey: "media/rollback-live.mp4"},
 			},
 		},
-		StartedAt:   now2,
-		CompletedAt: &now2,
-		CreatedAt:   now2,
+		Verification: accountdomain.KYCVerification{
+			OCRStatus:       accountdomain.VerificationStatusNotRun,
+			LivenessStatus:  accountdomain.VerificationStatusNotRun,
+			FaceMatchStatus: accountdomain.VerificationStatusNotRun,
+		},
+		StartedAt:   now,
+		CompletedAt: &now,
+		CreatedAt:   now,
 	})
 	if err := repo.Save(ctx, stored); !errors.Is(err, accountdomain.ErrUserAlreadyExists) {
 		t.Fatalf("save conflicting aggregate error = %v, want ErrUserAlreadyExists", err)
