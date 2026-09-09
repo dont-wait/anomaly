@@ -9,7 +9,9 @@ if /I "%MIGRATE_COMMAND%"=="up-by-one" goto run
 if /I "%MIGRATE_COMMAND%"=="down" goto run
 if /I "%MIGRATE_COMMAND%"=="version" goto run
 
-echo Usage: migrate.cmd ^<up^|up-by-one^|down^|version^>
+if /I "%MIGRATE_COMMAND%"=="status" goto run
+
+echo Usage: migrate.cmd ^<up^|up-by-one^|down^|version^|status^>
 exit /b 2
 
 :run

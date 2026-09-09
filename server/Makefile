@@ -6,7 +6,7 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: help start-app migrate migrate-up migrate-up-one migrate-version migrate-down test test-api test-account-e2e
+.PHONY: help start-app migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
 
 start-app:
 	docker compose --profile app up --build
@@ -20,6 +20,7 @@ help:
 	@echo "  migrate-up        Apply all pending migrations"
 	@echo "  migrate-up-one    Apply the next pending migration"
 	@echo "  migrate-version   Show migration version and dirty state"
+	@echo "  migrate-status    List applied, pending, or dirty migrations"
 	@echo "  migrate-down      Roll back the latest migration"
 	@echo "  test              Run Go tests"
 	@echo "  test-api          Run Hurl API tests against BASE_URL"
@@ -35,6 +36,9 @@ migrate-up-one:
 
 migrate-version:
 	$(MIGRATE_CMD) version
+
+migrate-status:
+	$(MIGRATE_CMD) status
 
 migrate-down:
 	$(MIGRATE_CMD) down
