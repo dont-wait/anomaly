@@ -94,6 +94,14 @@ go run ./cmd/worker
 
 ### MongoDB migrations
 
+Runner đọc `migrations/` từ thư mục làm việc hiện tại; chạy các lệnh dưới đây
+tại `server/`. Mỗi lần chạy đều in đường dẫn tuyệt đối và tên database. Thư mục
+rỗng hoặc thiếu migration hợp lệ sẽ báo lỗi. `migrate-status` suy ra `applied`
+và `pending` từ version trong database, không so sánh schema hoặc lưu lịch sử
+từng file. Khi dirty, migration tại version hiện tại được đánh dấu `dirty`,
+các migration khác là `unknown`. Compose có service `anomaly-migrate` chạy
+`up` tự động trước các service phụ thuộc.
+
 Ba cặp JSON migration tạo collection, JSON Schema validator và index cho
 `customers`, `kyc_sessions`, và `accounts`. Validator bám theo BSON record mà
 backend đang ghi, gồm nested object, nullable field, enum và kiểu tham chiếu
@@ -103,6 +111,7 @@ backend đang ghi, gồm nested object, nullable field, enum và kiểu tham chi
 make migrate          # apply all pending migrations
 make migrate-up-one   # apply the next pending migration
 make migrate-version  # show current version and dirty state
+make migrate-status   # list migration states and resolved directory
 make migrate-down     # roll back the latest migration
 ```
 
