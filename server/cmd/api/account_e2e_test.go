@@ -54,17 +54,22 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 	register := commands.NewRegisterAccountCommandHandler(repo, repo)
 
 	const requestCount = 8
+	sharedCCCD := fmt.Sprintf("%012d", time.Now().UnixNano()%100000000000)
 	sharedEmail := fmt.Sprintf("concurrent-%d@example.com", time.Now().UnixNano())
 	start := make(chan struct{})
 	results := make(chan error, requestCount)
 	accounts := make(chan string, requestCount)
+	now := time.Now().UTC()
 	for index := range requestCount {
 		go func() {
 			<-start
 			account, handleErr := register.Handle(ctx, commands.RegisterAccountCommand{
-				Username: fmt.Sprintf("concurrent-user-%d", index),
-				Email:    sharedEmail,
-				Password: "e2e-password-123",
+				Username:       fmt.Sprintf("concurrent-user-%d", index),
+				CCCDNumber:     sharedCCCD,
+				CCCDIssuedDate: now,
+				DOB:            now.AddDate(-25, 0, 0),
+				Email:          sharedEmail,
+				Password:       "e2e-password-123",
 			})
 			if account != nil {
 				accounts <- account.Id
@@ -114,9 +119,12 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 		t.Fatalf("stored verification state = sessions %d, verified %v; want 1 and true", len(stored.KYCSessions), stored.IsVerified())
 	}
 	second, err := register.Handle(ctx, commands.RegisterAccountCommand{
-		Username: "second-account",
-		Email:    fmt.Sprintf("second-%d@example.com", time.Now().UnixNano()),
-		Password: "e2e-password-123",
+		Username:       "second-account",
+		CCCDNumber:     fmt.Sprintf("%012d", (time.Now().UnixNano()%100000000000)+1),
+		CCCDIssuedDate: now,
+		DOB:            now.AddDate(-30, 0, 0),
+		Email:          fmt.Sprintf("second-%d@example.com", time.Now().UnixNano()),
+		Password:       "e2e-password-123",
 	})
 	if err != nil {
 		t.Fatalf("register second account: %v", err)
@@ -126,7 +134,7 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 	originalName := stored.Customer.Profile.FullName
 	stored.Email = second.Email
 	stored.Customer.Profile.FullName = "must-be-rolled-back"
-	now := time.Now().UTC()
+	now2 := time.Now().UTC()
 	stored.KYCSessions = append(stored.KYCSessions, &accountdomain.KYCSession{
 		Id:         bson.NewObjectID().Hex(),
 		CustomerId: stored.CustomerId,
@@ -139,9 +147,9 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 				MediaObject: accountdomain.MediaObject{StorageKey: "media/rollback-live.mp4"},
 			},
 		},
-		StartedAt:   now,
-		CompletedAt: &now,
-		CreatedAt:   now,
+		StartedAt:   now2,
+		CompletedAt: &now2,
+		CreatedAt:   now2,
 	})
 	if err := repo.Save(ctx, stored); !errors.Is(err, accountdomain.ErrUserAlreadyExists) {
 		t.Fatalf("save conflicting aggregate error = %v, want ErrUserAlreadyExists", err)

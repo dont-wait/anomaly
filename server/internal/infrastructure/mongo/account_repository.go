@@ -137,6 +137,22 @@ func (r *AccountRepository) FindByUsername(ctx context.Context, username string)
 	return fromRecord(rec)
 }
 
+func (r *AccountRepository) FindByCustomerID(ctx context.Context, customerID string) (*accountdomain.UserAccount, error) {
+	customerObjID, err := bson.ObjectIDFromHex(customerID)
+	if err != nil {
+		return nil, nil
+	}
+	var rec accountRecord
+	err = r.col.FindOne(ctx, bson.M{"customer_id": customerObjID}).Decode(&rec)
+	if err != nil {
+		if err == mongodrv.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return fromRecord(rec)
+}
+
 func (r *AccountRepository) FindAll(ctx context.Context) ([]*accountdomain.UserAccount, error) {
 	cursor, err := r.col.Find(ctx, map[string]string{})
 	if err != nil {
