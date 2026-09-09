@@ -42,9 +42,6 @@ func main() {
 	mediaRepo := rustfs.NewMediaRepository(rustfsClient, config.RustFSConfig.Bucket)
 
 	mongoRepo := mongo.NewAccountAggregateRepository(mongoClient, config.MongoConfig.MongoDBName)
-	if err := mongoRepo.EnsureIndexes(ctx); err != nil {
-		logger.Fatal().Err(err).Msg("ensure mongo indexes failed")
-	}
 
 	tokenSvc := auth.NewTokenService(config.AuthConfig.JWTSecret, config.AuthConfig.JWTExpiry)
 

@@ -1,0 +1,7 @@
+[
+  { "collMod": "accounts", "validator": {}, "validationLevel": "off" },
+  { "dropIndexes": "accounts", "index": "idx_customer_id" },
+  { "dropIndexes": "accounts", "index": "uniq_username" },
+  { "dropIndexes": "accounts", "index": "uniq_email" },
+  { "dropIndexes": "accounts", "index": "uniq_account_no" }
+]

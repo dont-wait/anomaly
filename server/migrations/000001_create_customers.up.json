@@ -1,0 +1,86 @@
+[
+  {
+    "createIndexes": "customers",
+    "indexes": [
+      {
+        "key": { "customer_code": 1 },
+        "name": "uniq_customer_code",
+        "unique": true
+      },
+      {
+        "key": { "profile.phone": 1 },
+        "name": "uniq_customer_phone",
+        "unique": true,
+        "partialFilterExpression": {
+          "profile.phone": { "$type": "string" }
+        }
+      },
+      {
+        "key": { "identity.number": 1 },
+        "name": "uniq_identity_number",
+        "unique": true,
+        "partialFilterExpression": {
+          "identity.number": { "$type": "string" }
+        }
+      }
+    ]
+  },
+  {
+    "collMod": "customers",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["_id", "customer_code", "profile", "identity", "verified_kyc_session_id", "kyc_status", "credit_profile", "status", "created_at", "updated_at"],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "customer_code": { "bsonType": "string" },
+          "profile": {
+            "bsonType": "object",
+            "required": ["full_name", "date_of_birth", "phone", "email", "address"],
+            "properties": {
+              "full_name": { "bsonType": "string" },
+              "date_of_birth": { "bsonType": ["date", "null"] },
+              "phone": { "bsonType": ["string", "null"] },
+              "email": { "bsonType": "string" },
+              "address": {
+                "bsonType": "object",
+                "required": ["line", "province_code"],
+                "properties": {
+                  "line": { "bsonType": "string" },
+                  "province_code": { "bsonType": "string" }
+                }
+              }
+            }
+          },
+          "identity": {
+            "bsonType": "object",
+            "required": ["type", "number", "issued_date", "issued_place", "permanent_address"],
+            "properties": {
+              "type": { "bsonType": ["string", "null"] },
+              "number": { "bsonType": ["string", "null"] },
+              "issued_date": { "bsonType": ["date", "null"] },
+              "issued_place": { "bsonType": ["string", "null"] },
+              "permanent_address": { "bsonType": ["string", "null"] }
+            }
+          },
+          "verified_kyc_session_id": { "bsonType": ["objectId", "null"] },
+          "kyc_status": { "enum": ["not_started", "verified"] },
+          "credit_profile": {
+            "bsonType": "object",
+            "required": ["score", "bad_debt", "updated_at"],
+            "properties": {
+              "score": { "bsonType": ["int", "long"] },
+              "bad_debt": { "bsonType": "bool" },
+              "updated_at": { "bsonType": "date" }
+            }
+          },
+          "status": { "enum": ["active"] },
+          "created_at": { "bsonType": "date" },
+          "updated_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  }
+]

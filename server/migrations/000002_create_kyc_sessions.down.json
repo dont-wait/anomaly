@@ -1,0 +1,5 @@
+[
+  { "collMod": "kyc_sessions", "validator": {}, "validationLevel": "off" },
+  { "dropIndexes": "kyc_sessions", "index": "idx_customer_created_at" },
+  { "dropIndexes": "kyc_sessions", "index": "uniq_customer_attempt" }
+]
