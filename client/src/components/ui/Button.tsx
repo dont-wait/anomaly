@@ -7,9 +7,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<ButtonVariant, string> = {
-    primary: "bg-blue-600 text-white hover:bg-blue-700",
-    secondary: "bg-gray-200 text-gray-800 hover:bg-gray-300",
-    ghost: "bg-transparent text-gray-600 hover:bg-gray-100",
+    primary:
+        "bg-primary-container text-on-primary hover:opacity-90 active:scale-[0.98] shadow-lg shadow-primary-container/25",
+    secondary:
+        "bg-surface-container-high/80 text-primary-container border border-white/60 hover:bg-surface-variant backdrop-blur-md",
+    ghost: "bg-transparent text-primary-container hover:bg-secondary/8",
 };
 
 export const Button = ({
@@ -19,7 +21,7 @@ export const Button = ({
 }: ButtonProps) => {
     return (
         <button
-            className={`rounded-lg px-4 py-2 font-medium transition-colors ${variants[variant]} ${className}`}
+            className={`rounded-full px-6 py-3.5 font-semibold text-title-md tracking-wide transition-all cursor-pointer ${variants[variant]} ${className}`}
             {...props}
         />
     );

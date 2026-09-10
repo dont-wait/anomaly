@@ -19,7 +19,10 @@
     "@tauri-apps/plugin-opener": "2",
     "@testing-library/react": "16.3.2",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "@fortawesome/fontawesome-svg-core": "7.3.1",
+    "@fortawesome/free-solid-svg-icons": "7.3.1",
+    "@fortawesome/react-fontawesome": "3.5.0",
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
