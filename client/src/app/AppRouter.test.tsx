@@ -80,5 +80,22 @@ it("keeps the CCCD login submission when returning from registration", async () 
       password: "password123",
     }),
   );
-  await screen.findByText("Đăng nhập thành công.");
+  await waitFor(() => expect(window.location.hash).toBe(routes.dashboard));
+  await screen.findByRole("heading", { name: "Giao dịch gần đây" });
+});
+
+it("stays on login when authentication fails", async () => {
+  vi.mocked(auth.login).mockRejectedValueOnce(new Error("Đăng nhập thất bại"));
+  window.history.replaceState(null, "", routes.login);
+  renderRouter();
+  fireEvent.change(screen.getByLabelText("Số Căn cước Công dân"), {
+    target: { value: "012345678901" },
+  });
+  fireEvent.change(screen.getByLabelText("Mật khẩu"), {
+    target: { value: "password123" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
+  await screen.findByRole("alert");
+  expect(window.location.hash).toBe(routes.login);
+  expect(screen.getByLabelText("Số Căn cước Công dân")).toBeTruthy();
 });

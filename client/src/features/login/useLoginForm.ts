@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "@/features/auth/useAuth";
 import { toLoginError } from "@/features/auth/api/auth";
+import { navigate, routes } from "@/app/routes";
 interface StatusMessage {
   tone: "success" | "error";
   text: string;
@@ -34,6 +35,7 @@ export function useLoginForm() {
       await login({ cccdNumber: cccd, password });
       setPassword("");
       setMessage({ tone: "success", text: "Đăng nhập thành công." });
+      navigate(routes.dashboard);
     } catch (submitError) {
       setMessage({
         tone: "error",

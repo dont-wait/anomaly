@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { LoginPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
+import DashboardPage from "@/pages/DashboardPage";
 import { routes } from "./routes";
 
 function subscribe(onChange: () => void) {
@@ -16,6 +17,8 @@ export function AppRouter() {
     () => routes.login,
   );
   switch (hash) {
+    case routes.dashboard:
+      return <DashboardPage />;
     case routes.register:
       return <RegisterPage />;
     default:
