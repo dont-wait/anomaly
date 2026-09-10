@@ -9,9 +9,9 @@ help:
 	  'Chạy trong client/: make <lệnh> (từ root: make -C client <lệnh>)' \
 	  '' \
 	  '  emulator-list    Liệt kê máy ảo hiện có' \
-	  '  emulator-create  Tạo pixel_35 (API 35) một lần nếu chưa có' \
+	  '  emulator-create  Tạo pixel_33 (API 33) một lần nếu chưa có' \
 	  '  emulator-webcams Liệt kê webcam laptop emulator nhận được' \
-	  '  emulator         Mở pixel_35 với camera trước dùng webcam0 ở terminal 1' \
+	  '  emulator         Mở pixel_33 với camera trước dùng webcam0 ở terminal 1' \
 	  '  android          Nối API 8080/KYC 8090 về laptop và chạy client Android ở terminal 2' \
 	  '  desktop          Chạy client Linux desktop' \
 	  '' \
@@ -20,16 +20,16 @@ help:
 	  'Dừng client cũ bằng Ctrl+C trước khi đổi Android/desktop (chung port 1420).'
 
 emulator-create:
-	nix develop .\#android --command avdmanager create avd --name pixel_35 --package 'system-images;android-35;google_apis;x86_64'
+	nix develop .\#android --command avdmanager create avd --name pixel_33 --package 'system-images;android-33;google_apis;x86_64'
 
 emulator-list:
 	nix develop .\#android --command emulator -list-avds
 
 emulator-webcams:
-	nix develop .\#android --command emulator -avd pixel_35 -webcam-list
+	nix develop .\#android --command emulator -avd pixel_33 -webcam-list
 
 emulator:
-	nix develop .\#android --command emulator -avd pixel_35 -camera-front "$(CAMERA_FRONT)"
+	nix develop .\#android --command emulator -avd pixel_33 -camera-front "$(CAMERA_FRONT)"
 
 android:
 	nix develop .\#android --command bash -c 'set -e; adb -e reverse tcp:8080 tcp:8080; adb -e reverse tcp:8090 tcp:8090'
