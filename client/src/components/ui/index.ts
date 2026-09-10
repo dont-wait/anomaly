@@ -1,1 +1,2 @@
-// Barrel exports - add shared UI components here as they are created
+export { Button } from "./Button";
+export { Input } from "./Input";
