@@ -6,7 +6,7 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: help start-app migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
+.PHONY: help start-app start-worker start-api migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
 
 start-app:
 	docker compose --profile app up --build
@@ -16,8 +16,8 @@ help:
 	@echo ""
 	@echo "  help              Show available commands"
 	@echo "  start-app         Build and start the Docker Compose app profile"
-	@echo "  start-woker	   Run worker developement"
-	@echo "  start-api		   Run api development"
+	@echo "  start-worker      Run worker development"
+	@echo "  start-api         Run API development"
 	@echo "  migrate           Alias for migrate-up"
 	@echo "  migrate-up        Apply all pending migrations"
 	@echo "  migrate-up-one    Apply the next pending migration"
@@ -53,3 +53,9 @@ test-api:
 
 test-account-e2e:
 	go test -tags=e2e -count=1 -run '^TestConcurrentRegistrationPersistsOneAccountWithoutEventStore$$' ./cmd/api
+
+start-worker:
+	go run ./cmd/worker/main.go
+
+start-api:
+	go run ./cmd/api/main.go

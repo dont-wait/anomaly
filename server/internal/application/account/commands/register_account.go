@@ -2,6 +2,9 @@ package commands
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/mail"
 	"regexp"
@@ -15,9 +18,12 @@ import (
 
 const minPasswordLength = 8
 
+var idempotencyKeyRegex = regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$`)
+
 var cccdRegex = regexp.MustCompile(`^\d{12}$`)
 
 type RegisterAccountCommand struct {
+	IdempotencyKey string
 	Username       string
 	CCCDNumber     string
 	CCCDIssuedDate time.Time
@@ -71,6 +77,19 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 		return nil, accountdomain.ErrInvalidDate
 	}
 
+	accountID := newID()
+	if cmd.IdempotencyKey != "" {
+		if !idempotencyKeyRegex.MatchString(cmd.IdempotencyKey) {
+			return nil, accountdomain.ErrInvalidIdempotencyKey
+		}
+		// The database primary key persists the attempt across processes/restarts.
+		sum := sha256.Sum256([]byte("registration:" + strings.ToLower(cmd.IdempotencyKey)))
+		accountID = hex.EncodeToString(sum[:16])
+		if existing, err := h.replay(ctx, accountID, cmd); existing != nil || err != nil {
+			return existing, err
+		}
+	}
+
 	if existing, err := h.readRepo.FindByEmail(ctx, cmd.Email); err != nil {
 		return nil, err
 	} else if existing != nil {
@@ -96,7 +115,6 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 
 	now := time.Now().UTC()
 	customerID := newID()
-	accountID := newID()
 	acc := &accountdomain.UserAccount{
 		Id:           accountID,
 		AccountNo:    fmt.Sprintf("ACC-%s", strings.ToUpper(accountID)),
@@ -136,8 +154,40 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 	}
 
 	if err := h.writeRepo.Create(ctx, acc); err != nil {
+		if cmd.IdempotencyKey != "" && errors.Is(err, accountdomain.ErrUserAlreadyExists) {
+			if existing, replayErr := h.replay(ctx, accountID, cmd); existing != nil || replayErr != nil {
+				return existing, replayErr
+			}
+		}
 		return nil, err
 	}
 
 	return acc, nil
+}
+
+// Replays only the matching registration, never another account's private state.
+func (h *RegisterAccountCommandHandler) replay(ctx context.Context, id string, cmd RegisterAccountCommand) (*accountdomain.UserAccount, error) {
+	acc, err := h.readRepo.FindByID(ctx, id)
+	if err != nil || acc == nil {
+		return acc, err
+	}
+	if acc.Customer == nil {
+		return nil, accountdomain.ErrRegistrationPending
+	}
+	customer := acc.Customer
+	if acc.Username != cmd.Username || acc.Email != cmd.Email || customer.Identity.Number != cmd.CCCDNumber ||
+		customer.Profile.DateOfBirth == nil || !customer.Profile.DateOfBirth.Equal(cmd.DOB) ||
+		customer.Identity.IssuedDate == nil || !customer.Identity.IssuedDate.Equal(cmd.CCCDIssuedDate) ||
+		bcrypt.CompareHashAndPassword([]byte(acc.PasswordHash), []byte(cmd.Password)) != nil {
+		return nil, accountdomain.ErrIdempotencyConflict
+	}
+	// Registration returns the original initial state, even after later onboarding.
+	result := *acc
+	profile := *customer
+	profile.KYCStatus = accountdomain.KYCStatusNotStarted
+	profile.VerifiedKYCSessionId = ""
+	result.Customer = &profile
+	result.KYCSessions = nil
+	result.Balance = accountdomain.Balance{}
+	return &result, nil
 }

@@ -152,9 +152,9 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 			LivenessStatus:  accountdomain.VerificationStatusNotRun,
 			FaceMatchStatus: accountdomain.VerificationStatusNotRun,
 		},
-		StartedAt:   now,
-		CompletedAt: &now,
-		CreatedAt:   now,
+		StartedAt:   now2,
+		CompletedAt: &now2,
+		CreatedAt:   now2,
 	})
 	if err := repo.Save(ctx, stored); !errors.Is(err, accountdomain.ErrUserAlreadyExists) {
 		t.Fatalf("save conflicting aggregate error = %v, want ErrUserAlreadyExists", err)
@@ -178,4 +178,42 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 	if len(all) != 2 {
 		t.Fatalf("MongoDB account count = %d, want 2", len(all))
 	}
+	// Persist an idempotency attempt, then retry through a fresh repository/handler
+	// as if the original HTTP response was lost and the API process restarted.
+	attempt := commands.RegisterAccountCommand{
+		IdempotencyKey: "a3be2b9a-d903-471f-8101-6d58d4814ac4",
+		Username:       "idempotent-account", Email: "idempotent@example.com",
+		CCCDNumber: "999999999999", Password: "e2e-password-123",
+		DOB:            time.Date(1995, 1, 1, 0, 0, 0, 0, time.UTC),
+		CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	first, err := register.Handle(ctx, attempt)
+	if err != nil {
+		t.Fatalf("register idempotent account: %v", err)
+	}
+	freshRepo := mongorepo.NewAccountAggregateRepository(mongoClient, mongoConfig.MongoDBName)
+	freshHandler := commands.NewRegisterAccountCommandHandler(freshRepo, freshRepo)
+	replay, err := freshHandler.Handle(ctx, attempt)
+	if err != nil || replay.Id != first.Id {
+		t.Fatalf("replay persisted registration = %v, %v", replay, err)
+	}
+	// Insert must not replace the account/customer when the same ID is raced.
+	duplicate := *first
+	duplicate.CustomerId = bson.NewObjectID().Hex()
+	if err := freshRepo.Create(ctx, &duplicate); !errors.Is(err, accountdomain.ErrUserAlreadyExists) {
+		t.Fatalf("duplicate create = %v", err)
+	}
+	persisted, err := freshRepo.FindByID(ctx, first.Id)
+	if err != nil || persisted.CustomerId != first.CustomerId {
+		t.Fatalf("duplicate create changed the persisted aggregate: %v", err)
+	}
+	attempt.Password = "changed-password-123"
+	if _, err := freshHandler.Handle(ctx, attempt); !errors.Is(err, accountdomain.ErrIdempotencyConflict) {
+		t.Fatalf("changed payload = %v", err)
+	}
+	all, err = freshRepo.FindAll(ctx)
+	if err != nil || len(all) != 3 {
+		t.Fatalf("accounts after replay = %d, %v", len(all), err)
+	}
+
 }
