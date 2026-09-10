@@ -3,7 +3,7 @@ import { type ButtonHTMLAttributes } from "react";
 type ButtonVariant = "primary" | "secondary" | "ghost";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-    variant?: ButtonVariant;
+  variant?: ButtonVariant;
 }
 
 const variants: Record<ButtonVariant, string> = {
@@ -15,9 +15,9 @@ const variants: Record<ButtonVariant, string> = {
 };
 
 export const Button = ({
-    variant = "primary",
-    className = "",
-    ...props
+  variant = "primary",
+  className = "",
+  ...props
 }: ButtonProps) => {
     return (
         <button
