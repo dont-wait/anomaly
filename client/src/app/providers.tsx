@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
-import { AuthProvider } from "@/auth/AuthProvider";
-import { ThemeProvider } from "@/context/ThemeContext";
+import { AuthProvider } from "@/features/auth/AuthProvider";
+import { ThemeProvider } from "@/shared/theme/ThemeContext";
 
 export const Providers = ({ children }: { children: ReactNode }) => {
   return (
