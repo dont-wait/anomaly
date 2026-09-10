@@ -1,4 +1,4 @@
-import { ApiError, requestJson } from "./http";
+import { ApiError, requestJson } from "@/shared/lib/http";
 
 export interface LoginInput {
     cccdNumber: string;

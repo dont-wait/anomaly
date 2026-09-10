@@ -1,5 +1,5 @@
-import { ChevronRightIcon, SavingsIcon } from "@/components/icons";
-import type { PromoBanner as PromoBannerType } from "@/types";
+import { ChevronRightIcon, SavingsIcon } from "@/shared/icons";
+import type { PromoBanner as PromoBannerType } from "@/features/dashboard/model/types";
 
 interface PromoBannerProps {
   promo: PromoBannerType;

@@ -13,9 +13,9 @@ import {
     toLoginError,
     type AuthUser,
     type LoginInput,
-} from "@/api/auth";
-import { ApiError } from "@/api/http";
-import { defaultAuthTokenStore, type AuthTokenStore } from "@/api/session";
+} from "./api/auth";
+import { ApiError } from "@/shared/lib/http";
+import { defaultAuthTokenStore, type AuthTokenStore } from "./lib/token-store";
 
 interface AuthProviderProps {
     children: ReactNode;

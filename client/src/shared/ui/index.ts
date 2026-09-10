@@ -2,5 +2,5 @@
 export * from "./Avatar";
 export * from "./IconButton";
 export * from "./Badge";
-export { Button } from "./Button";
-export { Input } from "./Input";
+export * from "./Button";
+export * from "./Input";

@@ -5,7 +5,7 @@ import {
   SavingsIcon,
   QrIcon,
   UserIcon,
-} from "@/components/icons";
+} from "@/shared/icons";
 
 type IconComponent = (props: { className?: string }) => React.JSX.Element;
 

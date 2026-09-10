@@ -5,8 +5,8 @@ import {
     SavingsIcon,
     ShoppingCartIcon,
     TransferIcon,
-} from "@/components/icons";
-import type { Transaction, TransactionCategory } from "@/types";
+} from "@/shared/icons";
+import type { Transaction, TransactionCategory } from "@/features/dashboard/model/types";
 
 type IconComponent = (props: { className?: string }) => React.JSX.Element;
 

@@ -1,5 +1,5 @@
-import { TransactionItem } from "@/components/dashboard/TransactionItem";
-import type { Transaction } from "@/types";
+import { TransactionItem } from "@/features/dashboard/components/TransactionItem";
+import type { Transaction } from "@/features/dashboard/model/types";
 
 interface TransactionListProps {
   transactions: Transaction[];

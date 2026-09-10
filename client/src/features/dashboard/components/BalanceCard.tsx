@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Badge } from "@/components/ui";
-import { CopyIcon, EyeIcon, EyeOffIcon } from "@/components/icons";
-import type { Account } from "@/types";
+import { Badge } from "@/shared/ui";
+import { CopyIcon, EyeIcon, EyeOffIcon } from "@/shared/icons";
+import type { Account } from "@/features/dashboard/model/types";
 
 const formatCurrency = (amount: number, currency: string) =>
   `${new Intl.NumberFormat("vi-VN").format(amount)}${currency}`;

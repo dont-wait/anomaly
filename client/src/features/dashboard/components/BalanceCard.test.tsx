@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { BalanceCard } from "./BalanceCard";
-import { mockAccount } from "@/mocks/dashboard";
+import { mockAccount } from "@/features/dashboard/mocks/dashboard";
 
 afterEach(() => {
   cleanup();

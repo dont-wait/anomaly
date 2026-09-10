@@ -1,4 +1,4 @@
-import { UserIcon } from "@/components/icons";
+import { UserIcon } from "@/shared/icons";
 
 interface AvatarProps {
   name?: string;

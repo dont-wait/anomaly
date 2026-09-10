@@ -4,8 +4,8 @@ import {
   SavingsIcon,
   TopUpIcon,
   TransferIcon,
-} from "@/components/icons";
-import type { QuickAction } from "@/types";
+} from "@/shared/icons";
+import type { QuickAction } from "@/features/dashboard/model/types";
 
 type IconComponent = (props: { className?: string }) => React.JSX.Element;
 

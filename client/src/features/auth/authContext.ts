@@ -1,5 +1,5 @@
 import { createContext } from "react";
-import type { AuthUser, LoginInput } from "@/api/auth";
+import type { AuthUser, LoginInput } from "@/features/auth/api/auth";
 
 export type AuthStatus =
     | "idle"

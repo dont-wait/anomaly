@@ -1,6 +1,6 @@
-import { Logo } from "@/components/layout/Logo";
-import { IconButton } from "@/components/ui";
-import { BellIcon, UserIcon } from "@/components/icons";
+import { Logo } from "@/shared/layout/Logo";
+import { IconButton } from "@/shared/ui";
+import { BellIcon, UserIcon } from "@/shared/icons";
 
 interface AppHeaderProps {
   /** Tên trang hiện tại — không truyền thì chỉ hiện logo */

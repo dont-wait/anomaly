@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "./http";
+import { ApiError } from "@/shared/lib/http";
 import {
     isValidCccd,
     login,
