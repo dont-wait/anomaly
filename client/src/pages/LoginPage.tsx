@@ -9,10 +9,10 @@ import {
     faShieldHalved,
     faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
-import { Input } from "@/components/ui";
+import { Input } from "@/shared/ui";
 import logoUrl from "@/assets/logo.png";
-import { toLoginError } from "@/api/auth";
-import { useAuth } from "@/auth/useAuth";
+import { toLoginError } from "@/features/auth/api/auth";
+import { useAuth } from "@/features/auth/useAuth";
 
 interface StatusMessage {
     tone: "success" | "error";
