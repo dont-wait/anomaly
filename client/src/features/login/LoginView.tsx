@@ -8,7 +8,7 @@ import {
   faShieldHalved,
   faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
-import { Input } from "@/components/ui";
+import { Input } from "@/shared/ui";
 import logoUrl from "@/assets/logo.png";
 import { useLoginForm } from "./useLoginForm";
 import { routes } from "@/app/routes";

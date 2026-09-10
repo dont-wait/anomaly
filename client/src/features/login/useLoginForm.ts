@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { useAuth } from "@/auth/useAuth";
-import { toLoginError } from "@/api/auth";
+import { useAuth } from "@/features/auth/useAuth";
+import { toLoginError } from "@/features/auth/api/auth";
 interface StatusMessage {
   tone: "success" | "error";
   text: string;

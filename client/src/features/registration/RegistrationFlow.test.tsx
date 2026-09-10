@@ -9,10 +9,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { FormEvent, ReactNode } from "react";
-import { AuthProvider } from "@/auth/AuthProvider";
+import { AuthProvider } from "@/features/auth/AuthProvider";
 import { RegistrationFlow } from "./RegistrationFlow";
 import { useRegistrationFlow } from "./useRegistrationFlow";
-import { AUTH_TOKEN_STORAGE_KEY } from "@/api/session";
+import { AUTH_TOKEN_STORAGE_KEY } from "@/features/auth/lib/token-store";
 
 const user = {
   id: "account-1",
