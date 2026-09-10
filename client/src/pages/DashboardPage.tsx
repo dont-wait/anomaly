@@ -1,19 +1,19 @@
-import { AppHeader } from "@/components/layout/AppHeader";
-import { BottomNav } from "@/components/layout/BottomNav";
-import { BalanceCard } from "@/components/dashboard/BalanceCard";
-import { QuickActions } from "@/components/dashboard/QuickActions";
-import { PromoBanner } from "@/components/dashboard/PromoBanner";
-import { TransactionList } from "@/components/dashboard/TransactionList";
+import { AppHeader } from "@/shared/layout/AppHeader";
+import { BottomNav } from "@/shared/layout/BottomNav";
+import { BalanceCard } from "@/features/dashboard/components/BalanceCard";
+import { QuickActions } from "@/features/dashboard/components/QuickActions";
+import { PromoBanner } from "@/features/dashboard/components/PromoBanner";
+import { TransactionList } from "@/features/dashboard/components/TransactionList";
 import {
     mockAccount,
     mockPromoBanner,
     mockQuickActions,
     mockTransactions,
-} from "@/mocks/dashboard";
-import { Avatar } from "@/components/ui";
+} from "@/features/dashboard/mocks/dashboard";
+import { Avatar } from "@/shared/ui";
 
 /**
- * Trang chủ (Dashboard) — dữ liệu đang lấy từ mock (src/mocks/dashboard.ts).
+ * Trang chủ (Dashboard) — dữ liệu đang lấy từ mock (src/features/dashboard/mocks/dashboard.ts).
  * Khi có API/backend thật, chỉ cần thay các biến `mock*` bằng dữ liệu
  * lấy từ hook/query thật, phần JSX bên dưới không cần đổi vì các
  * component con nhận props đúng theo type trong `src/types`.
