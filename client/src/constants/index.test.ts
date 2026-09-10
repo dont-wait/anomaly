@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  API_BASE_URL,
-  APP_NAME,
-  TRANSACTION_LIMITS,
-} from "./index";
+import { API_BASE_URL, APP_NAME, TRANSACTION_LIMITS } from "./index";
 
 describe("constants", () => {
   describe("API_BASE_URL", () => {

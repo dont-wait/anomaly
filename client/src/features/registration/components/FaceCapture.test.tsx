@@ -34,12 +34,10 @@ it("records all four timed instructions then supplies a real File and closes the
   const track = { stop, onended: null };
   vi.stubGlobal("navigator", {
     mediaDevices: {
-      getUserMedia: vi
-        .fn()
-        .mockResolvedValue({
-          getTracks: () => [track],
-          getVideoTracks: () => [track],
-        }),
+      getUserMedia: vi.fn().mockResolvedValue({
+        getTracks: () => [track],
+        getVideoTracks: () => [track],
+      }),
     },
   });
   vi.stubGlobal("MediaRecorder", Recorder);
