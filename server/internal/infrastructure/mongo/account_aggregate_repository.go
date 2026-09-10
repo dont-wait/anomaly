@@ -41,7 +41,7 @@ func (r *AccountAggregateRepository) Create(ctx context.Context, account *accoun
 	if err := validateAccountAggregate(account); err != nil {
 		return err
 	}
-	if err := r.accounts.Save(ctx, account); err != nil {
+	if err := r.accounts.Insert(ctx, account); err != nil {
 		if IsDuplicateKeyError(err) {
 			return accountdomain.ErrUserAlreadyExists
 		}

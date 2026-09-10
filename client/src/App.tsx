@@ -1,7 +1,5 @@
-import { LoginPage } from "@/pages/LoginPage";
+import { AppRouter } from "@/app/AppRouter";
 
-const App = () => {
-    return <LoginPage />;
-};
+const App = () => <AppRouter />;
 export default App;
   

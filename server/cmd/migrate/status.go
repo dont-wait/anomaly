@@ -54,11 +54,17 @@ func printStatus(w io.Writer, runner versionReader, entries []migrationEntry) er
 		return err
 	}
 	if hasVersion {
-		fmt.Fprintf(w, "version=%d dirty=%t\n", version, dirty)
+		if _, err := fmt.Fprintf(w, "version=%d dirty=%t\n", version, dirty); err != nil {
+			return err
+		}
 	} else {
-		fmt.Fprintln(w, "version=none dirty=false")
+		if _, err := fmt.Fprintln(w, "version=none dirty=false"); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintln(w, "STATUS\tVERSION\tMIGRATION")
+	if _, err := fmt.Fprintln(w, "STATUS\tVERSION\tMIGRATION"); err != nil {
+		return err
+	}
 	found := false
 	for _, entry := range entries {
 		state := "pending"
@@ -74,14 +80,22 @@ func printStatus(w io.Writer, runner versionReader, entries []migrationEntry) er
 			// A failed down migration can leave the target version dirty too.
 			state = "unknown"
 		}
-		fmt.Fprintf(w, "%s\t%d\t%s\n", state, entry.version, entry.name)
+		if _, err := fmt.Fprintf(w, "%s\t%d\t%s\n", state, entry.version, entry.name); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintln(w, "Applied status is inferred from the stored version; no per-file history or schema comparison is available.")
+	if _, err := fmt.Fprintln(w, "Applied status is inferred from the stored version; no per-file history or schema comparison is available."); err != nil {
+		return err
+	}
 	if dirty {
-		fmt.Fprintln(w, "Dirty state: a migration did not complete; other migration states cannot be confirmed.")
+		if _, err := fmt.Fprintln(w, "Dirty state: a migration did not complete; other migration states cannot be confirmed."); err != nil {
+			return err
+		}
 	}
 	if hasVersion && !found {
-		fmt.Fprintln(w, "Warning: stored version has no matching local migration; check the database and migrations directory.")
+		if _, err := fmt.Fprintln(w, "Warning: stored version has no matching local migration; check the database and migrations directory."); err != nil {
+			return err
+		}
 	}
 	return nil
 }

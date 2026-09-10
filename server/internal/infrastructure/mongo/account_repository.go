@@ -71,6 +71,16 @@ func IsDuplicateKeyError(err error) bool {
 	return false
 }
 
+// Insert reserves the account ID without overwriting a concurrent registration.
+func (r *AccountRepository) Insert(ctx context.Context, a *accountdomain.UserAccount) error {
+	record, err := toRecord(a)
+	if err != nil {
+		return err
+	}
+	_, err = r.col.InsertOne(ctx, record)
+	return err
+}
+
 func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccount) error {
 	record, err := toRecord(a)
 	if err != nil {

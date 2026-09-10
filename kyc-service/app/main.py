@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.face_verification import MultipartBodyLimitMiddleware
 from app.api.routes.face_verification import router as face_verification_router
@@ -20,6 +21,12 @@ def create_app() -> FastAPI:
         openapi_url=ENDPOINTS["openapi"],
     )
     app.add_middleware(MultipartBodyLimitMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
+    )
     app.include_router(health_router)
     app.include_router(face_verification_router, prefix=ENDPOINTS["kyc_prefix"])
     return app
