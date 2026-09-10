@@ -69,7 +69,7 @@
         androidBuildToolsVersion = "35.0.0";
         androidNdkVersion = "29.0.14206865";
         androidComposition = androidPkgs.androidenv.composeAndroidPackages {
-          # Keep only the API 35 emulator image; Tauri still compiles with SDK 36.
+          # Keep only the API 33 emulator image; Tauri still compiles with SDK 36.
           repo =
             let
               repository = builtins.fromJSON (
@@ -79,12 +79,12 @@
             repository
             // {
               images = {
-                "35" = repository.images."35";
+                "33" = repository.images."33";
               };
             };
-          # API 35 keeps existing pixel_35 AVDs runnable in this shell.
+          # Include the emulator platform alongside the SDK used for compilation.
           platformVersions = [
-            "35"
+            "33"
             "36"
           ];
           buildToolsVersions = [ androidBuildToolsVersion ];
