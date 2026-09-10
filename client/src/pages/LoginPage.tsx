@@ -10,6 +10,7 @@ import {
     faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
 import { Input } from "@/components/ui";
+import logoUrl from "@/assets/logo.png";
 import { toLoginError } from "@/api/auth";
 import { useAuth } from "@/auth/useAuth";
 
@@ -61,9 +62,9 @@ export const LoginPage = () => {
                     <section className="w-full flex items-center justify-between pb-4 sm:pb-5 md:pb-6">
                         <div className="flex items-center space-x-2.5">
                             <img
-                                alt="Anomaly-Bank Logo"
+                                alt="AnomalyBank"
                                 className="h-12 sm:h-14 md:h-16 w-auto max-w-[265px] object-contain"
-                                src="https://lh3.googleusercontent.com/aida/AEtjO1WRVb5mDOb_1-B9Bo7TQaXwpPavO8Vbxh33TsH99pw83VbSksG1L1XFkPH6fkK5Pk-NNjIHaQ4nn2RXHI06C6eV6ZMI_0QkbwzKnxGXjN-_dMT-QRVeuVLgk9G8ezMkxa0IfEeheeH2mzXhAkqfL6M5vjnaYBuHbsZx7NaOHzAc6LWzaIDGfOJf9L_6jrKnLYtmtLsCPyUFJrRTYsstg3UuueHxV2PLtnGO4YkQJTJP7PoeASSkOOUm9X-J"
+                                src={logoUrl}
                             />
                         </div>
                         <div className="flex items-center space-x-2.5">
