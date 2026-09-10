@@ -12,7 +12,7 @@ class Settings(BaseSettings):
             "tauri://localhost",
             "http://tauri.localhost",
             "https://tauri.localhost",
-         ],
+        ],
         alias="CORS_ALLOWED_ORIGINS",
     )
     app_name: str = Field(default="Anomaly Python Service", alias="APP_NAME")

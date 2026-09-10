@@ -20,9 +20,11 @@ func (r *registrationRepository) FindByID(_ context.Context, id string) (*accoun
 	}
 	return nil, nil
 }
+
 func (r *registrationRepository) FindByEmail(context.Context, string) (*accountdomain.UserAccount, error) {
 	return r.account, nil
 }
+
 func (r *registrationRepository) Create(_ context.Context, acc *accountdomain.UserAccount) error {
 	r.creates++
 	r.account = acc

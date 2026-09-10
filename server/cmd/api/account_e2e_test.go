@@ -215,5 +215,4 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 	if err != nil || len(all) != 3 {
 		t.Fatalf("accounts after replay = %d, %v", len(all), err)
 	}
-
 }
