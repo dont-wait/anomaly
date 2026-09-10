@@ -12,6 +12,7 @@ type AccountQueryRepository interface {
 	FindByID(ctx context.Context, id string) (*account.UserAccount, error)
 	FindByEmail(ctx context.Context, email string) (*account.UserAccount, error)
 	FindByUsername(ctx context.Context, username string) (*account.UserAccount, error)
+	FindByCCCDNumber(ctx context.Context, cccd string) (*account.UserAccount, error)
 	FindAll(ctx context.Context) ([]*account.UserAccount, error)
 }
 

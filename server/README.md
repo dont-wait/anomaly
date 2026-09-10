@@ -60,6 +60,9 @@ RUSTFS_SECRET_KEY=your_rustfs_secret_key
 docker compose --profile app up --build
 ```
 
+Compose chạy `golang-migrate` trước API và worker. Trạng thái migration được lưu
+trong MongoDB collection `schema_migrations`.
+
 Endpoint chính:
 
 - API: `http://localhost:8080`
@@ -79,6 +82,7 @@ Nếu chỉ chạy API bằng môi trường local sẵn có:
 
 ```bash
 go mod download
+make migrate
 go run ./cmd/api
 ```
 
@@ -87,6 +91,56 @@ go run ./cmd/api
 ```bash
 go run ./cmd/worker
 ```
+
+### MongoDB migrations
+
+Runner đọc `migrations/` từ thư mục làm việc hiện tại; chạy các lệnh dưới đây
+tại `server/`. Mỗi lần chạy đều in đường dẫn tuyệt đối và tên database. Thư mục
+rỗng hoặc thiếu migration hợp lệ sẽ báo lỗi. `migrate-status` suy ra `applied`
+và `pending` từ version trong database, không so sánh schema hoặc lưu lịch sử
+từng file. Khi dirty, migration tại version hiện tại được đánh dấu `dirty`,
+các migration khác là `unknown`. Compose có service `anomaly-migrate` chạy
+`up` tự động trước các service phụ thuộc.
+
+Ba cặp JSON migration tạo collection, JSON Schema validator và index cho
+`customers`, `kyc_sessions`, và `accounts`. Validator bám theo BSON record mà
+backend đang ghi, gồm nested object, nullable field, enum và kiểu tham chiếu
+`ObjectId`:
+
+```bash
+make migrate          # apply all pending migrations
+make migrate-up-one   # apply the next pending migration
+make migrate-version  # show current version and dirty state
+make migrate-status   # list migration states and resolved directory
+make migrate-down     # roll back the latest migration
+```
+
+Trên Windows có thể chạy native bằng PowerShell hoặc Command Prompt, không cần
+cài `make`:
+
+```powershell
+.\scripts\windows\migrate.ps1 up
+.\scripts\windows\migrate.ps1 up-by-one
+.\scripts\windows\migrate.ps1 version
+.\scripts\windows\migrate.ps1 down
+```
+
+```bat
+scripts\windows\migrate.cmd up
+scripts\windows\migrate.cmd up-by-one
+scripts\windows\migrate.cmd version
+scripts\windows\migrate.cmd down
+```
+
+Nếu đã cài GNU Make trên Windows, các target `make migrate`,
+`make migrate-up-one`, `make migrate-version`, và `make migrate-down` vẫn dùng
+y như Linux/macOS. Makefile tự nhận `OS=Windows_NT` và gọi PowerShell script.
+
+Hai script dùng cùng `MONGO_URI` và `MONGO_DB` mà backend đọc từ environment
+hoặc file `.env`; không có connection string hard-code riêng cho Windows.
+
+`migrate-down` tắt validator và xóa các index do migration mới nhất tạo; dữ liệu
+trong collection được giữ nguyên.
 
 ## API Summary
 

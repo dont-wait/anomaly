@@ -77,6 +77,10 @@ func (r *verifyAccountRepository) FindByUsername(context.Context, string) (*acco
 	return nil, nil
 }
 
+func (r *verifyAccountRepository) FindByCCCDNumber(context.Context, string) (*accountdomain.UserAccount, error) {
+	return nil, nil
+}
+
 func (r *verifyAccountRepository) Save(context.Context, *accountdomain.UserAccount) error {
 	r.saveCalls++
 	return nil

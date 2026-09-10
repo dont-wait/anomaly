@@ -48,6 +48,9 @@ func (r *AccountAggregateRepository) Create(ctx context.Context, account *accoun
 		return err
 	}
 	if err := r.customers.Save(ctx, account.Customer); err != nil {
+		if IsDuplicateKeyError(err) {
+			err = accountdomain.ErrUserAlreadyExists
+		}
 		return r.compensateCreate(ctx, account, err)
 	}
 	for _, session := range account.KYCSessions {
@@ -75,6 +78,9 @@ func (r *AccountAggregateRepository) Save(ctx context.Context, account *accountd
 		}
 	}
 	if err := r.customers.Save(ctx, account.Customer); err != nil {
+		if IsDuplicateKeyError(err) {
+			return r.compensateUpdate(ctx, previous, accountdomain.ErrUserAlreadyExists)
+		}
 		return r.compensateUpdate(ctx, previous, err)
 	}
 	if err := r.accounts.Save(ctx, account); err != nil {
@@ -178,6 +184,24 @@ func (r *AccountAggregateRepository) FindByEmail(ctx context.Context, email stri
 func (r *AccountAggregateRepository) FindByUsername(ctx context.Context, username string) (*accountdomain.UserAccount, error) {
 	account, err := r.accounts.FindByUsername(ctx, username)
 	return r.hydrate(ctx, account, err)
+}
+
+func (r *AccountAggregateRepository) FindByCCCDNumber(ctx context.Context, cccd string) (*accountdomain.UserAccount, error) {
+	customer, err := r.customers.FindByIdentityNumber(ctx, cccd)
+	if err != nil {
+		return nil, err
+	}
+	if customer == nil {
+		return nil, nil
+	}
+	account, err := r.accounts.FindByCustomerID(ctx, customer.Id)
+	if err != nil {
+		return nil, err
+	}
+	if account == nil {
+		return nil, nil
+	}
+	return r.hydrate(ctx, account, nil)
 }
 
 func (r *AccountAggregateRepository) FindAll(ctx context.Context) ([]*accountdomain.UserAccount, error) {

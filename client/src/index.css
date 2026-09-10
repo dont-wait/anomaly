@@ -1,14 +1,84 @@
+@import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300..900;1,300..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #1a73e8;
-  --color-success: #0f9d58;
-  --color-warning: #f4b400;
-  --color-error: #db4437;
+    --color-primary: #00236f;
+    --color-primary-container: #1e3a8a;
+    --color-on-primary: #ffffff;
+    --color-on-primary-container: #90a8ff;
 
-  --color-brand-primary: #1e3a8a;
-  --color-brand-secondary: #8b8cf6;
-  --color-brand-surface: #f8f9ff;
+    --color-secondary: #6b38d4;
+    --color-secondary-container: #8455ef;
+    --color-on-secondary: #ffffff;
+    --color-on-secondary-container: #fffbff;
 
-  --font-sans: "Inter", system-ui, sans-serif;
+    --color-tertiary: #002e41;
+    --color-tertiary-container: #00455f;
+    --color-on-tertiary: #ffffff;
+    --color-on-tertiary-container: #2eb7f2;
+
+    --color-surface: #faf8ff;
+    --color-surface-dim: #d2d9f4;
+    --color-surface-bright: #faf8ff;
+    --color-surface-container-lowest: #ffffff;
+    --color-surface-container-low: #f2f3ff;
+    --color-surface-container: #eaedff;
+    --color-surface-container-high: #e2e7ff;
+    --color-surface-container-highest: #dae2fd;
+    --color-surface-variant: #dae2fd;
+    --color-surface-tint: #4059aa;
+
+    --color-on-surface: #131b2e;
+    --color-on-surface-variant: #444651;
+    --color-inverse-surface: #283044;
+    --color-inverse-on-surface: #eef0ff;
+    --color-inverse-primary: #b6c4ff;
+
+    --color-outline: #757682;
+    --color-outline-variant: #c5c5d3;
+
+    --color-background: #faf8ff;
+    --color-on-background: #131b2e;
+
+    --color-error: #ba1a1a;
+    --color-error-container: #ffdad6;
+    --color-on-error: #ffffff;
+    --color-on-error-container: #93000a;
+
+    --font-sans: "Be Vietnam Pro", system-ui, sans-serif;
+    --font-display: "Be Vietnam Pro", system-ui, sans-serif;
+
+    --spacing-space-2xs: 0.25rem;
+    --spacing-space-xs: 0.5rem;
+    --spacing-space-sm: 0.75rem;
+    --spacing-space-md: 1rem;
+    --spacing-space-lg: 1.5rem;
+    --spacing-space-xl: 2rem;
+    --spacing-space-2xl: 3rem;
+    --spacing-space-3xl: 4rem;
+
+    --radius-sm: 0.5rem;
+    --radius-DEFAULT: 1rem;
+    --radius-lg: 2rem;
+    --radius-xl: 3rem;
+    --radius-full: 9999px;
+}
+
+@layer base {
+    html,
+    body {
+        width: 100%;
+        min-height: 100vh;
+        margin: 0;
+        padding: 0;
+        background-color: var(--color-background);
+        font-family: var(--font-sans);
+        color: var(--color-on-surface);
+    }
+
+    body {
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
+    }
 }

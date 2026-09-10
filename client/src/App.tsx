@@ -1,8 +1,7 @@
-import DashboardPage from "./pages/DashboardPage";
+import { LoginPage } from "@/pages/LoginPage";
 
 const App = () => {
-  const title = "Anomaly";
-  return <DashboardPage />;
+    return <LoginPage />;
 };
 export default App;
   
