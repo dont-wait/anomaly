@@ -48,6 +48,20 @@ Chờ màn hình chính Android xuất hiện. Giữ terminal này mở.
 Nếu đã ở `client/`, bỏ dòng `cd client`.
 Lệnh tự vào Nix shell Android. AVD `pixel_35` cần được tạo ở mục 1.
 
+`make emulator` dùng webcam laptop (`webcam0`) làm **camera trước**.
+Mở ứng dụng Camera trong máy ảo, chuyển sang camera trước để kiểm tra hình ảnh.
+Tắt máy ảo đang chạy trước khi đổi camera và mở lại bằng lệnh này.
+
+Liệt kê webcam và chọn camera khác nếu cần:
+
+```bash
+make emulator-webcams
+make emulator CAMERA_FRONT=webcam1
+```
+
+Thay `webcam1` bằng tên trong danh sách. Nếu không có webcam, dùng
+`make emulator CAMERA_FRONT=emulated` để chạy với camera mô phỏng.
+
 ## 3. Terminal 2: chạy app
 
 Từ root repository:
@@ -57,7 +71,12 @@ cd client
 make android
 ```
 
-Lệnh tự vào Nix shell và thiết lập Corepack. Nếu cần kiểm tra thiết bị,
+Lệnh tự vào Nix shell, chuyển tiếp cổng API `8080` và KYC `8090` từ
+emulator về laptop bằng `adb reverse`, rồi thiết lập Corepack và chạy app.
+Giữ một emulator đang chạy; `adb -e` chọn emulator, bỏ qua điện thoại USB.
+Nếu chuyển tiếp lỗi, lệnh dừng trước khi chạy app. Mỗi lần `make android`
+sẽ thiết lập lại chuyển tiếp, kể cả sau khi khởi động lại emulator.
+Nếu cần kiểm tra thiết bị,
 chạy `nix develop .#android --command adb devices -l`; trạng thái phải là `device`.
 Tauri tự chạy Vite, build, cài và mở app. Không cần chạy `android init`,
 `yarn dev` hoặc build APK riêng. Giữ terminal này chạy; `Ctrl+C` để dừng.
@@ -78,7 +97,8 @@ nix develop .#android --command bash -c 'set -e; mkdir -p /tmp/anomaly-corepack-
 
 Chỉ chạy một lần. `/tmp` chứa shim Corepack tạm; `set -e` dừng khi lỗi.
 `--no-watch` tắt theo dõi thay đổi Rust; bỏ cờ này khi phát triển bình thường.
-Đây là cách thay thế mục 3, không phải bước chạy thêm.
+Lệnh trực tiếp này yêu cầu chuyển tiếp cổng đã được thiết lập bởi `make android`.
+Thông thường dùng mục 3 để tự thiết lập kết nối backend.
 
 ## 4. Khi có lỗi
 
@@ -114,8 +134,17 @@ adb -s emulator-5554 exec-out screencap -p > /tmp/anomaly-android-screen.png
 Muốn thử HMR: tạm đổi chữ trong `src/App.tsx`, lưu, xem emulator cập nhật,
 rồi hoàn tác phần chỉnh thử.
 
-Backend chạy trên máy phát triển: dùng `http://10.0.2.2:<port>` trong
-`client/.env` cho `VITE_API_ENDPOINT`, rồi khởi động lại Tauri.
+Backend chạy trên laptop: cấu hình `client/.env` như sau rồi chạy `make android`:
+
+```dotenv
+VITE_API_ENDPOINT=http://localhost:8080
+VITE_KYC_ENDPOINT=http://localhost:8090
+```
+
+Hai dịch vụ cần chạy trên laptop ở các cổng tương ứng. `make android` tự
+chuyển tiếp cả hai cổng nên cấu hình localhost dùng được trên emulator.
+HTTP KYC qua loopback chỉ dành cho development với dữ liệu giả;
+bản production cần endpoint HTTPS. Khởi động lại app sau khi đổi `.env`.
 
 Build APK riêng khi cần:
 
