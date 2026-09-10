@@ -56,9 +56,9 @@ export const mockTransactions: Transaction[] = [
     id: "tx_004",
     amount: 485_000,
     type: "credit",
-    description: "Tiền lãi tiết kiệm T10",
-    subtitle: "28/10, 00:01 · AnomalyBank",
+    description: "Tiền lãi tiết kiệm T8",
+    subtitle: "28/08, 00:01 · AnomalyBank",
     category: "savings",
-    date: new Date("2026-10-28T00:01:00"),
+    date: new Date("2026-08-28T00:01:00"),
   },
 ];

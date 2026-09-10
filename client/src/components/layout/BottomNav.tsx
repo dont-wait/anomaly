@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { CardIcon, HomeIcon, SavingsIcon, QrIcon, UserIcon } from "@/components/icons";
+import {
+  CardIcon,
+  HomeIcon,
+  SavingsIcon,
+  QrIcon,
+  UserIcon,
+} from "@/components/icons";
 
 type IconComponent = (props: { className?: string }) => React.JSX.Element;
 
@@ -48,11 +54,13 @@ export const BottomNav = ({ active, onChange }: BottomNavProps) => {
         />
       ))}
 
-        <button
-            onClick={() => handleSelect("qr")}
-            className="-mt-6 flex h-14 w-14 flex-col items-center justify-center rounded-full bg-brand-primary text-white shadow-lg shadow-brand-primary/30 transition-transform hover:scale-105">
-            <QrIcon className="h-6 w-6" />
-        </button>
+      <button
+        aria-label="Chuyển tiền"
+        onClick={() => handleSelect("qr")}
+        className="-mt-6 flex h-14 w-14 flex-col items-center justify-center rounded-full bg-brand-primary text-white shadow-lg shadow-brand-primary/30 transition-transform hover:scale-105"
+      >
+        <QrIcon className="h-6 w-6" />
+      </button>
 
       {right.map((item) => (
         <NavButton

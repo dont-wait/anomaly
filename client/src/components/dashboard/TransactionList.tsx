@@ -14,12 +14,14 @@ export const TransactionList = ({
     <section>
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-gray-900">Giao dịch gần đây</h2>
-        <button
-          onClick={onViewAll}
-          className="text-xs font-semibold text-brand-primary"
-        >
-          Xem tất cả
-        </button>
+        {onViewAll && (
+          <button
+            onClick={onViewAll}
+            className="text-xs font-semibold text-brand-primary"
+          >
+            Xem tất cả
+          </button>
+        )}
       </div>
 
       <div className="mt-1 divide-y divide-gray-100">
