@@ -12,6 +12,8 @@ export function ProfileStep({
   RegistrationFlowState,
   "error" | "profile" | "setProfile" | "heading" | "submit"
 >) {
+  const now = new Date();
+  const maxDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   return (
     <>
       <StepHeading
@@ -54,7 +56,7 @@ export function ProfileStep({
           <input
             required
             type="date"
-            max={new Date().toISOString().slice(0, 10)}
+            max={maxDate}
             value={profile.dob}
             onChange={(e) => setProfile({ ...profile, dob: e.target.value })}
           />
@@ -65,7 +67,7 @@ export function ProfileStep({
             required
             type="date"
             min={profile.dob}
-            max={new Date().toISOString().slice(0, 10)}
+            max={maxDate}
             value={profile.issuedDate}
             onChange={(e) =>
               setProfile({ ...profile, issuedDate: e.target.value })

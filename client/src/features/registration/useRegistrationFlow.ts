@@ -40,6 +40,7 @@ export function useRegistrationFlow() {
   const verifiedVideo = useRef<File | null>(null);
   const media = useRef<Partial<VerificationMedia>>({});
   const uploadPrefix = useRef("");
+  const registrationKey = useRef("");
   const step =
     screen === "processing" || screen === "error"
       ? 3
@@ -116,6 +117,8 @@ export function useRegistrationFlow() {
       let account = createdAccount;
       if (!account) {
         setProgress("Đang tạo tài khoản…");
+        if (!registrationKey.current)
+          registrationKey.current = crypto.randomUUID();
         account = await registerAccount(
           {
             username: profile.name.trim(),
@@ -126,6 +129,7 @@ export function useRegistrationFlow() {
             password,
           },
           controller.signal,
+          registrationKey.current,
         );
         if (controller.signal.aborted) return;
         setCreatedAccount(account);

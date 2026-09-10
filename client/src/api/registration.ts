@@ -17,10 +17,11 @@ export interface VerificationMedia {
 export async function registerAccount(
   input: RegisterInput,
   signal?: AbortSignal,
+  idempotencyKey?: string,
 ) {
   const user = await requestJson<AuthUser>("/api/auth/register", {
     method: "POST",
-    body: input,
+    body: { ...input, idempotencyKey },
     signal,
   });
   if (!user?.id) throw new ApiError(0, "Phản hồi đăng ký không hợp lệ.");

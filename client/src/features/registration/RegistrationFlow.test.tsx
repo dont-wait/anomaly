@@ -134,6 +134,7 @@ it("registers, logs in using the existing token store, uploads media and commits
     cccdIssuedDate: "2020-01-01T00:00:00Z",
     email: "a@example.com",
     password: "Strong123!",
+    idempotencyKey: expect.any(String),
   });
   const commit = fetchMock.mock.calls.find(([url]) =>
     url.endsWith("/account-1/verify"),
@@ -220,4 +221,29 @@ it("aborts pending verification when leaving the page", async () => {
   });
   unmount();
   expect(signal?.aborted).toBe(true);
+});
+
+it("reuses the registration key after a lost response and finishes onboarding", async () => {
+  const { result } = await prepare();
+  const normal = fetchMock.getMockImplementation()!;
+  let lost = true;
+  fetchMock.mockImplementation(async (url, options) => {
+    if (url.endsWith("/register") && lost) {
+      lost = false;
+      throw new TypeError("connection lost after commit");
+    }
+    return normal(url, options);
+  });
+  act(() => result.current.submit(submitEvent));
+  await waitFor(() => expect(result.current.error).not.toBe(""));
+  expect(result.current.createdAccount).toBeNull();
+  act(() => result.current.submit(submitEvent));
+  await waitFor(() => expect(result.current.screen).toBe("success"));
+  const attempts = fetchMock.mock.calls.filter(([url]) =>
+    url.endsWith("/register"),
+  );
+  expect(attempts).toHaveLength(2);
+  const first = JSON.parse(attempts[0][1].body);
+  expect(first.idempotencyKey).toMatch(/^[a-f0-9-]{36}$/);
+  expect(JSON.parse(attempts[1][1].body)).toEqual(first);
 });

@@ -1,5 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { verifyFace, KYC_BASE_URL, LIVENESS_CHALLENGE } from "./kyc";
+import {
+  verifyFace,
+  validateKycEndpoint,
+  KYC_BASE_URL,
+  LIVENESS_CHALLENGE,
+} from "./kyc";
 import { uploadMedia } from "./registration";
 const response = (data: unknown) =>
   ({
@@ -42,4 +47,28 @@ it("uploads using the existing bearer token and preserves the multipart boundary
   const options = fetchMock.mock.calls[0][1];
   expect(options.headers).toEqual({ Authorization: "Bearer token" });
   expect(options.body.get("key")).toBe("kyc/key");
+});
+
+it.each([
+  "http://example.com",
+  "http://10.0.2.2:8090",
+  "http://192.168.1.2:8090",
+  "ftp://localhost",
+  "http://localhost.evil.com",
+  "https://user:password@example.com",
+])("rejects unsafe KYC endpoint %s", (url) => {
+  expect(() => validateKycEndpoint(url, true)).toThrow();
+});
+it.each([
+  "http://localhost:8090",
+  "http://127.0.0.1:8090",
+  "http://[::1]:8090",
+])("allows development loopback only: %s", (url) => {
+  expect(validateKycEndpoint(url, true)).toBe(url);
+  expect(() => validateKycEndpoint(url, false)).toThrow();
+});
+it("allows HTTPS in production", () => {
+  expect(validateKycEndpoint("https://kyc.example.com/", false)).toBe(
+    "https://kyc.example.com",
+  );
 });

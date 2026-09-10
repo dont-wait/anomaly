@@ -56,7 +56,11 @@ func TestListMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer src.Close()
+	t.Cleanup(func() {
+		if err := src.Close(); err != nil {
+			t.Errorf("close migration source: %v", err)
+		}
+	})
 	entries, err := listMigrations(src)
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +82,45 @@ func TestListMigrationsRejectsEmptyOrMissingUp(t *testing.T) {
 		if _, err := listMigrations(src); err == nil {
 			t.Fatal("expected source validation error")
 		}
-		src.Close()
+		if err := src.Close(); err != nil {
+			t.Fatalf("close migration source: %v", err)
+		}
+	}
+}
+
+// failAfterWriter fails after a chosen number of bytes have been written.
+type failAfterWriter struct {
+	remaining int
+	err       error
+}
+
+func (w *failAfterWriter) Write(p []byte) (int, error) {
+	if len(p) > w.remaining {
+		n := w.remaining
+		w.remaining = 0
+		return n, w.err
+	}
+	w.remaining -= len(p)
+	return len(p), nil
+}
+
+func TestPrintStatusReturnsWriteErrors(t *testing.T) {
+	entries := []migrationEntry{{1, "customers"}}
+	for _, state := range []stubVersion{
+		{err: migrate.ErrNilVersion},
+		{version: 1},
+		{version: 2, dirty: true},
+	} {
+		var output bytes.Buffer
+		if err := printStatus(&output, state, entries); err != nil {
+			t.Fatal(err)
+		}
+		for limit := 0; limit < output.Len(); limit++ {
+			wantErr := errors.New("output unavailable")
+			writer := &failAfterWriter{remaining: limit, err: wantErr}
+			if err := printStatus(writer, state, entries); !errors.Is(err, wantErr) {
+				t.Fatalf("state %+v, byte %d: got %v, want %v", state, limit, err, wantErr)
+			}
+		}
 	}
 }

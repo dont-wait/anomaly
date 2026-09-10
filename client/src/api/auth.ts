@@ -33,8 +33,10 @@ export function normalizeCccd(value: string): string {
   return value.replace(/\s+/g, "");
 }
 
+const CCCD_PATTERN = new RegExp(`^\\d{${CCCD_LENGTH}}$`);
+
 export function isValidCccd(value: string): boolean {
-  return new RegExp(`^\\d{${CCCD_LENGTH}}$`).test(normalizeCccd(value));
+  return CCCD_PATTERN.test(normalizeCccd(value));
 }
 
 export function assertValidLoginInput(input: LoginInput): LoginCredentials {

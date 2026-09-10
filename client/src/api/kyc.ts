@@ -1,6 +1,29 @@
 import { ApiError, requestJson } from "./http";
 export const KYC_BASE_URL =
   import.meta.env.VITE_KYC_ENDPOINT || "http://localhost:8090";
+export function validateKycEndpoint(
+  endpoint: string,
+  development = import.meta.env.DEV,
+): string {
+  const url = new URL(endpoint);
+  const loopback =
+    url.hostname === "localhost" ||
+    url.hostname === "[::1]" ||
+    /^127\.\d+\.\d+\.\d+$/.test(url.hostname);
+  if (
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    (url.protocol !== "https:" &&
+      !(development && loopback && url.protocol === "http:"))
+  ) {
+    throw new Error(
+      "KYC yêu cầu HTTPS; HTTP chỉ được dùng trên loopback khi phát triển.",
+    );
+  }
+  return url.toString().replace(/\/+$/, "");
+}
 export const LIVENESS_CHALLENGE = "TURN_HEAD_LEFT_RIGHT_BLINK";
 export type KycDecision =
   "VERIFIED" | "RETRY_ALLOWED" | "FAILED_FINAL" | "SYSTEM_ERROR";
@@ -15,6 +38,7 @@ export async function verifyFace(
   video: File,
   signal?: AbortSignal,
 ): Promise<KycResult> {
+  const baseUrl = validateKycEndpoint(KYC_BASE_URL);
   const body = new FormData();
   body.append("cccd_front_image", front);
   body.append("live_video", video);
@@ -22,7 +46,7 @@ export async function verifyFace(
   const result = await requestJson<KycResult>("/v1/kyc/verify-face", {
     method: "POST",
     body,
-    baseUrl: KYC_BASE_URL,
+    baseUrl,
     signal,
     timeoutMs: 120000,
   });
