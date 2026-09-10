@@ -7,11 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     cors_allowed_origins: list[str] = Field(
         default=[
-             "http://localhost:1420",
-             "http://127.0.0.1:1420",
-             "tauri://localhost",
-             "http://tauri.localhost",
-             "https://tauri.localhost",
+            "http://localhost:1420",
+            "http://127.0.0.1:1420",
+            "tauri://localhost",
+            "http://tauri.localhost",
+            "https://tauri.localhost",
          ],
         alias="CORS_ALLOWED_ORIGINS",
     )
