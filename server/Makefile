@@ -16,6 +16,8 @@ help:
 	@echo ""
 	@echo "  help              Show available commands"
 	@echo "  start-app         Build and start the Docker Compose app profile"
+	@echo "  start-woker	   Run worker developement"
+	@echo "  start-api		   Run api development"
 	@echo "  migrate           Alias for migrate-up"
 	@echo "  migrate-up        Apply all pending migrations"
 	@echo "  migrate-up-one    Apply the next pending migration"
