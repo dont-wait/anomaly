@@ -57,7 +57,7 @@ export const BottomNav = ({ active, onChange }: BottomNavProps) => {
       <button
         aria-label="Quét mã QR"
         onClick={() => handleSelect("qr")}
-        className="-mt-7 flex h-16 w-16 flex-col items-center justify-center rounded-full bg-gradient-to-br from-secondary to-purple-700 text-white shadow-lg shadow-purple-700/40 ring-4 ring-white transition-transform hover:scale-105 active:scale-95"
+        className="-mt-7 flex h-16 w-16 flex-col items-center justify-center rounded-full bg-gradient-to-br from-secondary to-[#8e5d8e] text-white shadow-lg shadow-secondary/40 ring-4 ring-white transition-transform hover:scale-105 active:scale-95"
       >
         <QrIcon className="h-6 w-6" />
       </button>

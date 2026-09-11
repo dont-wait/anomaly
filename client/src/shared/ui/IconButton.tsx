@@ -12,7 +12,7 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const tones: Record<IconButtonTone, string> = {
   default: "bg-gray-100 text-gray-600 hover:bg-gray-200",
-  brand: "bg-purple-700 text-white hover:bg-purple-800",
+  brand: "bg-secondary text-white hover:bg-secondary/90",
 };
 
 /** Nút icon tròn dùng cho header (thông báo, QR, hồ sơ...), có thể gắn badge số. */

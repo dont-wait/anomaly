@@ -26,12 +26,12 @@ const CATEGORY_ICON: Record<TransactionCategory, IconComponent> = {
 };
 
 const CATEGORY_COLOR: Record<TransactionCategory, string> = {
-  food: "bg-violet-100 text-violet-600",
-  shopping: "bg-purple-100 text-purple-600",
-  "transfer-in": "bg-secondary/10 text-secondary",
-  "transfer-out": "bg-fuchsia-100 text-fuchsia-600",
-  bill: "bg-purple-200 text-purple-800",
-  savings: "bg-violet-200 text-violet-800",
+  food: "bg-secondary/15 text-secondary",
+  shopping: "bg-secondary/15 text-secondary",
+  "transfer-in": "bg-secondary/15 text-secondary",
+  "transfer-out": "bg-secondary/15 text-secondary",
+  bill: "bg-secondary/15 text-secondary",
+  savings: "bg-secondary/15 text-secondary",
   other: "bg-gray-100 text-gray-600",
 };
 
@@ -69,9 +69,9 @@ export const TransactionItem = ({ transaction }: TransactionItemProps) => {
 
       <span className="flex flex-shrink-0 items-center gap-1 text-sm font-semibold text-pink-600">
         {isCredit ? (
-          <TrendUpIcon className="h-3.5 w-3.5" />
+          <TrendUpIcon className="h-3.5 w-3.5 text-green-500" />
         ) : (
-          <TrendDownIcon className="h-3.5 w-3.5" />
+          <TrendDownIcon className="h-3.5 w-3.5 text-red-500" />
         )}
         {formatSignedCurrency(transaction.amount, transaction.type)}
       </span>

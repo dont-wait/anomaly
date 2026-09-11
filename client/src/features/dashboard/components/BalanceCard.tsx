@@ -30,7 +30,7 @@ export const BalanceCard = ({ account }: BalanceCardProps) => {
   };
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#6b38d4] via-[#8b5cf6] to-[#b8a1f9] p-5 text-white shadow-xl shadow-purple-700/30">
+    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#8e5d8e] via-[#b582b5] to-[#d1afd1] p-5 text-white shadow-xl shadow-[#b582b5]/30">
       {/* Hoạ tiết trang trí mờ phía sau, tạo chiều sâu cho thẻ */}
       <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
       <div className="pointer-events-none absolute -bottom-14 -left-10 h-36 w-36 rounded-full bg-white/10 blur-2xl" />
