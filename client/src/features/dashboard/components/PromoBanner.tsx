@@ -14,7 +14,7 @@ export const PromoBanner = ({ promo, onClick }: PromoBannerProps) => {
     <Container
       onClick={onClick}
       type={onClick ? "button" : undefined}
-      className="relative flex w-full items-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary p-4 text-left text-white shadow-md shadow-brand-primary/20"
+      className="relative flex w-full items-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-purple-800 to-violet-500 p-4 text-left text-white shadow-md shadow-purple-700/20"
     >
       {/* Hoạ tiết mờ trang trí */}
       <div className="pointer-events-none absolute -top-6 -right-6 h-24 w-24 rounded-full bg-white/10 blur-xl" />

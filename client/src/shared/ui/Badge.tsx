@@ -8,7 +8,7 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 
 const variants: Record<BadgeVariant, string> = {
   light: "bg-white/20 text-white",
-  outline: "border border-current text-brand-primary",
+  outline: "border border-current text-secondary",
 };
 
 /** Nhãn nhỏ dạng viên thuốc, dùng cho tag "SIGNATURE", trạng thái, v.v. */

@@ -2,7 +2,6 @@ import { LoginPage } from "@/pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 
 const App = () => {
-    return <DashboardPage />;
+  return <DashboardPage />;
 };
 export default App;
-  

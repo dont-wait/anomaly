@@ -28,7 +28,7 @@ interface BottomNavProps {
 }
 
 /**
- * Thanh điều hướng dưới cùng, 5 mục: 4 tab thường + 1 nút "Chuyển tiền"
+ * Thanh điều hướng dưới cùng, 5 mục: 4 tab thường + 1 nút QR
  * nổi ở giữa. `active`/`onChange` để điều khiển từ bên ngoài (vd router);
  * nếu không truyền thì tự quản lý state nội bộ để demo UI.
  */
@@ -44,7 +44,7 @@ export const BottomNav = ({ active, onChange }: BottomNavProps) => {
   const [left, right] = [NAV_ITEMS.slice(0, 2), NAV_ITEMS.slice(2)];
 
   return (
-    <nav className="flex items-center justify-between border-t border-gray-100 bg-white px-4 pt-2 pb-3">
+    <nav className="relative flex items-center justify-between border-t border-gray-100 bg-white px-4 pt-2 pb-3">
       {left.map((item) => (
         <NavButton
           key={item.id}
@@ -55,9 +55,9 @@ export const BottomNav = ({ active, onChange }: BottomNavProps) => {
       ))}
 
       <button
-        aria-label="Chuyển tiền"
+        aria-label="Quét mã QR"
         onClick={() => handleSelect("qr")}
-        className="-mt-6 flex h-14 w-14 flex-col items-center justify-center rounded-full bg-brand-primary text-white shadow-lg shadow-brand-primary/30 transition-transform hover:scale-105"
+        className="-mt-7 flex h-16 w-16 flex-col items-center justify-center rounded-full bg-gradient-to-br from-secondary to-purple-700 text-white shadow-lg shadow-purple-700/40 ring-4 ring-white transition-transform hover:scale-105 active:scale-95"
       >
         <QrIcon className="h-6 w-6" />
       </button>
@@ -87,12 +87,18 @@ const NavButton = ({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center gap-1 px-2 text-[11px] font-medium ${
-        isActive ? "text-brand-primary" : "text-gray-400"
-      }`}
+      className="flex flex-col items-center gap-1 px-2 text-[11px] font-medium transition-colors"
     >
-      <Icon className="h-5 w-5" />
-      {item.label}
+      <span
+        className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+          isActive ? "bg-secondary/10 text-secondary" : "text-gray-400"
+        }`}
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className={isActive ? "text-secondary" : "text-gray-400"}>
+        {item.label}
+      </span>
     </button>
   );
 };
