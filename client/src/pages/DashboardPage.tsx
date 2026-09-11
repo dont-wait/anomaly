@@ -41,11 +41,11 @@ const DashboardPage = () => {
 
         <BalanceCard account={account} />
         <QuickActions actions={quickActions} />
-        <PromoBanner promo={promo} onClick={() => console.log("Xem ưu đãi")} />
+        <PromoBanner promo={promo} />
         <TransactionList transactions={transactions} />
       </main>
 
-      <BottomNav />
+      <BottomNav onQrScan={() => console.log("TODO: mở màn hình quét QR")} />
     </div>
   );
 };

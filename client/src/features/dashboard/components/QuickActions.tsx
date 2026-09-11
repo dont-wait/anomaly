@@ -18,11 +18,11 @@ const ICONS: Record<QuickAction["icon"], IconComponent> = {
 };
 
 const ICON_COLOR: Record<QuickAction["icon"], string> = {
-    transfer: "bg-secondary/15 text-secondary",
-    topup: "bg-secondary/15 text-secondary",
-    bill: "bg-secondary/15 text-secondary",
-    savings: "bg-secondary/15 text-secondary",
-    more: "bg-gray-100 text-gray-500",
+  transfer: "bg-secondary/15 text-secondary",
+  topup: "bg-secondary/15 text-secondary",
+  bill: "bg-secondary/15 text-secondary",
+  savings: "bg-secondary/15 text-secondary",
+  more: "bg-gray-100 text-gray-500",
 };
 
 interface QuickActionsProps {

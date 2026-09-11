@@ -67,7 +67,7 @@ export const TransactionItem = ({ transaction }: TransactionItemProps) => {
         )}
       </div>
 
-      <span className="flex flex-shrink-0 items-center gap-1 text-sm font-semibold text-pink-600">
+      <span className="flex flex-shrink-0 items-center gap-1 text-sm font-semibold text-pink-700">
         {isCredit ? (
           <TrendUpIcon className="h-3.5 w-3.5 text-green-500" />
         ) : (

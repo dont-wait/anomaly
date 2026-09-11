@@ -25,6 +25,8 @@ const NAV_ITEMS: NavItem[] = [
 interface BottomNavProps {
   active?: string;
   onChange?: (id: string) => void;
+  /** Gọi khi bấm nút QR nổi giữa — nối logic mở camera/scan thật vào đây sau */
+  onQrScan?: () => void;
 }
 
 /**
@@ -32,7 +34,7 @@ interface BottomNavProps {
  * nổi ở giữa. `active`/`onChange` để điều khiển từ bên ngoài (vd router);
  * nếu không truyền thì tự quản lý state nội bộ để demo UI.
  */
-export const BottomNav = ({ active, onChange }: BottomNavProps) => {
+export const BottomNav = ({ active, onChange, onQrScan }: BottomNavProps) => {
   const [internalActive, setInternalActive] = useState("home");
   const currentActive = active ?? internalActive;
 
@@ -56,7 +58,7 @@ export const BottomNav = ({ active, onChange }: BottomNavProps) => {
 
       <button
         aria-label="Quét mã QR"
-        onClick={() => handleSelect("qr")}
+        onClick={onQrScan}
         className="-mt-7 flex h-16 w-16 flex-col items-center justify-center rounded-full bg-gradient-to-br from-secondary to-[#8e5d8e] text-white shadow-lg shadow-secondary/40 ring-4 ring-white transition-transform hover:scale-105 active:scale-95"
       >
         <QrIcon className="h-6 w-6" />
