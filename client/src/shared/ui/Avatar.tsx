@@ -31,7 +31,7 @@ export const Avatar = ({
 
   return (
     <div
-      className={`flex items-center justify-center rounded-full bg-brand-secondary/20 text-brand-primary font-semibold ${className}`}
+      className={`flex items-center justify-center rounded-full bg-secondary/20 text-primary font-semibold ${className}`}
       style={{ width: size, height: size, fontSize: size * 0.4 }}
     >
       {initials ?? <UserIcon width={size * 0.5} height={size * 0.5} />}

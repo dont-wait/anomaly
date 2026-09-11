@@ -6,7 +6,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { AuthContext, type AuthContextValue } from "@/features/auth/authContext";
+import {
+  AuthContext,
+  type AuthContextValue,
+} from "@/features/auth/authContext";
 import { AppRouter } from "./AppRouter";
 import { routes } from "./routes";
 

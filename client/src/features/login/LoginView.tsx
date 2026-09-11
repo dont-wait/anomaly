@@ -193,7 +193,7 @@ export function LoginView() {
 
               {/* Login Button */}
               <button
-                className="w-full py-3.5 sm:py-4 font-semibold text-base sm:text-title-md tracking-wide text-center flex items-center justify-center transition-all active:scale-[0.99] disabled:opacity-80 disabled:active:scale-100 disabled:cursor-not-allowed"
+                className="mx-4 w-auto rounded-2xl py-3.5 sm:mx-5 sm:py-4 md:mx-6 font-semibold text-base sm:text-title-md tracking-wide text-center flex items-center justify-center transition-all active:scale-[0.99] disabled:opacity-80 disabled:active:scale-100 disabled:cursor-not-allowed"
                 style={{
                   background:
                     "linear-gradient(135deg, #b582b5 0%, #8b5cf6 100%)",

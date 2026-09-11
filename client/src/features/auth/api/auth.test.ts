@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/shared/lib/http";
-import {
-    isValidCccd,
-    login,
-    normalizeCccd,
-    toLoginError,
-} from "./auth";
+import { isValidCccd, login, normalizeCccd, toLoginError } from "./auth";
 
 function jsonResponse(status: number, body: unknown): Response {
   return {

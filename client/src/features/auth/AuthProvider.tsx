@@ -8,11 +8,11 @@ import {
 } from "react";
 import { AuthContext, type AuthStatus } from "./authContext";
 import {
-    getCurrentUser,
-    login as loginRequest,
-    toLoginError,
-    type AuthUser,
-    type LoginInput,
+  getCurrentUser,
+  login as loginRequest,
+  toLoginError,
+  type AuthUser,
+  type LoginInput,
 } from "./api/auth";
 import { ApiError } from "@/shared/lib/http";
 import { defaultAuthTokenStore, type AuthTokenStore } from "./lib/token-store";
