@@ -31,8 +31,8 @@ Chạy `make help` (hoặc `make`) để xem danh sách lệnh.
 
 ```bash
 make emulator-list    # Kiểm tra máy ảo đã có
-make emulator-create  # Tạo pixel_35 một lần nếu chưa có
-make emulator  # Terminal 1: mở pixel_35
+make emulator-create  # Tạo pixel_33 một lần nếu chưa có
+make emulator  # Terminal 1: mở pixel_33
 make android   # Terminal 2: chạy client Android
 make desktop   # Chạy client Linux desktop
 ```
@@ -44,7 +44,7 @@ trước khi chuyển sang bản còn lại. Emulator có thể tiếp tục ch�
 
 Xem **[hướng dẫn Android trên NixOS](docs/android.md)** để thiết lập emulator,
 chạy lần đầu, kết nối backend, build APK và xử lý lỗi.
-Hướng dẫn dùng một emulator API 35 (`pixel_35`), tách rõ terminal mở máy ảo
+Hướng dẫn dùng một emulator API 33 (`pixel_33`), tách rõ terminal mở máy ảo
 và terminal chạy app; có cả lệnh gộp để copy chạy trực tiếp.
 
 Nếu cần cấu hình API, sao chép `.env.example` thành `.env` và đặt

@@ -1,4 +1,9 @@
-import type { Account, PromoBanner, QuickAction, Transaction } from "@/features/dashboard/model/types";
+import type {
+  Account,
+  PromoBanner,
+  QuickAction,
+  Transaction,
+} from "@/features/dashboard/model/types";
 
 export const mockAccount: Account = {
   id: "acc_001",

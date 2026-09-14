@@ -17,7 +17,7 @@ export const TransactionList = ({
         {onViewAll && (
           <button
             onClick={onViewAll}
-            className="text-xs font-semibold text-brand-primary"
+            className="text-xs font-semibold text-primary"
           >
             Xem tất cả
           </button>

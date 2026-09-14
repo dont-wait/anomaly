@@ -369,3 +369,17 @@ FastAPI Swagger UI is available at:
 - Ruff lint and format checks configured through `pyproject.toml`
 
 The current pipeline implementation is intentionally a stub so the HTTP contract and service boundary stay stable while the actual CV/ML layers are integrated.
+
+## Client CORS
+
+`CORS_ALLOWED_ORIGINS` là JSON array các origin được phép gọi KYC bằng fetch.
+Mặc định cho phép `http://localhost:1420`, `http://127.0.0.1:1420`,
+`tauri://localhost`, `http://tauri.localhost`, `https://tauri.localhost`.
+Nếu dùng Vite trên IP LAN, thêm origin đầy đủ (gồm port) vào `.env`, ví dụ:
+
+```dotenv
+CORS_ALLOWED_ORIGINS=["http://localhost:1420","http://192.168.1.10:1420","http://tauri.localhost"]
+```
+
+Client gửi multipart tới `/v1/kyc/verify-face`. Token đăng nhập của server không gửi sang KYC.
+CORS không bật pipeline: cấu hình mặc định vẫn trả 503 khi chưa có backend thị giác.

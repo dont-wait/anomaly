@@ -47,13 +47,15 @@ func NewHandler(
 
 func accountErrorStatus(err error) int {
 	switch {
-	case errors.Is(err, accountdomain.ErrUserAlreadyExists):
+	case errors.Is(err, accountdomain.ErrUserAlreadyExists), errors.Is(err, accountdomain.ErrIdempotencyConflict):
 		return http.StatusConflict
+	case errors.Is(err, accountdomain.ErrRegistrationPending):
+		return http.StatusServiceUnavailable
 	case errors.Is(err, accountdomain.ErrInvalidCredentials):
 		return http.StatusUnauthorized
 	case errors.Is(err, accountdomain.ErrAccountNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, accountdomain.ErrInvalidEmail),
+	case errors.Is(err, accountdomain.ErrInvalidIdempotencyKey), errors.Is(err, accountdomain.ErrInvalidEmail),
 		errors.Is(err, accountdomain.ErrWeakPassword),
 		errors.Is(err, accountdomain.ErrInvalidUsername),
 		errors.Is(err, accountdomain.ErrInvalidCCCD),
@@ -68,6 +70,7 @@ func accountErrorStatus(err error) int {
 }
 
 type registerRequest struct {
+	IdempotencyKey string `json:"idempotencyKey"`
 	Username       string `json:"username"`
 	CCCDNumber     string `json:"cccdNumber"`
 	CCCDIssuedDate string `json:"cccdIssuedDate"`
@@ -100,6 +103,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	acc, err := h.register.Handle(r.Context(), commands.RegisterAccountCommand{
+		IdempotencyKey: req.IdempotencyKey,
 		Username:       req.Username,
 		CCCDNumber:     req.CCCDNumber,
 		CCCDIssuedDate: issuedDate,

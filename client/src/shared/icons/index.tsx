@@ -143,3 +143,17 @@ export const ArrowDownLeftIcon = (props: IconProps) => (
 );
 
 export const PiggyBankIcon = SavingsIcon;
+
+export const TrendUpIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M4 16 10 10l4 4 6-6" />
+    <path d="M15 8h5v5" />
+  </svg>
+);
+
+export const TrendDownIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M4 8l6 6 4-4 6 6" />
+    <path d="M15 16h5v-5" />
+  </svg>
+);
