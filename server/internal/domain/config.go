@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -63,6 +64,8 @@ type Config struct {
 	EventStoreConfig *EventStoreConfig
 	AuthConfig       *AuthConfig
 	RustFSConfig     *RustFSConfig
+	RedisConfig      *RedisConfig
+	SMTPConfig       *SMTPConfig
 }
 
 func (l *Loader) LoadAllConfig() *Config {
@@ -71,6 +74,8 @@ func (l *Loader) LoadAllConfig() *Config {
 		EventStoreConfig: l.LoadEventStoreConfig(),
 		AuthConfig:       l.LoadAuthConfig(),
 		RustFSConfig:     l.LoadRustFSConfig(),
+		RedisConfig:      l.LoadRedisConfig(),
+		SMTPConfig:       l.LoadSMTPConfig(),
 	}
 }
 
@@ -117,6 +122,64 @@ func (l *Loader) LoadRustFSConfig() *RustFSConfig {
 		Bucket:    l.LoadEnvOr("RUSTFS_BUCKET", "media"),
 		Region:    l.LoadEnvOr("RUSTFS_REGION", "us-east-1"),
 	}
+}
+
+type RedisConfig struct {
+	Addr string
+}
+
+func (l *Loader) LoadRedisConfig() *RedisConfig {
+	l.logger().Info().Msg("Load redis config")
+	return &RedisConfig{
+		Addr: l.LoadEnvOr("REDIS_ADDR", "localhost:6379"),
+	}
+}
+
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+}
+
+const defaultSMTPPort = 587
+
+func (l *Loader) LoadSMTPConfig() *SMTPConfig {
+	l.logger().Info().Msg("Load smtp config")
+	return &SMTPConfig{
+		Host:     l.LoadEnvOr("SMTP_HOST", ""),
+		Port:     l.LoadEnvPort("SMTP_PORT", defaultSMTPPort),
+		Username: l.LoadEnvOr("SMTP_USERNAME", ""),
+		Password: l.LoadEnvOr("SMTP_PASSWORD", ""),
+		From:     l.LoadEnvOr("SMTP_FROM", ""),
+	}
+}
+
+// SenderAddress trả về địa chỉ gửi mail: ưu tiên From, fallback Username.
+func (c *SMTPConfig) SenderAddress() string {
+	if c.From != "" {
+		return c.From
+	}
+	return c.Username
+}
+
+// Configured cho biết SMTP đã đủ cấu hình tối thiểu để gửi mail chưa.
+func (c *SMTPConfig) Configured() bool {
+	return c.Host != ""
+}
+
+func (l *Loader) LoadEnvPort(key string, fallback int) int {
+	val, exists := os.LookupEnv(key)
+	if !exists || val == "" {
+		return fallback
+	}
+	port, err := strconv.Atoi(val)
+	if err != nil || port <= 0 {
+		l.logger().Warn().Err(err).Str("key", key).Msg("invalid port, using fallback")
+		return fallback
+	}
+	return port
 }
 
 func (l *Loader) LoadEnv(key string) string {
