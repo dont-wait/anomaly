@@ -2,7 +2,6 @@ package otp
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/rs/zerolog"
 
@@ -39,9 +38,11 @@ func (h *RequestOTPCommandHandler) Handle(ctx context.Context, cmd RequestOTPCom
 		return err
 	}
 
-	subject := "Ma OTP cua ban / Your OTP code"
-	body := fmt.Sprintf("Ma OTP cua ban la: %s. Ma het han sau 60 giay.\nYour OTP code is: %s. It expires in 60 seconds.\n", code, code)
-	if err := h.mail.Send(ctx, maildomain.MailMessage{To: email, Subject: subject, Text: body}); err != nil {
+	subject, text, html, err := renderOTPEmail(code)
+	if err != nil {
+		return err
+	}
+	if err := h.mail.Send(ctx, maildomain.MailMessage{To: email, Subject: subject, Text: text, HTML: html}); err != nil {
 		h.log.Error().Err(err).Str("email", email).Msg("send otp email failed, key removed")
 		if delErr := h.store.Del(ctx, email); delErr != nil {
 			h.log.Error().Err(delErr).Str("email", email).Msg("remove orphan otp key failed")
