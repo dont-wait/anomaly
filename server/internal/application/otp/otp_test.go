@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
 	otpdomain "github.com/dont-wait/anomaly/internal/domain/otp"
 )
 
@@ -62,16 +63,18 @@ type fakeSender struct {
 	sent    int
 	sendErr error
 	lastTo  string
+	lastMsg maildomain.MailMessage
 }
 
-func (s *fakeSender) Send(_ context.Context, to, _, _ string) error {
+func (s *fakeSender) Send(_ context.Context, msg maildomain.MailMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.sendErr != nil {
 		return s.sendErr
 	}
 	s.sent++
-	s.lastTo = to
+	s.lastTo = msg.To
+	s.lastMsg = msg
 	return nil
 }
 

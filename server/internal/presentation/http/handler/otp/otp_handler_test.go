@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 
 	appotp "github.com/dont-wait/anomaly/internal/application/otp"
+	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
 	otpdomain "github.com/dont-wait/anomaly/internal/domain/otp"
 )
 
@@ -64,7 +65,7 @@ type fakeSender struct {
 	err error
 }
 
-func (s *fakeSender) Send(_ context.Context, _, _, _ string) error {
+func (s *fakeSender) Send(_ context.Context, _ maildomain.MailMessage) error {
 	return s.err
 }
 

@@ -3,6 +3,8 @@ package otp
 import (
 	"context"
 	"time"
+
+	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
 )
 
 // OTPStore lưu mã OTP theo email. Implementation cụ thể nằm ở
@@ -16,5 +18,5 @@ type OTPStore interface {
 // MailSender gửi mail. Implementation cụ thể nằm ở infrastructure
 // (stdlib net/smtp); dùng interface để test fake dễ.
 type MailSender interface {
-	Send(ctx context.Context, to, subject, body string) error
+	Send(ctx context.Context, msg maildomain.MailMessage) error
 }
