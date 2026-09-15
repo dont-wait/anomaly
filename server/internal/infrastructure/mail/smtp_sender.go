@@ -7,11 +7,18 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/smtp"
 	"strings"
+	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain"
 	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
+)
+
+const (
+	defaultDialTimeout    = 10 * time.Second
+	defaultSMTPTimeout    = 30 * time.Second
 )
 
 // ErrSMTPNotConfigured SMTP chưa đủ cấu hình (thiếu Host).
@@ -49,12 +56,55 @@ func (s *DisabledSender) Send(_ context.Context, _ maildomain.MailMessage) error
 	return s.err
 }
 
-func (s *SMTPSender) Send(_ context.Context, msg maildomain.MailMessage) error {
+func (s *SMTPSender) Send(ctx context.Context, msg maildomain.MailMessage) error {
 	from := s.cfg.SenderAddress()
 	addr := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
-	auth := smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
 
-	return smtp.SendMail(addr, auth, from, []string{msg.To}, buildMessage(from, msg))
+	dialer := &net.Dialer{Timeout: defaultDialTimeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return fmt.Errorf("smtp connect: %w", err)
+	}
+	defer conn.Close()
+
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
+	} else {
+		conn.SetDeadline(time.Now().Add(defaultSMTPTimeout))
+	}
+
+	client, err := smtp.NewClient(conn, s.cfg.Host)
+	if err != nil {
+		return fmt.Errorf("smtp client: %w", err)
+	}
+	defer client.Close()
+
+	if s.cfg.Username != "" {
+		auth := smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("smtp auth: %w", err)
+		}
+	}
+
+	if err := client.Mail(from); err != nil {
+		return fmt.Errorf("smtp mail from: %w", err)
+	}
+	if err := client.Rcpt(msg.To); err != nil {
+		return fmt.Errorf("smtp rcpt to: %w", err)
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("smtp data: %w", err)
+	}
+	if _, err := w.Write(buildMessage(from, msg)); err != nil {
+		return fmt.Errorf("smtp write: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("smtp close: %w", err)
+	}
+
+	return client.Quit()
 }
 
 // buildMessage dựng raw MIME multipart/alternative (text + HTML).
@@ -84,7 +134,7 @@ func buildMessage(from string, msg maildomain.MailMessage) []byte {
 	b.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
 	b.WriteString("Content-Transfer-Encoding: 8bit\r\n")
 	b.WriteString("\r\n")
-	b.WriteString(msg.Text)
+	b.WriteString(normalizeCRLF(msg.Text))
 	b.WriteString("\r\n")
 
 	b.WriteString("--")
@@ -93,7 +143,7 @@ func buildMessage(from string, msg maildomain.MailMessage) []byte {
 	b.WriteString("Content-Type: text/html; charset=\"UTF-8\"\r\n")
 	b.WriteString("Content-Transfer-Encoding: 8bit\r\n")
 	b.WriteString("\r\n")
-	b.WriteString(msg.HTML)
+	b.WriteString(normalizeCRLF(msg.HTML))
 	b.WriteString("\r\n")
 
 	b.WriteString("--")
@@ -121,4 +171,11 @@ func encodeSubject(s string) string {
 		}
 	}
 	return s
+}
+
+// normalizeCRLF chuẩn hóa line endings trong MIME body: bare LF → CRLF,
+// existing CRLF giữ nguyên.
+func normalizeCRLF(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.ReplaceAll(s, "\n", "\r\n")
 }

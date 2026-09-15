@@ -2,12 +2,15 @@ package otp
 
 import (
 	"context"
+	"time"
 
 	"github.com/rs/zerolog"
 
 	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
 	otpdomain "github.com/dont-wait/anomaly/internal/domain/otp"
 )
+
+const requestCooldown = 30 * time.Second
 
 type RequestOTPCommand struct {
 	Email string
@@ -29,6 +32,16 @@ func (h *RequestOTPCommandHandler) Handle(ctx context.Context, cmd RequestOTPCom
 		return err
 	}
 
+	cooldownKey := "otp:cooldown:" + email
+	allowed, err := h.store.SetCooldown(ctx, cooldownKey, requestCooldown)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		h.log.Warn().Str("email", email).Msg("otp request throttled")
+		return nil
+	}
+
 	code, err := otpdomain.GenerateCode()
 	if err != nil {
 		return err
@@ -44,7 +57,7 @@ func (h *RequestOTPCommandHandler) Handle(ctx context.Context, cmd RequestOTPCom
 	}
 	if err := h.mail.Send(ctx, maildomain.MailMessage{To: email, Subject: subject, Text: text, HTML: html}); err != nil {
 		h.log.Error().Err(err).Str("email", email).Msg("send otp email failed, key removed")
-		if delErr := h.store.Del(ctx, email); delErr != nil {
+		if delErr := h.store.DelIfMatch(ctx, email, code); delErr != nil {
 			h.log.Error().Err(delErr).Str("email", email).Msg("remove orphan otp key failed")
 		}
 		return err

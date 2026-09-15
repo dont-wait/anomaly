@@ -58,6 +58,39 @@ func (s *fakeStore) Del(_ context.Context, email string) error {
 	return nil
 }
 
+func (s *fakeStore) Consume(_ context.Context, email, code string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stored, ok := s.data[email]
+	if !ok {
+		return false, otpdomain.ErrOTPExpired
+	}
+	if stored != code {
+		return false, nil
+	}
+	delete(s.data, email)
+	return true, nil
+}
+
+func (s *fakeStore) DelIfMatch(_ context.Context, email, code string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stored, ok := s.data[email]
+	if !ok || stored != code {
+		return nil
+	}
+	delete(s.data, email)
+	return nil
+}
+
+func (s *fakeStore) SetCooldown(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (s *fakeStore) IncrAttempts(_ context.Context, _ string, _ time.Duration) (int64, error) {
+	return 1, nil
+}
+
 type fakeSender struct {
 	mu      sync.Mutex
 	sent    int
@@ -204,5 +237,37 @@ func TestVerifyOTPBadInput(t *testing.T) {
 	}
 	if err := h.Handle(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "123"}); err != otpdomain.ErrOTPInvalid {
 		t.Fatalf("Handle() error = %v, want ErrOTPInvalid", err)
+	}
+}
+
+func TestVerifyOTPConcurrentOnlyOneWins(t *testing.T) {
+	store := newFakeStore()
+	ctx := context.Background()
+	if err := store.Set(ctx, "a@b.co", "123456", time.Minute); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	h := NewVerifyOTPHandler(store)
+
+	const goroutines = 10
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	results := make([]error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			results[idx] = h.Handle(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "123456"})
+		}(i)
+	}
+	wg.Wait()
+
+	successes := 0
+	for _, err := range results {
+		if err == nil {
+			successes++
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("concurrent successes = %d, want exactly 1", successes)
 	}
 }

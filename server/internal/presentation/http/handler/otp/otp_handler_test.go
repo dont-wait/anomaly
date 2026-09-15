@@ -61,6 +61,45 @@ func (s *fakeStore) Del(_ context.Context, email string) error {
 	return nil
 }
 
+func (s *fakeStore) Consume(_ context.Context, email, code string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return false, s.err
+	}
+	stored, ok := s.data[email]
+	if !ok {
+		return false, otpdomain.ErrOTPExpired
+	}
+	if stored != code {
+		return false, nil
+	}
+	delete(s.data, email)
+	return true, nil
+}
+
+func (s *fakeStore) DelIfMatch(_ context.Context, email, code string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
+	}
+	stored, ok := s.data[email]
+	if !ok || stored != code {
+		return nil
+	}
+	delete(s.data, email)
+	return nil
+}
+
+func (s *fakeStore) SetCooldown(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (s *fakeStore) IncrAttempts(_ context.Context, _ string, _ time.Duration) (int64, error) {
+	return 1, nil
+}
+
 type fakeSender struct {
 	err error
 }

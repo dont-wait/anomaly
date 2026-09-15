@@ -2,9 +2,14 @@ package otp
 
 import (
 	"context"
-	"crypto/subtle"
+	"time"
 
 	otpdomain "github.com/dont-wait/anomaly/internal/domain/otp"
+)
+
+const (
+	maxVerifyAttempts = 5
+	attemptWindow     = 5 * time.Minute
 )
 
 type VerifyOTPCommand struct {
@@ -20,9 +25,9 @@ func NewVerifyOTPHandler(store OTPStore) *VerifyOTPHandler {
 	return &VerifyOTPHandler{store: store}
 }
 
-// Handle kiểm tra mã OTP. Đúng -> consume một lần (DEL key) và trả nil;
-// sai -> giữ key cho TTL tự hết và trả ErrOTPInvalid;
-// key miss -> ErrOTPExpired. Không lookup account, không flip IsVerify.
+// Handle kiểm tra mã OTP.原子 compare-and-delete: đúng → consume,
+// sai → giữ key, key miss → ErrOTPExpired. Không lookup account,
+// không flip IsVerify. Sau 5 lần sai liên tiếp thì invalidate OTP.
 func (h *VerifyOTPHandler) Handle(ctx context.Context, cmd VerifyOTPCommand) error {
 	email, err := otpdomain.ValidateEmail(cmd.Email)
 	if err != nil {
@@ -32,17 +37,22 @@ func (h *VerifyOTPHandler) Handle(ctx context.Context, cmd VerifyOTPCommand) err
 		return err
 	}
 
-	stored, err := h.store.Get(ctx, email)
+	attemptsKey := "otp:attempts:" + email
+	attempts, err := h.store.IncrAttempts(ctx, attemptsKey, attemptWindow)
 	if err != nil {
 		return err
 	}
-
-	if subtle.ConstantTimeCompare([]byte(stored), []byte(cmd.Code)) != 1 {
-		return otpdomain.ErrOTPInvalid
+	if attempts > maxVerifyAttempts {
+		h.store.Del(ctx, email)
+		return otpdomain.ErrOTPExpired
 	}
 
-	if err := h.store.Del(ctx, email); err != nil {
+	consumed, err := h.store.Consume(ctx, email, cmd.Code)
+	if err != nil {
 		return err
+	}
+	if !consumed {
+		return otpdomain.ErrOTPInvalid
 	}
 	return nil
 }
