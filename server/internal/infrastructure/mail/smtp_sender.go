@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	defaultDialTimeout    = 10 * time.Second
-	defaultSMTPTimeout    = 30 * time.Second
+	defaultDialTimeout = 10 * time.Second
+	defaultSMTPTimeout = 30 * time.Second
 )
 
 // ErrSMTPNotConfigured SMTP chưa đủ cấu hình (thiếu Host).
