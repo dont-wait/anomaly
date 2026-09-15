@@ -161,7 +161,7 @@ func TestRequestOTPOverwritesPrevious(t *testing.T) {
 	_ = first
 }
 
-func TestRequestOTPSendFailureRemovesKey(t *testing.T) {
+func TestRequestOTPSendFailureDoesNotStoreKey(t *testing.T) {
 	store := newFakeStore()
 	sender := &fakeSender{sendErr: errors.New("smtp down")}
 	h := NewRequestOTPCommandHandler(store, sender, testLogger())
@@ -170,8 +170,11 @@ func TestRequestOTPSendFailureRemovesKey(t *testing.T) {
 	if err := h.Handle(ctx, RequestOTPCommand{Email: "a@b.co"}); err == nil {
 		t.Fatal("Handle() error = nil, want send error")
 	}
+	if store.setN != 0 {
+		t.Fatalf("setN = %d, want 0 (no key stored on send failure)", store.setN)
+	}
 	if _, err := store.Get(ctx, "a@b.co"); err != otpdomain.ErrOTPExpired {
-		t.Fatalf("Get() error = %v, want ErrOTPExpired (key removed)", err)
+		t.Fatalf("Get() error = %v, want ErrOTPExpired (no key)", err)
 	}
 }
 

@@ -47,19 +47,17 @@ func (h *RequestOTPCommandHandler) Handle(ctx context.Context, cmd RequestOTPCom
 		return err
 	}
 
-	if err := h.store.Set(ctx, email, code, otpdomain.TTL); err != nil {
-		return err
-	}
-
 	subject, text, html, err := renderOTPEmail(code)
 	if err != nil {
 		return err
 	}
 	if err := h.mail.Send(ctx, maildomain.MailMessage{To: email, Subject: subject, Text: text, HTML: html}); err != nil {
-		h.log.Error().Err(err).Str("email", email).Msg("send otp email failed, key removed")
-		if delErr := h.store.DelIfMatch(ctx, email, code); delErr != nil {
-			h.log.Error().Err(delErr).Str("email", email).Msg("remove orphan otp key failed")
-		}
+		h.log.Error().Err(err).Str("email", email).Msg("send otp email failed")
+		return err
+	}
+
+	if err := h.store.Set(ctx, email, code, otpdomain.TTL); err != nil {
+		h.log.Error().Err(err).Str("email", email).Msg("store otp after send failed")
 		return err
 	}
 
