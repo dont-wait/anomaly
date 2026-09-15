@@ -125,13 +125,15 @@ func (l *Loader) LoadRustFSConfig() *RustFSConfig {
 }
 
 type RedisConfig struct {
-	Addr string
+	Addr     string
+	Password string
 }
 
 func (l *Loader) LoadRedisConfig() *RedisConfig {
 	l.logger().Info().Msg("Load redis config")
 	return &RedisConfig{
-		Addr: l.LoadEnvOr("REDIS_ADDR", "localhost:6379"),
+		Addr:     l.LoadEnvOr("REDIS_ADDR", "localhost:6379"),
+		Password: l.LoadEnvOr("REDIS_PASSWORD", ""),
 	}
 }
 
