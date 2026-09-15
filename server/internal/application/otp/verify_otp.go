@@ -43,7 +43,7 @@ func (h *VerifyOTPHandler) Handle(ctx context.Context, cmd VerifyOTPCommand) err
 		return err
 	}
 	if attempts > maxVerifyAttempts {
-		h.store.Del(ctx, email)
+		_ = h.store.Del(ctx, email)
 		return otpdomain.ErrOTPExpired
 	}
 

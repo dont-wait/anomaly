@@ -68,9 +68,13 @@ func (s *SMTPSender) Send(ctx context.Context, msg maildomain.MailMessage) error
 	defer conn.Close()
 
 	if deadline, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(deadline)
+		if err := conn.SetDeadline(deadline); err != nil {
+			return fmt.Errorf("smtp set deadline: %w", err)
+		}
 	} else {
-		conn.SetDeadline(time.Now().Add(defaultSMTPTimeout))
+		if err := conn.SetDeadline(time.Now().Add(defaultSMTPTimeout)); err != nil {
+			return fmt.Errorf("smtp set deadline: %w", err)
+		}
 	}
 
 	client, err := smtp.NewClient(conn, s.cfg.Host)
