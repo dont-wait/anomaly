@@ -88,15 +88,11 @@ go run ./cmd/api
 
 ### Seed tài khoản demo
 
-Sau khi MongoDB và migration đã chạy, tạo tài khoản demo bằng:
+Sau khi MongoDB và migration đã chạy:
 
 ```bash
 export APP_ENV=development
 export SEED_DEMO_ENABLED=true
-export SEED_USERNAME=demo.customer
-export SEED_CCCD=079123456789
-export SEED_EMAIL=demo.customer@example.com
-export SEED_PASSWORD='choose-a-local-password'
 make seed
 ```
 
@@ -105,18 +101,48 @@ Trên PowerShell:
 ```powershell
 $env:APP_ENV = "development"
 $env:SEED_DEMO_ENABLED = "true"
-$env:SEED_USERNAME = "demo.customer"
-$env:SEED_CCCD = "079123456789"
-$env:SEED_EMAIL = "demo.customer@example.com"
-$env:SEED_PASSWORD = "choose-a-local-password"
 make seed
 ```
 
-Lệnh seed chỉ chạy trong môi trường `development`, `dev`, hoặc `local` và phải
-có `SEED_DEMO_ENABLED=true`. Credentials được đọc từ environment, không được
-ghi trong source hoặc in ra log. Seed đi qua cùng command đăng ký của ứng dụng,
-sau đó đặt số dư demo là `128.540.000 VND`. Dashboard lấy profile bằng
-`GET /api/auth/me` sau khi login.
+`make seed` gọi runner chung, chạy tất cả seeder đã đăng ký trong
+`internal/seeder/`. Go tự biên dịch các file `.go` thuộc package này
+(không chạy `_test.go`); Makefile không cần liệt kê từng file.
+
+Để thêm seeder, tạo file trong `internal/seeder/`, khai báo `package seeder`
+và tự đăng ký trong `init()`:
+
+```go
+func init() {
+    seeders.register("020_example", seedExample)
+}
+
+func seedExample(ctx context.Context, deps Dependencies) error {
+    // Tạo dữ liệu theo cách chạy lại không sinh bản ghi trùng.
+    return nil
+}
+```
+
+Thêm import `context` cho file mới. Runner chạy theo tên tăng dần
+(`010_accounts`, `020_example`, ...) để kiểm soát thứ tự phụ thuộc, dừng ngay
+và trả tên seeder khi gặp lỗi. Tên trùng bị từ chối. File helper không đăng ký
+thì không được chạy riêng. Không cần sửa Makefile, `cmd/seed` hoặc danh sách
+trong runner khi thêm seeder vào cùng package. Nếu cần repository mới, bổ sung
+vào `Dependencies` và khởi tạo tại `cmd/seed`.
+
+Dữ liệu và logic tài khoản nằm trong `internal/seeder/accounts.go`; thêm phần tử
+vào `demoAccounts()` với CCCD, email, username và idempotency key riêng để thêm
+tài khoản. `cmd/seed` chỉ khởi tạo kết nối, dependency và gọi runner.
+
+Tài khoản demo: CCCD `079123456789`, username `demo.customer`, email
+`demo.customer@example.com`, mật khẩu `DemoLocal@123`, số dư `128.540.000 VND`.
+Đây là dữ liệu công khai chỉ dùng cho local/dev. Lệnh yêu cầu `APP_ENV` là
+`development`, `dev`, hoặc `local` và `SEED_DEMO_ENABLED=true`.
+
+Seed đi qua command đăng ký của ứng dụng. Chạy lại không tạo tài khoản trùng;
+tài khoản khớp sẽ được đưa về số dư demo. Nếu thông tin hoặc mật khẩu tài khoản
+đã tồn tại khác dữ liệu seed, lệnh báo lỗi thay vì ghi đè. Tài khoản từng seed
+bằng `SEED_*` trước đây cũng phải khớp dữ liệu trong code để chạy lại thành công.
+Dashboard lấy profile bằng `GET /api/auth/me` sau khi login.
 
 ### 4. Chạy worker local
 

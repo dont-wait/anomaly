@@ -18,7 +18,7 @@ help:
 	@echo "  start-app         Build and start the Docker Compose app profile"
 	@echo "  start-worker      Run worker development"
 	@echo "  start-api         Run API development"
-	@echo "  seed              Create the idempotent demo account"
+	@echo "  seed              Run all registered development seeders"
 	@echo "  migrate           Alias for migrate-up"
 	@echo "  migrate-up        Apply all pending migrations"
 	@echo "  migrate-up-one    Apply the next pending migration"
@@ -62,5 +62,4 @@ start-api:
 	go run ./cmd/api/main.go
 
 seed:
-	@echo "Seed requires APP_ENV=development|dev|local, SEED_DEMO_ENABLED=true, and SEED_* credentials."
 	go run ./cmd/seed
