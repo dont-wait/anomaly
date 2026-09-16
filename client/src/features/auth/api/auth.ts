@@ -1,3 +1,5 @@
+import { API_ENDPOINTS } from "@/shared/constants/endpoints";
+import { HTTP_STATUS } from "@/shared/constants/httpStatus";
 import { ApiError, requestJson } from "@/shared/lib/http";
 import type { AuthUser } from "./profile";
 
@@ -47,7 +49,7 @@ export async function login(
   options: { signal?: AbortSignal } = {},
 ): Promise<LoginResponse> {
   const credentials = assertValidLoginInput(input);
-  const data = await requestJson<LoginResponse>("/api/auth/login", {
+  const data = await requestJson<LoginResponse>(API_ENDPOINTS.AUTH.LOGIN, {
     method: "POST",
     body: credentials,
     signal: options.signal,
@@ -64,15 +66,15 @@ export function toLoginError(error: unknown): string {
     switch (error.status) {
       case 0:
         return "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.";
-      case 400:
+      case HTTP_STATUS.BAD_REQUEST:
         return "Thông tin đăng nhập không hợp lệ.";
-      case 401:
-      case 404:
+      case HTTP_STATUS.UNAUTHORIZED:
+      case HTTP_STATUS.NOT_FOUND:
         return "Số CCCD hoặc mật khẩu không đúng.";
-      case 413:
+      case HTTP_STATUS.PAYLOAD_TOO_LARGE:
         return "Dữ liệu gửi đi quá lớn. Vui lòng thử lại.";
       default:
-        if (error.status >= 500) {
+        if (error.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR) {
           return "Máy chủ đang bận. Vui lòng thử lại sau.";
         }
         return `Đăng nhập thất bại (mã ${error.status}).`;

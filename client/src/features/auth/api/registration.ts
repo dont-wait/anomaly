@@ -1,3 +1,5 @@
+import { API_ENDPOINTS } from "@/shared/constants/endpoints";
+import { HTTP_STATUS } from "@/shared/constants/httpStatus";
 import { requestJson, ApiError } from "@/shared/lib/http";
 import type { AuthUser } from "./auth";
 
@@ -19,7 +21,7 @@ export async function registerAccount(
   signal?: AbortSignal,
   idempotencyKey?: string,
 ) {
-  const user = await requestJson<AuthUser>("/api/auth/register", {
+  const user = await requestJson<AuthUser>(API_ENDPOINTS.AUTH.REGISTER, {
     method: "POST",
     body: { ...input, idempotencyKey },
     signal,
@@ -36,13 +38,16 @@ export async function uploadMedia(
   const body = new FormData();
   body.append("key", key);
   body.append("file", file);
-  const result = await requestJson<{ key: string }>("/api/media/upload", {
-    method: "POST",
-    body,
-    token,
-    signal,
-    timeoutMs: 120000,
-  });
+  const result = await requestJson<{ key: string }>(
+    API_ENDPOINTS.MEDIA.UPLOAD,
+    {
+      method: "POST",
+      body,
+      token,
+      signal,
+      timeoutMs: 120000,
+    },
+  );
   if (result?.key !== key)
     throw new ApiError(0, "Phản hồi tải tệp không hợp lệ.");
   return result.key;
@@ -53,27 +58,36 @@ export async function verifyAccount(
   token: string,
   signal?: AbortSignal,
 ) {
-  const user = await requestJson<AuthUser>(
-    `/api/accounts/${encodeURIComponent(id)}/verify`,
-    { method: "POST", body: media, token, signal },
-  );
+  const user = await requestJson<AuthUser>(API_ENDPOINTS.ACCOUNTS.VERIFY(id), {
+    method: "POST",
+    body: media,
+    token,
+    signal,
+  });
   if (user?.id !== id || !user.isVerify)
     throw new ApiError(0, "Tài khoản chưa được xác thực. Vui lòng thử lại.");
   return user;
 }
 export function registrationError(error: unknown) {
   if (error instanceof ApiError) {
-    if (error.status === 409)
+    if (error.status === HTTP_STATUS.CONFLICT)
       return "Email, tên tài khoản hoặc CCCD đã được sử dụng. Vui lòng kiểm tra lại hoặc đăng nhập.";
-    if (error.status === 401 || error.status === 403)
+    if (
+      error.status === HTTP_STATUS.UNAUTHORIZED ||
+      error.status === HTTP_STATUS.FORBIDDEN
+    )
       return "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại để tiếp tục.";
-    if (error.status === 413)
+    if (error.status === HTTP_STATUS.PAYLOAD_TOO_LARGE)
       return "Tệp quá lớn. Vui lòng chọn ảnh hoặc quay video ngắn hơn.";
-    if (error.status === 503)
+    if (error.status === HTTP_STATUS.SERVICE_UNAVAILABLE)
       return "Dịch vụ xác thực chưa sẵn sàng. Vui lòng thử lại sau.";
-    if (error.status === 400 || error.status === 422)
+    if (
+      error.status === HTTP_STATUS.BAD_REQUEST ||
+      error.status === HTTP_STATUS.UNPROCESSABLE_ENTITY
+    )
       return "Dữ liệu không hợp lệ. Vui lòng kiểm tra thông tin và tệp đã chọn.";
-    if (error.status >= 500) return "Máy chủ đang bận. Vui lòng thử lại.";
+    if (error.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      return "Máy chủ đang bận. Vui lòng thử lại.";
   }
   return error instanceof Error
     ? error.message

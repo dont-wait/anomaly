@@ -1,3 +1,4 @@
+import { AUTH_STATUS } from "@/features/auth/authStatus";
 import { useEffect, useSyncExternalStore } from "react";
 import { useAuth } from "@/features/auth/useAuth";
 import { LoginPage } from "@/pages/LoginPage";
@@ -20,14 +21,14 @@ export function AppRouter() {
   );
 
   useEffect(() => {
-    if (hash === routes.dashboard && status === "unauthenticated") {
+    if (hash === routes.dashboard && status === AUTH_STATUS.UNAUTHENTICATED) {
       window.location.hash = routes.login;
     }
   }, [hash, status]);
 
   switch (hash) {
     case routes.dashboard:
-      if (status !== "authenticated") {
+      if (status !== AUTH_STATUS.AUTHENTICATED) {
         return <div className="p-6 text-sm text-gray-500">Đang kiểm tra phiên đăng nhập...</div>;
       }
       return <DashboardPage />;

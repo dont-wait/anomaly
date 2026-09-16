@@ -1,3 +1,6 @@
+import { toast } from "@/shared/notifications/toast";
+import { toLoginError } from "@/features/auth/api/auth";
+import { AUTH_STATUS } from "@/features/auth/authStatus";
 import { AppHeader } from "@/shared/layout/AppHeader";
 import { BottomNav } from "@/shared/layout/BottomNav";
 import { BalanceCard } from "@/features/dashboard/components/BalanceCard";
@@ -13,23 +16,31 @@ import { Avatar } from "@/shared/ui";
 import { useAuth } from "@/features/auth/useAuth";
 
 const DashboardPage = () => {
-  const { status, user, error, refreshProfile } = useAuth();
+  const { status, user, refreshProfile } = useAuth();
   const quickActions = mockQuickActions;
   const promo = mockPromoBanner;
   const transactions = mockTransactions;
 
-  if (status === "restoring" || status === "idle") {
-    return <div className="p-6 text-sm text-gray-500">Đang tải thông tin tài khoản...</div>;
+  if (status === AUTH_STATUS.RESTORING || status === AUTH_STATUS.IDLE) {
+    return (
+      <div className="p-6 text-sm text-gray-500">
+        Đang tải thông tin tài khoản...
+      </div>
+    );
   }
 
-  if (status === "authenticated" && !user) {
+  if (status === AUTH_STATUS.AUTHENTICATED && !user) {
     return (
       <div className="p-6 text-sm text-red-600">
-        {error ?? "Không thể tải thông tin tài khoản."}
+        Thông tin tài khoản chưa sẵn sàng.
         <button
           type="button"
           className="mt-3 block rounded-lg bg-primary px-3 py-2 text-white"
-          onClick={() => void refreshProfile()}
+          onClick={() =>
+            void refreshProfile().catch((error) =>
+              toast.error(toLoginError(error)),
+            )
+          }
         >
           Thử lại
         </button>
@@ -38,7 +49,11 @@ const DashboardPage = () => {
   }
 
   if (!user) {
-    return <div className="p-6 text-sm text-gray-500">Đang kiểm tra phiên đăng nhập...</div>;
+    return (
+      <div className="p-6 text-sm text-gray-500">
+        Đang kiểm tra phiên đăng nhập...
+      </div>
+    );
   }
 
   const account = {

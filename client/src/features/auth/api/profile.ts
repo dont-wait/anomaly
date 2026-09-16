@@ -1,3 +1,4 @@
+import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { requestJson } from "@/shared/lib/http";
 
 export interface AuthUser {
@@ -21,7 +22,7 @@ export async function getInfo(
   if (!token) {
     throw new Error("Thiếu token xác thực.");
   }
-  return requestJson<AuthUser>("/api/auth/me", {
+  return requestJson<AuthUser>(API_ENDPOINTS.AUTH.ME, {
     token,
     signal: options.signal,
   });

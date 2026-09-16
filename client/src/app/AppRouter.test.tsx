@@ -1,3 +1,6 @@
+import { Toaster } from "@/shared/notifications/Toaster";
+import { toast } from "@/shared/notifications/toast";
+import { AUTH_STATUS } from "@/features/auth/authStatus";
 import {
   cleanup,
   fireEvent,
@@ -14,12 +17,12 @@ import { AppRouter } from "./AppRouter";
 import { routes } from "./routes";
 
 const auth: AuthContextValue = {
-  status: "unauthenticated",
+  status: AUTH_STATUS.UNAUTHENTICATED,
   user: null,
   token: null,
   error: null,
   login: vi.fn(async () => {
-    auth.status = "authenticated";
+    auth.status = AUTH_STATUS.AUTHENTICATED;
     auth.user = {
       id: "account-id",
       accountNo: "ACC-001",
@@ -41,12 +44,14 @@ function renderRouter() {
   return render(
     <AuthContext.Provider value={auth}>
       <AppRouter />
+      <Toaster />
     </AuthContext.Provider>,
   );
 }
 beforeEach(() => window.history.replaceState(null, "", "/"));
 afterEach(() => {
   cleanup();
+  toast.dismiss();
   window.history.replaceState(null, "", "/");
 });
 
@@ -72,6 +77,7 @@ it("supports direct registration links and browser Back", async () => {
   await waitFor(() => expect(window.location.hash).toBe(routes.login));
   await screen.findByRole("link", { name: /Mở tài khoản ngay/ });
   cleanup();
+  toast.dismiss();
   window.history.replaceState(null, "", routes.register);
   renderRouter();
   expect(
@@ -113,17 +119,32 @@ it("stays on login when authentication fails", async () => {
     target: { value: "password123" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
-  await screen.findByRole("alert");
+  const alert = await screen.findByRole("alert");
+  expect(alert.closest("form")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Đóng thông báo" }));
+  expect(screen.queryByRole("alert")).toBeNull();
   expect(window.location.hash).toBe(routes.login);
   expect(screen.getByLabelText("Số Căn cước Công dân")).toBeTruthy();
 });
 
 it("redirects signed-out visitors from the dashboard to login", async () => {
-  auth.status = "unauthenticated";
+  auth.status = AUTH_STATUS.UNAUTHENTICATED;
   auth.user = null;
   window.history.replaceState(null, "", routes.dashboard);
   renderRouter();
 
   await waitFor(() => expect(window.location.hash).toBe(routes.login));
   expect(screen.getByLabelText("Số Căn cước Công dân")).toBeTruthy();
+});
+
+it("keeps client validation in the form without calling login", () => {
+  vi.mocked(auth.login).mockClear();
+  window.history.replaceState(null, "", routes.login);
+  renderRouter();
+  const input = screen.getByLabelText("Số Căn cước Công dân");
+  fireEvent.change(input, { target: { value: "123" } });
+  fireEvent.submit(input.closest("form")!);
+  expect(screen.getByRole("alert").closest("form")).not.toBeNull();
+  expect(auth.login).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Đóng thông báo" })).toBeNull();
 });
