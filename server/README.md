@@ -86,6 +86,22 @@ make migrate
 go run ./cmd/api
 ```
 
+### Seed tài khoản demo
+
+Sau khi MongoDB và migration đã chạy, tạo tài khoản demo bằng:
+
+```bash
+make seed
+```
+
+Lệnh seed có thể chạy lại an toàn. Tài khoản dùng để đăng nhập dashboard:
+
+- CCCD: `079123456789`
+- Mật khẩu: `demo-password-123`
+
+Seed đi qua cùng command đăng ký của ứng dụng, sau đó đặt số dư demo là
+`128.540.000 VND`. Dashboard lấy profile bằng `GET /api/auth/me` sau khi login.
+
 ### 4. Chạy worker local
 
 ```bash

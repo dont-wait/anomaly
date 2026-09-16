@@ -18,7 +18,22 @@ const auth: AuthContextValue = {
   user: null,
   token: null,
   error: null,
-  login: vi.fn(),
+  login: vi.fn(async () => {
+    auth.status = "authenticated";
+    auth.user = {
+      id: "account-id",
+      accountNo: "ACC-001",
+      username: "Test User",
+      email: "test@example.com",
+      currency: "VND",
+      idCardFrontUrl: "",
+      idCardBackUrl: "",
+      liveVideoUrl: "",
+      isVerify: false,
+      amount: 0,
+    };
+    return auth.user;
+  }),
   logout: vi.fn(),
   refreshProfile: vi.fn(),
 };

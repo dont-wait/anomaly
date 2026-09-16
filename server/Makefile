@@ -6,7 +6,7 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: help start-app start-worker start-api migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
+.PHONY: help start-app start-worker start-api seed migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
 
 start-app:
 	docker compose --profile app up --build
@@ -18,6 +18,7 @@ help:
 	@echo "  start-app         Build and start the Docker Compose app profile"
 	@echo "  start-worker      Run worker development"
 	@echo "  start-api         Run API development"
+	@echo "  seed              Create the idempotent demo account"
 	@echo "  migrate           Alias for migrate-up"
 	@echo "  migrate-up        Apply all pending migrations"
 	@echo "  migrate-up-one    Apply the next pending migration"
@@ -59,3 +60,6 @@ start-worker:
 
 start-api:
 	go run ./cmd/api/main.go
+
+seed:
+	go run ./cmd/seed

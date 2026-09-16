@@ -5,24 +5,39 @@ import { QuickActions } from "@/features/dashboard/components/QuickActions";
 import { PromoBanner } from "@/features/dashboard/components/PromoBanner";
 import { TransactionList } from "@/features/dashboard/components/TransactionList";
 import {
-  mockAccount,
   mockPromoBanner,
   mockQuickActions,
   mockTransactions,
 } from "@/features/dashboard/mocks/dashboard";
 import { Avatar } from "@/shared/ui";
+import { useAuth } from "@/features/auth/useAuth";
 
-/**
- * Trang chủ (Dashboard) — dữ liệu đang lấy từ mock (src/features/dashboard/mocks/dashboard.ts).
- * Khi có API/backend thật, chỉ cần thay các biến `mock*` bằng dữ liệu
- * lấy từ hook/query thật, phần JSX bên dưới không cần đổi vì các
- * component con nhận props đúng theo type trong `src/types`.
- */
 const DashboardPage = () => {
-  const account = mockAccount;
+  const { status, user, error } = useAuth();
   const quickActions = mockQuickActions;
   const promo = mockPromoBanner;
   const transactions = mockTransactions;
+
+  if (status === "restoring" || status === "idle") {
+    return <div className="p-6 text-sm text-gray-500">Đang tải thông tin tài khoản...</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="p-6 text-sm text-red-600">
+        {error ?? "Không thể tải thông tin tài khoản."}
+      </div>
+    );
+  }
+
+  const account = {
+    id: user.id,
+    ownerName: user.fullName || user.username,
+    accountNumber: user.accountNo,
+    balance: user.amount,
+    currency: user.currency === "VND" ? "₫" : user.currency,
+    cardLabel: "ANOMALYBANK SIGNATURE",
+  };
 
   return (
     <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-gradient-to-b from-violet-100 to-white">

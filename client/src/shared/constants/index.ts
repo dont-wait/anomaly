@@ -5,7 +5,7 @@ if (!import.meta.env.VITE_API_ENDPOINT && import.meta.env.PROD) {
 }
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_ENDPOINT || "http://localhost:3000";
+  import.meta.env.VITE_API_ENDPOINT || "http://localhost:8080";
 
 export const APP_NAME = "Anomaly";
 

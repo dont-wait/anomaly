@@ -12,8 +12,11 @@ export interface LoginCredentials {
 
 export interface AuthUser {
   id: string;
+  accountNo: string;
   username: string;
+  fullName?: string;
   email: string;
+  currency: string;
   idCardFrontUrl: string;
   idCardBackUrl: string;
   liveVideoUrl: string;
@@ -67,7 +70,7 @@ export async function login(
   return data;
 }
 
-export async function getCurrentUser(
+export async function getInfo(
   token: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<AuthUser> {
@@ -79,6 +82,8 @@ export async function getCurrentUser(
     signal: options.signal,
   });
 }
+
+export const getCurrentUser = getInfo;
 
 export function toLoginError(error: unknown): string {
   if (error instanceof ApiError) {
