@@ -117,3 +117,13 @@ it("stays on login when authentication fails", async () => {
   expect(window.location.hash).toBe(routes.login);
   expect(screen.getByLabelText("Số Căn cước Công dân")).toBeTruthy();
 });
+
+it("redirects signed-out visitors from the dashboard to login", async () => {
+  auth.status = "unauthenticated";
+  auth.user = null;
+  window.history.replaceState(null, "", routes.dashboard);
+  renderRouter();
+
+  await waitFor(() => expect(window.location.hash).toBe(routes.login));
+  expect(screen.getByLabelText("Số Căn cước Công dân")).toBeTruthy();
+});

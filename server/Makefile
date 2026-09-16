@@ -62,4 +62,5 @@ start-api:
 	go run ./cmd/api/main.go
 
 seed:
+	@echo "Seed requires APP_ENV=development|dev|local, SEED_DEMO_ENABLED=true, and SEED_* credentials."
 	go run ./cmd/seed

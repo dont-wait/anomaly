@@ -13,7 +13,7 @@ import { Avatar } from "@/shared/ui";
 import { useAuth } from "@/features/auth/useAuth";
 
 const DashboardPage = () => {
-  const { status, user, error } = useAuth();
+  const { status, user, error, refreshProfile } = useAuth();
   const quickActions = mockQuickActions;
   const promo = mockPromoBanner;
   const transactions = mockTransactions;
@@ -22,12 +22,23 @@ const DashboardPage = () => {
     return <div className="p-6 text-sm text-gray-500">Đang tải thông tin tài khoản...</div>;
   }
 
-  if (!user) {
+  if (status === "authenticated" && !user) {
     return (
       <div className="p-6 text-sm text-red-600">
         {error ?? "Không thể tải thông tin tài khoản."}
+        <button
+          type="button"
+          className="mt-3 block rounded-lg bg-primary px-3 py-2 text-white"
+          onClick={() => void refreshProfile()}
+        >
+          Thử lại
+        </button>
       </div>
     );
+  }
+
+  if (!user) {
+    return <div className="p-6 text-sm text-gray-500">Đang kiểm tra phiên đăng nhập...</div>;
   }
 
   const account = {

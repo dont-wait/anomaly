@@ -91,16 +91,32 @@ go run ./cmd/api
 Sau khi MongoDB và migration đã chạy, tạo tài khoản demo bằng:
 
 ```bash
+export APP_ENV=development
+export SEED_DEMO_ENABLED=true
+export SEED_USERNAME=demo.customer
+export SEED_CCCD=079123456789
+export SEED_EMAIL=demo.customer@example.com
+export SEED_PASSWORD='choose-a-local-password'
 make seed
 ```
 
-Lệnh seed có thể chạy lại an toàn. Tài khoản dùng để đăng nhập dashboard:
+Trên PowerShell:
 
-- CCCD: `079123456789`
-- Mật khẩu: `demo-password-123`
+```powershell
+$env:APP_ENV = "development"
+$env:SEED_DEMO_ENABLED = "true"
+$env:SEED_USERNAME = "demo.customer"
+$env:SEED_CCCD = "079123456789"
+$env:SEED_EMAIL = "demo.customer@example.com"
+$env:SEED_PASSWORD = "choose-a-local-password"
+make seed
+```
 
-Seed đi qua cùng command đăng ký của ứng dụng, sau đó đặt số dư demo là
-`128.540.000 VND`. Dashboard lấy profile bằng `GET /api/auth/me` sau khi login.
+Lệnh seed chỉ chạy trong môi trường `development`, `dev`, hoặc `local` và phải
+có `SEED_DEMO_ENABLED=true`. Credentials được đọc từ environment, không được
+ghi trong source hoặc in ra log. Seed đi qua cùng command đăng ký của ứng dụng,
+sau đó đặt số dư demo là `128.540.000 VND`. Dashboard lấy profile bằng
+`GET /api/auth/me` sau khi login.
 
 ### 4. Chạy worker local
 
