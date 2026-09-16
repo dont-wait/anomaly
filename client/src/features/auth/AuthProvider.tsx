@@ -8,12 +8,11 @@ import {
 } from "react";
 import { AuthContext, type AuthStatus } from "./authContext";
 import {
-  getCurrentUser,
   login as loginRequest,
   toLoginError,
-  type AuthUser,
   type LoginInput,
 } from "./api/auth";
+import { getInfo, type AuthUser } from "./api/profile";
 import { ApiError } from "@/shared/lib/http";
 import { defaultAuthTokenStore, type AuthTokenStore } from "./lib/token-store";
 
@@ -61,7 +60,7 @@ export const AuthProvider = ({
       }
 
       try {
-        const profile = await getCurrentUser(currentToken, {
+        const profile = await getInfo(currentToken, {
           signal: options.signal,
         });
         if (!mountedRef.current) return profile;
@@ -105,7 +104,7 @@ export const AuthProvider = ({
       setStatus("restoring");
       setToken(storedToken);
       try {
-        const profile = await getCurrentUser(storedToken, {
+        const profile = await getInfo(storedToken, {
           signal: controller.signal,
         });
         if (cancelled) return;

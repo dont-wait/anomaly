@@ -1,4 +1,7 @@
 import { ApiError, requestJson } from "@/shared/lib/http";
+import type { AuthUser } from "./profile";
+
+export type { AuthUser } from "./profile";
 
 export interface LoginInput {
   cccdNumber: string;
@@ -8,20 +11,6 @@ export interface LoginInput {
 export interface LoginCredentials {
   cccdNumber: string;
   password: string;
-}
-
-export interface AuthUser {
-  id: string;
-  accountNo: string;
-  username: string;
-  fullName?: string;
-  email: string;
-  currency: string;
-  idCardFrontUrl: string;
-  idCardBackUrl: string;
-  liveVideoUrl: string;
-  isVerify: boolean;
-  amount: number;
 }
 
 export interface LoginResponse {
@@ -69,21 +58,6 @@ export async function login(
   }
   return data;
 }
-
-export async function getInfo(
-  token: string,
-  options: { signal?: AbortSignal } = {},
-): Promise<AuthUser> {
-  if (!token) {
-    throw new Error("Thiếu token xác thực.");
-  }
-  return requestJson<AuthUser>("/api/auth/me", {
-    token,
-    signal: options.signal,
-  });
-}
-
-export const getCurrentUser = getInfo;
 
 export function toLoginError(error: unknown): string {
   if (error instanceof ApiError) {
