@@ -22,6 +22,7 @@ describe("auth api", () => {
         expiresAt: "2026-09-10T00:00:00Z",
         user: {
           id: "user-1",
+          accountNo: "account-1",
           username: "anomaly",
           email: "anomaly@example.com",
           idCardFrontUrl: "",
@@ -29,6 +30,7 @@ describe("auth api", () => {
           liveVideoUrl: "",
           isVerify: true,
           amount: 0,
+          currency: "VND",
         },
       }),
     );

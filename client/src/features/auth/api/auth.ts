@@ -12,6 +12,7 @@ export interface LoginCredentials {
 
 export interface AuthUser {
   id: string;
+  accountNo: string;
   username: string;
   email: string;
   idCardFrontUrl: string;
@@ -19,6 +20,7 @@ export interface AuthUser {
   liveVideoUrl: string;
   isVerify: boolean;
   amount: number;
+  currency: string;
 }
 
 export interface LoginResponse {
@@ -67,7 +69,7 @@ export async function login(
   return data;
 }
 
-export async function getCurrentUser(
+export async function getInfo(
   token: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<AuthUser> {

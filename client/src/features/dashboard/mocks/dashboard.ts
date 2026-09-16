@@ -1,18 +1,4 @@
-import type {
-  Account,
-  PromoBanner,
-  QuickAction,
-  Transaction,
-} from "@/features/dashboard/model/types";
-
-export const mockAccount: Account = {
-  id: "acc_001",
-  ownerName: "PHAM DINH MINH HIEU",
-  accountNumber: "99999180105",
-  balance: 128_540_000,
-  currency: "₫",
-  cardLabel: "ANOMALYBANK SIGNATURE",
-};
+import type { PromoBanner, QuickAction, Transaction } from "@/features/dashboard/model/types";
 
 export const mockQuickActions: QuickAction[] = [
   { id: "qa_transfer", label: "Chuyển tiền", icon: "transfer" },

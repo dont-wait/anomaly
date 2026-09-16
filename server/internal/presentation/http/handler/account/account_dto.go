@@ -23,6 +23,7 @@ type AccountResponsePublic struct {
 // cả identity URLs — chỉ user sở hữu tài khoản mới được xem KYC của mình.
 type AccountResponsePrivate struct {
 	Id             string `json:"id"`
+	AccountNo      string `json:"accountNo"`
 	Username       string `json:"username"`
 	Email          string `json:"email"`
 	IdCardFrontUrl string `json:"idCardFrontUrl"`
@@ -30,6 +31,7 @@ type AccountResponsePrivate struct {
 	LiveVideoUrl   string `json:"liveVideoUrl"`
 	IsVerify       bool   `json:"isVerify"`
 	Amount         int64  `json:"amount"`
+	Currency       string `json:"currency"`
 }
 
 // AuthResponse trả về cho client ngay sau login — dùng private DTO vì user
@@ -60,11 +62,13 @@ func toAccountResponsePublicList(list []*accountdomain.UserAccount) []AccountRes
 
 func toAccountResponsePrivate(a *accountdomain.UserAccount) AccountResponsePrivate {
 	response := AccountResponsePrivate{
-		Id:       a.Id,
-		Username: a.Username,
-		Email:    a.Email,
-		IsVerify: a.IsVerified(),
-		Amount:   a.Balance.Current,
+		Id:        a.Id,
+		AccountNo: a.AccountNo,
+		Username:  a.Username,
+		Email:     a.Email,
+		IsVerify:  a.IsVerified(),
+		Amount:    a.Balance.Current,
+		Currency:  string(a.Currency),
 	}
 	if session := a.VerifiedKYCSession(); session != nil {
 		response.IdCardFrontUrl = session.Media.IdentityFront.StorageKey

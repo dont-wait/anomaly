@@ -22,6 +22,34 @@ const auth: AuthContextValue = {
   logout: vi.fn(),
   refreshProfile: vi.fn(),
 };
+
+const authenticatedUser = {
+  id: "user-1",
+  accountNo: "account-1",
+  username: "anomaly",
+  email: "anomaly@example.com",
+  idCardFrontUrl: "",
+  idCardBackUrl: "",
+  liveVideoUrl: "",
+  isVerify: true,
+  amount: 0,
+  currency: "VND",
+};
+
+beforeEach(() => {
+  auth.status = "unauthenticated";
+  auth.user = null;
+  auth.token = null;
+  vi.mocked(auth.login).mockReset();
+  vi.mocked(auth.login).mockImplementation(async () => {
+    auth.status = "authenticated";
+    auth.user = authenticatedUser;
+    auth.token = "test-token";
+    return authenticatedUser;
+  });
+  window.history.replaceState(null, "", "/");
+});
+
 function renderRouter() {
   return render(
     <AuthContext.Provider value={auth}>
@@ -29,7 +57,6 @@ function renderRouter() {
     </AuthContext.Provider>,
   );
 }
-beforeEach(() => window.history.replaceState(null, "", "/"));
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");

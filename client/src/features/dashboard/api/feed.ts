@@ -31,7 +31,6 @@ function toTransaction(entry: FeedEntryResponse): Transaction {
 }
 
 export async function getAccountFeed(
-  accountId: string,
   token: string,
   options: { signal?: AbortSignal; limit?: number } = {},
 ): Promise<Transaction[]> {
