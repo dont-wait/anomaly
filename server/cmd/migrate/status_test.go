@@ -65,7 +65,7 @@ func TestListMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 3 || entries[0].name != "create_customers" || entries[2].version != 3 {
+	if len(entries) != 5 || entries[0].name != "create_customers" || entries[4].version != 5 {
 		t.Fatalf("unexpected migrations: %+v", entries)
 	}
 }

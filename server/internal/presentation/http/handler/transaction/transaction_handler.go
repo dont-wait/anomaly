@@ -32,7 +32,7 @@ func transactionErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, txdomain.ErrSourceAccountNotFound), errors.Is(err, txdomain.ErrDestAccountNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, txdomain.ErrInvalidAmount), errors.Is(err, txdomain.ErrSameAccount):
+	case errors.Is(err, txdomain.ErrInvalidAmount), errors.Is(err, txdomain.ErrSameAccount), errors.Is(err, txdomain.ErrIdempotencyKeyRequired):
 		return http.StatusBadRequest
 	case errors.Is(err, txdomain.ErrInsufficientFunds):
 		return http.StatusUnprocessableEntity
@@ -42,8 +42,9 @@ func transactionErrorStatus(err error) int {
 }
 
 type transferRequest struct {
-	DestAccountNo string `json:"destAccountNo"`
-	Amount        int64  `json:"amount"`
+	DestAccountNo  string `json:"destAccountNo"`
+	Amount         int64  `json:"amount"`
+	IdempotencyKey string `json:"idempotencyKey"`
 }
 
 // Transfer — POST /api/accounts/{id}/transfer, chỉ chủ tài khoản mới gọi được.
@@ -65,6 +66,7 @@ func (h *Handler) Transfer(w http.ResponseWriter, r *http.Request) {
 		SourceAccountId: id,
 		DestAccountNo:   req.DestAccountNo,
 		Amount:          req.Amount,
+		IdempotencyKey:  req.IdempotencyKey,
 	})
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, transactionErrorStatus)

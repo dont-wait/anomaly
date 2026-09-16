@@ -28,6 +28,7 @@ type Transaction struct {
 	Amount          int64
 	Currency        string
 	Status          TransactionStatus
+	IdempotencyKey  string
 	CreatedAt       time.Time
 	PostedAt        time.Time
 }

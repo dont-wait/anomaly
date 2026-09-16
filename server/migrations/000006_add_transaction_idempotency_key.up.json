@@ -1,0 +1,34 @@
+[
+  {
+    "createIndexes": "transactions",
+    "indexes": [
+      { "key": { "source_account_id": 1, "idempotency_key": 1 }, "name": "uniq_source_idempotency_key", "unique": true }
+    ]
+  },
+  {
+    "collMod": "transactions",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["_id", "transaction_no", "type", "source_account_id", "source_account_no", "dest_account_id", "dest_account_no", "amount", "currency", "status", "idempotency_key", "created_at", "posted_at"],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "transaction_no": { "bsonType": "string" },
+          "type": { "enum": ["transfer"] },
+          "source_account_id": { "bsonType": "objectId" },
+          "source_account_no": { "bsonType": "string" },
+          "dest_account_id": { "bsonType": "objectId" },
+          "dest_account_no": { "bsonType": "string" },
+          "amount": { "bsonType": "long", "minimum": 1 },
+          "currency": { "enum": ["VND"] },
+          "status": { "enum": ["posted"] },
+          "idempotency_key": { "bsonType": "string" },
+          "created_at": { "bsonType": "date" },
+          "posted_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  }
+]

@@ -3,6 +3,7 @@ package mongo
 import (
 	"context"
 
+	"go.mongodb.org/mongo-driver/v2/bson"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
@@ -34,6 +35,9 @@ func (r *TransactionRepository) Create(
 		return err
 	}
 	if _, err := r.transactions.InsertOne(ctx, record); err != nil {
+		if IsDuplicateKeyError(err) {
+			return txdomain.ErrIdempotencyKeyConflict
+		}
 		return err
 	}
 
@@ -81,4 +85,27 @@ func (r *TransactionRepository) FindByAccountID(
 		entries = append(entries, fromFeedRecord(rec))
 	}
 	return entries, cursor.Err()
+}
+
+func (r *TransactionRepository) FindBySourceAndIdempotencyKey(
+	ctx context.Context,
+	sourceAccountId, idempotencyKey string,
+) (*txdomain.Transaction, error) {
+	accID, err := bson.ObjectIDFromHex(sourceAccountId)
+	if err != nil {
+		return nil, err
+	}
+
+	var record transactionRecord
+	err = r.transactions.FindOne(ctx, map[string]any{
+		"source_account_id": accID,
+		"idempotency_key":   idempotencyKey,
+	}).Decode(&record)
+	if err != nil {
+		if err == mongodrv.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return fromTransactionRecord(record), nil
 }

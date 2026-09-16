@@ -81,18 +81,29 @@ func (r *AccountRepository) Insert(ctx context.Context, a *accountdomain.UserAcc
 	return err
 }
 
+// Save ghi đè account bằng optimistic concurrency: chỉ thành công nếu
+// version trong DB vẫn đúng bằng version TRƯỚC KHI a bị sửa (a.Version - 1).
+// Domain method (Withdraw, v.v.) luôn tăng Version lên trước khi gọi Save,
+// nên filter dưới đây match đúng "bản ghi mình vừa đọc ra, chưa ai đụng vào".
 func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccount) error {
 	record, err := toRecord(a)
 	if err != nil {
 		return err
 	}
-	_, err = r.col.ReplaceOne(
+
+	expectedPreviousVersion := record.Version - 1
+	result, err := r.col.ReplaceOne(
 		ctx,
-		bson.M{"_id": record.Id},
+		bson.M{"_id": record.Id, "version": expectedPreviousVersion},
 		record,
-		options.Replace().SetUpsert(true),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return accountdomain.ErrConcurrentModification
+	}
+	return nil
 }
 
 func (r *AccountRepository) DeleteByID(ctx context.Context, id string) error {

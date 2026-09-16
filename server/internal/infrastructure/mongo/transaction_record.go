@@ -19,6 +19,7 @@ type transactionRecord struct {
 	Amount          int64         `bson:"amount"`
 	Currency        string        `bson:"currency"`
 	Status          string        `bson:"status"`
+	IdempotencyKey  string        `bson:"idempotency_key"`
 	CreatedAt       time.Time     `bson:"created_at"`
 	PostedAt        time.Time     `bson:"posted_at"`
 }
@@ -41,7 +42,8 @@ func toTransactionRecord(t *txdomain.Transaction) (transactionRecord, error) {
 		SourceAccountId: sourceID, SourceAccountNo: t.SourceAccountNo,
 		DestAccountId: destID, DestAccountNo: t.DestAccountNo,
 		Amount: t.Amount, Currency: t.Currency, Status: string(t.Status),
-		CreatedAt: t.CreatedAt, PostedAt: t.PostedAt,
+		IdempotencyKey: t.IdempotencyKey,
+		CreatedAt:      t.CreatedAt, PostedAt: t.PostedAt,
 	}, nil
 }
 
@@ -98,4 +100,15 @@ func bsonObjectIDFromHexOrNil(id string) (*bson.ObjectID, error) {
 		return nil, err
 	}
 	return &objID, nil
+}
+
+func fromTransactionRecord(r transactionRecord) *txdomain.Transaction {
+	return &txdomain.Transaction{
+		Id: r.Id.Hex(), TransactionNo: r.TransactionNo, Type: txdomain.TransactionType(r.Type),
+		SourceAccountId: r.SourceAccountId.Hex(), SourceAccountNo: r.SourceAccountNo,
+		DestAccountId: r.DestAccountId.Hex(), DestAccountNo: r.DestAccountNo,
+		Amount: r.Amount, Currency: r.Currency, Status: txdomain.TransactionStatus(r.Status),
+		IdempotencyKey: r.IdempotencyKey,
+		CreatedAt:      r.CreatedAt, PostedAt: r.PostedAt,
+	}
 }

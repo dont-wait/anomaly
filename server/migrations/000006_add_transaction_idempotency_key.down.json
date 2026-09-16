@@ -1,0 +1,3 @@
+[
+  { "dropIndexes": "transactions", "index": "uniq_source_idempotency_key" }
+]

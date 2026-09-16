@@ -16,4 +16,8 @@ type AccountRepository interface {
 // TransactionWriter ghi transaction gốc + các feed entry liên quan.
 type TransactionWriter interface {
 	Create(ctx context.Context, tx *txdomain.Transaction, feedEntries []*txdomain.FeedEntry) error
+	// FindBySourceAndIdempotencyKey dùng để kiểm tra 1 request có phải là
+	// "gọi lại" của 1 request trước đó hay không (retry do mất mạng, bấm
+	// đúp nút...) — nếu tìm thấy, trả về đúng kết quả cũ thay vì xử lý lại.
+	FindBySourceAndIdempotencyKey(ctx context.Context, sourceAccountId, idempotencyKey string) (*txdomain.Transaction, error)
 }

@@ -16,6 +16,7 @@ import {
 } from "@/features/dashboard/mocks/dashboard";
 import { Avatar } from "@/shared/ui";
 
+type FeedState = "idle" | "loading" | "success" | "error";
 /**
  * Trang chủ (Dashboard) — dữ liệu đang lấy từ mock (src/features/dashboard/mocks/dashboard.ts).
  * Khi có API/backend thật, chỉ cần thay các biến `mock*` bằng dữ liệu
@@ -28,17 +29,30 @@ const DashboardPage = () => {
   const quickActions = mockQuickActions;
   const promo = mockPromoBanner;
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [feedState, setFeedState] = useState<FeedState>("idle");
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!account || !token) return;
     const controller = new AbortController();
-    getAccountFeed(account.id, token, { signal: controller.signal })
-      .then(setTransactions)
-      .catch(() => setTransactions([]));
-    return () => controller.abort();
-  }, [account, token]);
 
-  return (
+    setFeedState("loading");
+    getAccountFeed(account.id, token, { signal: controller.signal })
+      .then((data) => {
+        setTransactions(data);
+        setFeedState("success");
+      })
+      .catch((err: unknown) => {
+        // Bỏ qua abort do effect cleanup (unmount / deps đổi) — không phải lỗi thật
+        if (err instanceof DOMException && err.name === "AbortError") return;
+
+        console.error("dashboard.getAccountFeed failed", err);
+        setFeedState("error");
+      });
+    return () => controller.abort();
+  }, [account, token, reloadToken]);
+
+   return (
     <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-gradient-to-b from-violet-100 to-white">
       <AppHeader notificationCount={3} />
 
@@ -56,7 +70,23 @@ const DashboardPage = () => {
         <BalanceCard account={account} />
         <QuickActions actions={quickActions} />
         <PromoBanner promo={promo} />
-        <TransactionList transactions={transactions} />
+
+        {feedState === "error" ? (
+          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+            <p>Không tải được lịch sử giao dịch. Vui lòng thử lại.</p>
+            <button
+              type="button"
+              className="mt-2 font-medium underline"
+              onClick={() => setReloadToken((n) => n + 1)}
+            >
+              Thử lại
+            </button>
+          </div>
+        ) : (
+          <TransactionList
+            transactions={transactions}
+          />
+        )}
       </main>
 
       <BottomNav onQrScan={() => console.log("TODO: mở màn hình quét QR")} />

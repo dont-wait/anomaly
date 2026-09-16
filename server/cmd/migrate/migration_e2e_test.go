@@ -57,8 +57,8 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read migration version: %v", err)
 	}
-	if version != 3 || dirty {
-		t.Fatalf("migration state = version %d dirty %t, want version 3 dirty false", version, dirty)
+	if version != 5 || dirty {
+		t.Fatalf("migration state = version %d dirty %t, want version 5 dirty false", version, dirty)
 	}
 
 	mongoConfig := &domain.MongoConfig{MongoURI: mongoURI, MongoDBName: databaseName}
@@ -73,7 +73,7 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 	})
 
 	database := client.Database(databaseName)
-	for _, collectionName := range []string{"customers", "kyc_sessions", "accounts"} {
+	for _, collectionName := range []string{"customers", "kyc_sessions", "accounts", "transactions", "account_transaction_feed"} {
 		_, err := database.Collection(collectionName).InsertOne(ctx, bson.D{{Key: "invalid", Value: true}})
 		if err == nil {
 			t.Fatalf("insert invalid document into %s succeeded; validator was not enforced", collectionName)
@@ -101,14 +101,14 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 		t.Fatalf("verify account against migrated schema: %v", err)
 	}
 
-	if err := runner.Steps(-3); err != nil {
+	if err := runner.Steps(-5); err != nil {
 		t.Fatalf("migrate down: %v", err)
 	}
 	if _, _, err := runner.Version(); !errors.Is(err, migrate.ErrNilVersion) {
 		t.Fatalf("migration version after down = %v, want ErrNilVersion", err)
 	}
 
-	for _, collectionName := range []string{"customers", "kyc_sessions", "accounts"} {
+	for _, collectionName := range []string{"customers", "kyc_sessions", "accounts", "transactions", "account_transaction_feed"} {
 		if _, err := database.Collection(collectionName).InsertOne(ctx, bson.D{{Key: "invalid_after_down", Value: true}}); err != nil {
 			t.Fatalf("insert into %s after validator rollback: %v", collectionName, err)
 		}

@@ -69,6 +69,7 @@ export async function requestJson<T>(
   const controller = new AbortController();
   const onExternalAbort = () => controller.abort();
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
 
   try {
     if (signal?.aborted) {
@@ -76,7 +77,10 @@ export async function requestJson<T>(
     } else {
       signal?.addEventListener("abort", onExternalAbort, { once: true });
     }
-    timeout = setTimeout(() => controller.abort(), timeoutMs);
+    timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
 
     const response = await fetch(joinUrl(path, baseUrl), {
       method,
@@ -108,9 +112,16 @@ export async function requestJson<T>(
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error instanceof DOMException && error.name === "AbortError") {
+      // Bên ngoài chủ động hủy (component unmount, effect cleanup, user điều hướng đi...)
+      // -> không phải lỗi thật, ném lại nguyên bản AbortError để caller nhận diện và bỏ qua.
       if (signal?.aborted) {
-        throw new ApiError(0, "Yêu cầu đã bị hủy.");
+        throw error;
       }
+      // Request tự abort do vượt timeoutMs -> đây mới là lỗi thật, báo cho user.
+      if (timedOut) {
+        throw new ApiError(0, "Yêu cầu quá thời gian chờ. Vui lòng thử lại.");
+      }
+      // Trường hợp còn lại (hiếm): abort không rõ nguyên nhân.
       throw new ApiError(
         0,
         "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.",
