@@ -1,0 +1,37 @@
+[
+  {
+    "createIndexes": "account_transaction_feed",
+    "indexes": [
+      { "key": { "account_id": 1, "occurred_at": -1 }, "name": "idx_account_occurred_at" }
+    ]
+  },
+  {
+    "collMod": "account_transaction_feed",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["_id", "account_id", "transaction_id", "direction", "type", "counterparty", "amount", "balance_after", "occurred_at"],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "account_id": { "bsonType": "objectId" },
+          "transaction_id": { "bsonType": "objectId" },
+          "direction": { "enum": ["in", "out"] },
+          "type": { "enum": ["transfer"] },
+          "counterparty": {
+            "bsonType": "object",
+            "required": ["account_no", "name"],
+            "properties": {
+              "account_no": { "bsonType": "string" },
+              "name": { "bsonType": "string" }
+            }
+          },
+          "amount": { "bsonType": "long", "minimum": 1 },
+          "balance_after": { "bsonType": "long" },
+          "occurred_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  }
+]

@@ -6,6 +6,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
 	account "github.com/dont-wait/anomaly/internal/presentation/http/handler/account"
 	media "github.com/dont-wait/anomaly/internal/presentation/http/handler/media"
+	transaction "github.com/dont-wait/anomaly/internal/presentation/http/handler/transaction"
 )
 
 // NewRouter đăng ký routes cho account handler và media handler.
@@ -13,9 +14,10 @@ import (
 // chứ không phải concrete *auth.TokenService — tránh presentation phụ
 // thuộc trực tiếp vào infrastructure, đúng dependency rule của Clean
 // Architecture.
-func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, tokenSvc queries.TokenService) *http.ServeMux {
+func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService) *http.ServeMux {
 	account.RegisterRoutes(mux, accountHandler, tokenSvc)
 	media.RegisterRoutes(mux, mediaHandler)
+	transaction.RegisterRoutes(mux, transactionHandler, tokenSvc)
 
 	return mux
 }

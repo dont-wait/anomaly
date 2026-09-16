@@ -4,11 +4,15 @@ import { BalanceCard } from "@/features/dashboard/components/BalanceCard";
 import { QuickActions } from "@/features/dashboard/components/QuickActions";
 import { PromoBanner } from "@/features/dashboard/components/PromoBanner";
 import { TransactionList } from "@/features/dashboard/components/TransactionList";
+import { useEffect, useState } from "react";
+import { getAccountFeed } from "@/features/dashboard/api/feed";
+import { useAuth } from "@/features/auth/useAuth";
+import type { Transaction } from "@/features/dashboard/model/types";
 import {
   mockAccount,
   mockPromoBanner,
   mockQuickActions,
-  mockTransactions,
+  // mockTransactions,
 } from "@/features/dashboard/mocks/dashboard";
 import { Avatar } from "@/shared/ui";
 
@@ -19,10 +23,20 @@ import { Avatar } from "@/shared/ui";
  * component con nhận props đúng theo type trong `src/types`.
  */
 const DashboardPage = () => {
+  const { token } = useAuth();
   const account = mockAccount;
   const quickActions = mockQuickActions;
   const promo = mockPromoBanner;
-  const transactions = mockTransactions;
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+
+  useEffect(() => {
+    if (!account || !token) return;
+    const controller = new AbortController();
+    getAccountFeed(account.id, token, { signal: controller.signal })
+      .then(setTransactions)
+      .catch(() => setTransactions([]));
+    return () => controller.abort();
+  }, [account, token]);
 
   return (
     <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-gradient-to-b from-violet-100 to-white">

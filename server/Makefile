@@ -6,7 +6,7 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: help start-app start-worker start-api migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
+.PHONY: help start-app start-worker start-api migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e seed
 
 start-app:
 	docker compose --profile app up --build
@@ -27,6 +27,7 @@ help:
 	@echo "  test              Run Go tests"
 	@echo "  test-api          Run Hurl API tests against BASE_URL"
 	@echo "  test-account-e2e  Run the concurrent registration E2E test"
+	@echo "  seed              Seed 1 verified demo account into Mongo"
 
 migrate: migrate-up
 
@@ -59,3 +60,6 @@ start-worker:
 
 start-api:
 	go run ./cmd/api/main.go
+
+seed:
+	go run ./cmd/seed

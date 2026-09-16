@@ -42,14 +42,16 @@ func main() {
 	mediaRepo := rustfs.NewMediaRepository(rustfsClient, config.RustFSConfig.Bucket)
 
 	mongoRepo := mongo.NewAccountAggregateRepository(mongoClient, config.MongoConfig.MongoDBName)
+	transactionRepo := mongo.NewTransactionRepository(mongoClient, config.MongoConfig.MongoDBName)
 
 	tokenSvc := auth.NewTokenService(config.AuthConfig.JWTSecret, config.AuthConfig.JWTExpiry)
 
 	accountHandler := composition.NewAccountHandler(mongoRepo, tokenSvc, *logger)
 	mediaHandler := composition.NewMediaHandler(mediaRepo, *logger)
+	transactionHandler := composition.NewTransactionHandler(mongoRepo, transactionRepo, transactionRepo, *logger)
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, tokenSvc)
+	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, transactionHandler, tokenSvc)
 
 	mux.HandleFunc("GET /health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
 		w.WriteHeader(netHTTP.StatusOK)

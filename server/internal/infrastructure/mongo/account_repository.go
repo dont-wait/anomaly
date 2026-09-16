@@ -190,3 +190,15 @@ func (r *AccountRepository) FindAll(ctx context.Context) ([]*accountdomain.UserA
 
 	return accounts, nil
 }
+
+func (r *AccountRepository) FindByAccountNo(ctx context.Context, accountNo string) (*accountdomain.UserAccount, error) {
+	var rec accountRecord
+	err := r.col.FindOne(ctx, bson.M{"account_no": accountNo}).Decode(&rec)
+	if err != nil {
+		if err == mongodrv.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return fromRecord(rec)
+}

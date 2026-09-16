@@ -186,6 +186,11 @@ func (r *AccountAggregateRepository) FindByUsername(ctx context.Context, usernam
 	return r.hydrate(ctx, account, err)
 }
 
+func (r *AccountAggregateRepository) FindByAccountNo(ctx context.Context, accountNo string) (*accountdomain.UserAccount, error) {
+	account, err := r.accounts.FindByAccountNo(ctx, accountNo)
+	return r.hydrate(ctx, account, err)
+}
+
 func (r *AccountAggregateRepository) FindByCCCDNumber(ctx context.Context, cccd string) (*accountdomain.UserAccount, error) {
 	customer, err := r.customers.FindByIdentityNumber(ctx, cccd)
 	if err != nil {
