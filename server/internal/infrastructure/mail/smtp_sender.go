@@ -65,7 +65,7 @@ func (s *SMTPSender) Send(ctx context.Context, msg maildomain.MailMessage) error
 	if err != nil {
 		return fmt.Errorf("smtp connect: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := conn.SetDeadline(deadline); err != nil {
@@ -81,7 +81,7 @@ func (s *SMTPSender) Send(ctx context.Context, msg maildomain.MailMessage) error
 	if err != nil {
 		return fmt.Errorf("smtp client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if s.cfg.Username != "" {
 		auth := smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
