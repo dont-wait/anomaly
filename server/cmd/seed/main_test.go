@@ -11,9 +11,13 @@ func TestSeedRequiresLocalOptIn(t *testing.T) {
 		env, enabled string
 		allowed      bool
 	}{
-		{"production", "true", false}, {"", "true", false},
-		{"local", "false", false}, {"development", "", false},
-		{"local", "true", true}, {"development", "true", true}, {"dev", "true", true},
+		{"production", "true", false},
+		{"", "true", false},
+		{"local", "false", false},
+		{"development", "", false},
+		{"local", "true", true},
+		{"development", "true", true},
+		{"dev", "true", true},
 	} {
 		t.Run(tc.env+"/"+tc.enabled, func(t *testing.T) {
 			err := seeder.ValidateEnvironment(tc.env, tc.enabled)

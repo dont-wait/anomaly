@@ -18,20 +18,25 @@ type memoryRepository struct {
 func (r *memoryRepository) FindByID(context.Context, string) (*accountdomain.UserAccount, error) {
 	return r.account, nil
 }
+
 func (r *memoryRepository) FindByCCCDNumber(context.Context, string) (*accountdomain.UserAccount, error) {
 	return r.account, nil
 }
+
 func (r *memoryRepository) FindByEmail(context.Context, string) (*accountdomain.UserAccount, error) {
 	return r.account, nil
 }
+
 func (r *memoryRepository) FindByUsername(context.Context, string) (*accountdomain.UserAccount, error) {
 	return r.account, nil
 }
+
 func (r *memoryRepository) Create(_ context.Context, a *accountdomain.UserAccount) error {
 	r.account = a
 	r.creates++
 	return nil
 }
+
 func (r *memoryRepository) Save(_ context.Context, a *accountdomain.UserAccount) error {
 	r.saves++
 	if r.saveErr != nil {

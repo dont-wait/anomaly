@@ -23,8 +23,10 @@ type Dependencies struct {
 	Accounts Repository
 }
 
-type seedFunc func(context.Context, Dependencies) error
-type registry map[string]seedFunc
+type (
+	seedFunc func(context.Context, Dependencies) error
+	registry map[string]seedFunc
+)
 
 var seeders = registry{}
 
