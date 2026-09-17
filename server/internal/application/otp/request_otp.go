@@ -12,6 +12,10 @@ import (
 
 const requestCooldown = 30 * time.Second
 
+func cooldownKey(email string) string { return "otp:cooldown:" + email }
+
+func attemptsKey(email string) string { return "otp:attempts:" + email }
+
 type RequestOTPCommand struct {
 	Email string
 }
@@ -32,8 +36,7 @@ func (h *RequestOTPCommandHandler) Handle(ctx context.Context, cmd RequestOTPCom
 		return err
 	}
 
-	cooldownKey := "otp:cooldown:" + email
-	allowed, err := h.store.SetCooldown(ctx, cooldownKey, requestCooldown)
+	allowed, err := h.store.SetCooldown(ctx, cooldownKey(email), requestCooldown)
 	if err != nil {
 		return err
 	}
@@ -53,13 +56,20 @@ func (h *RequestOTPCommandHandler) Handle(ctx context.Context, cmd RequestOTPCom
 	}
 	if err := h.mail.Send(ctx, maildomain.MailMessage{To: email, Subject: subject, Text: text, HTML: html}); err != nil {
 		h.log.Error().Err(err).Str("email", email).Msg("send otp email failed")
+		// Gỡ cooldown để retry trong 30s còn gửi lại được thay vì bị
+		// throttle im lặng.
+		_ = h.store.DelKey(ctx, cooldownKey(email))
 		return err
 	}
 
 	if err := h.store.Set(ctx, email, code, otpdomain.TTL); err != nil {
-		h.log.Error().Err(err).Str("email", email).Msg("store otp after send failed")
+		h.log.Error().Err(err).Str("email", email).Msg("store otp after send failed: code delivered but not persisted")
+		_ = h.store.DelKey(ctx, cooldownKey(email))
 		return err
 	}
+
+	// OTP mới phát hành -> reset bộ đếm nhập sai của lần trước.
+	_ = h.store.DelKey(ctx, attemptsKey(email))
 
 	h.log.Info().Str("email", email).Msg("otp sent")
 	return nil

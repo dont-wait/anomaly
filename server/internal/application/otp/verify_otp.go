@@ -37,8 +37,20 @@ func (h *VerifyOTPHandler) Handle(ctx context.Context, cmd VerifyOTPCommand) err
 		return err
 	}
 
-	attemptsKey := "otp:attempts:" + email
-	attempts, err := h.store.IncrAttempts(ctx, attemptsKey, attemptWindow)
+	// Consume trước: key miss trả ErrOTPExpired ngay và KHÔNG đếm attempt,
+	// nếu không attacker có thể bơm counter khống trước khi nạn nhân
+	// request OTP và khoá luôn mã thật.
+	consumed, err := h.store.Consume(ctx, email, cmd.Code)
+	if err != nil {
+		return err
+	}
+	if consumed {
+		_ = h.store.DelKey(ctx, attemptsKey(email))
+		return nil
+	}
+
+	// Chỉ đếm khi OTP còn sống mà code sai.
+	attempts, err := h.store.IncrAttempts(ctx, attemptsKey(email), attemptWindow)
 	if err != nil {
 		return err
 	}
@@ -46,13 +58,5 @@ func (h *VerifyOTPHandler) Handle(ctx context.Context, cmd VerifyOTPCommand) err
 		_ = h.store.Del(ctx, email)
 		return otpdomain.ErrOTPExpired
 	}
-
-	consumed, err := h.store.Consume(ctx, email, cmd.Code)
-	if err != nil {
-		return err
-	}
-	if !consumed {
-		return otpdomain.ErrOTPInvalid
-	}
-	return nil
+	return otpdomain.ErrOTPInvalid
 }

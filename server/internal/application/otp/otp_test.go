@@ -14,16 +14,22 @@ import (
 )
 
 type fakeStore struct {
-	mu   sync.Mutex
-	data map[string]string
-	setN int
-	delN int
-	getE error
-	setE error
+	mu       sync.Mutex
+	data     map[string]string
+	cooldown map[string]time.Time
+	attempts map[string]int64
+	setN     int
+	delN     int
+	getE     error
+	setE     error
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{data: map[string]string{}}
+	return &fakeStore{
+		data:     map[string]string{},
+		cooldown: map[string]time.Time{},
+		attempts: map[string]int64{},
+	}
 }
 
 func (s *fakeStore) Set(_ context.Context, email, code string, _ time.Duration) error {
@@ -83,12 +89,44 @@ func (s *fakeStore) DelIfMatch(_ context.Context, email, code string) error {
 	return nil
 }
 
-func (s *fakeStore) SetCooldown(_ context.Context, _ string, _ time.Duration) (bool, error) {
+// SetCooldown mimics Redis SETNX với TTL: chỉ set được khi key chưa tồn
+// tại hoặc đã hết hạn.
+func (s *fakeStore) SetCooldown(_ context.Context, key string, ttl time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if exp, ok := s.cooldown[key]; ok && time.Now().Before(exp) {
+		return false, nil
+	}
+	s.cooldown[key] = time.Now().Add(ttl)
 	return true, nil
 }
 
-func (s *fakeStore) IncrAttempts(_ context.Context, _ string, _ time.Duration) (int64, error) {
-	return 1, nil
+func (s *fakeStore) IncrAttempts(_ context.Context, key string, _ time.Duration) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.attempts[key]++
+	return s.attempts[key], nil
+}
+
+func (s *fakeStore) DelKey(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.cooldown, key)
+	delete(s.attempts, key)
+	return nil
+}
+
+func (s *fakeStore) attemptCount(key string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.attempts[key]
+}
+
+func (s *fakeStore) cooldownActive(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	exp, ok := s.cooldown[key]
+	return ok && time.Now().Before(exp)
 }
 
 type fakeSender struct {
@@ -148,6 +186,11 @@ func TestRequestOTPOverwritesPrevious(t *testing.T) {
 		t.Fatalf("Handle() error = %v", err)
 	}
 	first, _ := store.Get(ctx, "a@b.co")
+	// Prod chặn request thứ 2 trong 30s; bỏ cooldown để test đúng ý định
+	// "phát hành lại thì ghi đè mã cũ".
+	if err := store.DelKey(ctx, cooldownKey("a@b.co")); err != nil {
+		t.Fatalf("DelKey() error = %v", err)
+	}
 	if err := h.Handle(ctx, RequestOTPCommand{Email: "a@b.co"}); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
@@ -175,6 +218,28 @@ func TestRequestOTPSendFailureDoesNotStoreKey(t *testing.T) {
 	}
 	if _, err := store.Get(ctx, "a@b.co"); err != otpdomain.ErrOTPExpired {
 		t.Fatalf("Get() error = %v, want ErrOTPExpired (no key)", err)
+	}
+}
+
+func TestRequestOTPSendFailureClearsCooldown(t *testing.T) {
+	store := newFakeStore()
+	sender := &fakeSender{sendErr: errors.New("smtp down")}
+	h := NewRequestOTPCommandHandler(store, sender, testLogger())
+	ctx := context.Background()
+
+	if err := h.Handle(ctx, RequestOTPCommand{Email: "a@b.co"}); err == nil {
+		t.Fatal("Handle() error = nil, want send error")
+	}
+	if store.cooldownActive(cooldownKey("a@b.co")) {
+		t.Fatal("cooldown still active after send failure, retry would be throttled")
+	}
+
+	sender.sendErr = nil
+	if err := h.Handle(ctx, RequestOTPCommand{Email: "a@b.co"}); err != nil {
+		t.Fatalf("retry Handle() error = %v", err)
+	}
+	if sender.sent != 1 {
+		t.Fatalf("sent = %d, want 1 on retry", sender.sent)
 	}
 }
 
@@ -228,6 +293,50 @@ func TestVerifyOTPMissingKeyExpired(t *testing.T) {
 
 	if err := h.Handle(context.Background(), VerifyOTPCommand{Email: "a@b.co", Code: "123456"}); err != otpdomain.ErrOTPExpired {
 		t.Fatalf("Handle() error = %v, want ErrOTPExpired", err)
+	}
+}
+
+func TestVerifyOTPMissingKeyDoesNotCountAttempt(t *testing.T) {
+	store := newFakeStore()
+	h := NewVerifyOTPHandler(store)
+	ctx := context.Background()
+
+	for i := 0; i < maxVerifyAttempts+1; i++ {
+		if err := h.Handle(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "123456"}); err != otpdomain.ErrOTPExpired {
+			t.Fatalf("Handle() error = %v, want ErrOTPExpired", err)
+		}
+	}
+	if n := store.attemptCount(attemptsKey("a@b.co")); n != 0 {
+		t.Fatalf("attempts = %d, want 0 (no counter before an OTP exists)", n)
+	}
+
+	// OTP phát hành sau đó vẫn dùng được, không bị khoá sẵn.
+	if err := store.Set(ctx, "a@b.co", "123456", time.Minute); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	if err := h.Handle(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "123456"}); err != nil {
+		t.Fatalf("Handle() error = %v, want success", err)
+	}
+}
+
+func TestVerifyOTPExhaustedAttemptsInvalidatesOTP(t *testing.T) {
+	store := newFakeStore()
+	h := NewVerifyOTPHandler(store)
+	ctx := context.Background()
+	if err := store.Set(ctx, "a@b.co", "123456", time.Minute); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	for i := 0; i < maxVerifyAttempts; i++ {
+		if err := h.Handle(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "654321"}); err != otpdomain.ErrOTPInvalid {
+			t.Fatalf("attempt %d error = %v, want ErrOTPInvalid", i+1, err)
+		}
+	}
+	if err := h.Handle(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "654321"}); err != otpdomain.ErrOTPExpired {
+		t.Fatalf("Handle() error = %v, want ErrOTPExpired after exhausting attempts", err)
+	}
+	if _, err := store.Get(ctx, "a@b.co"); err != otpdomain.ErrOTPExpired {
+		t.Fatalf("Get() error = %v, want OTP invalidated", err)
 	}
 }
 

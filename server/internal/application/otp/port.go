@@ -32,6 +32,10 @@ type OTPStore interface {
 	// IncrAttempts atomically increments a counter key and sets TTL
 	// on first increment. Returns the new counter value.
 	IncrAttempts(ctx context.Context, key string, ttl time.Duration) (int64, error)
+
+	// DelKey deletes a raw key (cooldown/attempts counters), unlike Del
+	// which maps an email to the OTP key. Best-effort cleanup.
+	DelKey(ctx context.Context, key string) error
 }
 
 // MailSender gửi mail. Implementation cụ thể nằm ở infrastructure

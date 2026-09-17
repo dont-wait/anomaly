@@ -100,6 +100,12 @@ func (s *fakeStore) IncrAttempts(_ context.Context, _ string, _ time.Duration) (
 	return 1, nil
 }
 
+// DelKey best-effort; các handler test chỉ quan tâm status mapping nên
+// không cần theo dõi cooldown/attempts key.
+func (s *fakeStore) DelKey(_ context.Context, _ string) error {
+	return nil
+}
+
 type fakeSender struct {
 	err error
 }

@@ -97,6 +97,11 @@ func (s *RedisStore) SetCooldown(ctx context.Context, key string, ttl time.Durat
 	return s.rdb.SetNX(ctx, key, "1", ttl).Result()
 }
 
+// DelKey removes a raw key (cooldown/attempts), no email mapping.
+func (s *RedisStore) DelKey(ctx context.Context, key string) error {
+	return s.rdb.Del(ctx, key).Err()
+}
+
 func (s *RedisStore) IncrAttempts(ctx context.Context, key string, ttl time.Duration) (int64, error) {
 	n, err := incrAttemptsScript.Run(ctx, s.rdb, []string{key}, ttl.Milliseconds()).Int64()
 	if err != nil {
