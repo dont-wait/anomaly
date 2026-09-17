@@ -180,6 +180,11 @@ it("empties the boxes and focuses the first one when the code has expired", () =
   expect(document.activeElement).toBe(box(1));
 });
 
+it("announces the verification progress", () => {
+  renderStep({ progress: "Đang xác thực mã…" });
+  expect(screen.getByRole("status").textContent).toBe("Đang xác thực mã…");
+});
+
 it("disables every box while a request is in flight", () => {
   renderStep({ otpCode: "123456", otpBusy: true });
   expect(boxValues().length).toBe(6);

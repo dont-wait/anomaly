@@ -157,21 +157,24 @@ it("opens the OTP screen before the code has been sent", async () => {
   fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
 
-  // Màn OTP đã hiển thị dù request gửi mã còn đang treo.
+  // Màn OTP đã hiển thị dù request gửi mã còn đang treo: các ô khoá lại
+  // nhưng không kèm dòng trạng thái nào.
   const firstBox = screen.getByLabelText(
     "Chữ số thứ 1 của mã OTP",
   ) as HTMLInputElement;
   expect(firstBox.disabled).toBe(true);
-  expect(screen.getByRole("status").textContent).toBe("Đang gửi mã…");
+  expect(screen.queryByRole("status")).toBeNull();
 
   await act(async () => {
     release!();
   });
-  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
-  expect(
-    (screen.getByLabelText("Chữ số thứ 1 của mã OTP") as HTMLInputElement)
-      .disabled,
-  ).toBe(false);
+  await waitFor(() =>
+    expect(
+      (screen.getByLabelText("Chữ số thứ 1 của mã OTP") as HTMLInputElement)
+        .disabled,
+    ).toBe(false),
+  );
+  expect(screen.queryByRole("status")).toBeNull();
 });
 it("reports a failed send on the OTP screen instead of holding back the email step", async () => {
   const normal = fetchMock.getMockImplementation()!;

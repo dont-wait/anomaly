@@ -89,7 +89,6 @@ export function useRegistrationFlow() {
     const controller = new AbortController();
     operation.current = controller;
     setOtpBusy(true);
-    setProgress("Đang gửi mã…");
     try {
       await requestOtp(email, controller.signal);
       if (controller.signal.aborted) return null;
@@ -98,10 +97,7 @@ export function useRegistrationFlow() {
     } catch (cause) {
       return controller.signal.aborted ? null : otpError(cause);
     } finally {
-      if (!controller.signal.aborted) {
-        setOtpBusy(false);
-        setProgress("");
-      }
+      if (!controller.signal.aborted) setOtpBusy(false);
       if (operation.current === controller) operation.current = null;
     }
   }
