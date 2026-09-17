@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -224,5 +225,52 @@ func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %q: %v", path, err)
+	}
+}
+
+func TestSMTPConfig(t *testing.T) {
+	for _, key := range []string{"SMTP_HOST", "SMTP_PORT", "SMTP_TLS_MODE", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM"} {
+		t.Setenv(key, "")
+	}
+	l := &Loader{}
+	cfg := l.LoadSMTPConfig()
+	if cfg.Configured() || cfg.TLSMode != "starttls" || cfg.Port != 587 || cfg.SenderAddress() != "" {
+		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+	t.Setenv("SMTP_HOST", "smtp.example.com")
+	t.Setenv("SMTP_PORT", "2525")
+	t.Setenv("SMTP_TLS_MODE", "implicit")
+	t.Setenv("SMTP_USERNAME", "sender@example.com")
+	t.Setenv("SMTP_PASSWORD", "test-password")
+	cfg = l.LoadSMTPConfig()
+	if !cfg.Configured() || cfg.TLSMode != "implicit" || cfg.Host != "smtp.example.com" || cfg.Port != 2525 || cfg.Username != "sender@example.com" || cfg.Password != "test-password" || cfg.SenderAddress() != cfg.Username {
+		t.Fatal("SMTP environment overrides or username fallback not loaded")
+	}
+	t.Setenv("SMTP_FROM", "noreply@example.com")
+	if l.LoadSMTPConfig().SenderAddress() != "noreply@example.com" {
+		t.Fatal("From must take precedence")
+	}
+}
+
+func TestLoadEnvPort(t *testing.T) {
+	for _, value := range []string{"", "invalid", "0", "-1", "999999999999999999999999"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("SMTP_PORT", value)
+			if got := (&Loader{}).LoadEnvPort("SMTP_PORT", 587); got != 587 {
+				t.Fatalf("got %d", got)
+			}
+		})
+	}
+	for _, value := range []string{"1", "65535"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("SMTP_PORT", value)
+			want, err := strconv.Atoi(value)
+			if err != nil {
+				t.Fatalf("invalid test port %q: %v", value, err)
+			}
+			if got := (&Loader{}).LoadEnvPort("SMTP_PORT", 587); got != want {
+				t.Fatalf("LoadEnvPort() = %d, want %d", got, want)
+			}
+		})
 	}
 }

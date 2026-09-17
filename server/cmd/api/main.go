@@ -5,6 +5,8 @@ import (
 	netHTTP "net/http"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/dont-wait/anomaly/internal/composition"
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/helpers"
@@ -45,11 +47,25 @@ func main() {
 
 	tokenSvc := auth.NewTokenService(config.AuthConfig.JWTSecret, config.AuthConfig.JWTExpiry)
 
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     config.RedisConfig.Addr,
+		Password: config.RedisConfig.Password,
+	})
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		logger.Fatal().Err(err).Msg("connect redis failed")
+	}
+	defer func() {
+		if err := rdb.Close(); err != nil {
+			logger.Error().Err(err).Msg("disconnect redis failed")
+		}
+	}()
+
 	accountHandler := composition.NewAccountHandler(mongoRepo, tokenSvc, *logger)
 	mediaHandler := composition.NewMediaHandler(mediaRepo, *logger)
+	otpHandler := composition.NewOTPHandler(rdb, config.SMTPConfig, *logger)
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, tokenSvc)
+	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, tokenSvc)
 
 	mux.HandleFunc("GET /health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
 		w.WriteHeader(netHTTP.StatusOK)

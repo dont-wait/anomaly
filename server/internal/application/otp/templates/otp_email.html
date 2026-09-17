@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <title>Mã xác thực OTP · AnomalyBank</title>
+</head>
+<body style="margin:0;padding:0;background-color:#faf8ff;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Mã OTP AnomalyBank của bạn · Your AnomalyBank OTP code</div>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#faf8ff;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background-color:#ffffff;border:1px solid #c5c5d3;border-radius:16px;overflow:hidden;">
+          <!-- Header -->
+          <tr>
+            <td align="center" style="background-color:#8b5cf6;background-image:linear-gradient(135deg,#b582b5 0%,#8b5cf6 100%);padding:32px 24px;">
+              <div style="font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:26px;font-weight:800;letter-spacing:0.5px;color:#ffffff;">AnomalyBank</div>
+              <div style="font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;color:#ffffff;opacity:0.85;margin-top:6px;">Xác thực tài khoản · Account verification</div>
+            </td>
+          </tr>
+          <!-- Tieng Viet -->
+          <tr>
+            <td style="padding:32px 32px 8px 32px;font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+              <h1 style="margin:0 0 12px 0;font-size:22px;font-weight:700;color:#00236f;">Xác nhận tài khoản của bạn</h1>
+              <p style="margin:0 0 20px 0;font-size:15px;line-height:1.6;color:#444651;">Xin chào,<br />Đây là mã xác thực (OTP) của bạn:</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td align="center" style="background-color:#f2f3ff;border:2px dashed #b582b5;border-radius:12px;padding:20px 16px;">
+                    <div style="font-family:'Courier New',Courier,monospace;font-size:38px;font-weight:700;letter-spacing:10px;padding-left:10px;color:#00236f;">{{.Code}}</div>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:16px 0 0 0;font-size:14px;color:#444651;">Mã có hiệu lực trong {{.ExpirySeconds}} giây.</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="background-color:#ffdad6;border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.5;color:#93000a;">Vì lý do bảo mật, vui lòng không chia sẻ mã này với bất kỳ ai.</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Divider -->
+          <tr>
+            <td style="padding:20px 32px 0 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="border-top:1px solid #c5c5d3;"></td>
+                  <td width="90" align="center" style="font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;color:#757682;">English</td>
+                  <td style="border-top:1px solid #c5c5d3;"></td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- English -->
+          <tr>
+            <td style="padding:16px 32px 8px 32px;font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+              <h2 style="margin:0 0 12px 0;font-size:20px;font-weight:700;color:#00236f;">Confirm your account</h2>
+              <p style="margin:0 0 20px 0;font-size:15px;line-height:1.6;color:#444651;">Hello,<br />Your one-time password (OTP) is:</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td align="center" style="background-color:#f2f3ff;border:2px dashed #b582b5;border-radius:12px;padding:20px 16px;">
+                    <div style="font-family:'Courier New',Courier,monospace;font-size:38px;font-weight:700;letter-spacing:10px;padding-left:10px;color:#00236f;">{{.Code}}</div>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:16px 0 0 0;font-size:14px;color:#444651;">This code expires in {{.ExpirySeconds}} seconds.</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="background-color:#ffdad6;border-radius:10px;padding:12px 16px;font-size:13px;line-height:1.5;color:#93000a;">For your security, never share this code with anyone.</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding:24px 32px 32px 32px;font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;line-height:1.6;color:#757682;">
+              Email này được gửi tự động từ AnomalyBank, vui lòng không trả lời.<br />
+              This is an automated message from AnomalyBank. Please do not reply.<br />
+              © 2026 AnomalyBank
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
