@@ -26,6 +26,7 @@ function renderStep(overrides: Overrides = {}) {
         setOtpCode={handleChange}
         otpBusy={false}
         otpErrorMsg=""
+        otpErrorTick={0}
         progress=""
         resendIn={0}
         resendOtp={vi.fn()}

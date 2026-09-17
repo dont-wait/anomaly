@@ -224,6 +224,35 @@ it("starts a 30s resend cooldown and counts it down on the OTP screen", async ()
     vi.useRealTimers();
   }
 });
+it("sends a new code and restarts the cooldown once it has elapsed", async () => {
+  vi.useFakeTimers();
+  try {
+    const { result } = renderHook(useRegistrationFlow, { wrapper });
+    act(() => {
+      result.current.setEmail("a@example.com");
+      result.current.setConsent(true);
+    });
+    await act(async () => {
+      result.current.submit(submitEvent);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.resendIn).toBe(30);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+    expect(result.current.resendIn).toBe(0);
+
+    await act(async () => {
+      await result.current.resendOtp();
+    });
+    expect(count("/otp/request")).toBe(2);
+    expect(result.current.resendIn).toBe(30);
+    expect(result.current.otpErrorMsg).toBe("");
+  } finally {
+    vi.useRealTimers();
+  }
+});
 it("keeps the user on the OTP screen and explains an expired code", async () => {
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) =>

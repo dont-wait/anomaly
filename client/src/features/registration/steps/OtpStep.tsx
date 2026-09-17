@@ -6,11 +6,11 @@ import {
   type MouseEvent,
 } from "react";
 import type { RegistrationFlowState } from "../useRegistrationFlow";
+import { OTP_LENGTH } from "../model";
 import { Notice, Next, StepHeading } from "../components/StepPrimitives";
 import { faEnvelope, faRotateRight } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
-const OTP_LENGTH = 6;
 const digitsOnly = (value: string) => value.replace(/\D/g, "");
 
 export function OtpStep({
@@ -19,6 +19,7 @@ export function OtpStep({
   setOtpCode,
   otpBusy,
   otpErrorMsg,
+  otpErrorTick,
   progress,
   resendIn,
   resendOtp,
@@ -31,6 +32,7 @@ export function OtpStep({
   | "setOtpCode"
   | "otpBusy"
   | "otpErrorMsg"
+  | "otpErrorTick"
   | "progress"
   | "resendIn"
   | "resendOtp"
@@ -71,7 +73,8 @@ export function OtpStep({
   useEffect(() => {
     if (!otpErrorMsg) return;
     boxes.current[Math.min(codeRef.current.length, OTP_LENGTH - 1)]?.focus();
-  }, [otpErrorMsg]);
+    // Dep theo counter để hai lần lỗi giống hệt nhau vẫn đưa lại con trỏ.
+  }, [otpErrorMsg, otpErrorTick]);
 
   function focusAt(index: number) {
     boxes.current[Math.min(Math.max(index, 0), OTP_LENGTH - 1)]?.focus();

@@ -2,7 +2,7 @@ import { toast } from "@/shared/notifications/toast";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
 import { ApiError } from "@/shared/lib/http";
 import { useState, useRef, useEffect, type FormEvent } from "react";
-import { stages, passwordRules, type Screen } from "./model";
+import { stages, passwordRules, OTP_LENGTH, type Screen } from "./model";
 import { useAuth } from "@/features/auth/useAuth";
 import { defaultAuthTokenStore } from "@/features/auth/lib/token-store";
 import {
@@ -39,6 +39,7 @@ export function useRegistrationFlow() {
   const [otpCode, setOtpCode] = useState("");
   const [otpBusy, setOtpBusy] = useState(false);
   const [otpErrorMsg, setOtpErrorMsg] = useState("");
+  const [otpErrorTick, setOtpErrorTick] = useState(0);
   const [resendIn, setResendIn] = useState(0);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -71,6 +72,12 @@ export function useRegistrationFlow() {
     );
     return () => clearInterval(timer);
   }, [screen]);
+  // Counter tăng mỗi lần báo lỗi để màn OTP biết có lỗi mới kể cả khi nội
+  // dung message không đổi.
+  function showOtpError(message: string) {
+    setOtpErrorMsg(message);
+    setOtpErrorTick((tick) => tick + 1);
+  }
   function go(next: Screen) {
     if (operation.current || createdAccount) return;
     setError("");
@@ -105,35 +112,41 @@ export function useRegistrationFlow() {
     // Sang màn OTP ngay, mã gửi chạy nền; lỗi báo tại chỗ chứ không kéo
     // user ngược về bước email. sendOtp tự bắt lỗi nên .then là đủ.
     go("otp");
-    void sendOtp().then((failure) => {
-      if (failure) setOtpErrorMsg(failure);
-    });
+    void sendOtp()
+      .then((failure) => {
+        if (failure) showOtpError(failure);
+      })
+      .catch(() => {});
   }
   async function resendOtp() {
     if (operation.current || resendIn > 0) return;
     setOtpErrorMsg("");
     const failure = await sendOtp();
-    if (failure) setOtpErrorMsg(failure);
+    if (failure) showOtpError(failure);
   }
   async function confirmOtp() {
-    if (operation.current || otpCode.length !== 6) return;
+    if (operation.current || otpCode.length !== OTP_LENGTH) return;
     const controller = new AbortController();
     operation.current = controller;
     setOtpBusy(true);
     setOtpErrorMsg("");
+    setProgress("Đang xác thực mã…");
     let verified = false;
     try {
       await verifyOtp(email, otpCode, controller.signal);
       verified = !controller.signal.aborted;
     } catch (cause) {
       if (!controller.signal.aborted) {
-        setOtpErrorMsg(otpError(cause));
+        showOtpError(otpError(cause));
         // Mã đã hết hạn hoặc hết lượt thử: xoá các ô để user nhập mã mới.
         if (cause instanceof ApiError && cause.status === HTTP_STATUS.GONE)
           setOtpCode("");
       }
     } finally {
-      if (!controller.signal.aborted) setOtpBusy(false);
+      if (!controller.signal.aborted) {
+        setOtpBusy(false);
+        setProgress("");
+      }
       if (operation.current === controller) operation.current = null;
     }
     if (verified) {
@@ -317,6 +330,7 @@ export function useRegistrationFlow() {
     setOtpCode,
     otpBusy,
     otpErrorMsg,
+    otpErrorTick,
     resendIn,
     resendOtp,
     password,

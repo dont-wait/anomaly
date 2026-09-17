@@ -24,6 +24,7 @@ export const titles = [
   "Khuôn mặt",
   "Bảo vệ tài khoản",
 ];
+export const OTP_LENGTH = 6;
 export const passwordRules = (value: string) => [
   value.length >= 8,
   /[a-z]/.test(value) && /[A-Z]/.test(value),
