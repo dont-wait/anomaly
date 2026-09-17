@@ -25,7 +25,7 @@ func NewVerifyOTPHandler(store OTPStore) *VerifyOTPHandler {
 	return &VerifyOTPHandler{store: store}
 }
 
-// Handle kiểm tra mã OTP.原子 compare-and-delete: đúng → consume,
+// Handle kiểm tra mã OTP. compare-and-delete: đúng → consume,
 // sai → giữ key, key miss → ErrOTPExpired. Không lookup account,
 // không flip IsVerify. Sau 5 lần sai liên tiếp thì invalidate OTP.
 func (h *VerifyOTPHandler) Handle(ctx context.Context, cmd VerifyOTPCommand) error {
