@@ -383,3 +383,101 @@ func TestVerifyOTPConcurrentOnlyOneWins(t *testing.T) {
 		t.Fatalf("concurrent successes = %d, want exactly 1", successes)
 	}
 }
+
+func TestRequestOTPCooldownSkipsSecondSend(t *testing.T) {
+	store := newFakeStore()
+	sender := &fakeSender{}
+	h := NewRequestOTPCommandHandler(store, sender, testLogger())
+	for _, email := range []string{"Alice@Example.COM", "alice@example.com"} {
+		if err := h.Handle(t.Context(), RequestOTPCommand{Email: email}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if sender.sent != 1 || store.setN != 1 {
+		t.Fatalf("sent = %d, stored = %d; want one issuance during cooldown", sender.sent, store.setN)
+	}
+}
+
+func TestRequestOTPStoreFailureAllowsRetry(t *testing.T) {
+	store := newFakeStore()
+	store.setE = errors.New("redis unavailable")
+	sender := &fakeSender{}
+	h := NewRequestOTPCommandHandler(store, sender, testLogger())
+	cmd := RequestOTPCommand{Email: "a@b.co"}
+	if err := h.Handle(t.Context(), cmd); !errors.Is(err, store.setE) {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	if store.cooldownActive(cooldownKey(cmd.Email)) {
+		t.Fatal("failed storage must release cooldown")
+	}
+	if _, err := store.Get(t.Context(), cmd.Email); !errors.Is(err, otpdomain.ErrOTPExpired) {
+		t.Fatalf("Get() error = %v", err)
+	}
+	store.setE = nil
+	if err := h.Handle(t.Context(), cmd); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if sender.sent != 2 || store.setN != 1 {
+		t.Fatalf("sent = %d, stored = %d", sender.sent, store.setN)
+	}
+}
+
+type inspectingSender func(context.Context, maildomain.MailMessage) error
+
+func (s inspectingSender) Send(ctx context.Context, msg maildomain.MailMessage) error {
+	return s(ctx, msg)
+}
+
+type ttlStore struct {
+	*fakeStore
+	ttl time.Duration
+}
+
+func (s *ttlStore) Set(ctx context.Context, email, code string, ttl time.Duration) error {
+	s.ttl = ttl
+	return s.fakeStore.Set(ctx, email, code, ttl)
+}
+
+func TestRequestOTPStartsFullTTLAfterSend(t *testing.T) {
+	store := &ttlStore{fakeStore: newFakeStore()}
+	sender := inspectingSender(func(ctx context.Context, msg maildomain.MailMessage) error {
+		if _, err := store.Get(ctx, msg.To); !errors.Is(err, otpdomain.ErrOTPExpired) {
+			t.Fatalf("OTP should not be active during send: %v", err)
+		}
+		if store.setN != 0 {
+			t.Fatal("OTP persisted before mail submission")
+		}
+		return nil
+	})
+	h := NewRequestOTPCommandHandler(store, sender, testLogger())
+	if err := h.Handle(t.Context(), RequestOTPCommand{Email: "a@b.co"}); err != nil {
+		t.Fatal(err)
+	}
+	if store.ttl != otpdomain.TTL || store.setN != 1 {
+		t.Fatalf("TTL = %v, writes = %d", store.ttl, store.setN)
+	}
+}
+
+func TestVerifyOTPNormalizesEmail(t *testing.T) {
+	store := newFakeStore()
+	if err := store.Set(t.Context(), "alice@example.com", "123456", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	h := NewVerifyOTPHandler(store)
+	if err := h.Handle(t.Context(), VerifyOTPCommand{Email: "Alice@Example.COM", Code: "123456"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRequestOTPResetsPreviousAttempts(t *testing.T) {
+	store := newFakeStore()
+	email := "a@b.co"
+	store.attempts[attemptsKey(email)] = maxVerifyAttempts
+	h := NewRequestOTPCommandHandler(store, &fakeSender{}, testLogger())
+	if err := h.Handle(t.Context(), RequestOTPCommand{Email: email}); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.attemptCount(attemptsKey(email)); got != 0 {
+		t.Fatalf("attempts = %d, want 0", got)
+	}
+}
