@@ -1,34 +1,38 @@
-import { useSyncExternalStore } from "react";
-import { toast } from "./toast";
+import { type CSSProperties, useSyncExternalStore } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCircleExclamation, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { toast, TOAST_DURATION_MS } from "./toast";
+import "./toast.css";
 
-// Errors remain visible until dismissed so users have time to read them.
 export function Toaster() {
   const current = useSyncExternalStore(toast.subscribe, toast.getSnapshot);
   return (
     <div
-      className="pointer-events-none fixed inset-x-4 top-4 z-50 mx-auto max-w-md"
+      className="toast-region"
       aria-label="Thông báo"
     >
       {current && (
         <div
           key={current.id}
-          className="pointer-events-auto flex items-start gap-3 rounded-xl bg-error-container p-4 text-on-error-container shadow-lg"
+          className="toast-card"
+          style={{ "--toast-duration": `${TOAST_DURATION_MS}ms` } as CSSProperties}
         >
-          <p
-            role="alert"
-            aria-atomic="true"
-            className="min-w-0 flex-1 break-words text-sm"
-          >
-            {current.message}
-          </p>
+          <span className="toast-icon" aria-hidden="true">
+            <FontAwesomeIcon icon={faCircleExclamation} />
+          </span>
+          <div role="alert" aria-atomic="true" className="toast-content">
+            <p className="toast-title">Có lỗi xảy ra</p>
+            <p className="toast-message">{current.message}</p>
+          </div>
           <button
             type="button"
             aria-label="Đóng thông báo"
             onClick={toast.dismiss}
-            className="shrink-0 rounded px-2 py-1 focus-visible:outline-2"
+            className="toast-close"
           >
-            ×
+            <FontAwesomeIcon icon={faXmark} />
           </button>
+          <span className="toast-progress" aria-hidden="true" />
         </div>
       )}
     </div>
