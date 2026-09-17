@@ -1,3 +1,4 @@
+import { AUTH_STATUS } from "@/features/auth/authStatus";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBell,
@@ -26,7 +27,6 @@ export function LoginView() {
     isBusy,
     isSubmitting,
     formError,
-    successMessage,
     handleSubmit,
     signOut,
   } = useLoginForm();
@@ -177,16 +177,12 @@ export function LoginView() {
                     </button>
                   </div>
                 </div>
-                {(formError || successMessage) && (
+                {formError && (
                   <p
-                    role={formError ? "alert" : "status"}
-                    className={`rounded-xl px-3 py-2 text-xs sm:text-label-md ${
-                      formError
-                        ? "bg-error-container text-on-error-container"
-                        : "bg-surface-container-high text-on-surface"
-                    }`}
+                    role="alert"
+                    className="rounded-xl bg-error-container px-3 py-2 text-xs text-on-error-container sm:text-label-md"
                   >
-                    {formError ?? successMessage}
+                    {formError}
                   </p>
                 )}
               </div>
@@ -203,7 +199,7 @@ export function LoginView() {
                 type="submit"
                 disabled={isBusy}
               >
-                {authStatus === "restoring"
+                {authStatus === AUTH_STATUS.RESTORING
                   ? "Đang kiểm tra phiên..."
                   : isSubmitting
                     ? "Đang đăng nhập..."
@@ -212,7 +208,7 @@ export function LoginView() {
 
               {/* Register Link */}
               <div className="w-full py-3 sm:py-3.5 text-center flex items-center justify-center bg-surface-container-lowest/40">
-                {authStatus === "authenticated" && user ? (
+                {authStatus === AUTH_STATUS.AUTHENTICATED && user ? (
                   <p className="text-xs sm:text-label-md text-on-surface-variant">
                     Đã đăng nhập:{" "}
                     <span className="font-semibold text-on-surface">

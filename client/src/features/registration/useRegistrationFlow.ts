@@ -1,3 +1,4 @@
+import { toast } from "@/shared/notifications/toast";
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import { stages, passwordRules, type Screen } from "./model";
 import { useAuth } from "@/features/auth/useAuth";
@@ -63,6 +64,7 @@ export function useRegistrationFlow() {
     operation.current = controller;
     setBusy(true);
     setError("");
+    toast.dismiss();
     setScreen("processing");
     setProgress("Đang kiểm tra ảnh CCCD, liveness và đối chiếu khuôn mặt…");
     try {
@@ -75,22 +77,26 @@ export function useRegistrationFlow() {
       if (result.decision === "VERIFIED") {
         verifiedVideo.current = video;
         setScreen("password");
+      } else if (result.decision === "SYSTEM_ERROR") {
+        toast.error(
+          result.reason_message ||
+            "Dịch vụ xác thực gặp lỗi. Lượt thử của bạn được giữ nguyên.",
+        );
+        setScreen("face");
       } else {
         if (result.decision === "FAILED_FINAL") setRemaining(0);
         if (result.decision === "RETRY_ALLOWED")
           setRemaining((r) => Math.max(0, r - 1));
         setError(
           result.reason_message ||
-            (result.decision === "SYSTEM_ERROR"
-              ? "Dịch vụ xác thực gặp lỗi. Lượt thử của bạn được giữ nguyên."
-              : "Xác thực chưa đạt. Vui lòng kiểm tra ảnh CCCD và quay lại video."),
+            "Xác thực chưa đạt. Vui lòng kiểm tra ảnh CCCD và quay lại video.",
         );
         setScreen("error");
       }
     } catch (cause) {
       if (!controller.signal.aborted) {
-        setError(registrationError(cause));
-        setScreen("error");
+        toast.error(registrationError(cause));
+        setScreen("face");
       }
     } finally {
       if (!controller.signal.aborted) setBusy(false);
@@ -113,6 +119,7 @@ export function useRegistrationFlow() {
     operation.current = controller;
     setBusy(true);
     setError("");
+    toast.dismiss();
     try {
       let account = createdAccount;
       if (!account) {
@@ -182,7 +189,7 @@ export function useRegistrationFlow() {
       setDocuments({ front: null, back: null });
       setScreen("success");
     } catch (cause) {
-      if (!controller.signal.aborted) setError(registrationError(cause));
+      if (!controller.signal.aborted) toast.error(registrationError(cause));
     } finally {
       if (!controller.signal.aborted) {
         setBusy(false);

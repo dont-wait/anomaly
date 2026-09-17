@@ -1,0 +1,116 @@
+.toast-region {
+  position: fixed;
+  inset: calc(env(safe-area-inset-top, 0px) + 20px) 16px auto;
+  z-index: 1000;
+  max-width: 420px;
+  margin-inline: auto;
+  pointer-events: none;
+}
+
+.toast-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  overflow: hidden;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--color-error) 18%, transparent);
+  border-radius: 18px;
+  background: var(--color-surface-container-lowest);
+  color: var(--color-on-surface);
+  box-shadow:
+    0 12px 36px #131b2e1a,
+    0 2px 6px #131b2e08;
+  pointer-events: auto;
+  animation: toast-enter 200ms ease-out both;
+}
+
+.toast-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-error-container) 55%, transparent);
+  color: var(--color-error);
+  font-size: 18px;
+}
+
+.toast-content {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.toast-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 700;
+}
+
+.toast-message {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 13px;
+  line-height: 21px;
+}
+
+.toast-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.toast-close:hover {
+  background: var(--color-surface-container);
+}
+
+.toast-close:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.toast-progress {
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  background: var(--color-error);
+  opacity: 0.55;
+  transform-origin: left;
+  animation: toast-countdown var(--toast-duration) linear forwards;
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-countdown {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-card,
+  .toast-progress {
+    animation: none;
+  }
+  .toast-close {
+    transition: none;
+  }
+}

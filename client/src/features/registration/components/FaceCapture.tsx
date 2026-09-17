@@ -1,3 +1,4 @@
+import { toast } from "@/shared/notifications/toast";
 import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFingerprint, faCamera } from "@fortawesome/free-solid-svg-icons";
@@ -73,11 +74,11 @@ export function FaceCapture({
         }
         setRecording(false);
         setActive(false);
-        setError("Camera đã ngắt kết nối. Vui lòng mở lại camera.");
+        toast.error("Camera đã ngắt kết nối. Vui lòng mở lại camera.");
       };
     } catch {
       if (mounted.current)
-        setError(
+        toast.error(
           "Không thể mở hoặc ghi hình camera. Kiểm tra quyền camera và sử dụng WebView/trình duyệt hỗ trợ ghi video.",
         );
     } finally {
@@ -91,7 +92,7 @@ export function FaceCapture({
       (type) => MediaRecorder.isTypeSupported(type),
     );
     if (!mimeType) {
-      setError("Thiết bị chưa hỗ trợ định dạng ghi video phù hợp.");
+      toast.error("Thiết bị chưa hỗ trợ định dạng ghi video phù hợp.");
       return;
     }
     try {
@@ -119,7 +120,7 @@ export function FaceCapture({
         if (capture.state !== "inactive") capture.stop();
         if (mounted.current) {
           setRecording(false);
-          setError("Ghi hình thất bại. Vui lòng quay lại.");
+          toast.error("Ghi hình thất bại. Vui lòng quay lại.");
         }
       };
       capture.onstop = () => {
@@ -155,7 +156,7 @@ export function FaceCapture({
         }
       }, 250);
     } catch {
-      setError("Không thể ghi hình. Vui lòng kiểm tra camera và thử lại.");
+      toast.error("Không thể ghi hình. Vui lòng kiểm tra camera và thử lại.");
     }
   }
   const challenge = Math.min(3, Math.floor(elapsed / 3));

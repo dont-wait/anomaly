@@ -1,8 +1,8 @@
 import { createContext } from "react";
 import type { AuthUser, LoginInput } from "@/features/auth/api/auth";
+import type { AuthStatus } from "./authStatus";
 
-export type AuthStatus =
-  "idle" | "restoring" | "authenticated" | "unauthenticated";
+export type { AuthStatus } from "./authStatus";
 
 export interface AuthState {
   status: AuthStatus;

@@ -1,3 +1,4 @@
+import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { ApiError, requestJson } from "@/shared/lib/http";
 export const KYC_BASE_URL =
   import.meta.env.VITE_KYC_ENDPOINT || "http://localhost:8090";
@@ -43,7 +44,7 @@ export async function verifyFace(
   body.append("cccd_front_image", front);
   body.append("live_video", video);
   body.append("challenge_type", LIVENESS_CHALLENGE);
-  const result = await requestJson<KycResult>("/v1/kyc/verify-face", {
+  const result = await requestJson<KycResult>(API_ENDPOINTS.KYC.VERIFY_FACE, {
     method: "POST",
     body,
     baseUrl,

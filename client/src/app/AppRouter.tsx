@@ -1,4 +1,6 @@
-import { useSyncExternalStore } from "react";
+import { AUTH_STATUS } from "@/features/auth/authStatus";
+import { useEffect, useSyncExternalStore } from "react";
+import { useAuth } from "@/features/auth/useAuth";
 import { LoginPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
 import DashboardPage from "@/pages/DashboardPage";
@@ -11,13 +13,24 @@ function subscribe(onChange: () => void) {
 
 // Hash routes work in both Vite and the packaged Tauri WebView.
 export function AppRouter() {
+  const { status } = useAuth();
   const hash = useSyncExternalStore(
     subscribe,
     () => window.location.hash,
     () => routes.login,
   );
+
+  useEffect(() => {
+    if (hash === routes.dashboard && status === AUTH_STATUS.UNAUTHENTICATED) {
+      window.location.hash = routes.login;
+    }
+  }, [hash, status]);
+
   switch (hash) {
     case routes.dashboard:
+      if (status !== AUTH_STATUS.AUTHENTICATED) {
+        return <div className="p-6 text-sm text-gray-500">Đang kiểm tra phiên đăng nhập...</div>;
+      }
       return <DashboardPage />;
     case routes.register:
       return <RegisterPage />;
