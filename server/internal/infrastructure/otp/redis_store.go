@@ -36,6 +36,17 @@ end
 return 1
 `)
 
+// incrAttemptsScript: atomic increment with TTL repair.
+// KEYS[1] = attempt key, ARGV[1] = ttl in milliseconds.
+// Returns the new counter value.
+var incrAttemptsScript = redis.NewScript(`
+local n = redis.call('INCR', KEYS[1])
+if redis.call('PTTL', KEYS[1]) == -1 then
+	redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return n
+`)
+
 type RedisStore struct {
 	rdb *redis.Client
 }
@@ -87,12 +98,9 @@ func (s *RedisStore) SetCooldown(ctx context.Context, key string, ttl time.Durat
 }
 
 func (s *RedisStore) IncrAttempts(ctx context.Context, key string, ttl time.Duration) (int64, error) {
-	n, err := s.rdb.Incr(ctx, key).Result()
+	n, err := incrAttemptsScript.Run(ctx, s.rdb, []string{key}, ttl.Milliseconds()).Int64()
 	if err != nil {
 		return 0, err
-	}
-	if n == 1 {
-		s.rdb.Expire(ctx, key, ttl)
 	}
 	return n, nil
 }
