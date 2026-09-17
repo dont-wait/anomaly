@@ -57,6 +57,8 @@ beforeEach(() => {
     },
   );
   fetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+    if (url.endsWith("/otp/request")) return response({ message: "otp sent" });
+    if (url.endsWith("/otp/verify")) return response({ verified: true });
     if (url.endsWith("/verify-face")) return response(verified);
     if (url.endsWith("/register")) return response(user, 201);
     if (url.endsWith("/login"))
@@ -97,14 +99,32 @@ function count(path: string) {
   return fetchMock.mock.calls.filter(([url]) => String(url).endsWith(path))
     .length;
 }
-it("requires both CCCD sides and goes from email directly to documents without fake OTP", () => {
+it("verifies the emailed OTP between the email and document steps", async () => {
   render(<RegistrationFlow onLogin={vi.fn()} />, { wrapper });
   fireEvent.change(screen.getByRole("textbox", { name: /Địa chỉ email/ }), {
     target: { value: "a@example.com" },
   });
   fireEvent.click(screen.getByRole("checkbox"));
+  expect(screen.queryByLabelText("Chữ số thứ 1 của mã OTP")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
-  expect(screen.queryByLabelText("Mã OTP")).toBeNull();
+
+  const firstBox = await screen.findByLabelText("Chữ số thứ 1 của mã OTP");
+  expect(count("/otp/request")).toBe(1);
+  expect(
+    (screen.getByRole("button", { name: /Xác thực/ }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  // Dán mã điền đủ 6 ô và tự xác thực, không cần bấm nút.
+  fireEvent.paste(firstBox, { clipboardData: { getData: () => "12a34b56" } });
+
+  await screen.findByLabelText("Ảnh mặt trước CCCD");
+  const otpRequest = fetchMock.mock.calls.find(([url]) =>
+    String(url).endsWith("/otp/verify"),
+  )!;
+  expect(JSON.parse(String(otpRequest[1].body))).toEqual({
+    email: "a@example.com",
+    code: "123456",
+  });
   fireEvent.change(screen.getByLabelText("Ảnh mặt trước CCCD"), {
     target: { files: [front] },
   });
@@ -119,6 +139,165 @@ it("requires both CCCD sides and goes from email directly to documents without f
     (screen.getByRole("button", { name: "Tiếp tục" }) as HTMLButtonElement)
       .disabled,
   ).toBe(false);
+});
+it("opens the OTP screen before the code has been sent", async () => {
+  let release: (() => void) | undefined;
+  const normal = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (url, options) => {
+    if (!String(url).endsWith("/otp/request")) return normal(url, options);
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return response({ message: "otp sent" });
+  });
+  render(<RegistrationFlow onLogin={vi.fn()} />, { wrapper });
+  fireEvent.change(screen.getByRole("textbox", { name: /Địa chỉ email/ }), {
+    target: { value: "a@example.com" },
+  });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+
+  // Màn OTP đã hiển thị dù request gửi mã còn đang treo.
+  const firstBox = screen.getByLabelText(
+    "Chữ số thứ 1 của mã OTP",
+  ) as HTMLInputElement;
+  expect(firstBox.disabled).toBe(true);
+  expect(screen.getByRole("status").textContent).toBe("Đang gửi mã…");
+
+  await act(async () => {
+    release!();
+  });
+  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  expect(
+    (screen.getByLabelText("Chữ số thứ 1 của mã OTP") as HTMLInputElement)
+      .disabled,
+  ).toBe(false);
+});
+it("reports a failed send on the OTP screen instead of holding back the email step", async () => {
+  const normal = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (url, options) =>
+    String(url).endsWith("/otp/request")
+      ? response({ error: "smtp down" }, 500)
+      : normal(url, options),
+  );
+  const { result } = renderHook(useRegistrationFlow, { wrapper });
+  act(() => {
+    result.current.setEmail("a@example.com");
+    result.current.setConsent(true);
+  });
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  expect(result.current.screen).toBe("otp");
+  await waitFor(() =>
+    expect(result.current.otpErrorMsg).toBe(
+      "Máy chủ đang bận. Vui lòng thử lại.",
+    ),
+  );
+  expect(result.current.resendIn).toBe(0);
+});
+it("starts a 30s resend cooldown and counts it down on the OTP screen", async () => {
+  vi.useFakeTimers();
+  try {
+    const { result } = renderHook(useRegistrationFlow, { wrapper });
+    act(() => {
+      result.current.setEmail("a@example.com");
+      result.current.setConsent(true);
+    });
+    await act(async () => {
+      result.current.submit(submitEvent);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.screen).toBe("otp");
+    expect(result.current.resendIn).toBe(30);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(result.current.resendIn).toBe(27);
+
+    await act(async () => {
+      await result.current.resendOtp();
+    });
+    expect(count("/otp/request")).toBe(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+it("keeps the user on the OTP screen and explains an expired code", async () => {
+  const normal = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (url, options) =>
+    String(url).endsWith("/otp/verify")
+      ? response({ error: "otp expired" }, 410)
+      : normal(url, options),
+  );
+  const { result } = renderHook(useRegistrationFlow, { wrapper });
+  act(() => {
+    result.current.setEmail("a@example.com");
+    result.current.setConsent(true);
+  });
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  await waitFor(() => expect(result.current.screen).toBe("otp"));
+  act(() => result.current.setOtpCode("123456"));
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  await waitFor(() => expect(result.current.otpErrorMsg).not.toBe(""));
+  expect(result.current.screen).toBe("otp");
+  expect(result.current.otpErrorMsg).toContain("gửi lại mã mới");
+  expect(result.current.otpCode).toBe("");
+});
+it("clears the consumed code so stepping back to OTP does not verify again", async () => {
+  const { result } = renderHook(useRegistrationFlow, { wrapper });
+  act(() => {
+    result.current.setEmail("a@example.com");
+    result.current.setConsent(true);
+  });
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  await waitFor(() => expect(result.current.screen).toBe("otp"));
+  act(() => result.current.setOtpCode("123456"));
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  await waitFor(() => expect(result.current.screen).toBe("document"));
+  expect(result.current.otpCode).toBe("");
+
+  // Nút Back của flow đưa về màn OTP: không còn mã nên không tự xác thực lại.
+  act(() => result.current.go("otp"));
+  expect(result.current.screen).toBe("otp");
+  expect(result.current.otpCode).toBe("");
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  expect(count("/otp/verify")).toBe(1);
+});
+it("keeps a rejected code on screen so the user can correct it", async () => {
+  const normal = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (url, options) =>
+    String(url).endsWith("/otp/verify")
+      ? response({ error: "invalid otp" }, 400)
+      : normal(url, options),
+  );
+  const { result } = renderHook(useRegistrationFlow, { wrapper });
+  act(() => {
+    result.current.setEmail("a@example.com");
+    result.current.setConsent(true);
+  });
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  await waitFor(() => expect(result.current.screen).toBe("otp"));
+  act(() => result.current.setOtpCode("123456"));
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  await waitFor(() => expect(result.current.otpErrorMsg).not.toBe(""));
+  expect(result.current.otpCode).toBe("123456");
+  expect(result.current.otpErrorMsg).toContain("Mã OTP không đúng");
 });
 it("registers, logs in using the existing token store, uploads media and commits verification", async () => {
   const { result } = await prepare();

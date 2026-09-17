@@ -1,4 +1,5 @@
 import { EmailStep } from "./steps/EmailStep";
+import { OtpStep } from "./steps/OtpStep";
 import { DocumentStep } from "./steps/DocumentStep";
 import { ProfileStep } from "./steps/ProfileStep";
 import { FaceStep } from "./steps/FaceStep";
@@ -26,6 +27,21 @@ export function RegistrationStep({
           heading={flow.heading}
           submit={flow.submit}
           onLogin={onLogin}
+        />
+      );
+    case "otp":
+      return (
+        <OtpStep
+          email={flow.email}
+          otpCode={flow.otpCode}
+          setOtpCode={flow.setOtpCode}
+          otpBusy={flow.otpBusy}
+          otpErrorMsg={flow.otpErrorMsg}
+          progress={flow.progress}
+          resendIn={flow.resendIn}
+          resendOtp={flow.resendOtp}
+          heading={flow.heading}
+          submit={flow.submit}
         />
       );
     case "document":

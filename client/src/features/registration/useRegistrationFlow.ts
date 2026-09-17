@@ -1,4 +1,6 @@
 import { toast } from "@/shared/notifications/toast";
+import { HTTP_STATUS } from "@/shared/constants/httpStatus";
+import { ApiError } from "@/shared/lib/http";
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import { stages, passwordRules, type Screen } from "./model";
 import { useAuth } from "@/features/auth/useAuth";
@@ -9,9 +11,14 @@ import {
   uploadMedia,
   verifyAccount,
   registrationError,
+  requestOtp,
+  verifyOtp,
+  otpError,
   type VerificationMedia,
 } from "./api";
 import type { AuthUser } from "@/features/auth/api";
+
+const OTP_RESEND_SECONDS = 30;
 
 export function useRegistrationFlow() {
   const auth = useAuth();
@@ -29,6 +36,10 @@ export function useRegistrationFlow() {
     dob: "",
     issuedDate: "",
   });
+  const [otpCode, setOtpCode] = useState("");
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpErrorMsg, setOtpErrorMsg] = useState("");
+  const [resendIn, setResendIn] = useState(0);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [remaining, setRemaining] = useState(3);
@@ -44,19 +55,92 @@ export function useRegistrationFlow() {
   const registrationKey = useRef("");
   const step =
     screen === "processing" || screen === "error"
-      ? 3
+      ? stages.indexOf("face")
       : screen === "success"
-        ? 4
+        ? stages.indexOf("password")
         : stages.indexOf(screen);
   useEffect(() => () => operation.current?.abort(), []);
   useEffect(() => {
     heading.current?.focus();
+  }, [screen]);
+  useEffect(() => {
+    if (screen !== "otp") return;
+    const timer = setInterval(
+      () => setResendIn((left) => (left > 0 ? left - 1 : 0)),
+      1000,
+    );
+    return () => clearInterval(timer);
   }, [screen]);
   function go(next: Screen) {
     if (operation.current || createdAccount) return;
     setError("");
     if (next !== "password") verifiedVideo.current = null;
     setScreen(next);
+  }
+  // Trả về message lỗi, hoặc null khi gửi mã thành công.
+  async function sendOtp(): Promise<string | null> {
+    const controller = new AbortController();
+    operation.current = controller;
+    setOtpBusy(true);
+    setProgress("Đang gửi mã…");
+    try {
+      await requestOtp(email, controller.signal);
+      if (controller.signal.aborted) return null;
+      setResendIn(OTP_RESEND_SECONDS);
+      return null;
+    } catch (cause) {
+      return controller.signal.aborted ? null : otpError(cause);
+    } finally {
+      if (!controller.signal.aborted) {
+        setOtpBusy(false);
+        setProgress("");
+      }
+      if (operation.current === controller) operation.current = null;
+    }
+  }
+  function startOtp() {
+    if (operation.current) return;
+    setOtpCode("");
+    setOtpErrorMsg("");
+    // Sang màn OTP ngay, mã gửi chạy nền; lỗi báo tại chỗ chứ không kéo
+    // user ngược về bước email. sendOtp tự bắt lỗi nên .then là đủ.
+    go("otp");
+    void sendOtp().then((failure) => {
+      if (failure) setOtpErrorMsg(failure);
+    });
+  }
+  async function resendOtp() {
+    if (operation.current || resendIn > 0) return;
+    setOtpErrorMsg("");
+    const failure = await sendOtp();
+    if (failure) setOtpErrorMsg(failure);
+  }
+  async function confirmOtp() {
+    if (operation.current || otpCode.length !== 6) return;
+    const controller = new AbortController();
+    operation.current = controller;
+    setOtpBusy(true);
+    setOtpErrorMsg("");
+    let verified = false;
+    try {
+      await verifyOtp(email, otpCode, controller.signal);
+      verified = !controller.signal.aborted;
+    } catch (cause) {
+      if (!controller.signal.aborted) {
+        setOtpErrorMsg(otpError(cause));
+        // Mã đã hết hạn hoặc hết lượt thử: xoá các ô để user nhập mã mới.
+        if (cause instanceof ApiError && cause.status === HTTP_STATUS.GONE)
+          setOtpCode("");
+      }
+    } finally {
+      if (!controller.signal.aborted) setOtpBusy(false);
+      if (operation.current === controller) operation.current = null;
+    }
+    if (verified) {
+      // Mã đã bị consume: xoá để quay lại màn OTP không tự xác thực lại.
+      setOtpCode("");
+      go("document");
+    }
   }
   async function verifyVideo(video: File) {
     if (operation.current || remaining === 0 || !documents.front) return;
@@ -198,10 +282,11 @@ export function useRegistrationFlow() {
       if (operation.current === controller) operation.current = null;
     }
   }
-  function submit(event: FormEvent) {
-    event.preventDefault();
+  function submit(event?: FormEvent) {
+    event?.preventDefault();
     if (operation.current) return;
-    if (screen === "email" && consent && email.trim()) go("document");
+    if (screen === "email" && consent && email.trim()) startOtp();
+    if (screen === "otp") void confirmOtp();
     if (screen === "document" && documents.front && documents.back)
       go("profile");
     if (screen === "profile") {
@@ -228,6 +313,12 @@ export function useRegistrationFlow() {
     setDocuments,
     profile,
     setProfile,
+    otpCode,
+    setOtpCode,
+    otpBusy,
+    otpErrorMsg,
+    resendIn,
+    resendOtp,
     password,
     setPassword,
     confirm,

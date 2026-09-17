@@ -1,5 +1,6 @@
 export type Screen =
   | "email"
+  | "otp"
   | "document"
   | "profile"
   | "face"
@@ -9,6 +10,7 @@ export type Screen =
   | "error";
 export const stages: Screen[] = [
   "email",
+  "otp",
   "document",
   "profile",
   "face",
@@ -16,6 +18,7 @@ export const stages: Screen[] = [
 ];
 export const titles = [
   "Bắt đầu",
+  "Xác thực email",
   "Giấy tờ tùy thân",
   "Thông tin cá nhân",
   "Khuôn mặt",
