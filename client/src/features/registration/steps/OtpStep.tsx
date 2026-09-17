@@ -18,6 +18,8 @@ export function OtpStep({
   otpCode,
   setOtpCode,
   otpBusy,
+  otpSending,
+  otpSent,
   otpErrorMsg,
   otpErrorTick,
   progress,
@@ -31,6 +33,8 @@ export function OtpStep({
   | "otpCode"
   | "setOtpCode"
   | "otpBusy"
+  | "otpSending"
+  | "otpSent"
   | "otpErrorMsg"
   | "otpErrorTick"
   | "progress"
@@ -57,16 +61,18 @@ export function OtpStep({
 
   // Ô cuối vừa đầy thì tự xác thực. Mốc so sánh là nội dung mã đã gửi, nên
   // sửa đè một chữ số sau khi sai vẫn kích hoạt xác thực lại, còn mã y
-  // nguyên thì không gửi lần hai.
+  // nguyên thì không gửi lần hai. Nhập xong trước khi mã kịp gửi thì chờ:
+  // xác thực luôn phải đi qua server, không có đường tắt.
+  const waitingForSend = otpSending || !otpSent;
   useEffect(() => {
     if (otpCode.length < OTP_LENGTH) {
       lastSubmitted.current = "";
       return;
     }
-    if (otpBusy || lastSubmitted.current === otpCode) return;
+    if (waitingForSend || otpBusy || lastSubmitted.current === otpCode) return;
     lastSubmitted.current = otpCode;
     submit();
-  }, [otpCode, otpBusy, submit]);
+  }, [otpCode, waitingForSend, otpBusy, submit]);
 
   // Sau khi báo lỗi: mã hết hạn đã bị flow xoá nên con trỏ về ô đầu, mã sai
   // thì giữ nguyên số và đưa con trỏ về ô trống đầu tiên để user sửa.
@@ -147,6 +153,13 @@ export function OtpStep({
     fillFrom(index, pasted);
   }
 
+  // Nhập đủ mã trước khi gửi xong thì nói rõ là đang chờ, tránh cảm giác nút
+  // xác thực bị treo.
+  const status =
+    otpSending && otpCode.length === OTP_LENGTH
+      ? "Đã nhập đủ mã, đang chờ gửi xong để xác thực…"
+      : progress;
+
   return (
     <>
       <StepHeading
@@ -185,9 +198,9 @@ export function OtpStep({
               />
             ))}
           </div>
-          {progress && (
+          {status && (
             <p role="status" className="field-hint centered">
-              {progress}
+              {status}
             </p>
           )}
           {otpErrorMsg && (
@@ -200,7 +213,7 @@ export function OtpStep({
             <button
               type="button"
               className="text-link"
-              disabled={otpBusy || resendIn > 0}
+              disabled={otpBusy || otpSending || resendIn > 0}
               onClick={() => void resendOtp()}
             >
               <FontAwesomeIcon icon={faRotateRight} />{" "}

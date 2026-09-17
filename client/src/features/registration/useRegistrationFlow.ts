@@ -37,7 +37,11 @@ export function useRegistrationFlow() {
     issuedDate: "",
   });
   const [otpCode, setOtpCode] = useState("");
+  // otpBusy = đang xác thực (khoá ô nhập); otpSending = đang gửi mã (vẫn cho
+  // nhập); otpSent = đã gửi xong ít nhất một lần kể từ khi vào màn OTP.
   const [otpBusy, setOtpBusy] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
   const [otpErrorMsg, setOtpErrorMsg] = useState("");
   const [otpErrorTick, setOtpErrorTick] = useState(0);
   const [resendIn, setResendIn] = useState(0);
@@ -88,16 +92,22 @@ export function useRegistrationFlow() {
   async function sendOtp(): Promise<string | null> {
     const controller = new AbortController();
     operation.current = controller;
-    setOtpBusy(true);
+    setOtpSending(true);
+    // Server bật cooldown ngay khi nhận request nên đếm ngược từ lúc bắt đầu
+    // gửi, không phải lúc nhận được phản hồi.
+    setResendIn(OTP_RESEND_SECONDS);
     try {
       await requestOtp(email, controller.signal);
       if (controller.signal.aborted) return null;
-      setResendIn(OTP_RESEND_SECONDS);
+      setOtpSent(true);
       return null;
     } catch (cause) {
-      return controller.signal.aborted ? null : otpError(cause);
+      if (controller.signal.aborted) return null;
+      // Gửi hỏng thì không khoá user 30 giây.
+      setResendIn(0);
+      return otpError(cause);
     } finally {
-      if (!controller.signal.aborted) setOtpBusy(false);
+      if (!controller.signal.aborted) setOtpSending(false);
       if (operation.current === controller) operation.current = null;
     }
   }
@@ -105,6 +115,7 @@ export function useRegistrationFlow() {
     if (operation.current) return;
     setOtpCode("");
     setOtpErrorMsg("");
+    setOtpSent(false);
     // Sang màn OTP ngay, mã gửi chạy nền; lỗi báo tại chỗ chứ không kéo
     // user ngược về bước email. sendOtp tự bắt lỗi nên .then là đủ.
     go("otp");
@@ -325,6 +336,8 @@ export function useRegistrationFlow() {
     otpCode,
     setOtpCode,
     otpBusy,
+    otpSending,
+    otpSent,
     otpErrorMsg,
     otpErrorTick,
     resendIn,

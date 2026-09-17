@@ -36,6 +36,8 @@ export function RegistrationStep({
           otpCode={flow.otpCode}
           setOtpCode={flow.setOtpCode}
           otpBusy={flow.otpBusy}
+          otpSending={flow.otpSending}
+          otpSent={flow.otpSent}
           otpErrorMsg={flow.otpErrorMsg}
           otpErrorTick={flow.otpErrorTick}
           progress={flow.progress}

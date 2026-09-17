@@ -140,7 +140,8 @@ it("verifies the emailed OTP between the email and document steps", async () => 
       .disabled,
   ).toBe(false);
 });
-it("opens the OTP screen before the code has been sent", async () => {
+// Gửi mã treo lại cho tới khi gọi release(), để kiểm tra trạng thái "đang gửi".
+function deferSend() {
   let release: (() => void) | undefined;
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) => {
@@ -150,32 +151,111 @@ it("opens the OTP screen before the code has been sent", async () => {
     });
     return response({ message: "otp sent" });
   });
+  return () => release!();
+}
+function openOtpScreen() {
   render(<RegistrationFlow onLogin={vi.fn()} />, { wrapper });
   fireEvent.change(screen.getByRole("textbox", { name: /Địa chỉ email/ }), {
     target: { value: "a@example.com" },
   });
   fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
-
-  // Màn OTP đã hiển thị dù request gửi mã còn đang treo: các ô khoá lại
-  // nhưng không kèm dòng trạng thái nào.
-  const firstBox = screen.getByLabelText(
-    "Chữ số thứ 1 của mã OTP",
+}
+const otpBox = (position: number) =>
+  screen.getByLabelText(
+    `Chữ số thứ ${position} của mã OTP`,
   ) as HTMLInputElement;
-  expect(firstBox.disabled).toBe(true);
+
+it("lets the user type while the code is still being sent", async () => {
+  const release = deferSend();
+  openOtpScreen();
+
+  // Ô nhập mở ngay, không bắt chờ mã gửi xong.
+  expect(otpBox(1).disabled).toBe(false);
   expect(screen.queryByRole("status")).toBeNull();
+  expect(
+    (screen.getByRole("button", { name: /Gửi lại/ }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
 
   await act(async () => {
-    release!();
+    release();
   });
-  await waitFor(() =>
-    expect(
-      (screen.getByLabelText("Chữ số thứ 1 của mã OTP") as HTMLInputElement)
-        .disabled,
-    ).toBe(false),
-  );
-  expect(screen.queryByRole("status")).toBeNull();
+  await waitFor(() => expect(otpBox(1).disabled).toBe(false));
 });
+
+it("waits for the send to finish before verifying a code typed early", async () => {
+  const release = deferSend();
+  openOtpScreen();
+
+  fireEvent.paste(otpBox(1), { clipboardData: { getData: () => "123456" } });
+  expect(otpBox(6).value).toBe("6");
+  // Mã đủ nhưng chưa gửi xong: chờ, tuyệt đối không bỏ qua bước gọi server.
+  expect(count("/otp/verify")).toBe(0);
+  expect(screen.getByRole("status").textContent).toBe(
+    "Đã nhập đủ mã, đang chờ gửi xong để xác thực…",
+  );
+
+  await act(async () => {
+    release();
+  });
+  await screen.findByLabelText("Ảnh mặt trước CCCD");
+  expect(count("/otp/verify")).toBe(1);
+});
+
+it("starts the resend cooldown when the send begins, not when it returns", async () => {
+  const release = deferSend();
+  const { result } = renderHook(useRegistrationFlow, { wrapper });
+  act(() => {
+    result.current.setEmail("a@example.com");
+    result.current.setConsent(true);
+  });
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+
+  expect(result.current.screen).toBe("otp");
+  expect(result.current.otpSending).toBe(true);
+  expect(result.current.otpSent).toBe(false);
+  expect(result.current.resendIn).toBe(30);
+
+  await act(async () => {
+    release();
+  });
+  await waitFor(() => expect(result.current.otpSent).toBe(true));
+  expect(result.current.resendIn).toBe(30);
+});
+
+it("keeps a code typed during a send that then fails, and reopens resend", async () => {
+  let fail: (() => void) | undefined;
+  const normal = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (url, options) => {
+    if (!String(url).endsWith("/otp/request")) return normal(url, options);
+    await new Promise<void>((resolve) => {
+      fail = resolve;
+    });
+    return response({ error: "smtp down" }, 500);
+  });
+  const { result } = renderHook(useRegistrationFlow, { wrapper });
+  act(() => {
+    result.current.setEmail("a@example.com");
+    result.current.setConsent(true);
+  });
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  act(() => result.current.setOtpCode("123456"));
+
+  await act(async () => {
+    fail!();
+  });
+  await waitFor(() => expect(result.current.otpErrorMsg).not.toBe(""));
+  expect(result.current.otpCode).toBe("123456");
+  expect(result.current.otpSent).toBe(false);
+  expect(result.current.resendIn).toBe(0);
+  expect(count("/otp/verify")).toBe(0);
+});
+
 it("reports a failed send on the OTP screen instead of holding back the email step", async () => {
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) =>

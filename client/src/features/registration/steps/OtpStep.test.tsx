@@ -25,6 +25,8 @@ function renderStep(overrides: Overrides = {}) {
         otpCode={otpCode}
         setOtpCode={handleChange}
         otpBusy={false}
+        otpSending={false}
+        otpSent
         otpErrorMsg=""
         otpErrorTick={0}
         progress=""
@@ -183,6 +185,58 @@ it("empties the boxes and focuses the first one when the code has expired", () =
 it("announces the verification progress", () => {
   renderStep({ progress: "Đang xác thực mã…" });
   expect(screen.getByRole("status").textContent).toBe("Đang xác thực mã…");
+});
+
+// Props tĩnh, dùng cho các case cần tự điều khiển rerender.
+function fixedProps(overrides: Overrides = {}) {
+  return {
+    email: "a@example.com",
+    otpCode: "",
+    setOtpCode: vi.fn(),
+    otpBusy: false,
+    otpSending: false,
+    otpSent: true,
+    otpErrorMsg: "",
+    otpErrorTick: 0,
+    progress: "",
+    resendIn: 0,
+    resendOtp: vi.fn(),
+    heading: { current: null },
+    submit: vi.fn(),
+    ...overrides,
+  } as Parameters<typeof OtpStep>[0];
+}
+
+it("keeps the boxes open while the code is being sent", () => {
+  renderStep({ otpSending: true, otpSent: false });
+  for (const position of [1, 2, 3, 4, 5, 6])
+    expect(box(position).disabled).toBe(false);
+  expect(
+    (screen.getByRole("button", { name: /Gửi lại/ }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+});
+
+it("explains the wait when the code is complete before the send finishes", () => {
+  renderStep({ otpCode: "123456", otpSending: true, otpSent: false });
+  expect(screen.getByRole("status").textContent).toBe(
+    "Đã nhập đủ mã, đang chờ gửi xong để xác thực…",
+  );
+});
+
+it("holds back verification until the code has actually been sent", () => {
+  const submit = vi.fn();
+  const props = fixedProps({
+    otpCode: "123456",
+    otpSending: true,
+    otpSent: false,
+    submit,
+  });
+  const { rerender } = render(<OtpStep {...props} />);
+  expect(submit).not.toHaveBeenCalled();
+
+  rerender(<OtpStep {...props} otpSending={false} otpSent />);
+  expect(submit).toHaveBeenCalledTimes(1);
 });
 
 it("disables every box while a request is in flight", () => {
