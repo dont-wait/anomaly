@@ -229,20 +229,21 @@ func writeTestFile(t *testing.T, path, content string) {
 }
 
 func TestSMTPConfig(t *testing.T) {
-	for _, key := range []string{"SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM"} {
+	for _, key := range []string{"SMTP_HOST", "SMTP_PORT", "SMTP_TLS_MODE", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM"} {
 		t.Setenv(key, "")
 	}
 	l := &Loader{}
 	cfg := l.LoadSMTPConfig()
-	if cfg.Configured() || cfg.Port != 587 || cfg.SenderAddress() != "" {
+	if cfg.Configured() || cfg.TLSMode != "starttls" || cfg.Port != 587 || cfg.SenderAddress() != "" {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	t.Setenv("SMTP_HOST", "smtp.example.com")
 	t.Setenv("SMTP_PORT", "2525")
+	t.Setenv("SMTP_TLS_MODE", "implicit")
 	t.Setenv("SMTP_USERNAME", "sender@example.com")
 	t.Setenv("SMTP_PASSWORD", "test-password")
 	cfg = l.LoadSMTPConfig()
-	if !cfg.Configured() || cfg.Host != "smtp.example.com" || cfg.Port != 2525 || cfg.Username != "sender@example.com" || cfg.Password != "test-password" || cfg.SenderAddress() != cfg.Username {
+	if !cfg.Configured() || cfg.TLSMode != "implicit" || cfg.Host != "smtp.example.com" || cfg.Port != 2525 || cfg.Username != "sender@example.com" || cfg.Password != "test-password" || cfg.SenderAddress() != cfg.Username {
 		t.Fatal("SMTP environment overrides or username fallback not loaded")
 	}
 	t.Setenv("SMTP_FROM", "noreply@example.com")

@@ -3,6 +3,7 @@ package mail
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -28,7 +29,8 @@ var ErrSMTPNotConfigured = errors.New("smtp not configured")
 // Gửi multipart/alternative (text thuần + HTML). Không log mail body
 // (chứa OTP) hay password ở bất kỳ đâu.
 type SMTPSender struct {
-	cfg *domain.SMTPConfig
+	cfg       *domain.SMTPConfig
+	tlsConfig *tls.Config
 }
 
 // NewSMTPSender tạo sender; trả ErrSMTPNotConfigured khi thiếu Host.
@@ -36,7 +38,12 @@ func NewSMTPSender(cfg *domain.SMTPConfig) (*SMTPSender, error) {
 	if cfg == nil || !cfg.Configured() {
 		return nil, ErrSMTPNotConfigured
 	}
-	return &SMTPSender{cfg: cfg}, nil
+	switch cfg.TLSMode {
+	case "", "starttls", "implicit":
+	default:
+		return nil, fmt.Errorf("unsupported SMTP TLS mode %q", cfg.TLSMode)
+	}
+	return &SMTPSender{cfg: cfg, tlsConfig: &tls.Config{ServerName: cfg.Host, MinVersion: tls.VersionTLS12}}, nil
 }
 
 // DisabledSender là MailSender luôn fail-closed: mọi Send đều trả
@@ -58,7 +65,7 @@ func (s *DisabledSender) Send(_ context.Context, _ maildomain.MailMessage) error
 
 func (s *SMTPSender) Send(ctx context.Context, msg maildomain.MailMessage) error {
 	from := s.cfg.SenderAddress()
-	addr := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
+	addr := net.JoinHostPort(s.cfg.Host, fmt.Sprint(s.cfg.Port))
 
 	dialer := &net.Dialer{Timeout: defaultDialTimeout}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
@@ -77,11 +84,28 @@ func (s *SMTPSender) Send(ctx context.Context, msg maildomain.MailMessage) error
 		}
 	}
 
+	tlsConfig := s.tlsConfig.Clone()
+	if s.cfg.TLSMode == "implicit" {
+		secureConn := tls.Client(conn, tlsConfig)
+		if err := secureConn.HandshakeContext(ctx); err != nil {
+			return fmt.Errorf("smtp tls: %w", err)
+		}
+		conn = secureConn
+	}
 	client, err := smtp.NewClient(conn, s.cfg.Host)
 	if err != nil {
 		return fmt.Errorf("smtp client: %w", err)
 	}
 	defer func() { _ = client.Close() }()
+
+	if s.cfg.TLSMode != "implicit" {
+		if ok, _ := client.Extension("STARTTLS"); !ok {
+			return errors.New("smtp server does not support required STARTTLS")
+		}
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return fmt.Errorf("smtp starttls: %w", err)
+		}
+	}
 
 	if s.cfg.Username != "" {
 		auth := smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)

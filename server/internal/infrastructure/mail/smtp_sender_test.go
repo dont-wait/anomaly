@@ -3,11 +3,14 @@ package mail
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http/httptest"
 	"regexp"
 	"strconv"
 	"strings"
@@ -150,63 +153,89 @@ func smtpExchange(reader *bufio.Reader, conn net.Conn, prefix, reply string) err
 }
 
 func TestSMTPSenderSend(t *testing.T) {
-	body := make(chan string, 1)
-	cfg := smtpPeer(t, func(conn net.Conn) error {
-		if _, err := io.WriteString(conn, "220 localhost ready\r\n"); err != nil {
-			return err
-		}
-		reader := bufio.NewReader(conn)
-		for _, step := range []struct{ command, reply string }{
-			{"EHLO ", "250 localhost"},
-			{"MAIL FROM:<sender@example.com>", "250 OK"},
-			{"RCPT TO:<recipient@example.com>", "250 OK"},
-			{"DATA\r\n", "354 Send message"},
-		} {
-			if err := smtpExchange(reader, conn, step.command, step.reply); err != nil {
-				return err
-			}
-		}
-		var message strings.Builder
-		for {
-			line, err := reader.ReadString('\n')
+	for _, mode := range []string{"starttls", "implicit"} {
+		t.Run(mode, func(t *testing.T) {
+			body := make(chan string, 1)
+			cert, roots := smtpCertificate(t)
+			cfg := smtpPeer(t, func(conn net.Conn) error {
+				if mode == "starttls" {
+					secure, err := smtpStartTLS(conn, cert)
+					if err != nil {
+						return err
+					}
+					conn = secure
+				} else {
+					secure := tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
+					if err := secure.Handshake(); err != nil {
+						return err
+					}
+					conn = secure
+					if _, err := io.WriteString(conn, "220 localhost ready\r\n"); err != nil {
+						return err
+					}
+				}
+				reader := bufio.NewReader(conn)
+				for _, step := range []struct{ command, reply string }{
+					{"EHLO ", "250-localhost\r\n250 AUTH PLAIN"},
+					{"AUTH PLAIN ", "235 Authenticated"},
+					{"MAIL FROM:<sender@example.com>", "250 OK"},
+					{"RCPT TO:<recipient@example.com>", "250 OK"},
+					{"DATA\r\n", "354 Send message"},
+				} {
+					if err := smtpExchange(reader, conn, step.command, step.reply); err != nil {
+						return err
+					}
+				}
+				var message strings.Builder
+				for {
+					line, err := reader.ReadString('\n')
+					if err != nil {
+						return err
+					}
+					if line == ".\r\n" {
+						break
+					}
+					message.WriteString(line)
+				}
+				body <- message.String()
+				if _, err := io.WriteString(conn, "250 Accepted\r\n"); err != nil {
+					return err
+				}
+				return smtpExchange(reader, conn, "QUIT\r\n", "221 Bye")
+			})
+			cfg.TLSMode = mode
+			cfg.Username = "sender@example.com"
+			cfg.Password = "secret"
+			sender, err := NewSMTPSender(cfg)
 			if err != nil {
-				return err
+				t.Fatal(err)
 			}
-			if line == ".\r\n" {
-				break
+			sender.tlsConfig.RootCAs = roots
+			if err := sender.Send(t.Context(), maildomain.MailMessage{To: "recipient@example.com", Subject: "OTP", Text: "123456", HTML: "<p>123456</p>"}); err != nil {
+				t.Fatal(err)
 			}
-			message.WriteString(line)
-		}
-		body <- message.String()
-		if _, err := io.WriteString(conn, "250 Accepted\r\n"); err != nil {
-			return err
-		}
-		return smtpExchange(reader, conn, "QUIT\r\n", "221 Bye")
-	})
-	sender, err := NewSMTPSender(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sender.Send(t.Context(), maildomain.MailMessage{To: "recipient@example.com", Subject: "OTP", Text: "123456", HTML: "<p>123456</p>"}); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case message := <-body:
-		for _, want := range []string{"Subject: OTP", "123456", "<p>123456</p>", "multipart/alternative"} {
-			if !strings.Contains(message, want) {
-				t.Errorf("message missing %q", want)
+			select {
+			case message := <-body:
+				for _, want := range []string{"Subject: OTP", "123456", "<p>123456</p>", "multipart/alternative"} {
+					if !strings.Contains(message, want) {
+						t.Errorf("message missing %q", want)
+					}
+				}
+			default:
+				t.Fatal("SMTP peer received no message")
 			}
-		}
-	default:
-		t.Fatal("SMTP peer received no message")
+		})
 	}
 }
 
 func TestSMTPSenderRecipientRejected(t *testing.T) {
+	cert, roots := smtpCertificate(t)
 	cfg := smtpPeer(t, func(conn net.Conn) error {
-		if _, err := io.WriteString(conn, "220 localhost ready\r\n"); err != nil {
+		secure, err := smtpStartTLS(conn, cert)
+		if err != nil {
 			return err
 		}
+		conn = secure
 		reader := bufio.NewReader(conn)
 		for _, step := range []struct{ command, reply string }{
 			{"EHLO ", "250 localhost"},
@@ -228,6 +257,7 @@ func TestSMTPSenderRecipientRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sender.tlsConfig.RootCAs = roots
 	if err := sender.Send(t.Context(), maildomain.MailMessage{To: "recipient@example.com"}); err == nil || !strings.Contains(err.Error(), "smtp rcpt to") {
 		t.Fatalf("Send() error = %v, want recipient failure", err)
 	}
@@ -271,5 +301,112 @@ func TestSMTPSenderCanceledBeforeDial(t *testing.T) {
 	cancel()
 	if err := sender.Send(ctx, maildomain.MailMessage{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Send() error = %v", err)
+	}
+}
+
+func smtpCertificate(t *testing.T) (tls.Certificate, *x509.CertPool) {
+	t.Helper()
+	server := httptest.NewTLSServer(nil)
+	defer server.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	return server.TLS.Certificates[0], roots
+}
+
+func smtpStartTLS(conn net.Conn, cert tls.Certificate) (net.Conn, error) {
+	if _, err := io.WriteString(conn, "220 localhost ready\r\n"); err != nil {
+		return nil, err
+	}
+	reader := bufio.NewReader(conn)
+	if err := smtpExchange(reader, conn, "EHLO ", "250-localhost\r\n250 STARTTLS"); err != nil {
+		return nil, err
+	}
+	if err := smtpExchange(reader, conn, "STARTTLS\r\n", "220 Ready for TLS"); err != nil {
+		return nil, err
+	}
+	secure := tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
+	if err := secure.Handshake(); err != nil {
+		return nil, err
+	}
+	return secure, nil
+}
+
+func TestSMTPSenderRequiresSTARTTLS(t *testing.T) {
+	for _, username := range []string{"", "sender@example.com"} {
+		t.Run(username, func(t *testing.T) {
+			cfg := smtpPeer(t, func(conn net.Conn) error {
+				if _, err := io.WriteString(conn, "220 localhost ready\r\n"); err != nil {
+					return err
+				}
+				reader := bufio.NewReader(conn)
+				if err := smtpExchange(reader, conn, "EHLO ", "250-localhost\r\n250 AUTH PLAIN"); err != nil {
+					return err
+				}
+				line, err := reader.ReadString('\n')
+				if err != io.EOF || line != "" {
+					return fmt.Errorf("plaintext command sent: %q (%v)", line, err)
+				}
+				return nil
+			})
+			cfg.Username = username
+			sender, err := NewSMTPSender(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := sender.Send(t.Context(), maildomain.MailMessage{Text: "123456"}); err == nil || !strings.Contains(err.Error(), "required STARTTLS") {
+				t.Fatalf("Send() = %v", err)
+			}
+		})
+	}
+}
+
+func TestSMTPSenderRejectsInvalidCertificate(t *testing.T) {
+	for _, mode := range []string{"starttls", "implicit"} {
+		for _, wrongHost := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/wrongHost=%v", mode, wrongHost), func(t *testing.T) {
+				cert, roots := smtpCertificate(t)
+				cfg := smtpPeer(t, func(conn net.Conn) error {
+					var err error
+					if mode == "starttls" {
+						_, err = smtpStartTLS(conn, cert)
+					} else {
+						secure := tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
+						err = secure.Handshake()
+					}
+					if err == nil {
+						return errors.New("client accepted invalid certificate")
+					}
+					return nil
+				})
+				cfg.TLSMode = mode
+				cfg.Username = "sender@example.com"
+				sender, err := NewSMTPSender(cfg)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if wrongHost {
+					sender.tlsConfig.RootCAs = roots
+					sender.tlsConfig.ServerName = "smtp.invalid"
+				}
+				err = sender.Send(t.Context(), maildomain.MailMessage{Text: "123456"})
+				if wrongHost {
+					var target x509.HostnameError
+					if !errors.As(err, &target) {
+						t.Fatalf("expected hostname error, got %v", err)
+					}
+				} else {
+					var target x509.UnknownAuthorityError
+					if !errors.As(err, &target) {
+						t.Fatalf("expected untrusted certificate error, got %v", err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestSMTPSenderRejectsPlaintextMode(t *testing.T) {
+	if _, err := NewSMTPSender(&domain.SMTPConfig{Host: "localhost", TLSMode: "none"}); err == nil {
+		t.Fatal("plaintext mode must be rejected")
 	}
 }

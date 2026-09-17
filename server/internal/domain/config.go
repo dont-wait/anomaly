@@ -138,6 +138,8 @@ func (l *Loader) LoadRedisConfig() *RedisConfig {
 }
 
 type SMTPConfig struct {
+	// TLSMode is starttls (default) or implicit. Plaintext is never allowed.
+	TLSMode  string
 	Host     string
 	Port     int
 	Username string
@@ -150,6 +152,7 @@ const defaultSMTPPort = 587
 func (l *Loader) LoadSMTPConfig() *SMTPConfig {
 	l.logger().Info().Msg("Load smtp config")
 	return &SMTPConfig{
+		TLSMode:  l.LoadEnvOr("SMTP_TLS_MODE", "starttls"),
 		Host:     l.LoadEnvOr("SMTP_HOST", ""),
 		Port:     l.LoadEnvPort("SMTP_PORT", defaultSMTPPort),
 		Username: l.LoadEnvOr("SMTP_USERNAME", ""),
