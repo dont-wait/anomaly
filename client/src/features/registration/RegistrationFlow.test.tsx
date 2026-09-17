@@ -1,3 +1,5 @@
+import { Toaster } from "@/shared/notifications/Toaster";
+import { toast } from "@/shared/notifications/toast";
 import {
   act,
   cleanup,
@@ -37,7 +39,12 @@ const response = (body: unknown, status = 200) =>
   }) as Response;
 const fetchMock = vi.fn();
 function wrapper({ children }: { children: ReactNode }) {
-  return <AuthProvider>{children}</AuthProvider>;
+  return (
+    <AuthProvider>
+      {children}
+      <Toaster />
+    </AuthProvider>
+  );
 }
 beforeEach(() => {
   localStorage.clear();
@@ -62,6 +69,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  toast.dismiss();
   vi.unstubAllGlobals();
   localStorage.clear();
 });
@@ -183,7 +191,8 @@ it("retries after login failure without creating the account a second time", asy
     url.endsWith("/login") && fail ? response({}, 503) : normal(url, options),
   );
   act(() => result.current.submit(submitEvent));
-  await waitFor(() => expect(result.current.error).not.toBe(""));
+  await screen.findByRole("alert");
+  expect(result.current.error).toBe("");
   expect(result.current.createdAccount?.id).toBe(user.id);
   fail = false;
   act(() => result.current.submit(submitEvent));
@@ -200,7 +209,8 @@ it("reuses uploaded files when the verify endpoint fails", async () => {
       : normal(url, options),
   );
   act(() => result.current.submit(submitEvent));
-  await waitFor(() => expect(result.current.error).not.toBe(""));
+  await screen.findByRole("alert");
+  expect(result.current.error).toBe("");
   expect(result.current.screen).toBe("password");
   fail = false;
   act(() => result.current.submit(submitEvent));
@@ -235,7 +245,8 @@ it("reuses the registration key after a lost response and finishes onboarding", 
     return normal(url, options);
   });
   act(() => result.current.submit(submitEvent));
-  await waitFor(() => expect(result.current.error).not.toBe(""));
+  await screen.findByRole("alert");
+  expect(result.current.error).toBe("");
   expect(result.current.createdAccount).toBeNull();
   act(() => result.current.submit(submitEvent));
   await waitFor(() => expect(result.current.screen).toBe("success"));

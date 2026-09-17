@@ -1,3 +1,6 @@
+import { toast } from "@/shared/notifications/toast";
+import { HTTP_STATUS } from "@/shared/constants/httpStatus";
+import { AUTH_STATUS } from "./authStatus";
 import {
   useCallback,
   useEffect,
@@ -8,12 +11,11 @@ import {
 } from "react";
 import { AuthContext, type AuthStatus } from "./authContext";
 import {
-  getCurrentUser,
   login as loginRequest,
   toLoginError,
-  type AuthUser,
   type LoginInput,
 } from "./api/auth";
+import { getInfo, type AuthUser } from "./api/profile";
 import { ApiError } from "@/shared/lib/http";
 import { defaultAuthTokenStore, type AuthTokenStore } from "./lib/token-store";
 
@@ -26,7 +28,7 @@ export const AuthProvider = ({
   children,
   tokenStore = defaultAuthTokenStore,
 }: AuthProviderProps) => {
-  const [status, setStatus] = useState<AuthStatus>("idle");
+  const [status, setStatus] = useState<AuthStatus>(AUTH_STATUS.IDLE);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export const AuthProvider = ({
     if (!mountedRef.current) return;
     setToken(null);
     setUser(null);
-    setStatus("unauthenticated");
+    setStatus(AUTH_STATUS.UNAUTHENTICATED);
     setError(null);
   }, [tokenStore]);
 
@@ -55,31 +57,32 @@ export const AuthProvider = ({
         if (mountedRef.current) {
           setToken(null);
           setUser(null);
-          setStatus("unauthenticated");
+          setStatus(AUTH_STATUS.UNAUTHENTICATED);
         }
         return null;
       }
 
       try {
-        const profile = await getCurrentUser(currentToken, {
+        const profile = await getInfo(currentToken, {
           signal: options.signal,
         });
         if (!mountedRef.current) return profile;
         setToken(currentToken);
         setUser(profile);
-        setStatus("authenticated");
+        setStatus(AUTH_STATUS.AUTHENTICATED);
         setError(null);
         return profile;
       } catch (requestError) {
         if (
           requestError instanceof ApiError &&
-          (requestError.status === 401 || requestError.status === 404)
+          (requestError.status === HTTP_STATUS.UNAUTHORIZED ||
+            requestError.status === HTTP_STATUS.NOT_FOUND)
         ) {
           tokenStore.clearToken();
           if (!mountedRef.current) return null;
           setToken(null);
           setUser(null);
-          setStatus("unauthenticated");
+          setStatus(AUTH_STATUS.UNAUTHENTICATED);
           setError(null);
           return null;
         }
@@ -98,35 +101,37 @@ export const AuthProvider = ({
     const restoreSession = async () => {
       const storedToken = tokenStore.getToken();
       if (!storedToken) {
-        setStatus("unauthenticated");
+        setStatus(AUTH_STATUS.UNAUTHENTICATED);
         return;
       }
 
-      setStatus("restoring");
+      setStatus(AUTH_STATUS.RESTORING);
       setToken(storedToken);
       try {
-        const profile = await getCurrentUser(storedToken, {
+        const profile = await getInfo(storedToken, {
           signal: controller.signal,
         });
         if (cancelled) return;
         setUser(profile);
-        setStatus("authenticated");
+        setStatus(AUTH_STATUS.AUTHENTICATED);
         setError(null);
       } catch (requestError) {
         if (cancelled) return;
         if (
           requestError instanceof ApiError &&
-          (requestError.status === 401 || requestError.status === 404)
+          (requestError.status === HTTP_STATUS.UNAUTHORIZED ||
+            requestError.status === HTTP_STATUS.NOT_FOUND)
         ) {
           tokenStore.clearToken();
           setToken(null);
           setUser(null);
-          setStatus("unauthenticated");
+          setStatus(AUTH_STATUS.UNAUTHENTICATED);
           setError(null);
           return;
         }
-        setStatus("unauthenticated");
+        setStatus(AUTH_STATUS.UNAUTHENTICATED);
         setError(toLoginError(requestError));
+        toast.error(toLoginError(requestError));
       }
     };
 
@@ -148,7 +153,7 @@ export const AuthProvider = ({
         if (!mountedRef.current) return response.user;
         setToken(response.token);
         setUser(response.user);
-        setStatus("authenticated");
+        setStatus(AUTH_STATUS.AUTHENTICATED);
         return response.user;
       } catch (requestError) {
         const message = toLoginError(requestError);

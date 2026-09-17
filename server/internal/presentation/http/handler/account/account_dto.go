@@ -11,11 +11,13 @@ import (
 // KYC nhạy cảm (CCCD mặt trước/sau, live video), không được lộ qua API công
 // khai không có authentication.
 type AccountResponsePublic struct {
-	Id       string `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	IsVerify bool   `json:"isVerify"`
-	Amount   int64  `json:"amount"`
+	Id        string `json:"id"`
+	AccountNo string `json:"accountNo"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Currency  string `json:"currency"`
+	IsVerify  bool   `json:"isVerify"`
+	Amount    int64  `json:"amount"`
 }
 
 // AccountResponsePrivate dùng cho endpoint đã qua auth (GET /api/auth/me,
@@ -23,8 +25,11 @@ type AccountResponsePublic struct {
 // cả identity URLs — chỉ user sở hữu tài khoản mới được xem KYC của mình.
 type AccountResponsePrivate struct {
 	Id             string `json:"id"`
+	AccountNo      string `json:"accountNo"`
 	Username       string `json:"username"`
+	FullName       string `json:"fullName"`
 	Email          string `json:"email"`
+	Currency       string `json:"currency"`
 	IdCardFrontUrl string `json:"idCardFrontUrl"`
 	IdCardBackUrl  string `json:"idCardBackUrl"`
 	LiveVideoUrl   string `json:"liveVideoUrl"`
@@ -42,11 +47,13 @@ type AuthResponse struct {
 
 func toAccountResponsePublic(a *accountdomain.UserAccount) AccountResponsePublic {
 	return AccountResponsePublic{
-		Id:       a.Id,
-		Username: a.Username,
-		Email:    a.Email,
-		IsVerify: a.IsVerified(),
-		Amount:   a.Balance.Current,
+		Id:        a.Id,
+		AccountNo: a.AccountNo,
+		Username:  a.Username,
+		Email:     a.Email,
+		Currency:  string(a.Currency),
+		IsVerify:  a.IsVerified(),
+		Amount:    a.Balance.Current,
 	}
 }
 
@@ -60,11 +67,17 @@ func toAccountResponsePublicList(list []*accountdomain.UserAccount) []AccountRes
 
 func toAccountResponsePrivate(a *accountdomain.UserAccount) AccountResponsePrivate {
 	response := AccountResponsePrivate{
-		Id:       a.Id,
-		Username: a.Username,
-		Email:    a.Email,
-		IsVerify: a.IsVerified(),
-		Amount:   a.Balance.Current,
+		Id:        a.Id,
+		AccountNo: a.AccountNo,
+		Username:  a.Username,
+		FullName:  a.Username,
+		Email:     a.Email,
+		Currency:  string(a.Currency),
+		IsVerify:  a.IsVerified(),
+		Amount:    a.Balance.Current,
+	}
+	if a.Customer != nil && a.Customer.Profile.FullName != "" {
+		response.FullName = a.Customer.Profile.FullName
 	}
 	if session := a.VerifiedKYCSession(); session != nil {
 		response.IdCardFrontUrl = session.Media.IdentityFront.StorageKey
