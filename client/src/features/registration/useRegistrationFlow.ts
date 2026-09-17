@@ -3,15 +3,15 @@ import { useState, useRef, useEffect, type FormEvent } from "react";
 import { stages, passwordRules, type Screen } from "./model";
 import { useAuth } from "@/features/auth/useAuth";
 import { defaultAuthTokenStore } from "@/features/auth/lib/token-store";
-import { verifyFace } from "@/features/auth/api/kyc";
 import {
+  verifyFace,
   registerAccount,
   uploadMedia,
   verifyAccount,
   registrationError,
   type VerificationMedia,
-} from "@/features/auth/api/registration";
-import type { AuthUser } from "@/features/auth/api/auth";
+} from "./api";
+import type { AuthUser } from "@/features/auth/api";
 
 export function useRegistrationFlow() {
   const auth = useAuth();

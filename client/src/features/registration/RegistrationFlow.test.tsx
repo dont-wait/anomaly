@@ -11,10 +11,9 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { FormEvent, ReactNode } from "react";
-import { AuthProvider } from "@/features/auth/AuthProvider";
+import { AuthProvider, AUTH_TOKEN_STORAGE_KEY } from "@/features/auth";
 import { RegistrationFlow } from "./RegistrationFlow";
 import { useRegistrationFlow } from "./useRegistrationFlow";
-import { AUTH_TOKEN_STORAGE_KEY } from "@/features/auth/lib/token-store";
 
 const user = {
   id: "account-1",
