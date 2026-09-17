@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"regexp"
 	"strconv"
+	"strings"
+	"testing"
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain"
-	"regexp"
-	"strings"
-	"testing"
 
 	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
 )
