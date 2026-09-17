@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -262,8 +263,12 @@ func TestLoadEnvPort(t *testing.T) {
 	for _, value := range []string{"1", "65535"} {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv("SMTP_PORT", value)
-			if got := (&Loader{}).LoadEnvPort("SMTP_PORT", 587); got == 587 {
-				t.Fatal("valid port rejected")
+			want, err := strconv.Atoi(value)
+			if err != nil {
+				t.Fatalf("invalid test port %q: %v", value, err)
+			}
+			if got := (&Loader{}).LoadEnvPort("SMTP_PORT", 587); got != want {
+				t.Fatalf("LoadEnvPort() = %d, want %d", got, want)
 			}
 		})
 	}
