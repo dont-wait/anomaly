@@ -256,6 +256,55 @@ it("keeps a code typed during a send that then fails, and reopens resend", async
   expect(count("/otp/verify")).toBe(0);
 });
 
+it("does not verify manually when no send has succeeded", async () => {
+  const normal = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (url, options) =>
+    String(url).endsWith("/otp/request")
+      ? response({ error: "smtp down" }, 500)
+      : normal(url, options),
+  );
+  const { result } = renderHook(useRegistrationFlow, { wrapper });
+  act(() => {
+    result.current.setEmail("a@example.com");
+    result.current.setConsent(true);
+  });
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  expect(result.current.screen).toBe("otp");
+  await waitFor(() => expect(result.current.otpErrorMsg).not.toBe(""));
+  expect(result.current.otpSent).toBe(false);
+  act(() => result.current.setOtpCode("123456"));
+  // Bấm tay khi chưa gửi thành công: chặn, không gọi /otp/verify vô ích.
+  await act(async () => {
+    result.current.submit(submitEvent);
+  });
+  expect(count("/otp/verify")).toBe(0);
+  expect(result.current.otpCode).toBe("123456");
+});
+it("tells the truth about the send state in the OTP heading", async () => {
+  const release = deferSend();
+  openOtpScreen();
+  // Đang gửi: không khẳng định "đã gửi".
+  expect(screen.getByText(/đang được gửi tới/)).toBeTruthy();
+  expect(screen.queryByText(/đã được gửi tới/)).toBeNull();
+  await act(async () => {
+    release();
+  });
+  await waitFor(() => expect(screen.getByText(/đã được gửi tới/)).toBeTruthy());
+});
+it("admits a failed send in the OTP heading", async () => {
+  const normal = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (url, options) =>
+    String(url).endsWith("/otp/request")
+      ? response({ error: "smtp down" }, 500)
+      : normal(url, options),
+  );
+  openOtpScreen();
+  await waitFor(() =>
+    expect(screen.getByText(/Chưa gửi được mã/)).toBeTruthy(),
+  );
+});
 it("reports a failed send on the OTP screen instead of holding back the email step", async () => {
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) =>

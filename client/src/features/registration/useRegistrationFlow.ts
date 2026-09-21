@@ -132,7 +132,9 @@ export function useRegistrationFlow() {
     if (failure) showOtpError(failure);
   }
   async function confirmOtp() {
-    if (operation.current || otpCode.length !== OTP_LENGTH) return;
+    // Chưa gửi xong thì không verify: server chưa lưu mã nào để so, gọi cũng
+    // chỉ nhận 410 vô ích (đường tự động đã chờ otpSent, nút bấm tay cũng vậy).
+    if (operation.current || !otpSent || otpCode.length !== OTP_LENGTH) return;
     const controller = new AbortController();
     operation.current = controller;
     setOtpBusy(true);

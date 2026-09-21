@@ -160,6 +160,24 @@ export function OtpStep({
       ? "Đã nhập đủ mã, đang chờ gửi xong để xác thực…"
       : progress;
 
+  // Tiêu đề nói đúng trạng thái gửi: chưa xong thì không khẳng định "đã gửi",
+  // gửi hỏng thì hướng sang nút Gửi lại (lúc này otpErrorMsg chắc chắn là lỗi
+  // gửi vì verify tay/tự động đều chờ otpSent).
+  const headingSub = otpSent ? (
+    <>
+      Mã gồm 6 số đã được gửi tới <strong>{email}</strong>
+    </>
+  ) : otpSending ? (
+    <>
+      Mã 6 số đang được gửi tới <strong>{email}</strong>
+    </>
+  ) : (
+    <>
+      Chưa gửi được mã tới <strong>{email}</strong> — bấm{" "}
+      <strong>Gửi lại</strong> bên dưới
+    </>
+  );
+
   return (
     <>
       <StepHeading
@@ -167,7 +185,7 @@ export function OtpStep({
         title="Xác thực email"
         icon={faEnvelope}
       >
-        Mã gồm 6 số đã được gửi tới <strong>{email}</strong>
+        {headingSub}
       </StepHeading>
       <form className="form-card" onSubmit={submit}>
         <fieldset disabled={otpBusy}>
@@ -223,7 +241,7 @@ export function OtpStep({
           <Notice>
             Mã có hiệu lực 60 giây. Nhập sai quá 5 lần mã sẽ bị hủy.
           </Notice>
-          <Next disabled={otpBusy || otpCode.length !== OTP_LENGTH}>
+          <Next disabled={otpBusy || !otpSent || otpCode.length !== OTP_LENGTH}>
             Xác thực
           </Next>
         </fieldset>
