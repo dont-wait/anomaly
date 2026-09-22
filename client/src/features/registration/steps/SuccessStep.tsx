@@ -2,6 +2,7 @@ import type { RegistrationFlowState } from "../useRegistrationFlow";
 import { StepHeading } from "../components/StepPrimitives";
 import { faArrowRight, faCheck } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { Button } from "@/shared/ui";
 
 export function SuccessStep({
   email,
@@ -28,15 +29,15 @@ export function SuccessStep({
         <div className="account-divider" />
         <span>Bạn đã có thể đăng nhập bằng CCCD và mật khẩu vừa tạo.</span>
       </div>
-      <button
-        className="primary"
+      <Button
+        className="w-full"
         onClick={() => {
           onLogin();
         }}
       >
         Về trang đăng nhập
         <FontAwesomeIcon icon={faArrowRight} />
-      </button>
+      </Button>
     </>
   );
 }

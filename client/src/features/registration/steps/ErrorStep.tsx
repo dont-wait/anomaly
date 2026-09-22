@@ -1,6 +1,7 @@
 import type { RegistrationFlowState } from "../useRegistrationFlow";
 import { StepHeading } from "../components/StepPrimitives";
 import { faCircleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { Button } from "@/shared/ui";
 export function ErrorStep({
   error,
   remaining,
@@ -30,17 +31,21 @@ export function ErrorStep({
         <p className="attempts">Còn {remaining}/3 lượt xác thực</p>
         {remaining > 0 && (
           <>
-            <button className="primary" onClick={retry}>
+            <Button className="w-full" onClick={retry}>
               Quay lại video
-            </button>
-            <button className="secondary" onClick={() => go("document")}>
+            </Button>
+            <Button
+              variant="secondary"
+              className="mt-3 w-full"
+              onClick={() => go("document")}
+            >
               Chụp lại CCCD
-            </button>
+            </Button>
           </>
         )}
-        <button className="secondary" onClick={onLogin}>
+        <Button variant="secondary" className="mt-3 w-full" onClick={onLogin}>
           Về trang đăng nhập
-        </button>
+        </Button>
       </div>
     </>
   );

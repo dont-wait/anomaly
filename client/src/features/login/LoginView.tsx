@@ -9,7 +9,7 @@ import {
   faShieldHalved,
   faUserShield,
 } from "@fortawesome/free-solid-svg-icons";
-import { Input } from "@/shared/ui";
+import { Button, Input } from "@/shared/ui";
 import logoUrl from "@/assets/logo.png";
 import { useLoginForm } from "./useLoginForm";
 import { routes } from "@/app/routes";
@@ -188,14 +188,8 @@ export function LoginView() {
               </div>
 
               {/* Login Button */}
-              <button
-                className="mx-4 w-auto rounded-2xl py-3.5 sm:mx-5 sm:py-4 md:mx-6 font-semibold text-base sm:text-title-md tracking-wide text-center flex items-center justify-center transition-all active:scale-[0.99] disabled:opacity-80 disabled:active:scale-100 disabled:cursor-not-allowed"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #b582b5 0%, #8b5cf6 100%)",
-                  color: "#ffffff",
-                  boxShadow: "rgba(181,130,181,0.45) 0px 4px 18px -2px",
-                }}
+              <Button
+                className="mx-4 sm:mx-5 md:mx-6"
                 type="submit"
                 disabled={isBusy}
               >
@@ -204,7 +198,7 @@ export function LoginView() {
                   : isSubmitting
                     ? "Đang đăng nhập..."
                     : "Đăng nhập"}
-              </button>
+              </Button>
 
               {/* Register Link */}
               <div className="w-full py-3 sm:py-3.5 text-center flex items-center justify-center bg-surface-container-lowest/40">

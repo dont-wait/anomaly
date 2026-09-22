@@ -8,6 +8,7 @@ import {
   faEyeSlash,
 } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+import { Button } from "@/shared/ui";
 export function Notice({ children }: { children: ReactNode }) {
   return (
     <div className="notice">
@@ -24,10 +25,10 @@ export function Next({
   disabled?: boolean;
 }) {
   return (
-    <button className="primary" disabled={disabled} type="submit">
+    <Button className="w-full" disabled={disabled} type="submit">
       {children}
       <FontAwesomeIcon icon={faArrowRight} />
-    </button>
+    </Button>
   );
 }
 export function Password({
