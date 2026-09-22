@@ -4,11 +4,14 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { CloseIcon } from "@/shared/icons";
 
 const EXIT_MS = 200;
+/** Kéo xuống quá ngưỡng này thì đóng sheet */
+const DISMISS_DRAG_PX = 96;
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -37,6 +40,8 @@ export const BottomSheet = ({
   const returnFocus = useRef<HTMLElement | null>(null);
   const [rendered, setRendered] = useState(open);
   const [entered, setEntered] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const dragFrom = useRef<number | null>(null);
 
   // Mount ngay khi mở; unmount sau khi animation đóng chạy xong.
   if (open && !rendered) setRendered(true);
@@ -63,16 +68,35 @@ export const BottomSheet = ({
     return () => clearTimeout(timer);
   }, [open]);
 
-  // Đưa focus vào sheet nếu nội dung chưa tự focus (vd ô OTP có autoFocus).
+  // Nội dung chưa tự focus (vd ô OTP có autoFocus) thì focus chính khung sheet:
+  // trình đọc màn hình đọc tiêu đề, không hiện vòng focus trên nút đóng và không bật bàn phím.
   useEffect(() => {
     if (!open || !rendered) return;
     const node = panel.current;
-    if (node && !node.contains(document.activeElement)) {
-      (node.querySelector<HTMLElement>(FOCUSABLE) ?? node).focus();
-    }
+    if (node && !node.contains(document.activeElement)) node.focus();
   }, [open, rendered]);
 
   if (!rendered) return null;
+
+  // Vuốt xuống từ thanh nắm / tiêu đề để đóng sheet.
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dismissible || event.button !== 0) return;
+    dragFrom.current = event.clientY;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragFrom.current === null) return;
+    setDragY(Math.max(0, event.clientY - dragFrom.current));
+  };
+
+  const onPointerUp = () => {
+    if (dragFrom.current === null) return;
+    dragFrom.current = null;
+    const shouldClose = dragY > DISMISS_DRAG_PX;
+    setDragY(0);
+    if (shouldClose) onClose();
+  };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape" && dismissible) {
@@ -110,29 +134,45 @@ export const BottomSheet = ({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onKeyDown}
+        style={
+          dragY > 0
+            ? { transform: `translateY(${dragY}px)`, transition: "none" }
+            : undefined
+        }
         className={`relative flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-3xl bg-surface-container-lowest shadow-2xl shadow-inverse-surface/30 transition-transform focus:outline-none motion-reduce:transition-none ${
           visible
             ? "translate-y-0 duration-300 ease-out"
             : "translate-y-full duration-200 ease-in"
         }`}
       >
-        <div aria-hidden="true" className="flex justify-center pt-3">
-          <span className="h-1.5 w-10 rounded-full bg-outline-variant" />
-        </div>
-        <div className="flex items-center gap-2 px-5 pt-2 pb-1">
-          <h2 id={titleId} className="flex-1 text-lg font-bold text-on-surface">
-            {title}
-          </h2>
-          {dismissible && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Đóng"
-              className="-mr-2 flex h-11 w-11 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
+        <div
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          className={dismissible ? "touch-none" : undefined}
+        >
+          <div aria-hidden="true" className="flex justify-center pt-3">
+            <span className="h-1.5 w-10 rounded-full bg-outline-variant" />
+          </div>
+          <div className="flex items-center gap-2 px-5 pt-2 pb-1">
+            <h2
+              id={titleId}
+              className="flex-1 text-lg font-bold text-on-surface"
             >
-              <CloseIcon className="h-5 w-5" />
-            </button>
-          )}
+              {title}
+            </h2>
+            {dismissible && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Đóng"
+                className="-mr-2 flex h-11 w-11 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
+              >
+                <CloseIcon className="h-5 w-5" />
+              </button>
+            )}
+          </div>
         </div>
         <div className="overflow-y-auto overscroll-contain px-5 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           {children}
