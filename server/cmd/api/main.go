@@ -54,6 +54,7 @@ func main() {
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		logger.Fatal().Err(err).Msg("connect redis failed")
 	}
+	logger.Info().Str("addr", config.RedisConfig.Addr).Msg("connected to redis")
 	defer func() {
 		if err := rdb.Close(); err != nil {
 			logger.Error().Err(err).Msg("disconnect redis failed")
