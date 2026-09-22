@@ -195,3 +195,26 @@ export const ChevronDownIcon = (props: IconProps) => (
     <path d="m6 9 6 6 6-6" />
   </svg>
 );
+
+export const ContactsIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <rect x="4" y="3" width="15" height="18" rx="2" />
+    <circle cx="11.5" cy="10" r="2.5" />
+    <path d="M7.5 17c.6-1.9 2.2-3 4-3s3.4 1.1 4 3" />
+    <path d="M19 7h2M19 12h2M19 17h2" />
+  </svg>
+);
+
+export const TrashIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M4 7h16M10 7V5h4v2M6 7l1 13h10l1-13" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
+
+export const BookmarkPlusIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M18 21l-6-4-6 4V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2Z" />
+    <path d="M12 7v6M9 10h6" />
+  </svg>
+);

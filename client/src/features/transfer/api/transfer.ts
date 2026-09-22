@@ -58,6 +58,31 @@ const directory: Recipient[] = [
 const delay = () =>
   new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
 
+// Chừa vài tài khoản chưa lưu để demo được nút "Lưu vào danh bạ".
+const contacts: Recipient[] = directory.filter(
+  (recipient) => !["TCB", "BIDV"].includes(recipient.bank.code),
+);
+
+const sameRecipient = (a: Recipient, b: Recipient) =>
+  a.accountNo === b.accountNo && a.bank.code === b.bank.code;
+
+/** Danh bạ người nhận trong bộ nhớ — thay bằng API danh bạ khi backend có. */
+export const contactStore = {
+  list: (): Recipient[] =>
+    [...contacts].sort((a, b) => a.name.localeCompare(b.name, "vi")),
+  has: (recipient: Recipient) =>
+    contacts.some((contact) => sameRecipient(contact, recipient)),
+  add: (recipient: Recipient) => {
+    if (!contactStore.has(recipient)) contacts.push(recipient);
+  },
+  remove: (recipient: Recipient) => {
+    const index = contacts.findIndex((contact) =>
+      sameRecipient(contact, recipient),
+    );
+    if (index >= 0) contacts.splice(index, 1);
+  },
+};
+
 export const recentRecipients: Recipient[] = [
   directory[0],
   directory[4],
