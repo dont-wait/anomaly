@@ -14,6 +14,7 @@ import {
 } from "@/features/dashboard/mocks/dashboard";
 import { Avatar } from "@/shared/ui";
 import { useAuth } from "@/features/auth/useAuth";
+import { navigate, routes } from "@/app/routes";
 
 const DashboardPage = () => {
   const { status, user, refreshProfile } = useAuth();
@@ -81,9 +82,17 @@ const DashboardPage = () => {
         </div>
 
         <BalanceCard account={account} />
-        <QuickActions actions={quickActions} />
+        <QuickActions
+          actions={quickActions}
+          onSelect={(action) => {
+            if (action.icon === "transfer") navigate(routes.transfer);
+          }}
+        />
         <PromoBanner promo={promo} />
-        <TransactionList transactions={transactions} />
+        <TransactionList
+          transactions={transactions}
+          onViewAll={() => navigate(routes.transactions)}
+        />
       </main>
 
       <BottomNav onQrScan={() => console.log("TODO: mở màn hình quét QR")} />
