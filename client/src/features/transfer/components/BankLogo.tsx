@@ -21,7 +21,7 @@ export const BankLogo = ({
   return (
     <span
       aria-hidden="true"
-      className={`flex shrink-0 items-center justify-center overflow-hidden bg-surface-container-lowest ring-1 ring-outline-variant/70 ${SIZES[size]}`}
+      className={`flex shrink-0 items-center justify-center overflow-hidden bg-surface-container-lowest ${SIZES[size]}`}
     >
       {failed || !bank.logo ? (
         <span className="text-xs font-bold text-secondary-strong">
