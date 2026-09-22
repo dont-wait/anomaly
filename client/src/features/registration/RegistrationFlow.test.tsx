@@ -12,6 +12,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { FormEvent, ReactNode } from "react";
 import { AuthProvider, AUTH_TOKEN_STORAGE_KEY } from "@/features/auth";
+import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { RegistrationFlow } from "./RegistrationFlow";
 import { useRegistrationFlow } from "./useRegistrationFlow";
 
@@ -57,13 +58,17 @@ beforeEach(() => {
     },
   );
   fetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
-    if (url.endsWith("/otp/request")) return response({ message: "otp sent" });
-    if (url.endsWith("/otp/verify")) return response({ verified: true });
-    if (url.endsWith("/verify-face")) return response(verified);
-    if (url.endsWith("/register")) return response(user, 201);
-    if (url.endsWith("/login"))
+    if (String(url).endsWith(API_ENDPOINTS.AUTH.OTP_REQUEST))
+      return response({ message: "otp sent" });
+    if (String(url).endsWith(API_ENDPOINTS.AUTH.OTP_VERIFY))
+      return response({ verified: true });
+    if (String(url).endsWith(API_ENDPOINTS.KYC.VERIFY_FACE))
+      return response(verified);
+    if (String(url).endsWith(API_ENDPOINTS.AUTH.REGISTER))
+      return response(user, 201);
+    if (String(url).endsWith(API_ENDPOINTS.AUTH.LOGIN))
       return response({ token: "login-token", user, expiresAt: "2030-01-01" });
-    if (url.endsWith("/upload"))
+    if (String(url).endsWith(API_ENDPOINTS.MEDIA.UPLOAD))
       return response({ key: (options?.body as FormData).get("key") }, 201);
     return response({ ...user, isVerify: true });
   });
@@ -109,7 +114,7 @@ it("verifies the emailed OTP between the email and document steps", async () => 
   fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
 
   const firstBox = await screen.findByLabelText("Chữ số thứ 1 của mã OTP");
-  expect(count("/otp/request")).toBe(1);
+  expect(count(API_ENDPOINTS.AUTH.OTP_REQUEST)).toBe(1);
   expect(
     (screen.getByRole("button", { name: /Xác thực/ }) as HTMLButtonElement)
       .disabled,
@@ -119,7 +124,7 @@ it("verifies the emailed OTP between the email and document steps", async () => 
 
   await screen.findByLabelText("Ảnh mặt trước CCCD");
   const otpRequest = fetchMock.mock.calls.find(([url]) =>
-    String(url).endsWith("/otp/verify"),
+    String(url).endsWith(API_ENDPOINTS.AUTH.OTP_VERIFY),
   )!;
   expect(JSON.parse(String(otpRequest[1].body))).toEqual({
     email: "a@example.com",
@@ -145,7 +150,8 @@ function deferSend() {
   let release: (() => void) | undefined;
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) => {
-    if (!String(url).endsWith("/otp/request")) return normal(url, options);
+    if (!String(url).endsWith(API_ENDPOINTS.AUTH.OTP_REQUEST))
+      return normal(url, options);
     await new Promise<void>((resolve) => {
       release = resolve;
     });
@@ -191,7 +197,7 @@ it("waits for the send to finish before verifying a code typed early", async () 
   fireEvent.paste(otpBox(1), { clipboardData: { getData: () => "123456" } });
   expect(otpBox(6).value).toBe("6");
   // Mã đủ nhưng chưa gửi xong: chờ, tuyệt đối không bỏ qua bước gọi server.
-  expect(count("/otp/verify")).toBe(0);
+  expect(count(API_ENDPOINTS.AUTH.OTP_VERIFY)).toBe(0);
   expect(screen.getByRole("status").textContent).toBe(
     "Đã nhập đủ mã, đang chờ gửi xong để xác thực…",
   );
@@ -200,7 +206,7 @@ it("waits for the send to finish before verifying a code typed early", async () 
     release();
   });
   await screen.findByLabelText("Ảnh mặt trước CCCD");
-  expect(count("/otp/verify")).toBe(1);
+  expect(count(API_ENDPOINTS.AUTH.OTP_VERIFY)).toBe(1);
 });
 
 it("starts the resend cooldown when the send begins, not when it returns", async () => {
@@ -230,7 +236,8 @@ it("keeps a code typed during a send that then fails, and reopens resend", async
   let fail: (() => void) | undefined;
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) => {
-    if (!String(url).endsWith("/otp/request")) return normal(url, options);
+    if (!String(url).endsWith(API_ENDPOINTS.AUTH.OTP_REQUEST))
+      return normal(url, options);
     await new Promise<void>((resolve) => {
       fail = resolve;
     });
@@ -253,13 +260,13 @@ it("keeps a code typed during a send that then fails, and reopens resend", async
   expect(result.current.otpCode).toBe("123456");
   expect(result.current.otpSent).toBe(false);
   expect(result.current.resendIn).toBe(0);
-  expect(count("/otp/verify")).toBe(0);
+  expect(count(API_ENDPOINTS.AUTH.OTP_VERIFY)).toBe(0);
 });
 
 it("does not verify manually when no send has succeeded", async () => {
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) =>
-    String(url).endsWith("/otp/request")
+    String(url).endsWith(API_ENDPOINTS.AUTH.OTP_REQUEST)
       ? response({ error: "smtp down" }, 500)
       : normal(url, options),
   );
@@ -279,7 +286,7 @@ it("does not verify manually when no send has succeeded", async () => {
   await act(async () => {
     result.current.submit(submitEvent);
   });
-  expect(count("/otp/verify")).toBe(0);
+  expect(count(API_ENDPOINTS.AUTH.OTP_VERIFY)).toBe(0);
   expect(result.current.otpCode).toBe("123456");
 });
 it("tells the truth about the send state in the OTP heading", async () => {
@@ -296,7 +303,7 @@ it("tells the truth about the send state in the OTP heading", async () => {
 it("admits a failed send in the OTP heading", async () => {
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) =>
-    String(url).endsWith("/otp/request")
+    String(url).endsWith(API_ENDPOINTS.AUTH.OTP_REQUEST)
       ? response({ error: "smtp down" }, 500)
       : normal(url, options),
   );
@@ -308,7 +315,7 @@ it("admits a failed send in the OTP heading", async () => {
 it("reports a failed send on the OTP screen instead of holding back the email step", async () => {
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) =>
-    String(url).endsWith("/otp/request")
+    String(url).endsWith(API_ENDPOINTS.AUTH.OTP_REQUEST)
       ? response({ error: "smtp down" }, 500)
       : normal(url, options),
   );
@@ -351,7 +358,7 @@ it("starts a 30s resend cooldown and counts it down on the OTP screen", async ()
     await act(async () => {
       await result.current.resendOtp();
     });
-    expect(count("/otp/request")).toBe(1);
+    expect(count(API_ENDPOINTS.AUTH.OTP_REQUEST)).toBe(1);
   } finally {
     vi.useRealTimers();
   }
@@ -378,7 +385,7 @@ it("sends a new code and restarts the cooldown once it has elapsed", async () =>
     await act(async () => {
       await result.current.resendOtp();
     });
-    expect(count("/otp/request")).toBe(2);
+    expect(count(API_ENDPOINTS.AUTH.OTP_REQUEST)).toBe(2);
     expect(result.current.resendIn).toBe(30);
     expect(result.current.otpErrorMsg).toBe("");
   } finally {
@@ -388,7 +395,7 @@ it("sends a new code and restarts the cooldown once it has elapsed", async () =>
 it("keeps the user on the OTP screen and explains an expired code", async () => {
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) =>
-    String(url).endsWith("/otp/verify")
+    String(url).endsWith(API_ENDPOINTS.AUTH.OTP_VERIFY)
       ? response({ error: "otp expired" }, 410)
       : normal(url, options),
   );
@@ -434,12 +441,12 @@ it("clears the consumed code so stepping back to OTP does not verify again", asy
   await act(async () => {
     result.current.submit(submitEvent);
   });
-  expect(count("/otp/verify")).toBe(1);
+  expect(count(API_ENDPOINTS.AUTH.OTP_VERIFY)).toBe(1);
 });
 it("keeps a rejected code on screen so the user can correct it", async () => {
   const normal = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url, options) =>
-    String(url).endsWith("/otp/verify")
+    String(url).endsWith(API_ENDPOINTS.AUTH.OTP_VERIFY)
       ? response({ error: "invalid otp" }, 400)
       : normal(url, options),
   );
@@ -462,17 +469,17 @@ it("keeps a rejected code on screen so the user can correct it", async () => {
 });
 it("registers, logs in using the existing token store, uploads media and commits verification", async () => {
   const { result } = await prepare();
-  expect(count("/register")).toBe(0);
+  expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(0);
   act(() => {
     result.current.submit(submitEvent);
     result.current.submit(submitEvent);
   });
   await waitFor(() => expect(result.current.screen).toBe("success"));
-  expect(count("/register")).toBe(1);
-  expect(count("/upload")).toBe(3);
+  expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(1);
+  expect(count(API_ENDPOINTS.MEDIA.UPLOAD)).toBe(3);
   expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe("login-token");
   const registration = fetchMock.mock.calls.find(([url]) =>
-    url.endsWith("/register"),
+    String(url).endsWith(API_ENDPOINTS.AUTH.REGISTER),
   )!;
   expect(JSON.parse(registration[1].body)).toEqual({
     username: "Nguyen A",
@@ -484,7 +491,7 @@ it("registers, logs in using the existing token store, uploads media and commits
     idempotencyKey: expect.any(String),
   });
   const commit = fetchMock.mock.calls.find(([url]) =>
-    url.endsWith("/account-1/verify"),
+    String(url).endsWith(API_ENDPOINTS.ACCOUNTS.VERIFY("account-1")),
   )!;
   expect(commit[1].headers.Authorization).toBe("Bearer login-token");
   expect(Object.keys(JSON.parse(commit[1].body))).toEqual([
@@ -520,14 +527,16 @@ it("does not create an account on KYC failure and preserves attempts on system e
     await result.current.verifyVideo(video);
   });
   expect(fetchMock).toHaveBeenCalledTimes(4);
-  expect(count("/register")).toBe(0);
+  expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(0);
 });
 it("retries after login failure without creating the account a second time", async () => {
   const { result } = await prepare();
   const normal = fetchMock.getMockImplementation()!;
   let fail = true;
   fetchMock.mockImplementation(async (url, options) =>
-    url.endsWith("/login") && fail ? response({}, 503) : normal(url, options),
+    String(url).endsWith(API_ENDPOINTS.AUTH.LOGIN) && fail
+      ? response({}, 503)
+      : normal(url, options),
   );
   act(() => result.current.submit(submitEvent));
   await screen.findByRole("alert");
@@ -536,14 +545,14 @@ it("retries after login failure without creating the account a second time", asy
   fail = false;
   act(() => result.current.submit(submitEvent));
   await waitFor(() => expect(result.current.screen).toBe("success"));
-  expect(count("/register")).toBe(1);
+  expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(1);
 });
 it("reuses uploaded files when the verify endpoint fails", async () => {
   const { result } = await prepare();
   const normal = fetchMock.getMockImplementation()!;
   let fail = true;
   fetchMock.mockImplementation(async (url, options) =>
-    url.endsWith("/account-1/verify") && fail
+    String(url).endsWith(API_ENDPOINTS.ACCOUNTS.VERIFY("account-1")) && fail
       ? response({}, 500)
       : normal(url, options),
   );
@@ -554,8 +563,8 @@ it("reuses uploaded files when the verify endpoint fails", async () => {
   fail = false;
   act(() => result.current.submit(submitEvent));
   await waitFor(() => expect(result.current.screen).toBe("success"));
-  expect(count("/upload")).toBe(3);
-  expect(count("/register")).toBe(1);
+  expect(count(API_ENDPOINTS.MEDIA.UPLOAD)).toBe(3);
+  expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(1);
 });
 it("aborts pending verification when leaving the page", async () => {
   let signal: AbortSignal | undefined;
@@ -577,7 +586,7 @@ it("reuses the registration key after a lost response and finishes onboarding", 
   const normal = fetchMock.getMockImplementation()!;
   let lost = true;
   fetchMock.mockImplementation(async (url, options) => {
-    if (url.endsWith("/register") && lost) {
+    if (String(url).endsWith(API_ENDPOINTS.AUTH.REGISTER) && lost) {
       lost = false;
       throw new TypeError("connection lost after commit");
     }
@@ -590,7 +599,7 @@ it("reuses the registration key after a lost response and finishes onboarding", 
   act(() => result.current.submit(submitEvent));
   await waitFor(() => expect(result.current.screen).toBe("success"));
   const attempts = fetchMock.mock.calls.filter(([url]) =>
-    url.endsWith("/register"),
+    String(url).endsWith(API_ENDPOINTS.AUTH.REGISTER),
   );
   expect(attempts).toHaveLength(2);
   const first = JSON.parse(attempts[0][1].body);

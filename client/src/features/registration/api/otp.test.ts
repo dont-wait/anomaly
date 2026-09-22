@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/shared/lib/http";
+import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { otpError, requestOtp, verifyOtp } from "./otp";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -32,7 +33,7 @@ describe("requestOtp", () => {
       string,
       RequestInit?,
     ];
-    expect(url).toContain("/api/auth/otp/request");
+    expect(url).toContain(API_ENDPOINTS.AUTH.OTP_REQUEST);
     expect(init?.method).toBe("POST");
     expect(bodyOf(fetchMock)).toEqual({ email: "alice@example.com" });
   });
@@ -63,7 +64,7 @@ describe("verifyOtp", () => {
       string,
       RequestInit?,
     ];
-    expect(url).toContain("/api/auth/otp/verify");
+    expect(url).toContain(API_ENDPOINTS.AUTH.OTP_VERIFY);
     expect(init?.method).toBe("POST");
     expect(bodyOf(fetchMock)).toEqual({
       email: "alice@example.com",
