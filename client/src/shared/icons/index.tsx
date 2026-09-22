@@ -157,3 +157,35 @@ export const TrendDownIcon = (props: IconProps) => (
     <path d="M15 16h5v-5" />
   </svg>
 );
+
+export const ArrowLeftIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M19 12H5M11 18l-6-6 6-6" />
+  </svg>
+);
+
+export const SearchIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
+  </svg>
+);
+
+export const CheckIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="m5 12 5 5 9-10" />
+  </svg>
+);
+
+export const CloseIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
+
+export const ShieldIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M12 3 5 6v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V6Z" />
+    <path d="m9 12 2 2 4-4" />
+  </svg>
+);
