@@ -25,7 +25,7 @@ export type LookupState =
   | { status: "found"; recipient: Recipient }
   | { status: "error"; message: string };
 
-/** Sheet trượt lên: `confirm` = tóm tắt + nhập OTP, `result` = biên lai */
+/** Sheet trượt lên: `confirm` = tóm tắt + nhập OTP, `result` = giao dịch thất bại */
 export type SheetState = "closed" | "confirm" | "result";
 
 const LOOKUP_DEBOUNCE_MS = 500;
@@ -183,7 +183,8 @@ export function useTransferFlow(initialSource: SourceAccount) {
       });
       setBalance((current) => current - record.amount - record.fee);
       setResult({ ok: true, record });
-      setSheet("result");
+      // Thành công hiện biên lai toàn màn hình nên đóng sheet OTP.
+      setSheet("closed");
     } catch (err) {
       if (!(err instanceof OtpError)) {
         setResult({
@@ -224,13 +225,9 @@ export function useTransferFlow(initialSource: SourceAccount) {
     setSheet("closed");
   };
 
-  /** Đóng sheet: giao dịch đã thành công thì làm mới form, còn lại giữ nguyên để sửa. */
+  /** Đóng sheet OTP / thất bại — giữ nguyên dữ liệu form để người dùng sửa. */
   const closeSheet = () => {
     if (busy) return;
-    if (result?.ok) {
-      reset();
-      return;
-    }
     setResult(null);
     setOtpError("");
     setOtpAttemptsLeft(MAX_OTP_ATTEMPTS);

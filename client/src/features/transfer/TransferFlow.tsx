@@ -1,17 +1,23 @@
-import type { FormEvent, ReactNode } from "react";
-import { CheckIcon } from "@/shared/icons";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { BookmarkPlusIcon, ContactsIcon } from "@/shared/icons";
 import { PageHeader } from "@/shared/layout";
 import { BottomSheet, Button } from "@/shared/ui";
 import { formatVnd, maskAccountNo } from "@/features/transactions/utils/format";
-import { NOTE_MAX_LENGTH, type SourceAccount } from "@/features/transfer/model";
+import {
+  NOTE_MAX_LENGTH,
+  type Recipient,
+  type SourceAccount,
+} from "@/features/transfer/model";
+import { contactStore } from "@/features/transfer/api/transfer";
 import { useBanks } from "@/features/transfer/useBanks";
 import { useTransferFlow } from "@/features/transfer/useTransferFlow";
+import { suggestAmounts } from "@/features/transfer/utils/amountSuggestions";
 import { BankSelect } from "./components/BankSelect";
 import { ConfirmSheetContent } from "./components/ConfirmSheetContent";
+import { ContactsSheetContent } from "./components/ContactsSheetContent";
+import { FailureSheetContent } from "./components/FailureSheetContent";
 import { RecentRecipients } from "./components/RecentRecipients";
-import { ResultSheetContent } from "./components/ResultSheetContent";
-
-const QUICK_AMOUNTS = [100_000, 200_000, 500_000, 1_000_000, 2_000_000];
+import { SuccessScreen } from "./components/SuccessScreen";
 const MAX_AMOUNT_DIGITS = 12;
 const numberFormat = new Intl.NumberFormat("vi-VN");
 
@@ -38,7 +44,7 @@ interface TransferFlowProps {
   onViewHistory: () => void;
 }
 
-/** Màn chuyển tiền một trang; xác thực OTP và kết quả nằm trong sheet trượt lên. */
+/** Màn chuyển tiền một trang; xác thực OTP trong sheet trượt lên, thành công hiện toàn màn. */
 export function TransferFlow({
   source,
   onExit,
@@ -48,6 +54,28 @@ export function TransferFlow({
   const banks = useBanks();
   const { lookup, amountError } = flow;
   const accountError = lookup.status === "error" ? lookup.message : "";
+  const [contactsOpen, setContactsOpen] = useState(false);
+  const [contacts, setContacts] = useState(() => contactStore.list());
+  const isSaved =
+    flow.recipient !== null &&
+    contacts.some(
+      (contact) =>
+        contact.accountNo === flow.recipient?.accountNo &&
+        contact.bank.code === flow.recipient.bank.code,
+    );
+  const amountSuggestions = suggestAmounts(flow.amount, flow.source.balance);
+
+  const chooseContact = (contact: Recipient) => {
+    flow.chooseRecipient(contact);
+    setContactsOpen(false);
+    setContacts(contactStore.list());
+  };
+
+  const saveContact = () => {
+    if (!flow.recipient) return;
+    contactStore.add(flow.recipient);
+    setContacts(contactStore.list());
+  };
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -55,11 +83,19 @@ export function TransferFlow({
   };
 
   const sheetTitle =
-    flow.sheet === "result"
-      ? flow.result?.ok
-        ? "Biên lai giao dịch"
-        : "Giao dịch chưa hoàn tất"
-      : "Xác thực giao dịch";
+    flow.sheet === "result" ? "Giao dịch chưa hoàn tất" : "Xác thực giao dịch";
+
+  if (flow.result?.ok) {
+    return (
+      <SuccessScreen
+        record={flow.result.record}
+        recipient={flow.recipient}
+        onHome={onExit}
+        onNewTransfer={flow.reset}
+        onViewHistory={onViewHistory}
+      />
+    );
+  }
 
   return (
     <>
@@ -127,30 +163,25 @@ export function TransferFlow({
                   placeholder="Nhập số tài khoản"
                   aria-invalid={Boolean(accountError)}
                   aria-describedby="recipient-status"
-                  className={`${inputClass(Boolean(accountError))} h-14 pr-12 text-lg font-semibold tracking-wide tabular-nums placeholder:text-base placeholder:font-normal placeholder:tracking-normal`}
+                  className={`${inputClass(Boolean(accountError))} h-14 pr-14 text-lg font-semibold tracking-wide tabular-nums placeholder:text-base placeholder:font-normal placeholder:tracking-normal`}
                 />
-                {lookup.status === "loading" && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute top-1/2 right-4 mt-0.5 h-5 w-5 -translate-y-1/2 animate-spin rounded-full border-2 border-secondary/30 border-t-secondary motion-reduce:animate-none"
-                  />
-                )}
+                <button
+                  type="button"
+                  onClick={() => setContactsOpen(true)}
+                  aria-label="Mở danh bạ người nhận"
+                  className="absolute top-1/2 right-1.5 mt-0.5 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
+                >
+                  <ContactsIcon aria-hidden="true" className="h-6 w-6" />
+                </button>
               </div>
-              <div id="recipient-status" aria-live="polite" className="min-h-6">
-                {lookup.status === "loading" && (
-                  <p className="mt-2 text-sm text-on-surface-variant">
-                    Đang kiểm tra tài khoản…
-                  </p>
-                )}
-                {lookup.status === "found" && (
-                  <p className="mt-2 flex items-center gap-2 rounded-xl bg-success-container px-3 py-2 text-sm font-semibold text-on-success-container">
-                    <CheckIcon
-                      aria-hidden="true"
-                      className="h-4 w-4 shrink-0"
-                    />
-                    <span className="truncate">{lookup.recipient.name}</span>
-                  </p>
-                )}
+              <div id="recipient-status" aria-live="polite">
+                <span className="sr-only">
+                  {lookup.status === "loading"
+                    ? "Đang kiểm tra tài khoản"
+                    : lookup.status === "found"
+                      ? `Người nhận: ${lookup.recipient.name}`
+                      : ""}
+                </span>
                 {accountError && (
                   <p
                     role="alert"
@@ -160,6 +191,46 @@ export function TransferFlow({
                   </p>
                 )}
               </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="recipient-name"
+                className="text-sm font-semibold text-on-surface-variant"
+              >
+                Tên người nhận
+              </label>
+              <div className="relative">
+                <input
+                  id="recipient-name"
+                  readOnly
+                  tabIndex={-1}
+                  value={lookup.status === "found" ? lookup.recipient.name : ""}
+                  className={`${inputClass(false)} h-14 pr-12 text-base font-semibold tracking-wide`}
+                />
+                {lookup.status === "loading" && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1/2 right-4 mt-0.5 h-5 w-5 -translate-y-1/2 animate-spin rounded-full border-2 border-secondary/30 border-t-secondary motion-reduce:animate-none"
+                  />
+                )}
+              </div>
+
+              {lookup.status === "found" &&
+                (isSaved ? (
+                  <p className="mt-2 text-xs text-on-surface-variant">
+                    Đã có trong danh bạ
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={saveContact}
+                    className="mt-2 -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-semibold text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
+                  >
+                    <BookmarkPlusIcon aria-hidden="true" className="h-4 w-4" />
+                    Lưu vào danh bạ
+                  </button>
+                ))}
             </div>
           </Card>
 
@@ -212,27 +283,24 @@ export function TransferFlow({
               )}
             </div>
 
-            <div
-              role="group"
-              aria-label="Chọn nhanh số tiền"
-              className="flex flex-wrap gap-2"
-            >
-              {QUICK_AMOUNTS.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={flow.amount === value}
-                  onClick={() => flow.setAmount(value)}
-                  className={`min-h-11 rounded-full px-3.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none ${
-                    flow.amount === value
-                      ? "bg-secondary-strong text-on-secondary"
-                      : "bg-surface-container-lowest text-secondary-strong ring-1 ring-secondary/30 hover:bg-secondary/10"
-                  }`}
-                >
-                  {numberFormat.format(value)}
-                </button>
-              ))}
-            </div>
+            {amountSuggestions.length > 0 && (
+              <div
+                role="group"
+                aria-label="Gợi ý số tiền"
+                className="flex flex-wrap gap-2"
+              >
+                {amountSuggestions.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => flow.setAmount(value)}
+                    className="min-h-11 rounded-full bg-surface-container-lowest px-3.5 text-sm font-medium text-secondary-strong tabular-nums ring-1 ring-secondary/30 transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
+                  >
+                    {numberFormat.format(value)}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div>
               <div className="flex items-baseline justify-between">
@@ -280,13 +348,18 @@ export function TransferFlow({
         dismissible={!flow.busy}
       >
         {flow.sheet === "confirm" && <ConfirmSheetContent {...flow} />}
-        {flow.sheet === "result" && (
-          <ResultSheetContent
-            {...flow}
-            onHome={onExit}
-            onViewHistory={onViewHistory}
-          />
-        )}
+        {flow.sheet === "result" && <FailureSheetContent {...flow} />}
+      </BottomSheet>
+
+      <BottomSheet
+        open={contactsOpen}
+        title="Danh bạ người nhận"
+        onClose={() => {
+          setContactsOpen(false);
+          setContacts(contactStore.list());
+        }}
+      >
+        <ContactsSheetContent onSelect={chooseContact} />
       </BottomSheet>
     </>
   );
