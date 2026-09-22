@@ -1,29 +1,81 @@
 import { transactionStore } from "@/features/transactions";
 import type { TransactionRecord } from "@/features/transactions/model";
-import type { Recipient, SourceAccount } from "@/features/transfer/model";
+import {
+  ANOMALY_BANK,
+  type Bank,
+  type Recipient,
+  type SourceAccount,
+} from "@/features/transfer/model";
 
+// TODO: thay toàn bộ file này bằng API thật khi backend có endpoint chuyển tiền.
 export const MOCK_LATENCY_MS = 400;
 export const DEMO_OTP = "123456";
 
-const BANK = "AnomalyBank";
+const vietQrBank = (
+  code: string,
+  bin: string,
+  shortName: string,
+  name: string,
+): Bank => ({
+  code,
+  bin,
+  shortName,
+  name,
+  logo: `https://cdn.vietqr.io/img/${code}.png`,
+});
+
+const VCB = vietQrBank(
+  "VCB",
+  "970436",
+  "Vietcombank",
+  "Ngân hàng TMCP Ngoại Thương Việt Nam",
+);
+const TCB = vietQrBank(
+  "TCB",
+  "970407",
+  "Techcombank",
+  "Ngân hàng TMCP Kỹ thương Việt Nam",
+);
+const MB = vietQrBank("MB", "970422", "MBBank", "Ngân hàng TMCP Quân đội");
+const BIDV = vietQrBank(
+  "BIDV",
+  "970418",
+  "BIDV",
+  "Ngân hàng TMCP Đầu tư và Phát triển Việt Nam",
+);
+
 const directory: Recipient[] = [
-  { accountNo: "99999180147", name: "TRAN THI BICH", bank: BANK },
-  { accountNo: "99999180233", name: "LE VAN CUONG", bank: BANK },
-  { accountNo: "99999180389", name: "NGUYEN MINH DUC", bank: BANK },
-  { accountNo: "99999180412", name: "PHAM THU HA", bank: BANK },
-  { accountNo: "99999180556", name: "VO HOANG NAM", bank: BANK },
+  { accountNo: "99999180147", name: "TRAN THI BICH", bank: ANOMALY_BANK },
+  { accountNo: "99999180233", name: "LE VAN CUONG", bank: ANOMALY_BANK },
+  { accountNo: "99999180389", name: "NGUYEN MINH DUC", bank: ANOMALY_BANK },
+  { accountNo: "99999180412", name: "PHAM THU HA", bank: ANOMALY_BANK },
+  { accountNo: "0011001234567", name: "NGUYEN VAN AN", bank: VCB },
+  { accountNo: "19036541234012", name: "LE THI MAI", bank: TCB },
+  { accountNo: "0901234567", name: "HOANG DUC ANH", bank: MB },
+  { accountNo: "12510000123456", name: "TRAN QUOC BAO", bank: BIDV },
 ];
 
 const delay = () =>
   new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
 
-export const recentRecipients: Recipient[] = directory.slice(0, 4);
+export const recentRecipients: Recipient[] = [
+  directory[0],
+  directory[4],
+  directory[1],
+  directory[5],
+];
 
+/** Tra cứu chủ tài khoản theo ngân hàng + số tài khoản; `null` nếu không tồn tại. */
 export async function lookupRecipient(
+  bank: Bank,
   accountNo: string,
 ): Promise<Recipient | null> {
   await delay();
-  return directory.find((r) => r.accountNo === accountNo) ?? null;
+  return (
+    directory.find(
+      (r) => r.bank.code === bank.code && r.accountNo === accountNo,
+    ) ?? null
+  );
 }
 
 export class OtpError extends Error {}
@@ -52,7 +104,11 @@ export async function submitTransfer(
     amount: input.amount,
     fee: 0,
     note: input.note,
-    counterparty: { ...input.recipient },
+    counterparty: {
+      name: input.recipient.name,
+      accountNo: input.recipient.accountNo,
+      bank: input.recipient.bank.shortName,
+    },
     createdAt: now,
     balanceAfter: input.source.balance - input.amount,
   };

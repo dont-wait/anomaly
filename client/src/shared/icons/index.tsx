@@ -189,3 +189,9 @@ export const ShieldIcon = (props: IconProps) => (
     <path d="m9 12 2 2 4-4" />
   </svg>
 );
+
+export const ChevronDownIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+);

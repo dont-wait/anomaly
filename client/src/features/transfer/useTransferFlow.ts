@@ -1,103 +1,178 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TransactionRecord } from "@/features/transactions/model";
+import { formatVnd } from "@/features/transactions/utils/format";
 import {
   OtpError,
   lookupRecipient,
   submitTransfer,
 } from "@/features/transfer/api/transfer";
 import {
+  ANOMALY_BANK,
   MAX_OTP_ATTEMPTS,
   MIN_TRANSFER_AMOUNT,
+  OTP_LENGTH,
+  type Bank,
   type Recipient,
   type SourceAccount,
-  type TransferStep,
 } from "@/features/transfer/model";
-import { formatVnd } from "@/features/transactions/utils/format";
 
 export type TransferResult =
   { ok: true; record: TransactionRecord } | { ok: false; message: string };
 
-const PREVIOUS_STEP: Partial<Record<TransferStep, TransferStep>> = {
-  amount: "recipient",
-  confirm: "amount",
-  otp: "confirm",
-};
+export type LookupState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "found"; recipient: Recipient }
+  | { status: "error"; message: string };
 
-const toAsciiUpper = (text: string) =>
-  text.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "D").toUpperCase();
+/** Sheet trượt lên: `confirm` = tóm tắt + nhập OTP, `result` = biên lai */
+export type SheetState = "closed" | "confirm" | "result";
+
+const LOOKUP_DEBOUNCE_MS = 500;
+const MIN_ACCOUNT_LENGTH = 6;
+
+const cleanAccountNo = (value: string) => value.replace(/\s/g, "");
 
 export function useTransferFlow(initialSource: SourceAccount) {
   // Số dư lấy từ /me không tự cập nhật sau khi chuyển, nên luồng tự giữ số dư còn lại
   // để các giao dịch liên tiếp ("Giao dịch mới") kiểm tra đúng số dư.
   const [balance, setBalance] = useState(initialSource.balance);
   const source = { ...initialSource, balance };
-  const [step, setStep] = useState<TransferStep>("recipient");
-  const [recipient, setRecipient] = useState<Recipient | null>(null);
+  const defaultNote = `${source.ownerName.toUpperCase()} chuyen tien`;
+
+  const [bank, setBankValue] = useState<Bank>(ANOMALY_BANK);
+  const [accountNo, setAccountNoValue] = useState("");
+  const [lookup, setLookup] = useState<LookupState>({ status: "idle" });
   const [amount, setAmountValue] = useState(0);
-  const [note, setNote] = useState(
-    `${toAsciiUpper(source.ownerName)} chuyen tien`,
-  );
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [amountTouched, setAmountTouched] = useState(false);
+  const [note, setNote] = useState(defaultNote);
+
+  const [sheet, setSheet] = useState<SheetState>("closed");
+  const [otpError, setOtpError] = useState("");
   const [otpAttemptsLeft, setOtpAttemptsLeft] = useState(MAX_OTP_ATTEMPTS);
+  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<TransferResult | null>(null);
 
-  const goTo = (next: TransferStep) => {
-    setError("");
-    setStep(next);
-  };
+  const lookupId = useRef(0);
+  const lookupTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(lookupTimer.current), []);
 
-  const chooseRecipient = (next: Recipient) => {
-    setRecipient(next);
-    goTo("amount");
-  };
-
-  const findRecipient = async (rawAccountNo: string) => {
-    const accountNo = rawAccountNo.replace(/\s/g, "");
-    if (!/^\d{8,19}$/.test(accountNo)) {
-      setError("Số tài khoản gồm 8–19 chữ số.");
+  const runLookup = async (nextBank: Bank, rawAccountNo: string) => {
+    clearTimeout(lookupTimer.current);
+    const id = ++lookupId.current;
+    const value = cleanAccountNo(rawAccountNo);
+    if (!value) {
+      setLookup({ status: "idle" });
       return;
     }
-    if (accountNo === source.accountNo) {
-      setError("Không thể chuyển tiền đến chính tài khoản của bạn.");
+    if (!/^\d{6,19}$/.test(value)) {
+      setLookup({ status: "error", message: "Số tài khoản gồm 6-19 chữ số." });
       return;
     }
-    setBusy(true);
-    setError("");
+    if (nextBank.code === ANOMALY_BANK.code && value === source.accountNo) {
+      setLookup({
+        status: "error",
+        message: "Không thể chuyển tiền đến chính tài khoản của bạn.",
+      });
+      return;
+    }
+    setLookup({ status: "loading" });
     try {
-      const found = await lookupRecipient(accountNo);
-      if (found) chooseRecipient(found);
-      else setError("Không tìm thấy tài khoản. Vui lòng kiểm tra lại.");
-    } finally {
-      setBusy(false);
+      const found = await lookupRecipient(nextBank, value);
+      if (id !== lookupId.current) return;
+      setLookup(
+        found
+          ? { status: "found", recipient: found }
+          : {
+              status: "error",
+              message: `Không tìm thấy tài khoản tại ${nextBank.shortName}.`,
+            },
+      );
+    } catch {
+      if (id !== lookupId.current) return;
+      setLookup({
+        status: "error",
+        message: "Không tra cứu được tài khoản. Vui lòng thử lại.",
+      });
     }
+  };
+
+  /** Tự tra cứu sau khi ngừng gõ; số quá ngắn thì chờ tới khi rời ô nhập. */
+  const scheduleLookup = (nextBank: Bank, rawAccountNo: string) => {
+    clearTimeout(lookupTimer.current);
+    lookupId.current++;
+    setLookup({ status: "idle" });
+    if (cleanAccountNo(rawAccountNo).length >= MIN_ACCOUNT_LENGTH) {
+      lookupTimer.current = setTimeout(
+        () => void runLookup(nextBank, rawAccountNo),
+        LOOKUP_DEBOUNCE_MS,
+      );
+    }
+  };
+
+  const setAccountNo = (value: string) => {
+    setAccountNoValue(value);
+    scheduleLookup(bank, value);
+  };
+
+  const setBank = (next: Bank) => {
+    setBankValue(next);
+    if (accountNo) void runLookup(next, accountNo);
+  };
+
+  /** Gọi khi rời ô số tài khoản — tra cứu ngay, trừ khi đã có kết quả cho đúng số này. */
+  const commitAccountNo = () => {
+    const value = cleanAccountNo(accountNo);
+    const alreadyFound =
+      lookup.status === "found" &&
+      lookup.recipient.accountNo === value &&
+      lookup.recipient.bank.code === bank.code;
+    if (alreadyFound || lookup.status === "loading") return;
+    void runLookup(bank, accountNo);
+  };
+
+  const chooseRecipient = (recipient: Recipient) => {
+    clearTimeout(lookupTimer.current);
+    lookupId.current++;
+    setBankValue(recipient.bank);
+    setAccountNoValue(recipient.accountNo);
+    setLookup({ status: "found", recipient });
   };
 
   const setAmount = (value: number) => {
-    setError("");
+    setAmountTouched(false);
     setAmountValue(value);
   };
 
   const amountError =
-    amount > source.balance ? "Số dư không đủ để thực hiện giao dịch." : "";
+    amount > source.balance
+      ? "Số dư không đủ để thực hiện giao dịch."
+      : amountTouched && amount < MIN_TRANSFER_AMOUNT
+        ? `Số tiền tối thiểu là ${formatVnd(MIN_TRANSFER_AMOUNT)}.`
+        : "";
 
-  const submitAmount = () => {
+  const recipient = lookup.status === "found" ? lookup.recipient : null;
+  const canSubmit =
+    recipient !== null && amount > 0 && amount <= source.balance;
+
+  const openConfirm = () => {
     if (amount < MIN_TRANSFER_AMOUNT) {
-      setError(`Số tiền tối thiểu là ${formatVnd(MIN_TRANSFER_AMOUNT)}.`);
+      setAmountTouched(true);
       return;
     }
-    if (amountError) return;
-    goTo("confirm");
+    if (!canSubmit) return;
+    setOtpError("");
+    setSheet("confirm");
   };
 
   const submitOtp = async (otp: string) => {
-    if (!recipient) return;
-    if (!/^\d{6}$/.test(otp)) {
-      setError("Mã OTP gồm 6 chữ số.");
+    if (!recipient || busy) return;
+    if (otp.length !== OTP_LENGTH) {
+      setOtpError(`Mã OTP gồm ${OTP_LENGTH} chữ số.`);
       return;
     }
     setBusy(true);
-    setError("");
+    setOtpError("");
     try {
       const record = await submitTransfer({
         source,
@@ -108,71 +183,90 @@ export function useTransferFlow(initialSource: SourceAccount) {
       });
       setBalance((current) => current - record.amount - record.fee);
       setResult({ ok: true, record });
-      goTo("result");
+      setSheet("result");
     } catch (err) {
       if (!(err instanceof OtpError)) {
         setResult({
           ok: false,
           message: "Hệ thống đang bận. Vui lòng thử lại sau.",
         });
-        goTo("result");
+        setSheet("result");
         return;
       }
       const left = otpAttemptsLeft - 1;
       setOtpAttemptsLeft(left);
       if (left > 0) {
-        setError(`Mã OTP không đúng. Bạn còn ${left} lần thử.`);
+        setOtpError(`Mã OTP không đúng. Bạn còn ${left} lần thử.`);
       } else {
         setResult({
           ok: false,
           message: `Bạn đã nhập sai OTP ${MAX_OTP_ATTEMPTS} lần. Giao dịch đã bị huỷ.`,
         });
-        goTo("result");
+        setSheet("result");
       }
     } finally {
       setBusy(false);
     }
   };
 
-  const back = () => {
-    const previous = PREVIOUS_STEP[step];
-    if (previous) goTo(previous);
+  const reset = () => {
+    clearTimeout(lookupTimer.current);
+    lookupId.current++;
+    setBankValue(ANOMALY_BANK);
+    setAccountNoValue("");
+    setLookup({ status: "idle" });
+    setAmountValue(0);
+    setAmountTouched(false);
+    setNote(defaultNote);
+    setResult(null);
+    setOtpError("");
+    setOtpAttemptsLeft(MAX_OTP_ATTEMPTS);
+    setSheet("closed");
+  };
+
+  /** Đóng sheet: giao dịch đã thành công thì làm mới form, còn lại giữ nguyên để sửa. */
+  const closeSheet = () => {
+    if (busy) return;
+    if (result?.ok) {
+      reset();
+      return;
+    }
+    setResult(null);
+    setOtpError("");
+    setOtpAttemptsLeft(MAX_OTP_ATTEMPTS);
+    setSheet("closed");
   };
 
   const retry = () => {
     setResult(null);
+    setOtpError("");
     setOtpAttemptsLeft(MAX_OTP_ATTEMPTS);
-    goTo("confirm");
-  };
-
-  const reset = () => {
-    setRecipient(null);
-    setAmountValue(0);
-    setNote(`${toAsciiUpper(source.ownerName)} chuyen tien`);
-    setResult(null);
-    setOtpAttemptsLeft(MAX_OTP_ATTEMPTS);
-    goTo("recipient");
+    setSheet("confirm");
   };
 
   return {
-    step,
     source,
+    bank,
+    setBank,
+    accountNo,
+    setAccountNo,
+    commitAccountNo,
+    lookup,
     recipient,
+    chooseRecipient,
     amount,
     setAmount,
+    amountError,
     note,
     setNote,
-    error,
-    amountError,
+    canSubmit,
+    sheet,
+    openConfirm,
+    closeSheet,
+    otpError,
     busy,
-    result,
-    canGoBack: step in PREVIOUS_STEP,
-    chooseRecipient,
-    findRecipient,
-    submitAmount,
-    confirm: () => goTo("otp"),
     submitOtp,
-    back,
+    result,
     retry,
     reset,
   };

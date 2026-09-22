@@ -1,21 +1,22 @@
-import type { Ref } from "react";
 import { CheckIcon, CloseIcon } from "@/shared/icons";
+import { Button } from "@/shared/ui";
 import { TransactionReceipt } from "@/features/transactions";
 import { formatVnd } from "@/features/transactions/utils/format";
 import type { TransferFlowState } from "@/features/transfer/useTransferFlow";
-import { Button } from "@/shared/ui";
 
-type Props = Pick<TransferFlowState, "result" | "retry" | "reset"> & {
-  headingRef: Ref<HTMLHeadingElement>;
+type Props = Pick<
+  TransferFlowState,
+  "result" | "retry" | "reset" | "closeSheet"
+> & {
   onHome: () => void;
   onViewHistory: () => void;
 };
 
-export function ResultStep({
+export function ResultSheetContent({
   result,
   retry,
   reset,
-  headingRef,
+  closeSheet,
   onHome,
   onViewHistory,
 }: Props) {
@@ -24,33 +25,26 @@ export function ResultStep({
   if (!result.ok) {
     return (
       <div className="space-y-6">
-        <div className="flex flex-col items-center gap-3 pt-4 text-center">
+        <div className="flex flex-col items-center gap-3 pt-2 text-center">
           <span
             aria-hidden="true"
-            className="flex h-20 w-20 items-center justify-center rounded-full bg-error-container text-error"
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-error-container text-error"
           >
-            <CloseIcon className="h-10 w-10" />
+            <CloseIcon className="h-8 w-8" />
           </span>
-          <h2
-            ref={headingRef}
-            tabIndex={-1}
-            className="text-xl font-bold text-on-surface focus:outline-none"
-          >
+          <p className="text-lg font-bold text-on-surface">
             Chuyển tiền thất bại
-          </h2>
-          <p className="text-sm text-on-surface-variant">{result.message}</p>
+          </p>
+          <p role="alert" className="text-sm text-on-surface-variant">
+            {result.message}
+          </p>
         </div>
         <div className="space-y-3">
-          <Button type="button" onClick={retry} className="w-full">
+          <Button className="w-full" onClick={retry}>
             Thử lại
           </Button>
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={onHome}
-            className="w-full"
-          >
-            Về trang chủ
+          <Button variant="secondary" className="w-full" onClick={closeSheet}>
+            Sửa thông tin
           </Button>
         </div>
       </div>
@@ -58,21 +52,17 @@ export function ResultStep({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col items-center gap-3 pt-2 text-center">
+    <div className="space-y-5">
+      <div className="flex flex-col items-center gap-2 text-center">
         <span
           aria-hidden="true"
-          className="flex h-20 w-20 items-center justify-center rounded-full bg-success-container text-success"
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-success-container text-success"
         >
-          <CheckIcon className="h-10 w-10" />
+          <CheckIcon className="h-8 w-8" />
         </span>
-        <h2
-          ref={headingRef}
-          tabIndex={-1}
-          className="text-xl font-bold text-on-surface focus:outline-none"
-        >
+        <p role="status" className="text-lg font-bold text-on-surface">
           Chuyển tiền thành công
-        </h2>
+        </p>
         <p className="text-3xl font-bold tracking-tight text-on-surface tabular-nums">
           {formatVnd(result.record.amount)}
         </p>
@@ -87,23 +77,17 @@ export function ResultStep({
       <TransactionReceipt record={result.record} showSummary={false} />
 
       <div className="space-y-3">
-        <Button type="button" onClick={onHome} className="w-full">
+        <Button className="w-full" onClick={onHome}>
           Về trang chủ
         </Button>
         <div className="grid grid-cols-2 gap-3">
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={reset}
-            className="w-full"
-          >
+          <Button variant="secondary" className="w-full" onClick={reset}>
             Giao dịch mới
           </Button>
           <Button
             variant="secondary"
-            type="button"
-            onClick={onViewHistory}
             className="w-full"
+            onClick={onViewHistory}
           >
             Xem lịch sử
           </Button>
