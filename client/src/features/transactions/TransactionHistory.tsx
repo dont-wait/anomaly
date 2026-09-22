@@ -14,7 +14,7 @@ const FILTERS: { id: TransactionFilter; label: string }[] = [
 ];
 
 const normalize = (text: string) =>
-  text.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").toLowerCase();
+  text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").toLowerCase();
 
 function matchesQuery(record: TransactionRecord, query: string) {
   if (!query) return true;
