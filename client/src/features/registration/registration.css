@@ -16,12 +16,22 @@
     font: inherit;
   }
 
-  .auth-app button {
-    cursor: pointer;
-    transition:
-      background 0.2s,
-      transform 0.2s;
-  }
+/* UA đặt fieldset là min-width: min-content, nên flex-item bên trong không
+   co lại được và đẩy tràn thẻ bọc. Preflight của Tailwind đã lo
+   margin/padding/border, còn min-width thì không. */
+.auth-app fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.auth-app button {
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    transform 0.2s;
+}
 
   .auth-app button:disabled {
     cursor: not-allowed;
@@ -404,12 +414,43 @@
   font-size: 12px;
 }
 
-.auth-app .otp-input {
-  letter-spacing: 12px;
-  font-size: 29px !important;
+.auth-app .otp-boxes {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  gap: 10px;
+  margin-top: 9px;
+}
+
+/* Các ô chia đều bề ngang khả dụng và giữ hình vuông, chặn trên 52px để
+   màn rộng không phình ra; nhờ vậy không cần breakpoint riêng cho từng
+   bề ngang máy. */
+.auth-app .otp-box {
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+  max-width: 52px;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 24px;
+  background: #f2f3ff;
+  color: var(--navy);
+  font-size: 24px;
+  font-weight: 700;
   text-align: center;
-  padding-left: 26px !important;
   font-variant-numeric: tabular-nums;
+}
+
+.auth-app .otp-box:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.auth-app .otp-box:disabled {
+  opacity: 0.6;
 }
 
 .auth-app .centered {
@@ -781,8 +822,12 @@
     font-size: 23px;
   }
 
-  .auth-app .otp-input {
-    letter-spacing: 8px;
+  .auth-app .otp-boxes {
+    gap: 8px;
+  }
+
+  .auth-app .otp-box {
+    font-size: 20px;
   }
 }
 

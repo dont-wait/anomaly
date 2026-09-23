@@ -3,6 +3,8 @@ export const API_ENDPOINTS = {
     LOGIN: "/api/auth/login",
     REGISTER: "/api/auth/register",
     ME: "/api/auth/me",
+    OTP_REQUEST: "/api/auth/otp/request",
+    OTP_VERIFY: "/api/auth/otp/verify",
   },
   MEDIA: {
     UPLOAD: "/api/media/upload",

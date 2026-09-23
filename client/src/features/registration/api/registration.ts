@@ -1,7 +1,7 @@
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
 import { requestJson, ApiError } from "@/shared/lib/http";
-import type { AuthUser } from "./auth";
+import type { AuthUser } from "@/features/auth/api";
 
 export interface RegisterInput {
   username: string;
