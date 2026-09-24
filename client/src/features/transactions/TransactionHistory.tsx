@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SearchIcon } from "@/shared/icons";
 import { TransactionRow } from "@/features/transactions/components";
 import { formatVnd, groupByDay } from "@/features/transactions/utils/format";
@@ -14,7 +14,11 @@ const FILTERS: { id: TransactionFilter; label: string }[] = [
 ];
 
 const normalize = (text: string) =>
-  text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").toLowerCase();
+  text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase();
 
 function matchesQuery(record: TransactionRecord, query: string) {
   if (!query) return true;
@@ -41,9 +45,24 @@ export const TransactionHistory = ({
   onSelect,
   now: nowProp,
 }: TransactionHistoryProps) => {
-  const [now] = useState(() => nowProp ?? new Date());
+  // `nowProp` (test/story) luôn thắng; không prop thì chốt theo tick và tự
+  // refresh khi qua nửa đêm local để "Hôm nay" + tổng tháng đúng.
+  const [tick, setTick] = useState(() => new Date());
+  const now = nowProp ?? tick;
   const [filter, setFilter] = useState<TransactionFilter>("all");
   const [query, setQuery] = useState("");
+
+  // Trang mở qua nửa đêm local thì refresh để "Hôm nay" + tổng tháng đúng.
+  useEffect(() => {
+    if (nowProp !== undefined) return;
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+    const timer = setTimeout(
+      () => setTick(new Date()),
+      midnight.getTime() - Date.now(),
+    );
+    return () => clearTimeout(timer);
+  }, [tick, nowProp]);
 
   const monthSummary = useMemo(() => {
     const inMonth = records.filter(
