@@ -1,4 +1,5 @@
 import { navigate, routes } from "@/app/routes";
+import { useAuth } from "@/features/auth/useAuth";
 import { TransactionReceipt, transactionStore } from "@/features/transactions";
 import { PageHeader } from "@/shared/layout";
 import { Button } from "@/shared/ui";
@@ -8,7 +9,10 @@ const TransactionDetailPage = ({
 }: {
   transactionId: string;
 }) => {
-  const record = transactionStore.get(transactionId);
+  const { user } = useAuth();
+  const record = user
+    ? transactionStore.get(transactionId, user.accountNo)
+    : undefined;
 
   return (
     <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-gradient-to-b from-secondary-container/40 to-surface-container-lowest">

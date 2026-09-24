@@ -55,7 +55,9 @@ export function TransferFlow({
   const { lookup, amountError } = flow;
   const accountError = lookup.status === "error" ? lookup.message : "";
   const [contactsOpen, setContactsOpen] = useState(false);
-  const [contacts, setContacts] = useState(() => contactStore.list());
+  const [contacts, setContacts] = useState(() =>
+    contactStore.list(source.accountNo),
+  );
   const isSaved =
     flow.recipient !== null &&
     contacts.some(
@@ -68,13 +70,13 @@ export function TransferFlow({
   const chooseContact = (contact: Recipient) => {
     flow.chooseRecipient(contact);
     setContactsOpen(false);
-    setContacts(contactStore.list());
+    setContacts(contactStore.list(source.accountNo));
   };
 
   const saveContact = () => {
     if (!flow.recipient) return;
-    contactStore.add(flow.recipient);
-    setContacts(contactStore.list());
+    contactStore.add(flow.recipient, source.accountNo);
+    setContacts(contactStore.list(source.accountNo));
   };
 
   const onSubmit = (e: FormEvent) => {
@@ -356,10 +358,13 @@ export function TransferFlow({
         title="Danh bạ người nhận"
         onClose={() => {
           setContactsOpen(false);
-          setContacts(contactStore.list());
+          setContacts(contactStore.list(source.accountNo));
         }}
       >
-        <ContactsSheetContent onSelect={chooseContact} />
+        <ContactsSheetContent
+          ownerAccountNo={source.accountNo}
+          onSelect={chooseContact}
+        />
       </BottomSheet>
     </>
   );

@@ -9,12 +9,19 @@ const contactKey = (contact: Recipient) =>
 
 interface ContactsSheetContentProps {
   onSelect: (recipient: Recipient) => void;
+  /** STK chủ sở hữu để cô lập danh bạ theo account. */
+  ownerAccountNo?: string;
 }
 
 /** Danh bạ người nhận đã lưu: tìm kiếm, chọn để chuyển, xoá có bước xác nhận. */
-export function ContactsSheetContent({ onSelect }: ContactsSheetContentProps) {
+export function ContactsSheetContent({
+  onSelect,
+  ownerAccountNo,
+}: ContactsSheetContentProps) {
   const [query, setQuery] = useState("");
-  const [contacts, setContacts] = useState(() => contactStore.list());
+  const [contacts, setContacts] = useState(() =>
+    contactStore.list(ownerAccountNo),
+  );
   const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
   const [removedName, setRemovedName] = useState("");
 
@@ -29,8 +36,8 @@ export function ContactsSheetContent({ onSelect }: ContactsSheetContentProps) {
   }, [contacts, query]);
 
   const remove = (contact: Recipient) => {
-    contactStore.remove(contact);
-    setContacts(contactStore.list());
+    contactStore.remove(contact, ownerAccountNo);
+    setContacts(contactStore.list(ownerAccountNo));
     setConfirmingKey(null);
     setRemovedName(contact.name);
   };
