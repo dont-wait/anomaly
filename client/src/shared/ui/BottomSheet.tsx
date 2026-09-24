@@ -109,10 +109,14 @@ export const BottomSheet = ({
     if (items.length === 0) return;
     const first = items[0];
     const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
+    // Khung panel (tabIndex=-1) cũng là biên: sheet không autoFocus control nào
+    // (vd danh bạ) thì focus đang ở panel, Shift+Tab phải vòng về cuối thay vì
+    // thoát ra trang nền.
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || active === panel.current)) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
+    } else if (!event.shiftKey && active === last) {
       event.preventDefault();
       first.focus();
     }
