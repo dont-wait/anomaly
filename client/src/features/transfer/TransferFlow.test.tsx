@@ -241,7 +241,7 @@ it("confirms in a bottom sheet with OTP and shows the receipt there", async () =
   expect(screen.queryByLabelText("Số tài khoản")).toBeNull();
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-  const latest = transactionStore.list()[0];
+  const latest = transactionStore.list(source.accountNo)[0];
   expect(latest.amount).toBe(500_000);
   expect(latest.counterparty.bank).toBe("Vietcombank");
   expect(latest.balanceAfter).toBe(2_500_000);
@@ -365,9 +365,9 @@ it("saves a looked-up recipient to contacts and confirms before deleting", async
       logo: "",
     },
   };
-  contactStore.remove(newContact);
-  contactStore.add(newContact);
-  contactStore.remove(newContact);
+  contactStore.remove(newContact, source.accountNo);
+  contactStore.add(newContact, source.accountNo);
+  contactStore.remove(newContact, source.accountNo);
 
   fireEvent.click(
     screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
@@ -397,7 +397,9 @@ it("saves a looked-up recipient to contacts and confirms before deleting", async
   expect(
     within(sheet).queryAllByRole("button", { name: /PHAM THU HA/ }),
   ).toHaveLength(0);
-  expect(contactStore.list().some((c) => c.name === "PHAM THU HA")).toBe(false);
+  expect(
+    contactStore.list(source.accountNo).some((c) => c.name === "PHAM THU HA"),
+  ).toBe(false);
 
   // Lưu lại người vừa xoá từ form.
   fireEvent.click(within(sheet).getByRole("button", { name: "Đóng" }));
@@ -406,7 +408,9 @@ it("saves a looked-up recipient to contacts and confirms before deleting", async
   const save = await screen.findByRole("button", { name: "Lưu vào danh bạ" });
   fireEvent.click(save);
   expect(screen.getByText("Đã có trong danh bạ")).toBeTruthy();
-  expect(contactStore.list().some((c) => c.name === "PHAM THU HA")).toBe(true);
+  expect(
+    contactStore.list(source.accountNo).some((c) => c.name === "PHAM THU HA"),
+  ).toBe(true);
 });
 
 it("counts down before the OTP can be resent", async () => {
