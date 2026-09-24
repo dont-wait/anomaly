@@ -3,7 +3,8 @@ import type { TransactionRecord } from "@/features/transactions/model";
 const HOUR = 60 * 60 * 1000;
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * HOUR);
 
-const records: TransactionRecord[] = [
+/** Seed demo — giữ bất biến, `clear()` chỉ xóa record của user, không xóa seed. */
+const seed: TransactionRecord[] = [
   {
     id: "tx_1001",
     reference: "FT26265118302",
@@ -133,12 +134,60 @@ const records: TransactionRecord[] = [
   },
 ];
 
-/** Kho giao dịch mock trong bộ nhớ — giao dịch chuyển tiền mới được thêm vào đây. */
+/** Kho giao dịch mock trong bộ nhớ (RAM, mất khi reload) — thay bằng API phân trang khi backend có. */
+let records: TransactionRecord[] = [...seed];
+
+const sortedDesc = (items: TransactionRecord[]): TransactionRecord[] =>
+  [...items].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+const visibleTo = (
+  items: TransactionRecord[],
+  ownerAccountNo?: string,
+): TransactionRecord[] =>
+  ownerAccountNo === undefined
+    ? items
+    : items.filter(
+        (record) =>
+          !record.ownerAccountNo || record.ownerAccountNo === ownerAccountNo,
+      );
+
+/**
+ * Store mock cô lập theo STK + purge khi logout để khỏi leak sang user sau
+ * và khỏi phình RAM. Seed không có `ownerAccountNo` nên hiện với mọi user.
+ */
 export const transactionStore = {
-  list: (): TransactionRecord[] =>
-    [...records].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
-  get: (id: string) => records.find((record) => record.id === id),
+  list: (ownerAccountNo?: string): TransactionRecord[] =>
+    sortedDesc(visibleTo(records, ownerAccountNo)),
+
+  get: (id: string, ownerAccountNo?: string) => {
+    const record = records.find((item) => item.id === id);
+    if (!record) return undefined;
+    if (
+      ownerAccountNo !== undefined &&
+      record.ownerAccountNo &&
+      record.ownerAccountNo !== ownerAccountNo
+    ) {
+      return undefined;
+    }
+    return record;
+  },
+
   add: (record: TransactionRecord) => {
     records.push(record);
+  },
+
+  /**
+   * Xóa record của user để khỏi thành "rác" RAM + leak sau logout.
+   * Không args: xóa mọi record có owner, giữ seed. Có owner: chỉ xóa của owner đó.
+   */
+  clear: (ownerAccountNo?: string) => {
+    records =
+      ownerAccountNo === undefined
+        ? records.filter((record) => !record.ownerAccountNo)
+        : records.filter(
+            (record) =>
+              !record.ownerAccountNo ||
+              record.ownerAccountNo !== ownerAccountNo,
+          );
   },
 };
