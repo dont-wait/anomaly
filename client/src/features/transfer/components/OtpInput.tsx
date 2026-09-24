@@ -33,7 +33,8 @@ export function OtpInput({
         autoComplete="one-time-code"
         maxLength={OTP_LENGTH}
         value={value}
-        disabled={disabled}
+        readOnly={disabled}
+        aria-disabled={disabled || undefined}
         onChange={(e) =>
           onChange(e.target.value.replace(/\D/g, "").slice(0, OTP_LENGTH))
         }
@@ -41,7 +42,7 @@ export function OtpInput({
         onBlur={() => setFocused(false)}
         aria-invalid={invalid}
         aria-describedby={describedBy}
-        className="absolute inset-0 z-10 h-full w-full cursor-text text-base opacity-0 disabled:cursor-not-allowed"
+        className="absolute inset-0 z-10 h-full w-full cursor-text text-base opacity-0 read-only:cursor-not-allowed"
       />
       <div aria-hidden="true" className="grid grid-cols-6 gap-2">
         {Array.from({ length: OTP_LENGTH }, (_, index) => {
