@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300..900;1,300..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap");
 @import "tailwindcss";
 
@@ -12,6 +12,13 @@
   --color-secondary-container: #d1afd1;
   --color-on-secondary: #ffffff;
   --color-on-secondary-container: #fffbff;
+  /* Mauve đậm cho chữ/điểm nhấn trên nền sáng (contrast ≥ 4.5:1 với trắng) */
+  --color-secondary-strong: #805789;
+
+  /* Gradient nút chính — đúng màu nút Đăng nhập, dùng chung cho mọi trang */
+  --color-cta-from: #b582b5;
+  --color-cta-to: #8b5cf6;
+  --color-on-cta: #ffffff;
 
   --color-tertiary: #002e41;
   --color-tertiary-container: #00455f;
@@ -45,6 +52,11 @@
   --color-error-container: #ffdad6;
   --color-on-error: #ffffff;
   --color-on-error-container: #93000a;
+
+  --color-success: #1b6e34;
+  --color-success-container: #c9f0cf;
+  --color-on-success: #ffffff;
+  --color-on-success-container: #07391a;
 
   --font-sans: "Be Vietnam Pro", system-ui, sans-serif;
   --font-display: "Be Vietnam Pro", system-ui, sans-serif;

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { Button } from "@/shared/ui";
 export function InfoDialog({
   title,
   onClose,
@@ -20,9 +21,9 @@ export function InfoDialog({
             ? "Chức năng gửi email khôi phục mật khẩu chưa được kết nối."
             : "Khi tiếp tục, thông tin đăng ký được gửi tới hệ thống AnomalyBank; ảnh CCCD và video được gửi để đối chiếu danh tính. Nội dung điều khoản và chính sách chi tiết đang được cập nhật."}
       </p>
-      <button className="primary" onClick={onClose}>
+      <Button className="w-full" onClick={onClose}>
         Đã hiểu
-      </button>
+      </Button>
     </dialog>
   );
 }

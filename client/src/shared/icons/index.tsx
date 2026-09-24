@@ -157,3 +157,64 @@ export const TrendDownIcon = (props: IconProps) => (
     <path d="M15 16h5v-5" />
   </svg>
 );
+
+export const ArrowLeftIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M19 12H5M11 18l-6-6 6-6" />
+  </svg>
+);
+
+export const SearchIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
+  </svg>
+);
+
+export const CheckIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="m5 12 5 5 9-10" />
+  </svg>
+);
+
+export const CloseIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
+
+export const ShieldIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M12 3 5 6v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V6Z" />
+    <path d="m9 12 2 2 4-4" />
+  </svg>
+);
+
+export const ChevronDownIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+);
+
+export const ContactsIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <rect x="4" y="3" width="15" height="18" rx="2" />
+    <circle cx="11.5" cy="10" r="2.5" />
+    <path d="M7.5 17c.6-1.9 2.2-3 4-3s3.4 1.1 4 3" />
+    <path d="M19 7h2M19 12h2M19 17h2" />
+  </svg>
+);
+
+export const TrashIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M4 7h16M10 7V5h4v2M6 7l1 13h10l1-13" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
+
+export const BookmarkPlusIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M18 21l-6-4-6 4V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2Z" />
+    <path d="M12 7v6M9 10h6" />
+  </svg>
+);

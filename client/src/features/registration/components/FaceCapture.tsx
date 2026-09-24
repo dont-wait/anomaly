@@ -2,6 +2,7 @@ import { toast } from "@/shared/notifications/toast";
 import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFingerprint, faCamera } from "@fortawesome/free-solid-svg-icons";
+import { Button } from "@/shared/ui";
 const instructions = [
   "Nhìn thẳng vào camera",
   "Từ từ quay đầu sang trái",
@@ -193,14 +194,14 @@ export function FaceCapture({
         </p>
       )}
       {!active ? (
-        <button className="primary" disabled={isOpening} onClick={openCamera}>
+        <Button className="w-full" disabled={isOpening} onClick={openCamera}>
           <FontAwesomeIcon icon={faCamera} />
           {isOpening ? "Đang mở camera…" : "Mở camera"}
-        </button>
+        </Button>
       ) : (
-        <button className="primary" disabled={recording} onClick={record}>
+        <Button className="w-full" disabled={recording} onClick={record}>
           {recording ? "Làm theo hướng dẫn…" : "Bắt đầu quay và xác thực"}
-        </button>
+        </Button>
       )}
       <p className="field-hint centered" style={{ marginTop: 16 }}>
         Video 12 giây sẽ được gửi để xác thực khi quay xong.
