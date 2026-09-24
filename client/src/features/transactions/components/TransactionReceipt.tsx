@@ -73,7 +73,7 @@ export const TransactionReceipt = ({
           <button
             type="button"
             onClick={copyReference}
-            aria-label="Sao chép mã giao dịch"
+            aria-label={`Sao chép mã giao dịch ${record.reference}`}
             className="-my-1 inline-flex min-h-8 items-center gap-1.5 rounded-full px-2 font-mono text-secondary-strong hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
           >
             {record.reference}
