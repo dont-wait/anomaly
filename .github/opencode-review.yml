@@ -1,0 +1,28 @@
+name: OpenCode PR Review PR
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  opencode-review:
+    if: github.event.label.name == 'review-requested'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: OpenCode Review Action
+        uses: anomalyco/opencode/github@latest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          model: mimo-v2.6-flash-free
+

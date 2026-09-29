@@ -205,3 +205,4 @@ pyrightconfig.json
 
 opencode.json
 .agent/*
+.vscode/
