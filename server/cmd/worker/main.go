@@ -84,7 +84,7 @@ func runWithReconnect(
 			return
 		}
 
-		from, err := resolveFrom(ctx, checkpointRepo, log)
+		from, hasCheckpoint, err := resolveFrom(ctx, checkpointRepo, log)
 		if err != nil {
 			log.Error().Err(err).Msg("load checkpoint failed, retrying")
 			if !sleepOrDone(ctx, backoff) {
@@ -98,6 +98,12 @@ func runWithReconnect(
 			ctx,
 			eventstoredb.SubscribeToAllOptions{From: from})
 		if err != nil {
+			if hasCheckpoint && isCheckpointSubscriptionError(err) {
+				log.Error().Err(err).Msg("checkpoint position rejected by EventStoreDB, clearing checkpoint and retrying from start")
+				if clearErr := checkpointRepo.Clear(ctx); clearErr != nil {
+					log.Error().Err(clearErr).Msg("clear invalid checkpoint failed, retrying with the same checkpoint")
+				}
+			}
 			log.Error().Err(err).Msg("subscribe to $all failed, retrying")
 			if !sleepOrDone(ctx, backoff) {
 				return
@@ -129,17 +135,30 @@ func runWithReconnect(
 
 // resolveFrom quyết định subscribe $all từ đâu: từ checkpoint đã lưu
 // (resume), hoặc từ đầu nếu chưa từng có checkpoint (lần chạy đầu).
-func resolveFrom(ctx context.Context, checkpointRepo *mongo.CheckpointRepository, log *zerolog.Logger) (eventstoredb.AllPosition, error) {
+func resolveFrom(ctx context.Context, checkpointRepo *mongo.CheckpointRepository, log *zerolog.Logger) (eventstoredb.AllPosition, bool, error) {
 	commit, prepare, found, err := checkpointRepo.Load(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !found {
 		log.Info().Msg("no checkpoint found, subscribing from start")
-		return eventstoredb.Start{}, nil
+		return eventstoredb.Start{}, false, nil
 	}
 	log.Info().Uint64("commit", commit).Uint64("prepare", prepare).Msg("resuming from checkpoint")
-	return eventstoredb.Position{Commit: commit, Prepare: prepare}, nil
+	return eventstoredb.Position{Commit: commit, Prepare: prepare}, true, nil
+}
+
+// SubscribeToAll currently exposes some EventStoreDB storage/read failures to
+// the client as a generic gRPC handler exception. Only apply the checkpoint
+// recovery to that server-side failure; transient network errors retain the
+// checkpoint and retry normally.
+func isCheckpointSubscriptionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "Exception was thrown by handler") ||
+		strings.Contains(message, "InvalidReadException")
 }
 
 // consume đọc event tới khi subscription bị drop hoặc ctx bị huỷ.

@@ -49,6 +49,8 @@ services:
       MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       MONGO_DB: anomaly
       EVENT_STORE_CONN_STRING: esdb://eventstore:2113?tls=false
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRY: ${JWT_EXPIRY:-24h}
       TZ: Asia/Ho_Chi_Minh
     depends_on:
       eventstore:

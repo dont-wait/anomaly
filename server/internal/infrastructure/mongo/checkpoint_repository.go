@@ -61,3 +61,10 @@ func (r *CheckpointRepository) Save(ctx context.Context, commit, prepare uint64)
 	)
 	return err
 }
+
+// Clear xoá checkpoint khi EventStoreDB không còn đọc được position đã lưu.
+// Lần chạy kế tiếp sẽ replay từ đầu $all và tạo lại checkpoint mới.
+func (r *CheckpointRepository) Clear(ctx context.Context) error {
+	_, err := r.col.DeleteOne(ctx, bson.M{"_id": checkpointID})
+	return err
+}

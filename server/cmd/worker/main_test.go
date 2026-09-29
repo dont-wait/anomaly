@@ -23,3 +23,15 @@ func TestPermanentProjectionErrorPreservesClassificationAndCause(t *testing.T) {
 		t.Fatal("errors.Is() = false, want wrapped cause")
 	}
 }
+
+func TestIsCheckpointSubscriptionError(t *testing.T) {
+	if !isCheckpointSubscriptionError(errors.New("rpc error: code = Unknown desc = Exception was thrown by handler.")) {
+		t.Fatal("generic EventStoreDB handler exception should trigger checkpoint recovery")
+	}
+	if !isCheckpointSubscriptionError(errors.New("InvalidReadException: invalid transaction log record")) {
+		t.Fatal("invalid transaction-log read should trigger checkpoint recovery")
+	}
+	if isCheckpointSubscriptionError(errors.New("connection refused")) {
+		t.Fatal("network errors should retain the checkpoint")
+	}
+}
