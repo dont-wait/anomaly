@@ -23,6 +23,9 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [mobile, desktop]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,12 +44,15 @@ jobs:
         working-directory: client
 
       - name: Lint
-        run: yarn lint
+        run: yarn workspace anomaly-${{ matrix.target }} lint
         working-directory: client
 
   typecheck:
     name: typecheck
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [mobile, desktop]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,12 +71,15 @@ jobs:
         working-directory: client
 
       - name: Typecheck
-        run: yarn typecheck
+        run: yarn workspace anomaly-${{ matrix.target }} typecheck
         working-directory: client
 
   test:
     name: test
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [mobile, desktop]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,5 +98,5 @@ jobs:
         working-directory: client
 
       - name: Test
-        run: yarn test
+        run: yarn workspace anomaly-${{ matrix.target }} test
         working-directory: client

@@ -1,0 +1,51 @@
+:root {
+  --admin-primary: #1e3a8a;
+  --admin-primary-strong: #172554;
+  --admin-primary-soft: #e8eeff;
+  --admin-accent: #8b5cf6;
+  --admin-accent-soft: #f1ecff;
+
+  --admin-background: #f6f7fb;
+  --admin-surface: #ffffff;
+  --admin-surface-subtle: #f1f3f8;
+  --admin-surface-hover: #f8f9fc;
+  --admin-text: #101828;
+  --admin-text-secondary: #475467;
+  --admin-text-muted: #667085;
+  --admin-text-disabled: #98a2b3;
+  --admin-border: #d0d5dd;
+  --admin-border-subtle: #eaecf0;
+
+  --admin-success: #15803d;
+  --admin-success-soft: #ecfdf3;
+  --admin-info: #2563eb;
+  --admin-info-soft: #eff6ff;
+  --admin-warning: #b54708;
+  --admin-warning-soft: #fffaeb;
+  --admin-danger: #b42318;
+  --admin-danger-soft: #fef3f2;
+
+  --admin-font-sans: "Be Vietnam Pro", system-ui, sans-serif;
+  --admin-font-size-body: 14px;
+  --admin-font-size-label: 12px;
+  --admin-font-size-title: 26px;
+  --admin-font-size-caption: 11px;
+
+  --admin-space-1: 4px;
+  --admin-space-2: 8px;
+  --admin-space-3: 12px;
+  --admin-space-4: 16px;
+  --admin-space-5: 20px;
+  --admin-space-6: 24px;
+  --admin-space-8: 32px;
+
+  --admin-radius-sm: 6px;
+  --admin-radius-md: 8px;
+  --admin-radius-lg: 12px;
+  --admin-radius-xl: 16px;
+  --admin-radius-full: 9999px;
+
+  --admin-shadow-card: 0 1px 3px rgb(16 24 40 / 6%);
+  --admin-shadow-floating: 0 16px 40px rgb(16 24 40 / 12%);
+  --admin-focus-ring: 0 0 0 3px rgb(139 92 246 / 20%);
+}
