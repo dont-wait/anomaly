@@ -33,7 +33,7 @@ emulator:
 
 android:
 	nix develop .\#android --command bash -c 'set -e; adb -e reverse tcp:8080 tcp:8080; adb -e reverse tcp:8090 tcp:8090'
-	nix develop .\#android --command bash -c 'set -e; mkdir -p "$$HOME/.local/bin"; corepack enable --install-directory "$$HOME/.local/bin"; export PATH="$$HOME/.local/bin:$$PATH"; exec yarn tauri android dev'
+	nix develop .\#android --command bash -c 'set -e; mkdir -p "$$HOME/.local/bin"; corepack enable --install-directory "$$HOME/.local/bin"; export PATH="$$HOME/.local/bin:$$PATH"; exec yarn workspace anomaly-mobile tauri android dev'
 
 desktop:
-	nix develop .\#default --command bash -c 'set -e; mkdir -p "$$HOME/.local/bin"; corepack enable --install-directory "$$HOME/.local/bin"; export PATH="$$HOME/.local/bin:$$PATH"; exec yarn tauri dev'
+	nix develop .\#default --command bash -c 'set -e; mkdir -p "$$HOME/.local/bin"; corepack enable --install-directory "$$HOME/.local/bin"; export PATH="$$HOME/.local/bin:$$PATH"; exec yarn workspace anomaly-mobile tauri dev'

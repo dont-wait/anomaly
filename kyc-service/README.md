@@ -47,7 +47,7 @@ flowchart LR
 
 Responsibilities by component:
 
-- `client/`: captures CCCD front image and live video
+- `client/mobile/`: captures CCCD front image and live video
 - `server/`: owns auth, rate limiting, retry policy, duplicate checks, persistence, and orchestration
 - `kyc-service/`: runs image/video processing and returns analysis results only
 

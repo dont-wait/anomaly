@@ -1,34 +1,39 @@
 {
-  "name": "client",
+  "name": "anomaly-client",
   "private": true,
   "version": "0.1.0",
+  "workspaces": [
+    "mobile"
+  ],
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "tauri": "tauri",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "lint": "yarn lint:mobile",
+    "lint:mobile": "yarn workspace anomaly-mobile lint",
+    "typecheck": "yarn typecheck:mobile",
+    "typecheck:mobile": "yarn workspace anomaly-mobile typecheck",
+    "test": "yarn test:mobile",
+    "test:mobile": "yarn workspace anomaly-mobile test",
+    "build": "yarn build:mobile",
+    "build:mobile": "yarn workspace anomaly-mobile build",
+    "dev": "yarn workspace anomaly-mobile dev",
+    "dev:mobile": "yarn workspace anomaly-mobile dev",
+    "format": "prettier --write \"mobile/src/**/*.{ts,tsx,css,json}\""
   },
   "dependencies": {
     "@tauri-apps/api": "2",
     "@tauri-apps/plugin-opener": "2",
-    "@testing-library/react": "16.3.2",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
     "@fortawesome/fontawesome-svg-core": "7.3.1",
     "@fortawesome/free-solid-svg-icons": "7.3.1",
-    "@fortawesome/react-fontawesome": "3.5.0"
+    "@fortawesome/react-fontawesome": "3.5.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@tailwindcss/vite": "4.3.3",
     "@tauri-apps/cli": "2",
     "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.2",
     "@types/node": "26.3.0",
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
