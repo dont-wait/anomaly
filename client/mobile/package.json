@@ -1,0 +1,18 @@
+{
+  "name": "anomaly-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config ../vite.config.ts --mode mobile",
+    "build": "tsc -p tsconfig.json && vite build --config ../vite.config.ts --mode mobile",
+    "preview": "vite preview --config ../vite.config.ts --mode mobile",
+    "tauri": "tauri",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
+    "typecheck": "tsc -p tsconfig.json --pretty false",
+    "test": "vitest run --config ../vitest.config.ts --mode mobile",
+    "test:watch": "vitest --config ../vitest.config.ts --mode mobile"
+  }
+}

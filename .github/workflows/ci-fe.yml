@@ -19,10 +19,6 @@ concurrency:
   group: ci-fe-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: client
-
 jobs:
   lint:
     name: lint
@@ -42,9 +38,11 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
+        working-directory: client
 
       - name: Lint
         run: yarn lint
+        working-directory: client
 
   typecheck:
     name: typecheck
@@ -64,9 +62,11 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
+        working-directory: client
 
       - name: Typecheck
-        run: yarn tsc --noEmit
+        run: yarn typecheck
+        working-directory: client
 
   test:
     name: test
@@ -86,6 +86,8 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
+        working-directory: client
 
       - name: Test
         run: yarn test
+        working-directory: client
