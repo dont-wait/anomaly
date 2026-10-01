@@ -23,9 +23,6 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [mobile, desktop]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,19 +37,16 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --frozen-lockfile --production=false
         working-directory: client
 
       - name: Lint
-        run: yarn workspace anomaly-${{ matrix.target }} lint
+        run: yarn lint
         working-directory: client
 
   typecheck:
     name: typecheck
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [mobile, desktop]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,19 +61,16 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --frozen-lockfile --production=false
         working-directory: client
 
       - name: Typecheck
-        run: yarn workspace anomaly-${{ matrix.target }} typecheck
+        run: yarn typecheck
         working-directory: client
 
   test:
     name: test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [mobile, desktop]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -94,9 +85,9 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --frozen-lockfile --production=false
         working-directory: client
 
       - name: Test
-        run: yarn workspace anomaly-${{ matrix.target }} test
+        run: yarn test
         working-directory: client
