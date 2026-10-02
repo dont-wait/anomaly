@@ -6,10 +6,10 @@ import {
   LIVENESS_CHALLENGE,
 } from "./kyc";
 import { uploadMedia } from "./registration";
-const response = (data: unknown) =>
+const response = (data: unknown, status = 200) =>
   ({
     ok: true,
-    status: 200,
+    status,
     text: async () => JSON.stringify(data),
   }) as Response;
 afterEach(() => vi.unstubAllGlobals());
@@ -41,7 +41,16 @@ it("rejects inconsistent KYC decisions instead of proceeding", async () => {
   ).rejects.toThrow("Phản hồi xác thực không hợp lệ");
 });
 it("uploads using the existing bearer token and preserves the multipart boundary", async () => {
-  const fetchMock = vi.fn().mockResolvedValue(response({ key: "kyc/key" }));
+  const fetchMock = vi.fn().mockResolvedValue(
+    response(
+      {
+        status: 201,
+        message: "Media uploaded successfully",
+        data: { key: "kyc/key" },
+      },
+      201,
+    ),
+  );
   vi.stubGlobal("fetch", fetchMock);
   await uploadMedia(new File(["x"], "x.png"), "kyc/key", "token");
   const options = fetchMock.mock.calls[0][1];

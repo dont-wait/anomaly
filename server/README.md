@@ -202,6 +202,26 @@ trong collection được giữ nguyên.
 
 ## API Summary
 
+JSON success responses use `{ "status": number, "message": string, "data": object | array }`.
+JSON errors use `{ "status": number, "title": string, "errors": array }`.
+Binary media downloads are returned as binary responses instead of JSON.
+
+Example error response:
+
+```json
+{
+  "status": 400,
+  "title": "Bad Request",
+  "errors": [
+    {
+      "code": "INVALID_EMAIL",
+      "field": "email",
+      "detail": "invalid email"
+    }
+  ]
+}
+```
+
 Account:
 
 - `POST /api/auth/register`

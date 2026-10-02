@@ -46,6 +46,10 @@
 
 ## HTTP Surface
 
+JSON success responses use `{ "status": number, "message": string, "data": object | array }`.
+JSON errors use `{ "status": number, "title": string, "errors": array }`.
+Binary media downloads are returned without a JSON envelope.
+
 Account routes:
 
 - `POST /api/accounts`
