@@ -1,3 +1,5 @@
+import { API_BASE_URL, saveAdminSession } from "./adminSession";
+
 export interface AdminStaff {
   id: string;
   employeeCode: string;
@@ -21,7 +23,13 @@ export class AdminAuthError extends Error {
   constructor(
     message: string,
     public readonly code:
-      "INVALID_CREDENTIALS" | "STAFF_LOCKED" | "FORBIDDEN" | "NETWORK_ERROR",
+      | "BAD_REQUEST"
+      | "INVALID_CREDENTIALS"
+      | "STAFF_LOCKED"
+      | "FORBIDDEN"
+      | "SERVER_ERROR"
+      | "NETWORK_ERROR"
+      | "INVALID_RESPONSE",
   ) {
     super(message);
     this.name = "AdminAuthError";
@@ -47,9 +55,26 @@ interface AccountAuthData {
   };
 }
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_ENDPOINT || "http://localhost:8080";
-const SESSION_STORAGE_KEY = "anomaly.admin.session";
+function isAccountAuthData(value: unknown): value is AccountAuthData {
+  if (!value || typeof value !== "object") return false;
+  const data = value as Partial<AccountAuthData>;
+  const user = data.user as Partial<AccountAuthData["user"]> | undefined;
+  return (
+    typeof data.token === "string" &&
+    data.token !== "" &&
+    typeof data.expiresAt === "string" &&
+    Number.isFinite(Date.parse(data.expiresAt)) &&
+    Date.parse(data.expiresAt) > Date.now() &&
+    !!user &&
+    typeof user.id === "string" &&
+    user.id !== "" &&
+    typeof user.accountNo === "string" &&
+    user.accountNo !== "" &&
+    typeof user.fullName === "string" &&
+    user.fullName !== "" &&
+    typeof user.role === "string"
+  );
+}
 
 export async function loginAdmin(
   input: AdminLoginInput,
@@ -74,11 +99,27 @@ export async function loginAdmin(
     const error = body as ApiError | null;
     const detail = error?.errors?.[0]?.detail;
     const code = error?.errors?.[0]?.code;
+    if (response.status === 401) {
+      throw new AdminAuthError(
+        "Thông tin đăng nhập không chính xác. Vui lòng thử lại.",
+        "INVALID_CREDENTIALS",
+      );
+    }
+    if (response.status === 403 || code === "FORBIDDEN") {
+      throw new AdminAuthError(
+        "Tài khoản không có quyền truy cập khu vực quản trị.",
+        "FORBIDDEN",
+      );
+    }
+    if (response.status >= 500) {
+      throw new AdminAuthError(
+        "Máy chủ đang gặp sự cố. Vui lòng thử lại sau.",
+        "SERVER_ERROR",
+      );
+    }
     throw new AdminAuthError(
-      code === "FORBIDDEN"
-        ? "Tài khoản không có quyền truy cập khu vực quản trị."
-        : detail || "Thông tin đăng nhập không chính xác. Vui lòng thử lại.",
-      code === "FORBIDDEN" ? "FORBIDDEN" : "INVALID_CREDENTIALS",
+      detail || "Yêu cầu đăng nhập không hợp lệ.",
+      "BAD_REQUEST",
     );
   }
 
@@ -86,7 +127,13 @@ export async function loginAdmin(
     body && typeof body === "object" && "data" in body
       ? (body as ApiSuccess<AccountAuthData>).data
       : undefined;
-  if (!data?.token || !data.user || data.user.role !== "admin") {
+  if (!isAccountAuthData(data)) {
+    throw new AdminAuthError(
+      "Phản hồi từ máy chủ không hợp lệ.",
+      "INVALID_RESPONSE",
+    );
+  }
+  if (data.user.role !== "admin") {
     throw new AdminAuthError(
       "Tài khoản không có quyền truy cập khu vực quản trị.",
       "FORBIDDEN",
@@ -104,12 +151,9 @@ export async function loginAdmin(
       permissions: [],
     },
   };
-  window.localStorage.setItem(
-    SESSION_STORAGE_KEY,
-    JSON.stringify({
-      accessToken: result.accessToken,
-      expiresAt: result.expiresAt,
-    }),
-  );
+  saveAdminSession({
+    accessToken: result.accessToken,
+    expiresAt: result.expiresAt,
+  });
   return result;
 }

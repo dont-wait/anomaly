@@ -25,6 +25,40 @@ describe("LoginPage", () => {
             { status: 401 },
           );
         }
+        if (body.password === "server-error") {
+          return new Response(
+            JSON.stringify({
+              status: 503,
+              title: "Service Unavailable",
+              errors: [],
+            }),
+            { status: 503 },
+          );
+        }
+        if (body.password === "network-error") {
+          throw new TypeError("fetch failed");
+        }
+        if (body.password === "invalid-response") {
+          return new Response(JSON.stringify({ status: 200 }), { status: 200 });
+        }
+        if (body.password === "expired-response") {
+          return new Response(
+            JSON.stringify({
+              status: 200,
+              data: {
+                token: "expired-token",
+                expiresAt: "2020-01-01T00:00:00Z",
+                user: {
+                  id: "admin-id",
+                  accountNo: "ACC-ADMIN",
+                  fullName: "Admin Staff",
+                  role: "admin",
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        }
         return new Response(
           JSON.stringify({
             status: 200,
@@ -88,6 +122,67 @@ describe("LoginPage", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("không có quyền truy cập");
+  });
+
+  it("distinguishes server failures from invalid credentials", async () => {
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText("Số CCCD"), {
+      target: { value: "001234567890" },
+    });
+    fireEvent.change(screen.getByLabelText("Mật khẩu"), {
+      target: { value: "server-error" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Máy chủ đang gặp sự cố");
+  });
+
+  it("shows a connection error when the server cannot be reached", async () => {
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText("Số CCCD"), {
+      target: { value: "001234567890" },
+    });
+    fireEvent.change(screen.getByLabelText("Mật khẩu"), {
+      target: { value: "network-error" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Không thể kết nối");
+  });
+
+  it("rejects an invalid success response", async () => {
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText("Số CCCD"), {
+      target: { value: "001234567890" },
+    });
+    fireEvent.change(screen.getByLabelText("Mật khẩu"), {
+      target: { value: "invalid-response" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Phản hồi từ máy chủ không hợp lệ");
+  });
+
+  it("rejects an expired token response", async () => {
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText("Số CCCD"), {
+      target: { value: "001234567890" },
+    });
+    fireEvent.change(screen.getByLabelText("Mật khẩu"), {
+      target: { value: "expired-response" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Phản hồi từ máy chủ không hợp lệ");
+    expect(localStorage.getItem("anomaly.admin.session")).toBeNull();
   });
 
   it("navigates to the monitor placeholder after a successful login", async () => {

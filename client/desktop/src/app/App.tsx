@@ -1,6 +1,7 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { LoginPage } from "@/features/auth/LoginPage";
-import { routes } from "./routes";
+import { verifyAdminSession } from "@/features/auth/api/adminSession";
+import { navigate, routes } from "./routes";
 
 function subscribe(onChange: () => void) {
   window.addEventListener("hashchange", onChange);
@@ -36,9 +37,36 @@ function ComingSoonPage() {
   );
 }
 
+function ProtectedMonitor() {
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void verifyAdminSession()
+      .then((valid) => {
+        if (!active) return;
+        if (!valid) {
+          navigate(routes.login);
+          return;
+        }
+        setIsAuthorized(true);
+      })
+      .catch(() => {
+        if (active) navigate(routes.login);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!isAuthorized) {
+    return <main className="admin-login-page">Đang xác thực...</main>;
+  }
+  return <ComingSoonPage />;
+}
+
 export default function App() {
   const hash = useHash();
 
-  if (hash === routes.monitor) return <ComingSoonPage />;
+  if (hash === routes.monitor) return <ProtectedMonitor />;
   return <LoginPage />;
 }

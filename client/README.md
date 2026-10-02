@@ -19,6 +19,9 @@ yarn dev:mobile
 yarn dev:desktop
 ```
 
+Desktop dev server dùng `http://localhost:1422`. Khi gọi API local, thêm origin
+này vào `CORS_ALLOWED_ORIGINS` của server; `.env.example` đã bao gồm cấu hình đó.
+
 Run checks for both targets:
 
 ```bash
