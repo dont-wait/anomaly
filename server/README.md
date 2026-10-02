@@ -33,7 +33,12 @@ uses two technical collections:
 - `checkpoints`: resume EventStoreDB subscriptions after restart
 - `projection_failures`: dead-letter permanent projection errors before advancing the checkpoint
 
-There is no `ledger_entries` collection yet.
+Migration `000004_create_transaction_collections` adds `transactions`,
+append-only `ledger_entries`, the `account_transaction_feed` read projection,
+and `outbox_events`. Transfer confirmation writes the account balances and
+these transaction records in one MongoDB session transaction. MongoDB must run
+as a replica set or sharded cluster for that endpoint. The Compose MongoDB
+service configures a local single-node replica set (`rs0`).
 
 ## Quick Start
 
@@ -79,6 +84,11 @@ Endpoint chính:
 ### 3. Chạy API local
 
 Nếu chỉ chạy API bằng môi trường local sẵn có:
+
+Transaction confirmation cần MongoDB multi-document transaction nên Mongo phải
+là replica set hoặc sharded cluster. Local Compose đã cấu hình single-node
+replica set `rs0`; khi chạy API từ host, `MONGO_URI` phải trỏ tới replica set
+member mà host phân giải và truy cập được.
 
 ```bash
 go mod download
@@ -216,6 +226,17 @@ Media:
 
 - `POST /api/media/upload`
 - `GET /api/media/download?key=...`
+
+Transactions (authenticated; transfer MVP supports internal accounts only):
+
+- `GET /api/accounts/lookup?bankCode=ANOMALY&accountNo=...`
+- `GET /api/transfers/recent-recipients`
+- `POST /api/transfers`
+- `POST /api/transfers/{transferId}/confirm`
+- `POST /api/transfers/{transferId}/otp/resend`
+- `GET /api/transactions`
+- `GET /api/transactions/summary?month=YYYY-MM`
+- `GET /api/transactions/{id}`
 
 Health:
 
