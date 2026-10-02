@@ -185,6 +185,26 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	if len(list.Data) != 2 {
 		t.Fatalf("account count = %d, want 2", len(list.Data))
 	}
+	selfByID := routeRequest(t, mux, http.MethodGet, "/api/accounts/"+accountID, "", token)
+	if selfByID.Code != http.StatusOK {
+		t.Fatalf("get self by ID status = %d, want 200", selfByID.Code)
+	}
+	selfByEmail := routeRequest(t, mux, http.MethodGet, "/api/accounts/by-email/alice@example.com", "", token)
+	if selfByEmail.Code != http.StatusOK {
+		t.Fatalf("get self by email status = %d, want 200", selfByEmail.Code)
+	}
+	otherAsUser := routeRequest(t, mux, http.MethodGet, "/api/accounts/"+adminAccount.Id, "", token)
+	if otherAsUser.Code != http.StatusNotFound {
+		t.Fatalf("get other account as user status = %d, want 404", otherAsUser.Code)
+	}
+	otherByEmailAsUser := routeRequest(t, mux, http.MethodGet, "/api/accounts/by-email/admin@example.com", "", token)
+	if otherByEmailAsUser.Code != http.StatusNotFound {
+		t.Fatalf("get other account by email as user status = %d, want 404", otherByEmailAsUser.Code)
+	}
+	otherAsAdmin := routeRequest(t, mux, http.MethodGet, "/api/accounts/"+accountID, "", adminToken)
+	if otherAsAdmin.Code != http.StatusOK {
+		t.Fatalf("get user account as admin status = %d, want 200", otherAsAdmin.Code)
+	}
 
 	me := routeRequest(t, mux, http.MethodGet, "/api/auth/me", "", token)
 	if me.Code != http.StatusOK {

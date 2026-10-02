@@ -250,7 +250,14 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteSuccess(w, http.StatusOK, "Account verification completed", toAccountResponsePrivate(acc))
 }
 
-// Public endpoints — dùng AccountResponsePublic (không leak KYC URLs).
+func (h *Handler) authorizeAccountRead(w http.ResponseWriter, r *http.Request, acc *accountdomain.UserAccount) bool {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if ok && claims != nil && (claims.Role == string(accountdomain.AccountRoleAdmin) || claims.UserID == acc.Id) {
+		return true
+	}
+	httpx.WriteError(w, h.logger, accountdomain.ErrAccountNotFound, accountErrorStatus, accountErrorCode)
+	return false
+}
 
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -258,6 +265,9 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	acc, err := h.getByID.Handle(r.Context(), queries.GetAccountByIDQuery{ID: id})
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	if !h.authorizeAccountRead(w, r, acc) {
 		return
 	}
 
@@ -270,6 +280,9 @@ func (h *Handler) GetByEmail(w http.ResponseWriter, r *http.Request) {
 	acc, err := h.getByEmail.Handle(r.Context(), queries.GetAccountByEmailQuery{Email: email})
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	if !h.authorizeAccountRead(w, r, acc) {
 		return
 	}
 

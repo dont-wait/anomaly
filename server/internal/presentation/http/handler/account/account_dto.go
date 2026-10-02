@@ -6,10 +6,8 @@ import (
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
 
-// AccountResponsePublic dùng cho các endpoint public (GET /api/accounts,
-// /{id}, /by-email/{email}) — KHÔNG chứa identity URLs vì đây là dữ liệu
-// KYC nhạy cảm (CCCD mặt trước/sau, live video), không được lộ qua API công
-// khai không có authentication.
+// AccountResponsePublic dùng cho các endpoint tra cứu account và không chứa
+// identity URLs vì đây là dữ liệu KYC nhạy cảm.
 type AccountResponsePublic struct {
 	Id        string `json:"id"`
 	AccountNo string `json:"accountNo"`
