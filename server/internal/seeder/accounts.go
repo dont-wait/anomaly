@@ -2,8 +2,8 @@ package seeder
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
@@ -128,11 +128,31 @@ func reconcileExistingSeed(
 }
 
 func validateExistingSeed(account *accountdomain.UserAccount, seed accountSeed) error {
-	if account.Username != seed.Username || account.Email != seed.Email || account.EffectiveRole() != seed.role() || account.Customer == nil ||
-		account.Customer.Profile.FullName != seed.Username || account.Customer.Profile.Email != seed.Email ||
-		account.Customer.Identity.Type != "cccd" || account.Customer.Identity.Number != seed.CCCD ||
-		bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(seed.Password)) != nil {
-		return errors.New("existing account does not match configured seed credentials")
+	mismatches := make([]string, 0, 6)
+	if account.Username != seed.Username {
+		mismatches = append(mismatches, "username")
+	}
+	if account.Email != seed.Email {
+		mismatches = append(mismatches, "email")
+	}
+	if account.EffectiveRole() != seed.role() {
+		mismatches = append(mismatches, "role")
+	}
+	if bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(seed.Password)) != nil {
+		mismatches = append(mismatches, "password")
+	}
+	if account.Customer == nil {
+		mismatches = append(mismatches, "customer")
+	} else {
+		if account.Customer.Profile.FullName != seed.Username || account.Customer.Profile.Email != seed.Email {
+			mismatches = append(mismatches, "customer profile")
+		}
+		if account.Customer.Identity.Type != "cccd" || account.Customer.Identity.Number != seed.CCCD {
+			mismatches = append(mismatches, "customer identity")
+		}
+	}
+	if len(mismatches) > 0 {
+		return fmt.Errorf("existing account does not match configured seed: %s", strings.Join(mismatches, ", "))
 	}
 	return nil
 }

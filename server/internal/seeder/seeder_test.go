@@ -3,6 +3,7 @@ package seeder
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
@@ -122,11 +123,32 @@ func TestRunRejectsExistingPasswordCollision(t *testing.T) {
 	account := repo.accounts[demoAccounts()[0].CCCD]
 	account.PasswordHash = string(hash)
 	account.Balance.Current = 1
-	if err := Run(context.Background(), Dependencies{Accounts: repo}); err == nil {
+	err = Run(context.Background(), Dependencies{Accounts: repo})
+	if err == nil {
 		t.Fatal("expected collision error")
+	}
+	if !strings.Contains(err.Error(), "password") {
+		t.Fatalf("collision error = %q, want password mismatch", err)
 	}
 	if repo.saves != 2 || account.Balance.Current != 1 {
 		t.Fatal("collision modified existing account")
+	}
+}
+
+func TestRunRejectsAdminRoleCollision(t *testing.T) {
+	repo := &memoryRepository{}
+	if err := Run(context.Background(), Dependencies{Accounts: repo}); err != nil {
+		t.Fatal(err)
+	}
+	admin := repo.accounts[demoAccounts()[1].CCCD]
+	admin.Role = accountdomain.AccountRoleUser
+
+	err := Run(context.Background(), Dependencies{Accounts: repo})
+	if err == nil || !strings.Contains(err.Error(), "role") {
+		t.Fatalf("collision error = %v, want role mismatch", err)
+	}
+	if admin.Role != accountdomain.AccountRoleUser {
+		t.Fatalf("admin role was overwritten: %q", admin.Role)
 	}
 }
 
