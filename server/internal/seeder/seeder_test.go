@@ -86,6 +86,14 @@ func TestRunCreatesHashedDemoAndCanRepeat(t *testing.T) {
 	if err := bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(seed.Password)); err != nil {
 		t.Fatal(err)
 	}
+	adminSeed := demoAccounts()[1]
+	admin := repo.accounts[adminSeed.CCCD]
+	if admin.EffectiveRole() != accountdomain.AccountRoleAdmin {
+		t.Fatalf("admin role = %q, want %q", admin.EffectiveRole(), accountdomain.AccountRoleAdmin)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(adminSeed.Password)); err != nil {
+		t.Fatalf("admin password hash: %v", err)
+	}
 	if err := Run(ctx, Dependencies{Accounts: repo}); err != nil {
 		t.Fatal(err)
 	}
