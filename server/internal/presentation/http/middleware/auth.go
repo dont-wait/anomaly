@@ -17,6 +17,7 @@ type ctxKey string
 const claimsCtxKey ctxKey = "auth.claims"
 
 var ErrMissingAuthHeader = errors.New("missing or malformed Authorization header")
+var ErrInvalidToken = errors.New("invalid or expired token")
 
 // RequireAuth validates Bearer JWT trên header Authorization, parse token qua
 // TokenService, và inject *domainauth.Claims vào context để handler downstream dùng.
@@ -26,13 +27,13 @@ func RequireAuth(tokenService queries.TokenService) func(http.Handler) http.Hand
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			raw, err := extractBearer(r.Header.Get("Authorization"))
 			if err != nil {
-				writeUnauthorized(w)
+				writeUnauthorized(w, ErrMissingAuthHeader, httpx.ErrorCodeMissingAuthHeader)
 				return
 			}
 
 			claims, err := tokenService.Parse(raw)
 			if err != nil {
-				writeUnauthorized(w)
+				writeUnauthorized(w, ErrInvalidToken, httpx.ErrorCodeInvalidToken)
 				return
 			}
 
@@ -64,10 +65,10 @@ func extractBearer(header string) (string, error) {
 	return token, nil
 }
 
-func writeUnauthorized(w http.ResponseWriter) {
+func writeUnauthorized(w http.ResponseWriter, err error, errorCode httpx.ErrorCode) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-	httpx.WriteError(w, zerolog.Nop(), ErrMissingAuthHeader, func(error) int {
+	httpx.WriteError(w, zerolog.Nop(), err, func(error) int {
 		return http.StatusUnauthorized
-	}, func(error) httpx.ErrorCode { return httpx.ErrorCodeUnauthorized })
+	}, func(error) httpx.ErrorCode { return errorCode })
 }

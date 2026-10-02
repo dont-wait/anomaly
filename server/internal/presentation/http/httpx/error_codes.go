@@ -7,6 +7,8 @@ const (
 	ErrorCodeValidation         ErrorCode = "VALIDATION_ERROR"
 	ErrorCodePayloadTooLarge    ErrorCode = "PAYLOAD_TOO_LARGE"
 	ErrorCodeUnauthorized       ErrorCode = "UNAUTHORIZED"
+	ErrorCodeMissingAuthHeader  ErrorCode = "MISSING_AUTH_HEADER"
+	ErrorCodeInvalidToken       ErrorCode = "INVALID_TOKEN"
 	ErrorCodeForbidden          ErrorCode = "FORBIDDEN"
 	ErrorCodeNotFound           ErrorCode = "NOT_FOUND"
 	ErrorCodeConflict           ErrorCode = "CONFLICT"
