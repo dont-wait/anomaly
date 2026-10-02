@@ -76,7 +76,7 @@ func main() {
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
 	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(
 		"CORS_ALLOWED_ORIGINS",
-		"http://localhost:1420,http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost",
+		"http://localhost:1420,http://localhost:1422,http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost",
 	))
 	srv := &netHTTP.Server{
 		Addr:              ":8080",

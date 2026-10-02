@@ -123,6 +123,7 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 		Email:        cmd.Email,
 		PasswordHash: string(hash),
 		Type:         accountdomain.AccountTypePayment,
+		Role:         accountdomain.AccountRoleUser,
 		Currency:     accountdomain.CurrencyVND,
 		Balance:      accountdomain.Balance{Current: 0},
 		Status:       accountdomain.AccountStatusActive,

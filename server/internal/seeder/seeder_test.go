@@ -10,29 +10,52 @@ import (
 )
 
 type memoryRepository struct {
-	account        *accountdomain.UserAccount
+	accounts       map[string]*accountdomain.UserAccount
 	creates, saves int
 	saveErr        error
 }
 
-func (r *memoryRepository) FindByID(context.Context, string) (*accountdomain.UserAccount, error) {
-	return r.account, nil
+func (r *memoryRepository) FindByID(_ context.Context, id string) (*accountdomain.UserAccount, error) {
+	for _, account := range r.accounts {
+		if account.Id == id {
+			return account, nil
+		}
+	}
+	return nil, nil
 }
 
-func (r *memoryRepository) FindByCCCDNumber(context.Context, string) (*accountdomain.UserAccount, error) {
-	return r.account, nil
+func (r *memoryRepository) FindByCCCDNumber(_ context.Context, cccd string) (*accountdomain.UserAccount, error) {
+	for _, account := range r.accounts {
+		if account.Customer != nil && account.Customer.Identity.Number == cccd {
+			return account, nil
+		}
+	}
+	return nil, nil
 }
 
-func (r *memoryRepository) FindByEmail(context.Context, string) (*accountdomain.UserAccount, error) {
-	return r.account, nil
+func (r *memoryRepository) FindByEmail(_ context.Context, email string) (*accountdomain.UserAccount, error) {
+	for _, account := range r.accounts {
+		if account.Email == email {
+			return account, nil
+		}
+	}
+	return nil, nil
 }
 
-func (r *memoryRepository) FindByUsername(context.Context, string) (*accountdomain.UserAccount, error) {
-	return r.account, nil
+func (r *memoryRepository) FindByUsername(_ context.Context, username string) (*accountdomain.UserAccount, error) {
+	for _, account := range r.accounts {
+		if account.Username == username {
+			return account, nil
+		}
+	}
+	return nil, nil
 }
 
 func (r *memoryRepository) Create(_ context.Context, a *accountdomain.UserAccount) error {
-	r.account = a
+	if r.accounts == nil {
+		r.accounts = map[string]*accountdomain.UserAccount{}
+	}
+	r.accounts[a.Customer.Identity.Number] = a
 	r.creates++
 	return nil
 }
@@ -42,7 +65,10 @@ func (r *memoryRepository) Save(_ context.Context, a *accountdomain.UserAccount)
 	if r.saveErr != nil {
 		return r.saveErr
 	}
-	r.account = a
+	if r.accounts == nil {
+		r.accounts = map[string]*accountdomain.UserAccount{}
+	}
+	r.accounts[a.Customer.Identity.Number] = a
 	return nil
 }
 
@@ -53,24 +79,25 @@ func TestRunCreatesHashedDemoAndCanRepeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	seed := demoAccounts()[0]
-	if repo.account.Balance.Current != seed.Balance {
+	account := repo.accounts[seed.CCCD]
+	if account.Balance.Current != seed.Balance {
 		t.Fatal("wrong demo balance")
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(repo.account.PasswordHash), []byte(seed.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(seed.Password)); err != nil {
 		t.Fatal(err)
 	}
 	if err := Run(ctx, Dependencies{Accounts: repo}); err != nil {
 		t.Fatal(err)
 	}
-	if repo.creates != 1 || repo.saves != 1 {
+	if repo.creates != 2 || repo.saves != 2 {
 		t.Fatalf("creates=%d saves=%d", repo.creates, repo.saves)
 	}
-	repo.account.Balance.Current = 0
-	version := repo.account.Version
+	account.Balance.Current = 0
+	version := account.Version
 	if err := Run(ctx, Dependencies{Accounts: repo}); err != nil {
 		t.Fatal(err)
 	}
-	if repo.account.Balance.Current != seed.Balance || repo.account.Version != version+1 {
+	if account.Balance.Current != seed.Balance || account.Version != version+1 {
 		t.Fatal("balance was not reconciled")
 	}
 }
@@ -84,12 +111,13 @@ func TestRunRejectsExistingPasswordCollision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo.account.PasswordHash = string(hash)
-	repo.account.Balance.Current = 1
+	account := repo.accounts[demoAccounts()[0].CCCD]
+	account.PasswordHash = string(hash)
+	account.Balance.Current = 1
 	if err := Run(context.Background(), Dependencies{Accounts: repo}); err == nil {
 		t.Fatal("expected collision error")
 	}
-	if repo.saves != 1 || repo.account.Balance.Current != 1 {
+	if repo.saves != 2 || account.Balance.Current != 1 {
 		t.Fatal("collision modified existing account")
 	}
 }

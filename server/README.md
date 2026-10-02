@@ -135,6 +135,8 @@ tài khoản. `cmd/seed` chỉ khởi tạo kết nối, dependency và gọi ru
 
 Tài khoản demo: CCCD `079123456789`, username `demo.customer`, email
 `demo.customer@example.com`, mật khẩu `DemoLocal@123`, số dư `128.540.000 VND`.
+Tài khoản quản trị local: CCCD `001234567890`, username `admin.staff`, mật khẩu
+`admin123`.
 Đây là dữ liệu công khai chỉ dùng cho local/dev. Lệnh yêu cầu `APP_ENV` là
 `development`, `dev`, hoặc `local` và `SEED_DEMO_ENABLED=true`.
 

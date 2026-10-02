@@ -30,6 +30,7 @@ func seedAccounts(ctx context.Context, deps Dependencies) error {
 
 type accountSeed struct {
 	Username       string
+	Role           accountdomain.AccountRole
 	CCCD           string
 	Email          string
 	Password       string
@@ -44,6 +45,7 @@ type accountSeed struct {
 func demoAccounts() []accountSeed {
 	return []accountSeed{{
 		Username:       "demo.customer",
+		Role:           accountdomain.AccountRoleUser,
 		CCCD:           "079123456789",
 		Email:          "demo.customer@example.com",
 		Password:       "DemoLocal@123",
@@ -51,6 +53,16 @@ func demoAccounts() []accountSeed {
 		DOB:            time.Date(1995, 3, 20, 0, 0, 0, 0, time.UTC),
 		CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
 		Balance:        128540000,
+	}, {
+		Username:       "admin.staff",
+		Role:           accountdomain.AccountRoleAdmin,
+		CCCD:           "001234567890",
+		Email:          "admin.staff@example.com",
+		Password:       "admin123",
+		IdempotencyKey: "00000000-0000-4000-8000-000000000002",
+		DOB:            time.Date(1990, 6, 15, 0, 0, 0, 0, time.UTC),
+		CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+		Balance:        0,
 	}}
 }
 
@@ -81,6 +93,7 @@ func seedAccount(ctx context.Context, repo Repository, seed accountSeed) error {
 	}
 
 	account.Balance = accountdomain.Balance{Current: seed.Balance}
+	account.Role = seed.role()
 	if err := repo.Save(ctx, account); err != nil {
 		return fmt.Errorf("save seed balance: %w", err)
 	}
@@ -98,11 +111,12 @@ func reconcileExistingSeed(
 		return err
 	}
 
-	if account.Balance.Current == seed.Balance {
+	if account.Balance.Current == seed.Balance && account.EffectiveRole() == seed.role() {
 		return nil
 	}
 
 	account.Balance = accountdomain.Balance{Current: seed.Balance}
+	account.Role = seed.role()
 	account.Version++
 	now := time.Now().UTC()
 	account.UpdatedAt = now
@@ -114,11 +128,18 @@ func reconcileExistingSeed(
 }
 
 func validateExistingSeed(account *accountdomain.UserAccount, seed accountSeed) error {
-	if account.Username != seed.Username || account.Email != seed.Email || account.Customer == nil ||
+	if account.Username != seed.Username || account.Email != seed.Email || account.EffectiveRole() != seed.role() || account.Customer == nil ||
 		account.Customer.Profile.FullName != seed.Username || account.Customer.Profile.Email != seed.Email ||
 		account.Customer.Identity.Type != "cccd" || account.Customer.Identity.Number != seed.CCCD ||
 		bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(seed.Password)) != nil {
 		return errors.New("existing account does not match configured seed credentials")
 	}
 	return nil
+}
+
+func (seed accountSeed) role() accountdomain.AccountRole {
+	if seed.Role == "" {
+		return accountdomain.AccountRoleUser
+	}
+	return seed.Role
 }

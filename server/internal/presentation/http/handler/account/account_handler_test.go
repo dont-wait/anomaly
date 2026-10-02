@@ -144,7 +144,15 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	mux := http.NewServeMux()
 	handleraccount.RegisterRoutes(mux, handler, tokenService)
 
-	accounts := routeRequest(t, mux, http.MethodGet, "/api/accounts", "", token)
+	accountsAsUser := routeRequest(t, mux, http.MethodGet, "/api/accounts", "", token)
+	if accountsAsUser.Code != http.StatusForbidden {
+		t.Fatalf("get all as user status = %d, want 403", accountsAsUser.Code)
+	}
+	adminToken, _, err := tokenService.Issue("admin-id", "admin", "admin", false)
+	if err != nil {
+		t.Fatalf("issue admin token: %v", err)
+	}
+	accounts := routeRequest(t, mux, http.MethodGet, "/api/accounts", "", adminToken)
 	if accounts.Code != http.StatusOK {
 		t.Fatalf("get all status = %d, want 200", accounts.Code)
 	}

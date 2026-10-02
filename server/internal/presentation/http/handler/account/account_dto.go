@@ -16,6 +16,7 @@ type AccountResponsePublic struct {
 	Username  string `json:"username"`
 	Email     string `json:"email"`
 	Currency  string `json:"currency"`
+	Role      string `json:"role"`
 	IsVerify  bool   `json:"isVerify"`
 	Amount    int64  `json:"amount"`
 }
@@ -30,6 +31,7 @@ type AccountResponsePrivate struct {
 	FullName       string `json:"fullName"`
 	Email          string `json:"email"`
 	Currency       string `json:"currency"`
+	Role           string `json:"role"`
 	IdCardFrontUrl string `json:"idCardFrontUrl"`
 	IdCardBackUrl  string `json:"idCardBackUrl"`
 	LiveVideoUrl   string `json:"liveVideoUrl"`
@@ -52,6 +54,7 @@ func toAccountResponsePublic(a *accountdomain.UserAccount) AccountResponsePublic
 		Username:  a.Username,
 		Email:     a.Email,
 		Currency:  string(a.Currency),
+		Role:      string(a.EffectiveRole()),
 		IsVerify:  a.IsVerified(),
 		Amount:    a.Balance.Current,
 	}
@@ -73,6 +76,7 @@ func toAccountResponsePrivate(a *accountdomain.UserAccount) AccountResponsePriva
 		FullName:  a.Username,
 		Email:     a.Email,
 		Currency:  string(a.Currency),
+		Role:      string(a.EffectiveRole()),
 		IsVerify:  a.IsVerified(),
 		Amount:    a.Balance.Current,
 	}
