@@ -59,18 +59,40 @@ beforeEach(() => {
   );
   fetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
     if (String(url).endsWith(API_ENDPOINTS.AUTH.OTP_REQUEST))
-      return response({ message: "otp sent" });
+      return response({ status: 200, message: "OTP sent", data: {} });
     if (String(url).endsWith(API_ENDPOINTS.AUTH.OTP_VERIFY))
-      return response({ verified: true });
+      return response({
+        status: 200,
+        message: "OTP verified",
+        data: { verified: true },
+      });
     if (String(url).endsWith(API_ENDPOINTS.KYC.VERIFY_FACE))
       return response(verified);
     if (String(url).endsWith(API_ENDPOINTS.AUTH.REGISTER))
-      return response(user, 201);
+      return response(
+        { status: 201, message: "Account registered successfully", data: user },
+        201,
+      );
     if (String(url).endsWith(API_ENDPOINTS.AUTH.LOGIN))
-      return response({ token: "login-token", user, expiresAt: "2030-01-01" });
+      return response({
+        status: 200,
+        message: "Login successful",
+        data: { token: "login-token", user, expiresAt: "2030-01-01" },
+      });
     if (String(url).endsWith(API_ENDPOINTS.MEDIA.UPLOAD))
-      return response({ key: (options?.body as FormData).get("key") }, 201);
-    return response({ ...user, isVerify: true });
+      return response(
+        {
+          status: 201,
+          message: "Media uploaded successfully",
+          data: { key: (options?.body as FormData).get("key") },
+        },
+        201,
+      );
+    return response({
+      status: 200,
+      message: "Account verification completed",
+      data: { ...user, isVerify: true },
+    });
   });
 });
 afterEach(() => {
@@ -155,7 +177,7 @@ function deferSend() {
     await new Promise<void>((resolve) => {
       release = resolve;
     });
-    return response({ message: "otp sent" });
+    return response({ status: 200, message: "OTP sent", data: {} });
   });
   return () => release!();
 }

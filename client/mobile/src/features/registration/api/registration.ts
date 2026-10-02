@@ -1,6 +1,6 @@
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
-import { requestJson, ApiError } from "@/shared/lib/http";
+import { requestApi, ApiError } from "@/shared/lib/http";
 import type { AuthUser } from "@/features/auth/api";
 
 export interface RegisterInput {
@@ -21,7 +21,7 @@ export async function registerAccount(
   signal?: AbortSignal,
   idempotencyKey?: string,
 ) {
-  const user = await requestJson<AuthUser>(API_ENDPOINTS.AUTH.REGISTER, {
+  const user = await requestApi<AuthUser>(API_ENDPOINTS.AUTH.REGISTER, {
     method: "POST",
     body: { ...input, idempotencyKey },
     signal,
@@ -38,16 +38,13 @@ export async function uploadMedia(
   const body = new FormData();
   body.append("key", key);
   body.append("file", file);
-  const result = await requestJson<{ key: string }>(
-    API_ENDPOINTS.MEDIA.UPLOAD,
-    {
-      method: "POST",
-      body,
-      token,
-      signal,
-      timeoutMs: 120000,
-    },
-  );
+  const result = await requestApi<{ key: string }>(API_ENDPOINTS.MEDIA.UPLOAD, {
+    method: "POST",
+    body,
+    token,
+    signal,
+    timeoutMs: 120000,
+  });
   if (result?.key !== key)
     throw new ApiError(0, "Phản hồi tải tệp không hợp lệ.");
   return result.key;
@@ -58,7 +55,7 @@ export async function verifyAccount(
   token: string,
   signal?: AbortSignal,
 ) {
-  const user = await requestJson<AuthUser>(API_ENDPOINTS.ACCOUNTS.VERIFY(id), {
+  const user = await requestApi<AuthUser>(API_ENDPOINTS.ACCOUNTS.VERIFY(id), {
     method: "POST",
     body: media,
     token,

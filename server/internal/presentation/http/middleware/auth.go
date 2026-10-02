@@ -8,6 +8,8 @@ import (
 
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
 	domainauth "github.com/dont-wait/anomaly/internal/domain/auth"
+	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
+	"github.com/rs/zerolog"
 )
 
 type ctxKey string
@@ -65,6 +67,7 @@ func extractBearer(header string) (string, error) {
 func writeUnauthorized(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-	w.WriteHeader(http.StatusUnauthorized)
-	_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
+	httpx.WriteError(w, zerolog.Nop(), ErrMissingAuthHeader, func(error) int {
+		return http.StatusUnauthorized
+	}, func(error) httpx.ErrorCode { return httpx.ErrorCodeUnauthorized })
 }

@@ -1,6 +1,6 @@
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
-import { ApiError, requestJson } from "@/shared/lib/http";
+import { ApiError, requestApi } from "@/shared/lib/http";
 import type { AuthUser } from "./profile";
 
 export type { AuthUser } from "./profile";
@@ -49,7 +49,7 @@ export async function login(
   options: { signal?: AbortSignal } = {},
 ): Promise<LoginResponse> {
   const credentials = assertValidLoginInput(input);
-  const data = await requestJson<LoginResponse>(API_ENDPOINTS.AUTH.LOGIN, {
+  const data = await requestApi<LoginResponse>(API_ENDPOINTS.AUTH.LOGIN, {
     method: "POST",
     body: credentials,
     signal: options.signal,

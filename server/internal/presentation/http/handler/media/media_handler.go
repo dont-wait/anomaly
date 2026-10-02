@@ -31,7 +31,9 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) { // gọi w l�
 	if err := r.ParseMultipartForm(maxUploadBytes); err != nil { // đọc và bóc tách request đó ra thành từng phần riêng biệt, giới hạn kích thước
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
-			httpx.WriteJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "file too large"})
+			httpx.WriteError(w, h.logger, errors.New("file too large"), func(error) int {
+				return http.StatusRequestEntityTooLarge
+			}, func(error) httpx.ErrorCode { return httpx.ErrorCodeFileTooLarge })
 			return
 		}
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
@@ -39,7 +41,9 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) { // gọi w l�
 	}
 	key := r.FormValue("key") // lấy giá trị của field
 	if key == "" {
-		httpx.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing key"})
+		httpx.WriteError(w, h.logger, errors.New("missing key"), func(error) int {
+			return http.StatusBadRequest
+		}, func(error) httpx.ErrorCode { return httpx.ErrorCodeMissingKey })
 		return
 	}
 
@@ -65,14 +69,16 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) { // gọi w l�
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusCreated, map[string]string{"key": key}) // thành công thì trả về
+	httpx.WriteSuccess(w, http.StatusCreated, "Media uploaded successfully", map[string]string{"key": key})
 }
 
 // Download lấy từ URL vì đây là request GET (không có body chứa form data như POST)
 func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("key")
 	if key == "" {
-		httpx.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing key"})
+		httpx.WriteError(w, h.logger, errors.New("missing key"), func(error) int {
+			return http.StatusBadRequest
+		}, func(error) httpx.ErrorCode { return httpx.ErrorCodeMissingKey })
 		return
 	}
 
