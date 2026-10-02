@@ -16,8 +16,10 @@ type ctxKey string
 
 const claimsCtxKey ctxKey = "auth.claims"
 
-var ErrMissingAuthHeader = errors.New("missing or malformed Authorization header")
-var ErrInvalidToken = errors.New("invalid or expired token")
+var (
+	ErrMissingAuthHeader = errors.New("missing or malformed Authorization header")
+	ErrInvalidToken      = errors.New("invalid or expired token")
+)
 
 // RequireAuth validates Bearer JWT trên header Authorization, parse token qua
 // TokenService, và inject *domainauth.Claims vào context để handler downstream dùng.
