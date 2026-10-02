@@ -11,16 +11,18 @@ POST {{base_url}}/api/auth/register
 HTTP 201
 Content-Type: application/json
 [Captures]
-account_id: jsonpath "$.id"
-account_username: jsonpath "$.username"
-account_email: jsonpath "$.email"
+account_id: jsonpath "$.data.id"
+account_username: jsonpath "$.data.username"
+account_email: jsonpath "$.data.email"
 [Asserts]
-jsonpath "$.id" matches /^[0-9a-f]{24}$/
-jsonpath "$.username" startsWith "hurl-"
-jsonpath "$.email" endsWith "@example.com"
-jsonpath "$.email" not contains "<"
-jsonpath "$.isVerify" == false
-jsonpath "$.amount" == 0
+jsonpath "$.status" == 201
+jsonpath "$.data.id" matches /^[0-9a-f]{24}$/
+jsonpath "$.data.username" startsWith "hurl-"
+jsonpath "$.data.email" endsWith "@example.com"
+jsonpath "$.data.email" not contains "<"
+jsonpath "$.data.role" == "user"
+jsonpath "$.data.isVerify" == false
+jsonpath "$.data.amount" == 0
 
 # Retry briefly while the API and MongoDB complete the registration request.
 POST {{base_url}}/api/auth/login
@@ -34,45 +36,80 @@ retry-interval: 500ms
 HTTP 200
 Content-Type: application/json
 [Captures]
-access_token: jsonpath "$.token" redact
+access_token: jsonpath "$.data.token" redact
 [Asserts]
-jsonpath "$.token" isString
-jsonpath "$.expiresAt" isIsoDate
-jsonpath "$.user.id" == "{{account_id}}"
-jsonpath "$.user.username" == "{{account_username}}"
-jsonpath "$.user.email" == "{{account_email}}"
+jsonpath "$.data.token" isString
+jsonpath "$.data.expiresAt" isIsoDate
+jsonpath "$.data.user.id" == "{{account_id}}"
+jsonpath "$.data.user.username" == "{{account_username}}"
+jsonpath "$.data.user.email" == "{{account_email}}"
+jsonpath "$.data.user.role" == "user"
+
+POST {{base_url}}/api/auth/login
+{
+  "cccdNumber": "{{admin_cccd}}",
+  "password": "{{admin_password}}"
+}
+HTTP 200
+Content-Type: application/json
+[Captures]
+admin_access_token: jsonpath "$.data.token" redact
+admin_account_id: jsonpath "$.data.user.id"
+[Asserts]
+jsonpath "$.data.user.role" == "admin"
 
 GET {{base_url}}/api/auth/me
 Authorization: Bearer {{access_token}}
 HTTP 200
 Content-Type: application/json
 [Asserts]
-jsonpath "$.id" == "{{account_id}}"
-jsonpath "$.email" == "{{account_email}}"
+jsonpath "$.data.id" == "{{account_id}}"
+jsonpath "$.data.email" == "{{account_email}}"
 
 GET {{base_url}}/api/accounts/{{account_id}}
 Authorization: Bearer {{access_token}}
 HTTP 200
 Content-Type: application/json
 [Asserts]
-jsonpath "$.id" == "{{account_id}}"
-jsonpath "$.idCardFrontUrl" not exists
-jsonpath "$.idCardBackUrl" not exists
-jsonpath "$.liveVideoUrl" not exists
+jsonpath "$.data.id" == "{{account_id}}"
+jsonpath "$.data.idCardFrontUrl" not exists
+jsonpath "$.data.idCardBackUrl" not exists
+jsonpath "$.data.liveVideoUrl" not exists
 
 GET {{base_url}}/api/accounts/by-email/{{account_email}}
 Authorization: Bearer {{access_token}}
 HTTP 200
 Content-Type: application/json
 [Asserts]
-jsonpath "$.id" == "{{account_id}}"
+jsonpath "$.data.id" == "{{account_id}}"
+
+GET {{base_url}}/api/accounts/{{admin_account_id}}
+Authorization: Bearer {{access_token}}
+HTTP 404
+Content-Type: application/json
+[Asserts]
+jsonpath "$.errors[0].code" == "ACCOUNT_NOT_FOUND"
 
 GET {{base_url}}/api/accounts
 Authorization: Bearer {{access_token}}
+HTTP 403
+Content-Type: application/json
+[Asserts]
+jsonpath "$.errors[0].code" == "FORBIDDEN"
+
+GET {{base_url}}/api/accounts
+Authorization: Bearer {{admin_access_token}}
 HTTP 200
 Content-Type: application/json
 [Asserts]
-jsonpath "$[*].id" contains "{{account_id}}"
+jsonpath "$.data[*].id" contains "{{account_id}}"
+
+GET {{base_url}}/api/accounts/{{account_id}}
+Authorization: Bearer {{admin_access_token}}
+HTTP 200
+Content-Type: application/json
+[Asserts]
+jsonpath "$.data.id" == "{{account_id}}"
 
 POST {{base_url}}/api/accounts/{{account_id}}/verify
 Authorization: Bearer {{access_token}}
@@ -84,9 +121,9 @@ Authorization: Bearer {{access_token}}
 HTTP 200
 Content-Type: application/json
 [Asserts]
-jsonpath "$.id" == "{{account_id}}"
-jsonpath "$.isVerify" == true
-jsonpath "$.idCardFrontUrl" == "media/hurl-id-front.jpg"
+jsonpath "$.data.id" == "{{account_id}}"
+jsonpath "$.data.isVerify" == true
+jsonpath "$.data.idCardFrontUrl" == "media/hurl-id-front.jpg"
 
 # Re-KYC creates a new session and exposes the latest verified media.
 POST {{base_url}}/api/accounts/{{account_id}}/verify
@@ -99,11 +136,11 @@ Authorization: Bearer {{access_token}}
 HTTP 200
 Content-Type: application/json
 [Asserts]
-jsonpath "$.id" == "{{account_id}}"
-jsonpath "$.isVerify" == true
-jsonpath "$.idCardFrontUrl" == "media/hurl-id-front-v2.jpg"
-jsonpath "$.idCardBackUrl" == "media/hurl-id-back-v2.jpg"
-jsonpath "$.liveVideoUrl" == "media/hurl-live-video-v2.mp4"
+jsonpath "$.data.id" == "{{account_id}}"
+jsonpath "$.data.isVerify" == true
+jsonpath "$.data.idCardFrontUrl" == "media/hurl-id-front-v2.jpg"
+jsonpath "$.data.idCardBackUrl" == "media/hurl-id-back-v2.jpg"
+jsonpath "$.data.liveVideoUrl" == "media/hurl-live-video-v2.mp4"
 
 GET {{base_url}}/api/auth/me
 Authorization: Bearer {{access_token}}
@@ -113,11 +150,11 @@ retry-interval: 500ms
 HTTP 200
 Content-Type: application/json
 [Asserts]
-jsonpath "$.id" == "{{account_id}}"
-jsonpath "$.isVerify" == true
-jsonpath "$.idCardFrontUrl" == "media/hurl-id-front-v2.jpg"
-jsonpath "$.idCardBackUrl" == "media/hurl-id-back-v2.jpg"
-jsonpath "$.liveVideoUrl" == "media/hurl-live-video-v2.mp4"
+jsonpath "$.data.id" == "{{account_id}}"
+jsonpath "$.data.isVerify" == true
+jsonpath "$.data.idCardFrontUrl" == "media/hurl-id-front-v2.jpg"
+jsonpath "$.data.idCardBackUrl" == "media/hurl-id-back-v2.jpg"
+jsonpath "$.data.liveVideoUrl" == "media/hurl-live-video-v2.mp4"
 
 # Once the projection exists, registering the same identity is rejected.
 POST {{base_url}}/api/auth/register
@@ -132,7 +169,7 @@ POST {{base_url}}/api/auth/register
 HTTP 409
 Content-Type: application/json
 [Asserts]
-jsonpath "$.error" == "user already exists"
+jsonpath "$.errors[0].code" == "USER_ALREADY_EXISTS"
 
 POST {{base_url}}/api/auth/register
 {
@@ -146,7 +183,7 @@ POST {{base_url}}/api/auth/register
 HTTP 400
 Content-Type: application/json
 [Asserts]
-jsonpath "$.error" == "invalid email"
+jsonpath "$.errors[0].code" == "INVALID_EMAIL"
 
 POST {{base_url}}/api/auth/register
 {
@@ -160,7 +197,7 @@ POST {{base_url}}/api/auth/register
 HTTP 400
 Content-Type: application/json
 [Asserts]
-jsonpath "$.error" == "password must be at least 8 characters"
+jsonpath "$.errors[0].code" == "WEAK_PASSWORD"
 
 POST {{base_url}}/api/auth/register
 {
@@ -174,7 +211,7 @@ POST {{base_url}}/api/auth/register
 HTTP 400
 Content-Type: application/json
 [Asserts]
-jsonpath "$.error" == "username must not be empty"
+jsonpath "$.errors[0].code" == "INVALID_USERNAME"
 
 POST {{base_url}}/api/auth/register
 {
@@ -188,7 +225,7 @@ POST {{base_url}}/api/auth/register
 HTTP 400
 Content-Type: application/json
 [Asserts]
-jsonpath "$.error" == "CCCD must be exactly 12 digits"
+jsonpath "$.errors[0].code" == "INVALID_CCCD"
 
 POST {{base_url}}/api/auth/register
 {
@@ -205,21 +242,21 @@ POST {{base_url}}/api/auth/login
 HTTP 401
 Content-Type: application/json
 [Asserts]
-jsonpath "$.error" == "invalid credentials"
+jsonpath "$.errors[0].code" == "INVALID_CREDENTIALS"
 
 GET {{base_url}}/api/accounts/{{newUuid}}
 Authorization: Bearer {{access_token}}
 HTTP 404
 Content-Type: application/json
 [Asserts]
-jsonpath "$.error" == "account not found"
+jsonpath "$.errors[0].code" == "ACCOUNT_NOT_FOUND"
 
 GET {{base_url}}/api/accounts/by-email/missing-{{newUuid}}@example.com
 Authorization: Bearer {{access_token}}
 HTTP 404
 Content-Type: application/json
 [Asserts]
-jsonpath "$.error" == "account not found"
+jsonpath "$.errors[0].code" == "ACCOUNT_NOT_FOUND"
 
 POST {{base_url}}/api/accounts/{{newUuid}}/verify
 Authorization: Bearer {{access_token}}
@@ -231,7 +268,7 @@ Authorization: Bearer {{access_token}}
 HTTP 403
 Content-Type: application/json
 [Asserts]
-jsonpath "$.error" == "user mismatch"
+jsonpath "$.errors[0].code" == "USER_MISMATCH"
 
 POST {{base_url}}/api/accounts/{{account_id}}/verify
 Authorization: Bearer {{access_token}}
@@ -243,7 +280,7 @@ Authorization: Bearer {{access_token}}
 HTTP 400
 Content-Type: application/json
 [Asserts]
-jsonpath "$.error" == "all identity URLs are required"
+jsonpath "$.errors[0].code" == "INVALID_VERIFY_PAYLOAD"
 
 # Verify that the latest KYC session is projected back into MongoDB.
 GET {{base_url}}/api/auth/me
@@ -254,6 +291,6 @@ retry-interval: 500ms
 HTTP 200
 Content-Type: application/json
 [Asserts]
-jsonpath "$.id" == "{{account_id}}"
-jsonpath "$.isVerify" == true
-jsonpath "$.idCardFrontUrl" == "media/hurl-id-front-v2.jpg"
+jsonpath "$.data.id" == "{{account_id}}"
+jsonpath "$.data.isVerify" == true
+jsonpath "$.data.idCardFrontUrl" == "media/hurl-id-front-v2.jpg"

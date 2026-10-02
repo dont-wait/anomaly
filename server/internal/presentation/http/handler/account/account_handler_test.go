@@ -141,16 +141,69 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	token := loggedIn.Data["token"].(string)
 	accountID := registered.Data["id"].(string)
 
+	adminRegister := request(t, http.MethodPost, `{
+		"username":"admin",
+		"cccdNumber":"009876543210",
+		"cccdIssuedDate":"2020-01-01T00:00:00Z",
+		"dob":"1990-01-01T00:00:00Z",
+		"email":"admin@example.com",
+		"password":"adminpass123"
+	}`, handler.Register)
+	if adminRegister.Code != http.StatusCreated {
+		t.Fatalf("admin register status = %d, want 201", adminRegister.Code)
+	}
+	adminAccount, err := repo.FindByCCCDNumber(context.Background(), "009876543210")
+	if err != nil {
+		t.Fatalf("find admin account: %v", err)
+	}
+	adminAccount.Role = accountdomain.AccountRoleAdmin
+	if err := repo.Save(context.Background(), adminAccount); err != nil {
+		t.Fatalf("save admin role: %v", err)
+	}
+	adminLogin := request(t, http.MethodPost, `{"cccdNumber":"009876543210","password":"adminpass123"}`, handler.Login)
+	if adminLogin.Code != http.StatusOK {
+		t.Fatalf("admin login status = %d, want 200", adminLogin.Code)
+	}
+	adminAuth := decodeSuccess[map[string]any](t, adminLogin)
+	if adminAuth.Data["user"].(map[string]any)["role"] != string(accountdomain.AccountRoleAdmin) {
+		t.Fatalf("admin login user = %#v, want admin role", adminAuth.Data["user"])
+	}
+	adminToken := adminAuth.Data["token"].(string)
+
 	mux := http.NewServeMux()
 	handleraccount.RegisterRoutes(mux, handler, tokenService)
 
-	accounts := routeRequest(t, mux, http.MethodGet, "/api/accounts", "", token)
+	accountsAsUser := routeRequest(t, mux, http.MethodGet, "/api/accounts", "", token)
+	if accountsAsUser.Code != http.StatusForbidden {
+		t.Fatalf("get all as user status = %d, want 403", accountsAsUser.Code)
+	}
+	accounts := routeRequest(t, mux, http.MethodGet, "/api/accounts", "", adminToken)
 	if accounts.Code != http.StatusOK {
 		t.Fatalf("get all status = %d, want 200", accounts.Code)
 	}
 	list := decodeSuccess[[]map[string]any](t, accounts)
-	if len(list.Data) != 1 {
-		t.Fatalf("account count = %d, want 1", len(list.Data))
+	if len(list.Data) != 2 {
+		t.Fatalf("account count = %d, want 2", len(list.Data))
+	}
+	selfByID := routeRequest(t, mux, http.MethodGet, "/api/accounts/"+accountID, "", token)
+	if selfByID.Code != http.StatusOK {
+		t.Fatalf("get self by ID status = %d, want 200", selfByID.Code)
+	}
+	selfByEmail := routeRequest(t, mux, http.MethodGet, "/api/accounts/by-email/alice@example.com", "", token)
+	if selfByEmail.Code != http.StatusOK {
+		t.Fatalf("get self by email status = %d, want 200", selfByEmail.Code)
+	}
+	otherAsUser := routeRequest(t, mux, http.MethodGet, "/api/accounts/"+adminAccount.Id, "", token)
+	if otherAsUser.Code != http.StatusNotFound {
+		t.Fatalf("get other account as user status = %d, want 404", otherAsUser.Code)
+	}
+	otherByEmailAsUser := routeRequest(t, mux, http.MethodGet, "/api/accounts/by-email/admin@example.com", "", token)
+	if otherByEmailAsUser.Code != http.StatusNotFound {
+		t.Fatalf("get other account by email as user status = %d, want 404", otherByEmailAsUser.Code)
+	}
+	otherAsAdmin := routeRequest(t, mux, http.MethodGet, "/api/accounts/"+accountID, "", adminToken)
+	if otherAsAdmin.Code != http.StatusOK {
+		t.Fatalf("get user account as admin status = %d, want 200", otherAsAdmin.Code)
 	}
 
 	me := routeRequest(t, mux, http.MethodGet, "/api/auth/me", "", token)

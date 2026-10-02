@@ -1,0 +1,17 @@
+{
+  "name": "anomaly-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config ../vite.config.ts --mode desktop",
+    "build": "tsc -p tsconfig.json && vite build --config ../vite.config.ts --mode desktop",
+    "preview": "vite preview --config ../vite.config.ts --mode desktop",
+    "tauri": "tauri",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
+    "typecheck": "tsc -p tsconfig.json --pretty false",
+    "test": "vitest run --config ../vitest.config.ts --mode desktop",
+    "test:watch": "vitest --config ../vitest.config.ts --mode desktop"
+  }
+}

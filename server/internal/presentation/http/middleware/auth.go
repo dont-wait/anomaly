@@ -19,6 +19,7 @@ const claimsCtxKey ctxKey = "auth.claims"
 var (
 	ErrMissingAuthHeader = errors.New("missing or malformed Authorization header")
 	ErrInvalidToken      = errors.New("invalid or expired token")
+	ErrAdminRoleRequired = errors.New("admin role required")
 )
 
 // RequireAuth validates Bearer JWT trên header Authorization, parse token qua
@@ -43,6 +44,24 @@ func RequireAuth(tokenService queries.TokenService) func(http.Handler) http.Hand
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func RequireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := ClaimsFromContext(r.Context())
+		if !ok || claims == nil {
+			writeUnauthorized(w, ErrInvalidToken, httpx.ErrorCodeInvalidToken)
+			return
+		}
+		if claims.Role != "admin" {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			httpx.WriteError(w, zerolog.Nop(), ErrAdminRoleRequired, func(error) int {
+				return http.StatusForbidden
+			}, func(error) httpx.ErrorCode { return httpx.ErrorCodeForbidden })
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // ClaimsFromContext lấy claims từ context (set bởi RequireAuth).
