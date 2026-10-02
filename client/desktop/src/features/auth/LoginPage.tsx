@@ -3,20 +3,20 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faEye,
   faEyeSlash,
+  faIdCard,
   faLock,
   faShieldHalved,
-  faUser,
 } from "@fortawesome/free-solid-svg-icons";
 import { routes, navigate } from "@/app/routes";
 import { loginAdmin } from "./api/adminAuth";
 
 interface LoginErrors {
-  login?: string;
+  cccdNumber?: string;
   password?: string;
 }
 
 export function LoginPage() {
-  const [login, setLogin] = useState("");
+  const [cccdNumber, setCccdNumber] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,7 +25,10 @@ export function LoginPage() {
 
   const validate = (): LoginErrors => {
     const errors: LoginErrors = {};
-    if (!login.trim()) errors.login = "Vui lòng nhập email hoặc username.";
+    const normalizedCccd = cccdNumber.replace(/\s+/g, "");
+    if (!/^\d{12}$/.test(normalizedCccd)) {
+      errors.cccdNumber = "Số CCCD phải gồm đúng 12 chữ số.";
+    }
     if (!password) errors.password = "Vui lòng nhập mật khẩu.";
     return errors;
   };
@@ -39,7 +42,10 @@ export function LoginPage() {
 
     setIsSubmitting(true);
     try {
-      await loginAdmin({ login: login.trim(), password });
+      await loginAdmin({
+        cccdNumber: cccdNumber.replace(/\s+/g, ""),
+        password,
+      });
       navigate(routes.monitor);
     } catch (error) {
       setFormError(
@@ -71,34 +77,39 @@ export function LoginPage() {
 
         <form className="admin-login-form" onSubmit={handleSubmit} noValidate>
           <div className="admin-field">
-            <label className="admin-field-label" htmlFor="admin-login">
-              Email hoặc username
+            <label className="admin-field-label" htmlFor="admin-cccd">
+              Số CCCD
             </label>
             <div
               className="admin-field-control"
-              data-invalid={Boolean(fieldErrors.login)}
+              data-invalid={Boolean(fieldErrors.cccdNumber)}
             >
               <FontAwesomeIcon
                 className="admin-field-icon"
-                icon={faUser}
+                icon={faIdCard}
                 aria-hidden="true"
               />
               <input
-                id="admin-login"
-                name="login"
+                id="admin-cccd"
+                name="cccdNumber"
                 type="text"
-                autoComplete="username"
-                placeholder="vd: risk@example.com"
-                value={login}
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={12}
+                pattern="[0-9]*"
+                placeholder="vd: 001234567890"
+                value={cccdNumber}
                 disabled={isSubmitting}
-                aria-invalid={Boolean(fieldErrors.login)}
-                aria-describedby={fieldErrors.login ? "login-error" : undefined}
-                onChange={(event) => setLogin(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.cccdNumber)}
+                aria-describedby={
+                  fieldErrors.cccdNumber ? "cccd-error" : undefined
+                }
+                onChange={(event) => setCccdNumber(event.target.value)}
               />
             </div>
-            {fieldErrors.login && (
-              <p className="admin-field-error" id="login-error">
-                {fieldErrors.login}
+            {fieldErrors.cccdNumber && (
+              <p className="admin-field-error" id="cccd-error">
+                {fieldErrors.cccdNumber}
               </p>
             )}
           </div>

@@ -13,7 +13,7 @@ export interface AdminAuthResponse {
 }
 
 export interface AdminLoginInput {
-  login: string;
+  cccdNumber: string;
   password: string;
 }
 
@@ -27,7 +27,7 @@ export class AdminAuthError extends Error {
   }
 }
 
-const DEMO_LOGIN = "risk@example.com";
+const DEMO_CCCD_NUMBER = "001234567890";
 const DEMO_PASSWORD = "admin123";
 
 export async function loginAdmin(
@@ -35,7 +35,10 @@ export async function loginAdmin(
 ): Promise<AdminAuthResponse> {
   await new Promise((resolve) => window.setTimeout(resolve, 450));
 
-  if (input.login !== DEMO_LOGIN || input.password !== DEMO_PASSWORD) {
+  if (
+    input.cccdNumber !== DEMO_CCCD_NUMBER ||
+    input.password !== DEMO_PASSWORD
+  ) {
     throw new AdminAuthError(
       "Thông tin đăng nhập không chính xác. Vui lòng thử lại.",
       "INVALID_CREDENTIALS",

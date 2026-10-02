@@ -7,15 +7,15 @@ describe("LoginPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
 
-    expect(screen.getByText("Vui lòng nhập email hoặc username.")).toBeTruthy();
+    expect(screen.getByText("Số CCCD phải gồm đúng 12 chữ số.")).toBeTruthy();
     expect(screen.getByText("Vui lòng nhập mật khẩu.")).toBeTruthy();
   });
 
   it("shows an error for invalid credentials", async () => {
     render(<LoginPage />);
 
-    fireEvent.change(screen.getByLabelText("Email hoặc username"), {
-      target: { value: "wrong@example.com" },
+    fireEvent.change(screen.getByLabelText("Số CCCD"), {
+      target: { value: "123456789012" },
     });
     fireEvent.change(screen.getByLabelText("Mật khẩu"), {
       target: { value: "wrong-password" },
@@ -30,8 +30,8 @@ describe("LoginPage", () => {
     window.location.hash = "#/admin/login";
     render(<LoginPage />);
 
-    fireEvent.change(screen.getByLabelText("Email hoặc username"), {
-      target: { value: "risk@example.com" },
+    fireEvent.change(screen.getByLabelText("Số CCCD"), {
+      target: { value: "001234567890" },
     });
     fireEvent.change(screen.getByLabelText("Mật khẩu"), {
       target: { value: "admin123" },
