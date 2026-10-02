@@ -79,4 +79,14 @@ describe("auth api", () => {
       "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.",
     );
   });
+
+  it("uses the server error code when mapping login failures", () => {
+    expect(
+      toLoginError(
+        new ApiError(400, "Bad Request", undefined, [
+          { code: "INVALID_CREDENTIALS", detail: "invalid credentials" },
+        ]),
+      ),
+    ).toBe("Số CCCD hoặc mật khẩu không đúng.");
+  });
 });

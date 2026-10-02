@@ -42,6 +42,10 @@ export class ApiError extends Error {
     this.title = message;
     this.errors = errors;
   }
+
+  hasCode(code: string): boolean {
+    return this.errors.some((error) => error.code === code);
+  }
 }
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -145,12 +149,7 @@ export async function requestJson<T>(
 
     if (!response.ok) {
       const title = errorTitle(response.status, data);
-      throw new ApiError(
-        response.status,
-        title,
-        data,
-        errorDetails(data),
-      );
+      throw new ApiError(response.status, title, data, errorDetails(data));
     }
 
     return data as T;

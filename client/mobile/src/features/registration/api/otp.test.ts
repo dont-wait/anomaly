@@ -136,6 +136,16 @@ describe("otpError", () => {
     expect(otpError(new ApiError(410, "gone"))).toContain("gửi lại mã mới");
   });
 
+  it("uses the server error code for OTP failures", () => {
+    expect(
+      otpError(
+        new ApiError(400, "Bad Request", undefined, [
+          { code: "OTP_EXPIRED", detail: "otp expired" },
+        ]),
+      ),
+    ).toContain("hết hạn");
+  });
+
   it("maps 5xx to a server-busy message", () => {
     expect(otpError(new ApiError(500, "boom"))).toBe(
       "Máy chủ đang bận. Vui lòng thử lại.",

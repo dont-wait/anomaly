@@ -63,6 +63,12 @@ export async function login(
 
 export function toLoginError(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.hasCode("INVALID_CREDENTIALS")) {
+      return "Số CCCD hoặc mật khẩu không đúng.";
+    }
+    if (error.hasCode("INVALID_CCCD")) {
+      return "Số CCCD phải gồm đúng 12 chữ số.";
+    }
     switch (error.status) {
       case 0:
         return "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.";

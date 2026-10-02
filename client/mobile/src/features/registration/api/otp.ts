@@ -48,6 +48,12 @@ export async function verifyOtp(
 }
 export function otpError(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.hasCode("OTP_EXPIRED"))
+      return "Mã OTP đã hết hạn hoặc bạn đã nhập sai quá số lần cho phép. Vui lòng gửi lại mã mới.";
+    if (error.hasCode("INVALID_OTP"))
+      return "Mã OTP không đúng hoặc dữ liệu không hợp lệ. Vui lòng kiểm tra lại.";
+    if (error.hasCode("INVALID_EMAIL"))
+      return "Địa chỉ email không hợp lệ. Vui lòng kiểm tra lại.";
     if (error.status === HTTP_STATUS.GONE)
       return "Mã OTP đã hết hạn hoặc bạn đã nhập sai quá số lần cho phép. Vui lòng gửi lại mã mới.";
     if (error.status === HTTP_STATUS.BAD_REQUEST)
