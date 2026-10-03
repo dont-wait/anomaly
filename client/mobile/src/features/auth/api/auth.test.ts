@@ -18,17 +18,21 @@ describe("auth api", () => {
   it("normalizes CCCD whitespace before login", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(200, {
-        token: "test-token",
-        expiresAt: "2026-09-10T00:00:00Z",
-        user: {
-          id: "user-1",
-          username: "anomaly",
-          email: "anomaly@example.com",
-          idCardFrontUrl: "",
-          idCardBackUrl: "",
-          liveVideoUrl: "",
-          isVerify: true,
-          amount: 0,
+        status: 200,
+        message: "Login successful",
+        data: {
+          token: "test-token",
+          expiresAt: "2026-09-10T00:00:00Z",
+          user: {
+            id: "user-1",
+            username: "anomaly",
+            email: "anomaly@example.com",
+            idCardFrontUrl: "",
+            idCardBackUrl: "",
+            liveVideoUrl: "",
+            isVerify: true,
+            amount: 0,
+          },
         },
       }),
     );
@@ -74,5 +78,15 @@ describe("auth api", () => {
     expect(toLoginError(new ApiError(0, "network error"))).toBe(
       "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.",
     );
+  });
+
+  it("uses the server error code when mapping login failures", () => {
+    expect(
+      toLoginError(
+        new ApiError(400, "Bad Request", undefined, [
+          { code: "INVALID_CREDENTIALS", detail: "invalid credentials" },
+        ]),
+      ),
+    ).toBe("Số CCCD hoặc mật khẩu không đúng.");
   });
 });

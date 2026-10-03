@@ -4,14 +4,16 @@ Monorepo cho dự án Anomaly.
 
 ## Repo Layout
 
-- `client/`: desktop app với Tauri 2, React 19, TypeScript
+- `client/`: shared frontend workspace and toolchain
+- `client/mobile/`: consumer app với Tauri 2, React 19, TypeScript, Android và Linux desktop
 - `server/`: backend API Go, worker projection, hạ tầng local bằng Docker Compose
 - `specs/`: tài liệu thiết kế nội bộ
 
 ## Docs
 
 - `server/README.md`: điểm vào chính cho backend docs
-- `client/README.md`: hướng dẫn cho desktop client
+- `client/README.md`: shared frontend workspace commands
+- `client/mobile/README.md`: hướng dẫn cho consumer app
 
 ## Quick Start
 
@@ -28,5 +30,5 @@ Client:
 cd client
 corepack enable
 yarn install
-yarn dev
+yarn dev:mobile
 ```

@@ -92,7 +92,7 @@ trước khi chuyển bản. Từ root có thể dùng `make -C client emulator`
 Khi emulator đã bật, chạy từ `client/` trong terminal bình thường:
 
 ```bash
-nix develop .#android --command bash -c 'set -e; mkdir -p /tmp/anomaly-corepack-bin; corepack enable --install-directory /tmp/anomaly-corepack-bin; export PATH="/tmp/anomaly-corepack-bin:$PATH"; yarn tauri android dev --no-watch'
+nix develop .#android --command bash -c 'set -e; mkdir -p /tmp/anomaly-corepack-bin; corepack enable --install-directory /tmp/anomaly-corepack-bin; export PATH="/tmp/anomaly-corepack-bin:$PATH"; yarn workspace anomaly-mobile tauri android dev --no-watch'
 ```
 
 Chỉ chạy một lần. `/tmp` chứa shim Corepack tạm; `set -e` dừng khi lỗi.
@@ -149,7 +149,7 @@ bản production cần endpoint HTTPS. Khởi động lại app sau khi đổi `
 Build APK riêng khi cần:
 
 ```bash
-nix develop .#android --command bash -c 'set -e; mkdir -p "$HOME/.local/bin"; corepack enable --install-directory "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; exec yarn tauri android build --debug --target x86_64 --apk'
+nix develop .#android --command bash -c 'set -e; mkdir -p "$HOME/.local/bin"; corepack enable --install-directory "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; exec yarn workspace anomaly-mobile tauri android build --debug --target x86_64 --apk'
 ```
 
 Kiểm tra frontend theo thứ tự: `yarn lint`, `yarn tsc --noEmit`, `yarn test`.

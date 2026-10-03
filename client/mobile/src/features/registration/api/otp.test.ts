@@ -23,11 +23,11 @@ afterEach(() => {
 describe("requestOtp", () => {
   it("posts the trimmed email and returns the server message", async () => {
     const fetchMock = vi.fn(async () =>
-      jsonResponse(200, { message: "otp sent" }),
+      jsonResponse(200, { status: 200, message: "OTP sent", data: {} }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(requestOtp("  alice@example.com  ")).resolves.toBe("otp sent");
+    await expect(requestOtp("  alice@example.com  ")).resolves.toBe("OTP sent");
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [
       string,
@@ -41,7 +41,9 @@ describe("requestOtp", () => {
   it("rejects a response without a message string", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse(200, { message: 123 })),
+      vi.fn(async () =>
+        jsonResponse(200, { status: 200, message: 123, data: {} }),
+      ),
     );
 
     await expect(requestOtp("alice@example.com")).rejects.toMatchObject({
@@ -53,7 +55,13 @@ describe("requestOtp", () => {
 
 describe("verifyOtp", () => {
   it("posts the trimmed email and code, then returns true", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(200, { verified: true }));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(200, {
+        status: 200,
+        message: "OTP verified",
+        data: { verified: true },
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(verifyOtp(" alice@example.com ", " 123456 ")).resolves.toBe(
@@ -75,7 +83,13 @@ describe("verifyOtp", () => {
   it("rejects when the server does not confirm verification", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse(200, { verified: false })),
+      vi.fn(async () =>
+        jsonResponse(200, {
+          status: 200,
+          message: "OTP verified",
+          data: { verified: false },
+        }),
+      ),
     );
 
     await expect(
@@ -89,12 +103,24 @@ describe("verifyOtp", () => {
   it("surfaces the server status so the caller can map it", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse(410, { error: "otp expired" })),
+      vi.fn(async () =>
+        jsonResponse(410, {
+          status: 410,
+          title: "Gone",
+          errors: [{ code: "OTP_EXPIRED", detail: "otp expired" }],
+        }),
+      ),
     );
 
-    await expect(
-      verifyOtp("alice@example.com", "123456"),
-    ).rejects.toMatchObject({ status: 410 });
+    const error = await verifyOtp("alice@example.com", "123456").catch(
+      (err: unknown) => err,
+    );
+
+    expect(error).toMatchObject({
+      status: 410,
+      title: "Gone",
+      errors: [{ code: "OTP_EXPIRED", detail: "otp expired" }],
+    });
   });
 });
 
@@ -108,6 +134,16 @@ describe("otpError", () => {
   it("maps 410 to an expired message asking for a new code", () => {
     expect(otpError(new ApiError(410, "gone"))).toContain("hết hạn");
     expect(otpError(new ApiError(410, "gone"))).toContain("gửi lại mã mới");
+  });
+
+  it("uses the server error code for OTP failures", () => {
+    expect(
+      otpError(
+        new ApiError(400, "Bad Request", undefined, [
+          { code: "OTP_EXPIRED", detail: "otp expired" },
+        ]),
+      ),
+    ).toContain("hết hạn");
   });
 
   it("maps 5xx to a server-busy message", () => {

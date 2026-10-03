@@ -1,6 +1,6 @@
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
-import { ApiError, requestJson } from "@/shared/lib/http";
+import { ApiError, requestApi } from "@/shared/lib/http";
 import type { AuthUser } from "./profile";
 
 export type { AuthUser } from "./profile";
@@ -49,7 +49,7 @@ export async function login(
   options: { signal?: AbortSignal } = {},
 ): Promise<LoginResponse> {
   const credentials = assertValidLoginInput(input);
-  const data = await requestJson<LoginResponse>(API_ENDPOINTS.AUTH.LOGIN, {
+  const data = await requestApi<LoginResponse>(API_ENDPOINTS.AUTH.LOGIN, {
     method: "POST",
     body: credentials,
     signal: options.signal,
@@ -63,6 +63,12 @@ export async function login(
 
 export function toLoginError(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.hasCode("INVALID_CREDENTIALS")) {
+      return "Số CCCD hoặc mật khẩu không đúng.";
+    }
+    if (error.hasCode("INVALID_CCCD")) {
+      return "Số CCCD phải gồm đúng 12 chữ số.";
+    }
     switch (error.status) {
       case 0:
         return "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.";

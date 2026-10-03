@@ -1,19 +1,17 @@
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
-import { ApiError, requestJson } from "@/shared/lib/http";
-
-export interface RequestOtpResponse {
-  message: string;
-}
-export interface VerifyOtpResponse {
-  verified: boolean;
-}
+import {
+  ApiError,
+  requestApi,
+  requestJson,
+  type ApiSuccessResponse,
+} from "@/shared/lib/http";
 
 export async function requestOtp(
   email: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const result = await requestJson<RequestOtpResponse>(
+  const result = await requestJson<ApiSuccessResponse<Record<string, never>>>(
     API_ENDPOINTS.AUTH.OTP_REQUEST,
     {
       method: "POST",
@@ -21,8 +19,14 @@ export async function requestOtp(
       signal,
     },
   );
-  if (typeof result?.message !== "string")
-    throw new ApiError(0, "Phản hồi gửi mã OTP không hợp lệ.");
+  if (
+    !result ||
+    typeof result.status !== "number" ||
+    typeof result.message !== "string" ||
+    !Object.prototype.hasOwnProperty.call(result, "data")
+  ) {
+    throw new ApiError(0, "Phản hồi gửi mã OTP không hợp lệ.", result);
+  }
   return result.message;
 }
 export async function verifyOtp(
@@ -30,7 +34,7 @@ export async function verifyOtp(
   code: string,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  const result = await requestJson<VerifyOtpResponse>(
+  const result = await requestApi<{ verified: boolean }>(
     API_ENDPOINTS.AUTH.OTP_VERIFY,
     {
       method: "POST",
@@ -39,11 +43,17 @@ export async function verifyOtp(
     },
   );
   if (result?.verified !== true)
-    throw new ApiError(0, "Phản hồi xác thực OTP không hợp lệ.");
+    throw new ApiError(0, "Phản hồi xác thực OTP không hợp lệ.", result);
   return true;
 }
 export function otpError(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.hasCode("OTP_EXPIRED"))
+      return "Mã OTP đã hết hạn hoặc bạn đã nhập sai quá số lần cho phép. Vui lòng gửi lại mã mới.";
+    if (error.hasCode("INVALID_OTP"))
+      return "Mã OTP không đúng hoặc dữ liệu không hợp lệ. Vui lòng kiểm tra lại.";
+    if (error.hasCode("INVALID_EMAIL"))
+      return "Địa chỉ email không hợp lệ. Vui lòng kiểm tra lại.";
     if (error.status === HTTP_STATUS.GONE)
       return "Mã OTP đã hết hạn hoặc bạn đã nhập sai quá số lần cho phép. Vui lòng gửi lại mã mới.";
     if (error.status === HTTP_STATUS.BAD_REQUEST)

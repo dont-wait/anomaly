@@ -138,12 +138,18 @@ func TestRequestOTPHandlerSuccess(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	var resp map[string]string
+	var resp struct {
+		Message string         `json:"message"`
+		Data    map[string]any `json:"data"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp["message"] != "otp sent" {
-		t.Fatalf("message = %q, want %q", resp["message"], "otp sent")
+	if resp.Message != "OTP sent" {
+		t.Fatalf("message = %q, want %q", resp.Message, "OTP sent")
+	}
+	if resp.Data == nil {
+		t.Fatal("data = nil, want object")
 	}
 }
 
@@ -174,12 +180,24 @@ func TestRequestOTPHandlerStoreError(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
 	}
-	var resp map[string]string
+	var resp struct {
+		Status int    `json:"status"`
+		Title  string `json:"title"`
+		Errors []struct {
+			Code string `json:"code"`
+		} `json:"errors"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp["error"] != "internal server error" {
-		t.Fatalf("error = %q, want generic message", resp["error"])
+	if resp.Status != http.StatusInternalServerError {
+		t.Fatalf("body status = %d, want 500", resp.Status)
+	}
+	if resp.Title != "Internal Server Error" {
+		t.Fatalf("title = %q, want generic title", resp.Title)
+	}
+	if len(resp.Errors) != 1 || resp.Errors[0].Code != "INTERNAL_ERROR" {
+		t.Fatalf("errors = %#v, want internal error", resp.Errors)
 	}
 }
 
@@ -192,11 +210,15 @@ func TestVerifyOTPHandlerSuccess(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	var resp map[string]bool
+	var resp struct {
+		Data struct {
+			Verified bool `json:"verified"`
+		} `json:"data"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !resp["verified"] {
+	if !resp.Data.Verified {
 		t.Fatal("verified = false, want true")
 	}
 }
