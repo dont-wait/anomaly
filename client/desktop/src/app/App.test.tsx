@@ -1,10 +1,25 @@
 import { StrictMode } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import App from "./App";
 
 const session = {
   accessToken: "admin-token",
   expiresAt: "2030-01-01T00:00:00Z",
+};
+
+const adminProfile = {
+  id: "admin-id",
+  accountNo: "ACC-ADMIN",
+  username: "admin.staff",
+  fullName: "Admin Staff",
+  email: "admin@example.com",
+  role: "admin",
 };
 
 describe("App admin route", () => {
@@ -14,6 +29,7 @@ describe("App admin route", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -34,7 +50,7 @@ describe("App admin route", () => {
           JSON.stringify({
             status: 200,
             message: "ok",
-            data: { role: "admin" },
+            data: adminProfile,
           }),
           { status: 200 },
         ),
@@ -50,6 +66,7 @@ describe("App admin route", () => {
     expect(
       await screen.findByText("Monitoring workspace sẵn sàng"),
     ).toBeTruthy();
+    expect(screen.getAllByText("Admin Staff")).toHaveLength(2);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -63,7 +80,7 @@ describe("App admin route", () => {
             JSON.stringify({
               status: 200,
               message: "ok",
-              data: { role: "admin" },
+              data: adminProfile,
             }),
             { status: 200 },
           ),
@@ -78,6 +95,29 @@ describe("App admin route", () => {
     expect(screen.getByRole("navigation", { name: "Menu admin" })).toBeTruthy();
   });
 
+  it("clears the session and returns to login on logout", async () => {
+    localStorage.setItem("anomaly.admin.session", JSON.stringify(session));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ status: 200, message: "ok", data: adminProfile }),
+            { status: 200 },
+          ),
+      ),
+    );
+    window.location.hash = "#/admin/monitor";
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Đăng xuất" }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/admin/login");
+      expect(localStorage.getItem("anomaly.admin.session")).toBeNull();
+    });
+  });
+
   it("rejects a session whose account is no longer admin", async () => {
     localStorage.setItem("anomaly.admin.session", JSON.stringify(session));
     vi.stubGlobal(
@@ -88,7 +128,7 @@ describe("App admin route", () => {
             JSON.stringify({
               status: 200,
               message: "ok",
-              data: { role: "user" },
+              data: { ...adminProfile, role: "user" },
             }),
             { status: 200 },
           ),
@@ -103,19 +143,56 @@ describe("App admin route", () => {
     });
   });
 
-  it("keeps a valid session during a transient server failure", async () => {
+  it.each([
+    ["an incomplete profile", JSON.stringify({ data: { role: "admin" } })],
+    ["invalid JSON", "not-json"],
+  ])("rejects a successful /me response with %s", async (_case, body) => {
     localStorage.setItem("anomaly.admin.session", JSON.stringify(session));
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(null, { status: 503 })),
+      vi.fn(async () => new Response(body, { status: 200 })),
     );
     window.location.hash = "#/admin/monitor";
     render(<App />);
 
     await waitFor(() => {
-      expect(window.location.hash).toBe("#/admin/monitor");
-      expect(localStorage.getItem("anomaly.admin.session")).not.toBeNull();
+      expect(window.location.hash).toBe("#/admin/login");
+      expect(localStorage.getItem("anomaly.admin.session")).toBeNull();
     });
+  });
+
+  it("clears the session for a non-retryable /me error", async () => {
+    localStorage.setItem("anomaly.admin.session", JSON.stringify(session));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 400 })),
+    );
+    window.location.hash = "#/admin/monitor";
+    render(<App />);
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/admin/login");
+      expect(localStorage.getItem("anomaly.admin.session")).toBeNull();
+    });
+  });
+
+  it("keeps the session and retries a transient server failure", async () => {
+    vi.useFakeTimers();
+    localStorage.setItem("anomaly.admin.session", JSON.stringify(session));
+    const fetchMock = vi.fn(async () => new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.location.hash = "#/admin/monitor";
+    render(<App />);
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(window.location.hash).toBe("#/admin/monitor");
+    expect(localStorage.getItem("anomaly.admin.session")).not.toBeNull();
   });
 
   it("clears a session whose account no longer exists", async () => {

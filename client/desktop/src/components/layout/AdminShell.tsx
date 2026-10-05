@@ -20,7 +20,10 @@ import {
   faTriangleExclamation,
   faUserCircle,
 } from "@fortawesome/free-solid-svg-icons";
-import { clearAdminSession } from "@/features/auth/api/adminSession";
+import {
+  clearAdminSession,
+  type AdminProfile,
+} from "@/features/auth/api/adminSession";
 import { navigate, routes, type ProtectedRoute } from "@/app/routes";
 
 interface NavigationItem {
@@ -37,6 +40,7 @@ interface NavigationGroup {
 
 interface AdminShellProps {
   currentRoute: ProtectedRoute;
+  user: AdminProfile;
   children: ReactNode;
   onLogout?: () => void;
 }
@@ -107,6 +111,7 @@ const navigationGroups: NavigationGroup[] = [
 
 export function AdminShell({
   currentRoute,
+  user,
   children,
   onLogout = () => {
     clearAdminSession();
@@ -117,6 +122,7 @@ export function AdminShell({
   const shellColumns = isCollapsed
     ? "grid-cols-[64px_minmax(0,1fr)]"
     : "grid-cols-[308px_minmax(0,1fr)]";
+  const roleLabel = user.role === "admin" ? "Administrator" : user.role;
 
   return (
     <div
@@ -210,11 +216,13 @@ export function AdminShell({
 
         <div className="w-full shrink-0 border-t border-(--admin-border)">
           <div
-            className={`flex min-h-16 items-center gap-3 px-3 py-2.5 max-[900px]:justify-center max-[900px]:px-2 ${isCollapsed ? "justify-center px-2" : "justify-between"}`}
+            className={`flex min-h-16 items-center gap-3 px-3 py-2.5 max-[900px]:justify-center max-[900px]:px-2 ${isCollapsed ? "flex-col justify-center px-2" : "justify-between"}`}
           >
             <div
-              className="hidden h-8 w-8 shrink-0 place-items-center rounded-full bg-[#b4c5ff] text-[#002a78] max-[900px]:grid"
-              aria-hidden="true"
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#b4c5ff] text-[#002a78] max-[900px]:hidden ${isCollapsed ? "hidden" : ""}`}
+              role="img"
+              aria-label={`Tài khoản ${user.fullName}`}
+              title={user.fullName}
             >
               <FontAwesomeIcon icon={faUserCircle} />
             </div>
@@ -222,10 +230,10 @@ export function AdminShell({
               className={`min-w-0 flex-1 max-[900px]:hidden ${isCollapsed ? "hidden" : "grid"}`}
             >
               <strong className="truncate text-[13px] leading-5 font-semibold text-(--admin-text)">
-                Lê Văn C.
+                {user.fullName}
               </strong>
               <span className="truncate text-[11px] leading-4 text-(--admin-text-secondary)">
-                Tier-1 Risk Officer
+                {roleLabel} · {user.accountNo}
               </span>
             </div>
             <button
@@ -296,20 +304,33 @@ export function AdminShell({
                 aria-hidden="true"
               />
             </button>
-            <button
+            <div className="grid min-w-0 text-right max-[800px]:hidden">
+              <strong className="max-w-40 truncate text-[12px] leading-4 font-semibold text-(--admin-text)">
+                {user.fullName}
+              </strong>
+              <span className="max-w-40 truncate font-(family-name:--admin-font-mono) text-[10px] leading-4 text-(--admin-text-muted)">
+                {user.accountNo}
+              </span>
+            </div>
+            <div
               className="grid h-9 w-9 place-items-center rounded-full bg-[#b4c5ff] text-[#002a78]"
-              type="button"
-              aria-label="Tài khoản operator"
-              title="Tài khoản operator"
+              role="img"
+              aria-label={`Tài khoản ${user.fullName}`}
+              title={`${user.fullName} · ${user.email}`}
             >
               <FontAwesomeIcon icon={faUserCircle} aria-hidden="true" />
-            </button>
-            <button className="sr-only" type="button" onClick={onLogout}>
+            </div>
+            <button
+              className="grid h-9 w-9 place-items-center rounded-(--admin-radius-md) border border-(--admin-border) text-[13px] text-(--admin-text-muted) hover:bg-(--admin-surface-hover) hover:text-(--admin-text) focus-visible:outline focus-visible:outline-offset-1 focus-visible:outline-(--admin-primary)"
+              type="button"
+              aria-label="Đăng xuất"
+              title="Đăng xuất"
+              onClick={onLogout}
+            >
               <FontAwesomeIcon
                 icon={faArrowRightFromBracket}
                 aria-hidden="true"
               />
-              Đăng xuất
             </button>
           </div>
         </header>

@@ -1,6 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { LoginPage } from "@/features/auth/LoginPage";
-import { verifyAdminSession } from "@/features/auth/api/adminSession";
+import {
+  verifyAdminSession,
+  type AdminProfile,
+} from "@/features/auth/api/adminSession";
 import { AdminShell } from "@/components/layout/AdminShell";
 import {
   isProtectedRoute,
@@ -47,7 +50,7 @@ function PlaceholderPage({ route }: { route: ProtectedRoute }) {
 }
 
 function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
-  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [profile, setProfile] = useState<AdminProfile | null>(null);
   useEffect(() => {
     let active = true;
     let retryTimer: number | undefined;
@@ -55,12 +58,12 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
       void verifyAdminSession()
         .then((verification) => {
           if (!active) return;
-          if (verification === "invalid") {
+          if (verification.status === "invalid") {
             navigate(routes.login);
             return;
           }
-          if (verification === "valid") {
-            setIsAuthorized(true);
+          if (verification.status === "valid") {
+            setProfile(verification.profile);
             return;
           }
           retryTimer = window.setTimeout(verify, 3000);
@@ -76,7 +79,7 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
     };
   }, []);
 
-  if (!isAuthorized) {
+  if (!profile) {
     return (
       <main className="grid min-h-screen place-items-center bg-(--admin-background) font-(family-name:--admin-font-mono) text-xs text-(--admin-text-muted)">
         Đang xác thực...
@@ -84,7 +87,7 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
     );
   }
   return (
-    <AdminShell currentRoute={route}>
+    <AdminShell currentRoute={route} user={profile}>
       <PlaceholderPage route={route} />
     </AdminShell>
   );

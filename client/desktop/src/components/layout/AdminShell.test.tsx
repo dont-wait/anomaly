@@ -2,6 +2,15 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { AdminShell } from "./AdminShell";
 import { routes } from "@/app/routes";
 
+const user = {
+  id: "admin-id",
+  accountNo: "ACC-ADMIN",
+  username: "admin.staff",
+  fullName: "Admin Staff",
+  email: "admin@example.com",
+  role: "admin",
+};
+
 describe("AdminShell", () => {
   beforeEach(() => {
     window.location.hash = routes.monitor;
@@ -9,7 +18,7 @@ describe("AdminShell", () => {
 
   it("navigates between protected sections", () => {
     render(
-      <AdminShell currentRoute={routes.monitor}>
+      <AdminShell currentRoute={routes.monitor} user={user}>
         <div>Dashboard content</div>
       </AdminShell>,
     );
@@ -21,7 +30,7 @@ describe("AdminShell", () => {
 
   it("renders the Stitch navigation groups", () => {
     render(
-      <AdminShell currentRoute={routes.monitor}>
+      <AdminShell currentRoute={routes.monitor} user={user}>
         <div>Dashboard content</div>
       </AdminShell>,
     );
@@ -39,9 +48,23 @@ describe("AdminShell", () => {
     ).toBeTruthy();
   });
 
+  it("renders the signed-in admin profile", () => {
+    render(
+      <AdminShell currentRoute={routes.monitor} user={user}>
+        <div>Dashboard content</div>
+      </AdminShell>,
+    );
+
+    expect(screen.getAllByText("Admin Staff")).toHaveLength(2);
+    expect(screen.getByText("Administrator · ACC-ADMIN")).toBeTruthy();
+    expect(
+      screen.getAllByRole("img", { name: "Tài khoản Admin Staff" }),
+    ).toHaveLength(2);
+  });
+
   it("toggles the sidebar from the operator row", () => {
     render(
-      <AdminShell currentRoute={routes.monitor}>
+      <AdminShell currentRoute={routes.monitor} user={user}>
         <div>Dashboard content</div>
       </AdminShell>,
     );
@@ -53,6 +76,9 @@ describe("AdminShell", () => {
     });
     expect(expandButton.getAttribute("aria-pressed")).toBe("true");
     expect(
+      screen.getAllByRole("img", { name: "Tài khoản Admin Staff" }),
+    ).toHaveLength(1);
+    expect(
       screen.queryByRole("button", { name: "Thu gọn sidebar" }),
     ).toBeNull();
   });
@@ -60,7 +86,7 @@ describe("AdminShell", () => {
   it("calls the logout handler", () => {
     const onLogout = vi.fn();
     render(
-      <AdminShell currentRoute={routes.monitor} onLogout={onLogout}>
+      <AdminShell currentRoute={routes.monitor} user={user} onLogout={onLogout}>
         <div>Dashboard content</div>
       </AdminShell>,
     );
