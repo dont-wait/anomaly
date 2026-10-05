@@ -1,7 +1,13 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { verifyAdminSession } from "@/features/auth/api/adminSession";
-import { navigate, routes } from "./routes";
+import { AdminShell } from "@/components/layout/AdminShell";
+import {
+  isProtectedRoute,
+  navigate,
+  routes,
+  type ProtectedRoute,
+} from "./routes";
 
 function subscribe(onChange: () => void) {
   window.addEventListener("hashchange", onChange);
@@ -16,28 +22,31 @@ function useHash() {
   );
 }
 
-function ComingSoonPage() {
+function PlaceholderPage({ route }: { route: ProtectedRoute }) {
+  const isMonitor = route === routes.monitor;
+
   return (
-    <main className="admin-login-page">
-      <section className="admin-login-card" aria-labelledby="coming-soon-title">
-        <div className="admin-brand" aria-label="AnomalyBank Admin Console">
-          <span className="admin-brand-mark" aria-hidden="true">
-            <span aria-hidden="true">A</span>
-          </span>
-          <span className="admin-brand-name">AnomalyBank Admin</span>
-        </div>
-        <h1 className="admin-login-heading" id="coming-soon-title">
-          Đăng nhập thành công
-        </h1>
-        <p className="admin-login-subtitle">
-          Dashboard quản trị sẽ được triển khai ở phase tiếp theo.
-        </p>
-      </section>
-    </main>
+    <section
+      className="grid min-h-90 place-items-center rounded-(--admin-radius-lg) border border-(--admin-border) bg-(--admin-surface)"
+      aria-label="Nội dung trang"
+    >
+      <div className="grid max-w-90 gap-2 p-6 text-center">
+        <strong>
+          {isMonitor
+            ? "Monitoring workspace sẵn sàng"
+            : "Màn hình đang được triển khai"}
+        </strong>
+        <span className="font-(family-name:--admin-font-mono) text-[10px] leading-4 text-(--admin-text-muted)">
+          {isMonitor
+            ? "Admin shell đã được kết nối. Dashboard risk sẽ được đưa vào phase tiếp theo."
+            : "Route đã được đăng ký và sẽ dùng chung layout admin này."}
+        </span>
+      </div>
+    </section>
   );
 }
 
-function ProtectedMonitor() {
+function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
   const [isAuthorized, setIsAuthorized] = useState(false);
   useEffect(() => {
     let active = true;
@@ -68,14 +77,22 @@ function ProtectedMonitor() {
   }, []);
 
   if (!isAuthorized) {
-    return <main className="admin-login-page">Đang xác thực...</main>;
+    return (
+      <main className="grid min-h-screen place-items-center bg-(--admin-background) font-(family-name:--admin-font-mono) text-xs text-(--admin-text-muted)">
+        Đang xác thực...
+      </main>
+    );
   }
-  return <ComingSoonPage />;
+  return (
+    <AdminShell currentRoute={route}>
+      <PlaceholderPage route={route} />
+    </AdminShell>
+  );
 }
 
 export default function App() {
   const hash = useHash();
 
-  if (hash === routes.monitor) return <ProtectedMonitor />;
+  if (isProtectedRoute(hash)) return <ProtectedAdmin route={hash} />;
   return <LoginPage />;
 }

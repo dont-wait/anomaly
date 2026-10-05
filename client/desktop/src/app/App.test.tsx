@@ -47,8 +47,35 @@ describe("App admin route", () => {
       </StrictMode>,
     );
 
-    expect(await screen.findByText("Đăng nhập thành công")).toBeTruthy();
+    expect(
+      await screen.findByText("Monitoring workspace sẵn sàng"),
+    ).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the shared shell for another protected route", async () => {
+    localStorage.setItem("anomaly.admin.session", JSON.stringify(session));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              status: 200,
+              message: "ok",
+              data: { role: "admin" },
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    window.location.hash = "#/admin/alerts";
+    render(<App />);
+
+    expect(
+      await screen.findByText("Màn hình đang được triển khai"),
+    ).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Menu admin" })).toBeTruthy();
   });
 
   it("rejects a session whose account is no longer admin", async () => {
