@@ -1,0 +1,52 @@
+:root {
+  --admin-primary: #2563eb;
+  --admin-primary-strong: #1d4ed8;
+  --admin-primary-soft: #1d263b;
+  --admin-accent: #2563eb;
+  --admin-accent-soft: #1d263b;
+
+  --admin-background: #09090b;
+  --admin-surface: #111317;
+  --admin-surface-subtle: #181b20;
+  --admin-surface-hover: #22262e;
+  --admin-text: #e5e1e4;
+  --admin-text-secondary: #c3c6d7;
+  --admin-text-muted: #8d90a0;
+  --admin-text-disabled: #64748b;
+  --admin-border: #272b33;
+  --admin-border-subtle: #1c2026;
+
+  --admin-success: #059669;
+  --admin-success-soft: #091a14;
+  --admin-info: #60a5fa;
+  --admin-info-soft: #172554;
+  --admin-warning: #d97706;
+  --admin-warning-soft: #1f140a;
+  --admin-danger: #dc2626;
+  --admin-danger-soft: #200d0e;
+
+  --admin-font-sans: "Geist", system-ui, sans-serif;
+  --admin-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  --admin-font-size-body: 14px;
+  --admin-font-size-label: 12px;
+  --admin-font-size-title: 24px;
+  --admin-font-size-caption: 11px;
+
+  --admin-space-1: 4px;
+  --admin-space-2: 8px;
+  --admin-space-3: 12px;
+  --admin-space-4: 16px;
+  --admin-space-5: 20px;
+  --admin-space-6: 24px;
+  --admin-space-8: 32px;
+
+  --admin-radius-sm: 3px;
+  --admin-radius-md: 4px;
+  --admin-radius-lg: 6px;
+  --admin-radius-xl: 12px;
+  --admin-radius-full: 9999px;
+
+  --admin-shadow-card: none;
+  --admin-shadow-floating: none;
+  --admin-focus-ring: 0 0 0 1px #2563eb;
+}

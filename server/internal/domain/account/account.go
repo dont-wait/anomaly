@@ -4,6 +4,7 @@ import "time"
 
 type (
 	AccountType        string
+	AccountRole        string
 	Currency           string
 	AccountStatus      string
 	CustomerStatus     string
@@ -14,6 +15,8 @@ type (
 
 const (
 	AccountTypePayment AccountType = "payment"
+	AccountRoleUser    AccountRole = "user"
+	AccountRoleAdmin   AccountRole = "admin"
 	CurrencyVND        Currency    = "VND"
 
 	AccountStatusActive  AccountStatus  = "active"
@@ -135,6 +138,7 @@ type UserAccount struct {
 	Email        string
 	PasswordHash string
 	Type         AccountType
+	Role         AccountRole
 	Currency     Currency
 	Balance      Balance
 	Status       AccountStatus
@@ -144,6 +148,13 @@ type UserAccount struct {
 	UpdatedAt    time.Time
 	Customer     *Customer
 	KYCSessions  []*KYCSession
+}
+
+func (u *UserAccount) EffectiveRole() AccountRole {
+	if u.Role == "" {
+		return AccountRoleUser
+	}
+	return u.Role
 }
 
 func (u *UserAccount) Withdraw(amount int64) error {

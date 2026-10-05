@@ -48,7 +48,7 @@ func (h *LoginQueryHandler) Handle(ctx context.Context, q LoginQuery) (*LoginRes
 		return nil, accountdomain.ErrInvalidCredentials
 	}
 
-	token, expiresAt, err := h.tokens.Issue(acc.Id, acc.Username, acc.IsVerified())
+	token, expiresAt, err := h.tokens.Issue(acc.Id, acc.Username, string(acc.EffectiveRole()), acc.IsVerified())
 	if err != nil {
 		return nil, err
 	}
