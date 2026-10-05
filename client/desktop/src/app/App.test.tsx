@@ -86,7 +86,7 @@ describe("App admin route", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(window.location.hash).toBe("#/admin/login");
+      expect(window.location.hash).toBe("#/admin/monitor");
       expect(localStorage.getItem("anomaly.admin.session")).not.toBeNull();
     });
   });

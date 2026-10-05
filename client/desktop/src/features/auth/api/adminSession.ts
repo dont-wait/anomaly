@@ -1,3 +1,6 @@
+import { HTTP_STATUS } from "@/shared/constants/httpStatus";
+import { ACCOUNT_ROLE } from "./accountRole";
+
 export interface AdminSession {
   accessToken: string;
   expiresAt: string;
@@ -15,7 +18,7 @@ export const API_BASE_URL =
   import.meta.env.VITE_API_ENDPOINT || "http://localhost:8080";
 
 const SESSION_STORAGE_KEY = "anomaly.admin.session";
-let inFlightVerification: Promise<boolean> | null = null;
+let inFlightVerification: Promise<AdminSessionVerification> | null = null;
 
 export function saveAdminSession(session: AdminSession) {
   window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
@@ -64,19 +67,20 @@ async function verifyStoredAdminSession(): Promise<AdminSessionVerification> {
 
   if (!response.ok) {
     if (
-      response.status === 401 ||
-      response.status === 403 ||
-      response.status === 404
+      response.status === HTTP_STATUS.UNAUTHORIZED ||
+      response.status === HTTP_STATUS.FORBIDDEN ||
+      response.status === HTTP_STATUS.NOT_FOUND
     ) {
       clearAdminSession();
     }
-    return response.status >= 500 || response.status === 429
+    return response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR ||
+      response.status === HTTP_STATUS.TOO_MANY_REQUESTS
       ? "unavailable"
       : "invalid";
   }
   try {
     const body = (await response.json()) as ApiSuccess<AccountProfile>;
-    if (body.data?.role === "admin") return "valid";
+    if (body.data?.role === ACCOUNT_ROLE.ADMIN) return "valid";
   } catch {
     return "unavailable";
   }

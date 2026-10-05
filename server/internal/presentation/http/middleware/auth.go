@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	domainauth "github.com/dont-wait/anomaly/internal/domain/auth"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/rs/zerolog"
@@ -53,7 +54,7 @@ func RequireAdmin(next http.Handler) http.Handler {
 			writeUnauthorized(w, ErrInvalidToken, httpx.ErrorCodeInvalidToken)
 			return
 		}
-		if claims.Role != "admin" {
+		if claims.Role != string(accountdomain.AccountRoleAdmin) {
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			httpx.WriteError(w, zerolog.Nop(), ErrAdminRoleRequired, func(error) int {
 				return http.StatusForbidden

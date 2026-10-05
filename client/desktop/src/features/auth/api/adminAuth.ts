@@ -1,5 +1,6 @@
 import { API_BASE_URL, saveAdminSession } from "./adminSession";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
+import { ACCOUNT_ROLE } from "./accountRole";
 
 export interface AdminStaff {
   id: string;
@@ -134,7 +135,7 @@ export async function loginAdmin(
       "INVALID_RESPONSE",
     );
   }
-  if (data.user.role !== "admin") {
+  if (data.user.role !== ACCOUNT_ROLE.ADMIN) {
     throw new AdminAuthError(
       "Tài khoản không có quyền truy cập khu vực quản trị.",
       "FORBIDDEN",
