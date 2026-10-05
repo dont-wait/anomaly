@@ -67,6 +67,8 @@ Endpoint chính:
 
 - API: `http://localhost:8080`
 - Health: `http://localhost:8080/health`
+- Swagger UI: `http://localhost:8080/swagger/` when `SWAGGER_ENABLED=true`
+- OpenAPI spec: `http://localhost:8080/openapi.json` when `SWAGGER_ENABLED=true`
 - RustFS API: `http://localhost:9000`
 - RustFS console: `http://localhost:9001`
 - MongoDB: `localhost:27017`
@@ -85,6 +87,26 @@ go mod download
 make migrate
 go run ./cmd/api
 ```
+
+Để bật Swagger khi chạy local, thêm vào `server/.env`:
+
+```env
+SWAGGER_ENABLED=true
+```
+
+Swagger bị tắt mặc định. Khi chạy Docker Compose, truyền biến tương tự trước
+khi start stack:
+
+```bash
+SWAGGER_ENABLED=true docker compose --profile app up --build
+```
+
+### Thêm API mới
+
+Các route HTTP phải được đăng ký qua `openapi.Registry` trong file `*_routes.go`.
+Registry vừa đăng ký route vào `http.ServeMux`, vừa sinh OpenAPI từ metadata và
+request/response struct. Vì vậy không chỉnh sửa `openapi.json` thủ công; khi
+thêm API chỉ cần khai báo operation, schema, auth và status code ngay tại route.
 
 ### Seed tài khoản demo
 
