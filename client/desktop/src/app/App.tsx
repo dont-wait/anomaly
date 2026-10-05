@@ -41,20 +41,29 @@ function ProtectedMonitor() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   useEffect(() => {
     let active = true;
-    void verifyAdminSession()
-      .then((valid) => {
-        if (!active) return;
-        if (!valid) {
-          navigate(routes.login);
-          return;
-        }
-        setIsAuthorized(true);
-      })
-      .catch(() => {
-        if (active) navigate(routes.login);
-      });
+    let retryTimer: number | undefined;
+    const verify = () => {
+      void verifyAdminSession()
+        .then((verification) => {
+          if (!active) return;
+          if (verification === "invalid") {
+            navigate(routes.login);
+            return;
+          }
+          if (verification === "valid") {
+            setIsAuthorized(true);
+            return;
+          }
+          retryTimer = window.setTimeout(verify, 3000);
+        })
+        .catch(() => {
+          if (active) retryTimer = window.setTimeout(verify, 3000);
+        });
+    };
+    verify();
     return () => {
       active = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };
   }, []);
 

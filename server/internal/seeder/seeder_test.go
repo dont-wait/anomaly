@@ -74,6 +74,7 @@ func (r *memoryRepository) Save(_ context.Context, a *accountdomain.UserAccount)
 }
 
 func TestRunCreatesHashedDemoAndCanRepeat(t *testing.T) {
+	t.Setenv("ANOMALY_DEMO_ADMIN_PASSWORD", "DemoAdmin@123")
 	repo := &memoryRepository{}
 	ctx := context.Background()
 	if err := Run(ctx, Dependencies{Accounts: repo}); err != nil {
@@ -112,6 +113,7 @@ func TestRunCreatesHashedDemoAndCanRepeat(t *testing.T) {
 }
 
 func TestRunRejectsExistingPasswordCollision(t *testing.T) {
+	t.Setenv("ANOMALY_DEMO_ADMIN_PASSWORD", "DemoAdmin@123")
 	repo := &memoryRepository{}
 	if err := Run(context.Background(), Dependencies{Accounts: repo}); err != nil {
 		t.Fatal(err)
@@ -136,6 +138,7 @@ func TestRunRejectsExistingPasswordCollision(t *testing.T) {
 }
 
 func TestRunRejectsAdminRoleCollision(t *testing.T) {
+	t.Setenv("ANOMALY_DEMO_ADMIN_PASSWORD", "DemoAdmin@123")
 	repo := &memoryRepository{}
 	if err := Run(context.Background(), Dependencies{Accounts: repo}); err != nil {
 		t.Fatal(err)

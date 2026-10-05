@@ -47,9 +47,11 @@ export function readAdminSession(): AdminSession | null {
   }
 }
 
-async function verifyStoredAdminSession(): Promise<boolean> {
+export type AdminSessionVerification = "valid" | "invalid" | "unavailable";
+
+async function verifyStoredAdminSession(): Promise<AdminSessionVerification> {
   const session = readAdminSession();
-  if (!session) return false;
+  if (!session) return "invalid";
 
   let response: Response;
   try {
@@ -57,7 +59,7 @@ async function verifyStoredAdminSession(): Promise<boolean> {
       headers: { Authorization: `Bearer ${session.accessToken}` },
     });
   } catch {
-    return false;
+    return "unavailable";
   }
 
   if (!response.ok) {
@@ -68,20 +70,21 @@ async function verifyStoredAdminSession(): Promise<boolean> {
     ) {
       clearAdminSession();
     }
-    return false;
+    return response.status >= 500 || response.status === 429
+      ? "unavailable"
+      : "invalid";
   }
   try {
     const body = (await response.json()) as ApiSuccess<AccountProfile>;
-    if (body.data?.role === "admin") return true;
+    if (body.data?.role === "admin") return "valid";
   } catch {
-    clearAdminSession();
-    return false;
+    return "unavailable";
   }
   clearAdminSession();
-  return false;
+  return "invalid";
 }
 
-export function verifyAdminSession(): Promise<boolean> {
+export function verifyAdminSession(): Promise<AdminSessionVerification> {
   if (inFlightVerification) return inFlightVerification;
 
   inFlightVerification = verifyStoredAdminSession().finally(() => {

@@ -3,6 +3,7 @@ package seeder
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -43,7 +44,7 @@ type accountSeed struct {
 // Demo data is public and intended only for local development.
 // Add accounts here with unique identities and stable idempotency keys.
 func demoAccounts() []accountSeed {
-	return []accountSeed{{
+	seeds := []accountSeed{{
 		Username:       "demo.customer",
 		Role:           accountdomain.AccountRoleUser,
 		CCCD:           "079123456789",
@@ -53,17 +54,22 @@ func demoAccounts() []accountSeed {
 		DOB:            time.Date(1995, 3, 20, 0, 0, 0, 0, time.UTC),
 		CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
 		Balance:        128540000,
-	}, {
-		Username:       "admin.staff",
-		Role:           accountdomain.AccountRoleAdmin,
-		CCCD:           "001234567890",
-		Email:          "admin.staff@example.com",
-		Password:       "admin123",
-		IdempotencyKey: "00000000-0000-4000-8000-000000000002",
-		DOB:            time.Date(1990, 6, 15, 0, 0, 0, 0, time.UTC),
-		CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
-		Balance:        0,
 	}}
+	adminPassword := os.Getenv("ANOMALY_DEMO_ADMIN_PASSWORD")
+	if adminPassword != "" {
+		seeds = append(seeds, accountSeed{
+			Username:       "admin.staff",
+			Role:           accountdomain.AccountRoleAdmin,
+			CCCD:           "001234567890",
+			Email:          "admin.staff@example.com",
+			Password:       adminPassword,
+			IdempotencyKey: "00000000-0000-4000-8000-000000000002",
+			DOB:            time.Date(1990, 6, 15, 0, 0, 0, 0, time.UTC),
+			CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			Balance:        0,
+		})
+	}
+	return seeds
 }
 
 func seedAccount(ctx context.Context, repo Repository, seed accountSeed) error {

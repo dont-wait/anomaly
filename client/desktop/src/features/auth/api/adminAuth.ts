@@ -1,4 +1,5 @@
 import { API_BASE_URL, saveAdminSession } from "./adminSession";
+import { HTTP_STATUS } from "@/shared/constants/httpStatus";
 
 export interface AdminStaff {
   id: string;
@@ -99,19 +100,19 @@ export async function loginAdmin(
     const error = body as ApiError | null;
     const detail = error?.errors?.[0]?.detail;
     const code = error?.errors?.[0]?.code;
-    if (response.status === 401) {
+    if (response.status === HTTP_STATUS.UNAUTHORIZED) {
       throw new AdminAuthError(
         "Thông tin đăng nhập không chính xác. Vui lòng thử lại.",
         "INVALID_CREDENTIALS",
       );
     }
-    if (response.status === 403 || code === "FORBIDDEN") {
+    if (response.status === HTTP_STATUS.FORBIDDEN || code === "FORBIDDEN") {
       throw new AdminAuthError(
         "Tài khoản không có quyền truy cập khu vực quản trị.",
         "FORBIDDEN",
       );
     }
-    if (response.status >= 500) {
+    if (response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR) {
       throw new AdminAuthError(
         "Máy chủ đang gặp sự cố. Vui lòng thử lại sau.",
         "SERVER_ERROR",

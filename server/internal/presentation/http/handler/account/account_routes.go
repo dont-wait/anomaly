@@ -21,7 +21,7 @@ func RegisterRoutes(
 		middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.Verify)))
 
 	adminOnly := func(handler http.Handler) http.Handler {
-		return middleware.RequireAuth(tokenSvc)(middleware.RequireAdmin(handler))
+		return middleware.RequireAuth(tokenSvc)(h.RequireCurrentAdmin(handler))
 	}
 	mux.Handle("GET /api/accounts", adminOnly(http.HandlerFunc(h.GetAll)))
 	mux.Handle("GET /api/accounts/by-email/{email}",
