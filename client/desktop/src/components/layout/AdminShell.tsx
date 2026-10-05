@@ -140,7 +140,7 @@ export function AdminShell({
               />
             </div>
             <div
-              className={`grid min-w-0 overflow-hidden transition-[max-width,opacity,transform] duration-200 ease-in-out motion-reduce:transition-none max-[900px]:hidden ${isCollapsed ? "max-w-0 -translate-x-2 opacity-0" : "max-w-[180px] translate-x-0 opacity-100"}`}
+              className={`grid min-w-0 overflow-hidden transition-[max-width,opacity,transform] duration-200 ease-in-out motion-reduce:transition-none max-[900px]:hidden ${isCollapsed ? "max-w-0 -translate-x-2 opacity-0" : "max-w-45 translate-x-0 opacity-100"}`}
             >
               <span className="font-(family-name:--admin-font-sans) text-[15px] leading-5 font-semibold tracking-[0.04em] text-(--admin-text)">
                 ANOMALY
@@ -171,7 +171,7 @@ export function AdminShell({
                   const active = currentRoute === item.route;
                   return (
                     <button
-                      className={`relative flex h-10 w-full items-center gap-3 rounded-(--admin-radius-md) border px-3 text-left text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--admin-primary) max-[900px]:justify-center max-[900px]:px-0 ${isCollapsed ? "justify-center px-0" : ""} ${
+                      className={`relative flex h-10 w-full items-center gap-3 rounded-(--admin-radius-md) border px-3 text-left text-[13px] font-medium transition-colors focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--admin-primary) max-[900px]:justify-center max-[900px]:px-0 ${isCollapsed ? "justify-center px-0" : ""} ${
                         active
                           ? "border-(--admin-border) bg-(--admin-surface-hover) text-(--admin-text) before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:bg-(--admin-primary)"
                           : "border-transparent text-(--admin-text-secondary) hover:bg-(--admin-surface-subtle) hover:text-(--admin-text)"
@@ -229,7 +229,7 @@ export function AdminShell({
               </span>
             </div>
             <button
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-(--admin-radius-md) border border-(--admin-border) text-[11px] text-(--admin-text-muted) hover:bg-(--admin-surface-hover) hover:text-(--admin-text) focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--admin-primary) max-[900px]:hidden"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-(--admin-radius-md) border border-(--admin-border) text-[11px] text-(--admin-text-muted) hover:bg-(--admin-surface-hover) hover:text-(--admin-text) focus-visible:outline focus-visible:outline-offset-1 focus-visible:outline-(--admin-primary) max-[900px]:hidden"
               type="button"
               aria-label={isCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
               aria-pressed={isCollapsed}
