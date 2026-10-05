@@ -8,6 +8,7 @@ import "time"
 type Claims struct {
 	UserID    string
 	Username  string
+	Role      string
 	IsVerify  bool
 	ExpiresAt time.Time
 }

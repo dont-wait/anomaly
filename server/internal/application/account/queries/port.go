@@ -19,6 +19,6 @@ type AccountQueryRepository interface {
 // TokenService là port cho việc issue/parse JWT. Implementation cụ thể
 // (HS256 với golang-jwt/v5) nằm ở infrastructure/auth.
 type TokenService interface {
-	Issue(userID, username string, isVerify bool) (token string, expiresAt time.Time, err error)
+	Issue(userID, username, role string, isVerify bool) (token string, expiresAt time.Time, err error)
 	Parse(tokenString string) (*auth.Claims, error)
 }

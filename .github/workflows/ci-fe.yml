@@ -37,7 +37,7 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --frozen-lockfile --production=false
         working-directory: client
 
       - name: Lint
@@ -61,7 +61,7 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --frozen-lockfile --production=false
         working-directory: client
 
       - name: Typecheck
@@ -85,7 +85,7 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --frozen-lockfile --production=false
         working-directory: client
 
       - name: Test
