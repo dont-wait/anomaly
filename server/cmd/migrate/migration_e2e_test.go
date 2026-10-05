@@ -57,8 +57,8 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read migration version: %v", err)
 	}
-	if version != 3 || dirty {
-		t.Fatalf("migration state = version %d dirty %t, want version 3 dirty false", version, dirty)
+	if version != 4 || dirty {
+		t.Fatalf("migration state = version %d dirty %t, want version 4 dirty false", version, dirty)
 	}
 
 	mongoConfig := &domain.MongoConfig{MongoURI: mongoURI, MongoDBName: databaseName}
@@ -83,9 +83,12 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 	repository := mongorepo.NewAccountAggregateRepository(client, databaseName)
 	register := commands.NewRegisterAccountCommandHandler(repository, repository)
 	account, err := register.Handle(ctx, commands.RegisterAccountCommand{
-		Username: "migration-e2e",
-		Email:    fmt.Sprintf("migration-%d@example.com", time.Now().UnixNano()),
-		Password: "migration-e2e-password",
+		Username:       "migration-e2e",
+		CCCDNumber:     "123456789012",
+		CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+		DOB:            time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+		Email:          fmt.Sprintf("migration-%d@example.com", time.Now().UnixNano()),
+		Password:       "migration-e2e-password",
 	})
 	if err != nil {
 		t.Fatalf("register account against migrated schema: %v", err)
@@ -101,7 +104,7 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 		t.Fatalf("verify account against migrated schema: %v", err)
 	}
 
-	if err := runner.Steps(-3); err != nil {
+	if err := runner.Steps(-4); err != nil {
 		t.Fatalf("migrate down: %v", err)
 	}
 	if _, _, err := runner.Version(); !errors.Is(err, migrate.ErrNilVersion) {

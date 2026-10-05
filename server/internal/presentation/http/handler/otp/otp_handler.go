@@ -38,12 +38,21 @@ func otpErrorStatus(err error) int {
 	}
 }
 
-type requestOTPRequest struct {
-	Email string `json:"email"`
+func otpErrorCode(err error) httpx.ErrorCode {
+	switch {
+	case errors.Is(err, otpdomain.ErrOTPExpired):
+		return httpx.ErrorCodeOTPExpired
+	case errors.Is(err, otpdomain.ErrOTPInvalid):
+		return httpx.ErrorCodeOTPInvalid
+	case errors.Is(err, accountdomain.ErrInvalidEmail):
+		return httpx.ErrorCodeInvalidEmail
+	default:
+		return httpx.ErrorCodeForStatus(otpErrorStatus(err))
+	}
 }
 
-type requestOTPResponse struct {
-	Message string `json:"message"`
+type requestOTPRequest struct {
+	Email string `json:"email"`
 }
 
 func (h *Handler) RequestOTP(w http.ResponseWriter, r *http.Request) {
@@ -59,20 +68,16 @@ func (h *Handler) RequestOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.request.Handle(r.Context(), appotp.RequestOTPCommand{Email: req.Email}); err != nil {
-		httpx.WriteError(w, h.logger, err, otpErrorStatus)
+		httpx.WriteError(w, h.logger, err, otpErrorStatus, otpErrorCode)
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, requestOTPResponse{Message: "otp sent"})
+	httpx.WriteSuccess(w, http.StatusOK, "OTP sent", map[string]any{})
 }
 
 type verifyOTPRequest struct {
 	Email string `json:"email"`
 	Code  string `json:"code"`
-}
-
-type verifyOTPResponse struct {
-	Verified bool `json:"verified"`
 }
 
 func (h *Handler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
@@ -88,9 +93,9 @@ func (h *Handler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.verify.Handle(r.Context(), appotp.VerifyOTPCommand{Email: req.Email, Code: req.Code}); err != nil {
-		httpx.WriteError(w, h.logger, err, otpErrorStatus)
+		httpx.WriteError(w, h.logger, err, otpErrorStatus, otpErrorCode)
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, verifyOTPResponse{Verified: true})
+	httpx.WriteSuccess(w, http.StatusOK, "OTP verified", map[string]bool{"verified": true})
 }

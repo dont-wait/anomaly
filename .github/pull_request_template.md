@@ -27,7 +27,11 @@ Closes #
 ## Validation
 <!-- Check every affected area and replace placeholders with the exact commands you ran before opening this PR. Remove lines that are not relevant. -->
 
-### Frontend workspace (`client/`)
+### Frontend apps (`client/mobile/` and `client/desktop/`)
+
+Install the shared workspace dependencies once from `client/`. These root
+commands run the corresponding script in both frontend apps:
+
 - [ ] `corepack enable`
 - [ ] `yarn install --immutable`
 - [ ] `yarn format`
@@ -36,7 +40,13 @@ Closes #
 - [ ] `yarn test`
 - [ ] `yarn build`
 
-### Tauri / Rust (`client/mobile/src-tauri/` or `client/desktop/src-tauri/`)
+If a change only affects one app, use the matching workspace command from
+`client/`, for example `yarn workspace anomaly-desktop test`.
+
+### Tauri / Rust (`client/mobile/src-tauri/` and `client/desktop/src-tauri/`)
+
+Run these commands in each affected app's `src-tauri/` directory:
+
 - [ ] `cargo fmt --check`
 - [ ] `cargo clippy --all-targets -- -D warnings`
 - [ ] `cargo test`

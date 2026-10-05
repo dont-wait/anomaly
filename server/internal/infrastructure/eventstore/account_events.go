@@ -95,7 +95,11 @@ func applyEvent(
 
 func upcastAccountCreated(p accountCreatedPayload, metadata replayEventMetadata) accountdomain.UserAccount {
 	if p.Account != nil {
-		return *p.Account
+		account := *p.Account
+		if account.Role == "" {
+			account.Role = accountdomain.AccountRoleUser
+		}
+		return account
 	}
 
 	customerID := legacyObjectID("customer", p.Id)
@@ -107,6 +111,7 @@ func upcastAccountCreated(p accountCreatedPayload, metadata replayEventMetadata)
 		Email:        p.Email,
 		PasswordHash: p.PasswordHash,
 		Type:         accountdomain.AccountTypePayment,
+		Role:         accountdomain.AccountRoleUser,
 		Currency:     accountdomain.CurrencyVND,
 		Status:       accountdomain.AccountStatusActive,
 		Version:      legacyVersion(metadata.Revision),

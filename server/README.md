@@ -135,6 +135,8 @@ tài khoản. `cmd/seed` chỉ khởi tạo kết nối, dependency và gọi ru
 
 Tài khoản demo: CCCD `079123456789`, username `demo.customer`, email
 `demo.customer@example.com`, mật khẩu `DemoLocal@123`, số dư `128.540.000 VND`.
+Tài khoản quản trị local: CCCD `001234567890`, username `admin.staff`, mật khẩu
+`admin123`.
 Đây là dữ liệu công khai chỉ dùng cho local/dev. Lệnh yêu cầu `APP_ENV` là
 `development`, `dev`, hoặc `local` và `SEED_DEMO_ENABLED=true`.
 
@@ -142,6 +144,8 @@ Seed đi qua command đăng ký của ứng dụng. Chạy lại không tạo t�
 tài khoản khớp sẽ được đưa về số dư demo. Nếu thông tin hoặc mật khẩu tài khoản
 đã tồn tại khác dữ liệu seed, lệnh báo lỗi thay vì ghi đè. Tài khoản từng seed
 bằng `SEED_*` trước đây cũng phải khớp dữ liệu trong code để chạy lại thành công.
+Thông báo lỗi liệt kê field không khớp; cần sửa hoặc xóa dữ liệu local tương ứng
+trước khi chạy lại, seeder không tự nâng một account `user` thành `admin`.
 Dashboard lấy profile bằng `GET /api/auth/me` sau khi login.
 
 ### 4. Chạy worker local
@@ -202,6 +206,26 @@ trong collection được giữ nguyên.
 
 ## API Summary
 
+JSON success responses use `{ "status": number, "message": string, "data": object | array }`.
+JSON errors use `{ "status": number, "title": string, "errors": array }`.
+Binary media downloads are returned as binary responses instead of JSON.
+
+Example error response:
+
+```json
+{
+  "status": 400,
+  "title": "Bad Request",
+  "errors": [
+    {
+      "code": "INVALID_EMAIL",
+      "field": "email",
+      "detail": "invalid email"
+    }
+  ]
+}
+```
+
 Account:
 
 - `POST /api/auth/register`
@@ -211,6 +235,10 @@ Account:
 - `GET /api/accounts`
 - `GET /api/accounts/{id}`
 - `GET /api/accounts/by-email/{email}`
+
+`GET /api/accounts` chỉ dành cho admin. Hai endpoint tra cứu account cho phép
+admin hoặc chính chủ. Role được ký trong JWT; thay đổi role trong database có
+hiệu lực với token phát hành mới, token cũ còn hiệu lực đến thời điểm `exp`.
 
 Media:
 
@@ -243,6 +271,9 @@ Chạy API end-to-end tests bằng Hurl sau khi API, MongoDB và RustFS đã s�
 ```bash
 make test-api
 ```
+
+Suite yêu cầu admin seed đã tồn tại. Mặc định dùng CCCD `001234567890` và mật
+khẩu `admin123`; có thể override bằng `ADMIN_CCCD` và `ADMIN_PASSWORD`.
 
 Đổi endpoint khi cần:
 

@@ -1,6 +1,6 @@
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
-import { requestJson, ApiError } from "@/shared/lib/http";
+import { requestApi, ApiError } from "@/shared/lib/http";
 import type { AuthUser } from "@/features/auth/api";
 
 export interface RegisterInput {
@@ -21,7 +21,7 @@ export async function registerAccount(
   signal?: AbortSignal,
   idempotencyKey?: string,
 ) {
-  const user = await requestJson<AuthUser>(API_ENDPOINTS.AUTH.REGISTER, {
+  const user = await requestApi<AuthUser>(API_ENDPOINTS.AUTH.REGISTER, {
     method: "POST",
     body: { ...input, idempotencyKey },
     signal,
@@ -38,16 +38,13 @@ export async function uploadMedia(
   const body = new FormData();
   body.append("key", key);
   body.append("file", file);
-  const result = await requestJson<{ key: string }>(
-    API_ENDPOINTS.MEDIA.UPLOAD,
-    {
-      method: "POST",
-      body,
-      token,
-      signal,
-      timeoutMs: 120000,
-    },
-  );
+  const result = await requestApi<{ key: string }>(API_ENDPOINTS.MEDIA.UPLOAD, {
+    method: "POST",
+    body,
+    token,
+    signal,
+    timeoutMs: 120000,
+  });
   if (result?.key !== key)
     throw new ApiError(0, "Phản hồi tải tệp không hợp lệ.");
   return result.key;
@@ -58,7 +55,7 @@ export async function verifyAccount(
   token: string,
   signal?: AbortSignal,
 ) {
-  const user = await requestJson<AuthUser>(API_ENDPOINTS.ACCOUNTS.VERIFY(id), {
+  const user = await requestApi<AuthUser>(API_ENDPOINTS.ACCOUNTS.VERIFY(id), {
     method: "POST",
     body: media,
     token,
@@ -70,6 +67,27 @@ export async function verifyAccount(
 }
 export function registrationError(error: unknown) {
   if (error instanceof ApiError) {
+    if (
+      error.hasCode("USER_ALREADY_EXISTS") ||
+      error.hasCode("IDEMPOTENCY_CONFLICT")
+    )
+      return "Email, tên tài khoản hoặc CCCD đã được sử dụng. Vui lòng kiểm tra lại hoặc đăng nhập.";
+    if (error.hasCode("INVALID_EMAIL"))
+      return "Địa chỉ email không hợp lệ. Vui lòng kiểm tra lại.";
+    if (error.hasCode("INVALID_CCCD"))
+      return "Số CCCD phải gồm đúng 12 chữ số.";
+    if (error.hasCode("WEAK_PASSWORD"))
+      return "Mật khẩu phải có ít nhất 8 ký tự.";
+    if (error.hasCode("INVALID_USERNAME"))
+      return "Vui lòng nhập tên tài khoản.";
+    if (error.hasCode("INVALID_DATE"))
+      return "Ngày sinh hoặc ngày cấp CCCD không hợp lệ.";
+    if (error.hasCode("INVALID_VERIFY_PAYLOAD"))
+      return "Vui lòng hoàn tất đầy đủ thông tin xác thực.";
+    if (error.hasCode("INVALID_TOKEN") || error.hasCode("MISSING_AUTH_HEADER"))
+      return "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại để tiếp tục.";
+    if (error.hasCode("FILE_TOO_LARGE"))
+      return "Tệp quá lớn. Vui lòng chọn ảnh hoặc quay video ngắn hơn.";
     if (error.status === HTTP_STATUS.CONFLICT)
       return "Email, tên tài khoản hoặc CCCD đã được sử dụng. Vui lòng kiểm tra lại hoặc đăng nhập.";
     if (

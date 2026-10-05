@@ -2,8 +2,9 @@ package seeder
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
@@ -30,6 +31,7 @@ func seedAccounts(ctx context.Context, deps Dependencies) error {
 
 type accountSeed struct {
 	Username       string
+	Role           accountdomain.AccountRole
 	CCCD           string
 	Email          string
 	Password       string
@@ -42,8 +44,9 @@ type accountSeed struct {
 // Demo data is public and intended only for local development.
 // Add accounts here with unique identities and stable idempotency keys.
 func demoAccounts() []accountSeed {
-	return []accountSeed{{
+	seeds := []accountSeed{{
 		Username:       "demo.customer",
+		Role:           accountdomain.AccountRoleUser,
 		CCCD:           "079123456789",
 		Email:          "demo.customer@example.com",
 		Password:       "DemoLocal@123",
@@ -52,6 +55,21 @@ func demoAccounts() []accountSeed {
 		CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
 		Balance:        128540000,
 	}}
+	adminPassword := os.Getenv("ANOMALY_DEMO_ADMIN_PASSWORD")
+	if adminPassword != "" {
+		seeds = append(seeds, accountSeed{
+			Username:       "admin.staff",
+			Role:           accountdomain.AccountRoleAdmin,
+			CCCD:           "001234567890",
+			Email:          "admin.staff@example.com",
+			Password:       adminPassword,
+			IdempotencyKey: "00000000-0000-4000-8000-000000000002",
+			DOB:            time.Date(1990, 6, 15, 0, 0, 0, 0, time.UTC),
+			CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			Balance:        0,
+		})
+	}
+	return seeds
 }
 
 func seedAccount(ctx context.Context, repo Repository, seed accountSeed) error {
@@ -81,6 +99,7 @@ func seedAccount(ctx context.Context, repo Repository, seed accountSeed) error {
 	}
 
 	account.Balance = accountdomain.Balance{Current: seed.Balance}
+	account.Role = seed.role()
 	if err := repo.Save(ctx, account); err != nil {
 		return fmt.Errorf("save seed balance: %w", err)
 	}
@@ -98,11 +117,12 @@ func reconcileExistingSeed(
 		return err
 	}
 
-	if account.Balance.Current == seed.Balance {
+	if account.Balance.Current == seed.Balance && account.EffectiveRole() == seed.role() {
 		return nil
 	}
 
 	account.Balance = accountdomain.Balance{Current: seed.Balance}
+	account.Role = seed.role()
 	account.Version++
 	now := time.Now().UTC()
 	account.UpdatedAt = now
@@ -114,11 +134,38 @@ func reconcileExistingSeed(
 }
 
 func validateExistingSeed(account *accountdomain.UserAccount, seed accountSeed) error {
-	if account.Username != seed.Username || account.Email != seed.Email || account.Customer == nil ||
-		account.Customer.Profile.FullName != seed.Username || account.Customer.Profile.Email != seed.Email ||
-		account.Customer.Identity.Type != "cccd" || account.Customer.Identity.Number != seed.CCCD ||
-		bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(seed.Password)) != nil {
-		return errors.New("existing account does not match configured seed credentials")
+	mismatches := make([]string, 0, 6)
+	if account.Username != seed.Username {
+		mismatches = append(mismatches, "username")
+	}
+	if account.Email != seed.Email {
+		mismatches = append(mismatches, "email")
+	}
+	if account.EffectiveRole() != seed.role() {
+		mismatches = append(mismatches, "role")
+	}
+	if bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(seed.Password)) != nil {
+		mismatches = append(mismatches, "password")
+	}
+	if account.Customer == nil {
+		mismatches = append(mismatches, "customer")
+	} else {
+		if account.Customer.Profile.FullName != seed.Username || account.Customer.Profile.Email != seed.Email {
+			mismatches = append(mismatches, "customer profile")
+		}
+		if account.Customer.Identity.Type != "cccd" || account.Customer.Identity.Number != seed.CCCD {
+			mismatches = append(mismatches, "customer identity")
+		}
+	}
+	if len(mismatches) > 0 {
+		return fmt.Errorf("existing account does not match configured seed: %s", strings.Join(mismatches, ", "))
 	}
 	return nil
+}
+
+func (seed accountSeed) role() accountdomain.AccountRole {
+	if seed.Role == "" {
+		return accountdomain.AccountRoleUser
+	}
+	return seed.Role
 }
