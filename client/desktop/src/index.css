@@ -46,56 +46,10 @@
 
 .admin-login-page {
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: var(--admin-space-6);
   min-height: 100vh;
+  place-items: center;
   padding: var(--admin-space-4) var(--admin-space-6);
   background: var(--admin-background);
-}
-
-.admin-login-systembar,
-.admin-login-systemfooter {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--admin-space-4);
-  color: var(--admin-text-muted);
-  font-family: var(--admin-font-mono);
-  font-size: 10px;
-  line-height: 16px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.admin-login-systembar {
-  min-height: 32px;
-  padding-bottom: var(--admin-space-3);
-  border-bottom: 1px solid var(--admin-border);
-}
-
-.admin-login-systemfooter {
-  padding-top: var(--admin-space-3);
-  border-top: 1px solid var(--admin-border);
-}
-
-.admin-login-system-id,
-.admin-login-system-status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--admin-space-2);
-}
-
-.admin-login-system-id {
-  color: var(--admin-text-secondary);
-  font-weight: 600;
-}
-
-.admin-login-system-status::before {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--admin-radius-full);
-  background: var(--admin-success);
-  content: "";
 }
 
 .admin-login-card {
@@ -334,16 +288,6 @@
     padding: var(--admin-space-5);
   }
 
-  .admin-login-systembar,
-  .admin-login-systemfooter {
-    font-size: 9px;
-  }
-
-  .admin-login-systembar {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: var(--admin-space-1);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
