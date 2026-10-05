@@ -60,6 +60,11 @@ export function LoginPage() {
 
   return (
     <main className="admin-login-page">
+      <div className="admin-login-systembar" aria-label="Trạng thái hệ thống">
+        <span className="admin-login-system-id">ANOMALY // ADMIN CONSOLE</span>
+        <span>AUTH_GATEWAY / V1.0</span>
+      </div>
+
       <section className="admin-login-card" aria-labelledby="login-title">
         <div className="admin-brand" aria-label="AnomalyBank Admin Console">
           <span className="admin-brand-mark" aria-hidden="true">
@@ -181,6 +186,11 @@ export function LoginPage() {
         </p>
         <p className="admin-login-footer">Anomaly Admin Console · v0.1.0</p>
       </section>
+
+      <div className="admin-login-systemfooter">
+        <span className="admin-login-system-status">SYSTEM READY</span>
+        <span>INTERNAL ACCESS ONLY</span>
+      </div>
     </main>
   );
 }
