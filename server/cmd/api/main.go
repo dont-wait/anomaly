@@ -66,12 +66,7 @@ func main() {
 	otpHandler := composition.NewOTPHandler(rdb, config.SMTPConfig, *logger)
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, tokenSvc)
-
-	mux.HandleFunc("GET /health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
-		w.WriteHeader(netHTTP.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	})
+	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, tokenSvc, config.DocsConfig.SwaggerEnabled)
 
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
 	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(

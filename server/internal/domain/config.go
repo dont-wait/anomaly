@@ -66,6 +66,7 @@ type Config struct {
 	RustFSConfig     *RustFSConfig
 	RedisConfig      *RedisConfig
 	SMTPConfig       *SMTPConfig
+	DocsConfig       *DocsConfig
 }
 
 func (l *Loader) LoadAllConfig() *Config {
@@ -76,6 +77,18 @@ func (l *Loader) LoadAllConfig() *Config {
 		RustFSConfig:     l.LoadRustFSConfig(),
 		RedisConfig:      l.LoadRedisConfig(),
 		SMTPConfig:       l.LoadSMTPConfig(),
+		DocsConfig:       l.LoadDocsConfig(),
+	}
+}
+
+type DocsConfig struct {
+	SwaggerEnabled bool
+}
+
+func (l *Loader) LoadDocsConfig() *DocsConfig {
+	l.logger().Info().Msg("Load docs config")
+	return &DocsConfig{
+		SwaggerEnabled: l.LoadEnvBool("SWAGGER_ENABLED", false),
 	}
 }
 
@@ -200,6 +213,19 @@ func (l *Loader) LoadEnvOr(key, fallback string) string {
 		return val
 	}
 	return fallback
+}
+
+func (l *Loader) LoadEnvBool(key string, fallback bool) bool {
+	val, exists := os.LookupEnv(key)
+	if !exists || val == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(val)
+	if err != nil {
+		l.logger().Warn().Err(err).Str("key", key).Msg("invalid boolean, using fallback")
+		return fallback
+	}
+	return parsed
 }
 
 type AuthConfig struct {
