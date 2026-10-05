@@ -75,9 +75,12 @@ describe("AdminShell", () => {
       name: "Mở rộng sidebar",
     });
     expect(expandButton.getAttribute("aria-pressed")).toBe("true");
-    expect(
-      screen.getAllByRole("img", { name: "Tài khoản Admin Staff" }),
-    ).toHaveLength(1);
+    const avatars = screen.getAllByRole("img", {
+      name: "Tài khoản Admin Staff",
+    });
+    expect(avatars).toHaveLength(2);
+    expect(avatars[0]?.className).toContain("hidden");
+    expect(avatars[1]?.className).not.toContain("hidden");
     expect(
       screen.queryByRole("button", { name: "Thu gọn sidebar" }),
     ).toBeNull();

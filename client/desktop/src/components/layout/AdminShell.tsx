@@ -18,7 +18,7 @@ import {
   faPlay,
   faTerminal,
   faTriangleExclamation,
-  faUserCircle,
+  faCircleUser,
 } from "@fortawesome/free-solid-svg-icons";
 import {
   clearAdminSession,
@@ -224,7 +224,7 @@ export function AdminShell({
               aria-label={`Tài khoản ${user.fullName}`}
               title={user.fullName}
             >
-              <FontAwesomeIcon icon={faUserCircle} />
+              <FontAwesomeIcon icon={faCircleUser} />
             </div>
             <div
               className={`min-w-0 flex-1 max-[900px]:hidden ${isCollapsed ? "hidden" : "grid"}`}
@@ -318,7 +318,7 @@ export function AdminShell({
               aria-label={`Tài khoản ${user.fullName}`}
               title={`${user.fullName} · ${user.email}`}
             >
-              <FontAwesomeIcon icon={faUserCircle} aria-hidden="true" />
+              <FontAwesomeIcon icon={faCircleUser} aria-hidden="true" />
             </div>
             <button
               className="grid h-9 w-9 place-items-center rounded-(--admin-radius-md) border border-(--admin-border) text-[13px] text-(--admin-text-muted) hover:bg-(--admin-surface-hover) hover:text-(--admin-text) focus-visible:outline focus-visible:outline-offset-1 focus-visible:outline-(--admin-primary)"
