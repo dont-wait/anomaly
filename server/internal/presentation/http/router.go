@@ -7,6 +7,7 @@ import (
 	account "github.com/dont-wait/anomaly/internal/presentation/http/handler/account"
 	media "github.com/dont-wait/anomaly/internal/presentation/http/handler/media"
 	otp "github.com/dont-wait/anomaly/internal/presentation/http/handler/otp"
+	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 )
 
 // NewRouter đăng ký routes cho account handler, media handler, và otp handler.
@@ -14,10 +15,22 @@ import (
 // chứ không phải concrete *auth.TokenService — tránh presentation phụ
 // thuộc trực tiếp vào infrastructure, đúng dependency rule của Clean
 // Architecture.
-func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, tokenSvc queries.TokenService) *http.ServeMux {
-	account.RegisterRoutes(mux, accountHandler, tokenSvc)
-	media.RegisterRoutes(mux, mediaHandler)
-	otp.RegisterRoutes(mux, otpHandler)
+func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, tokenSvc queries.TokenService, swaggerEnabled bool) *http.ServeMux {
+	router := openapi.NewRegistry(mux, swaggerEnabled)
+	account.RegisterRoutes(router, accountHandler, tokenSvc)
+	media.RegisterRoutes(router, mediaHandler)
+	otp.RegisterRoutes(router, otpHandler)
+	router.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}, openapi.Operation{
+		ID:                  "healthCheck",
+		Summary:             "Health check",
+		Tags:                []string{"Health"},
+		Response:            "OK",
+		ResponseContentType: "text/plain",
+	})
+	router.RegisterDocs()
 
 	return mux
 }
