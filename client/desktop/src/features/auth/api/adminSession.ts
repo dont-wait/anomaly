@@ -6,7 +6,12 @@ export interface AdminSession {
   expiresAt: string;
 }
 
-interface AccountProfile {
+export interface AdminProfile {
+  id: string;
+  accountNo: string;
+  username: string;
+  fullName: string;
+  email: string;
   role: string;
 }
 
@@ -50,11 +55,31 @@ export function readAdminSession(): AdminSession | null {
   }
 }
 
-export type AdminSessionVerification = "valid" | "invalid" | "unavailable";
+export type AdminSessionVerification =
+  | { status: "valid"; profile: AdminProfile }
+  | { status: "invalid" | "unavailable" };
+
+function isAdminProfile(value: unknown): value is AdminProfile {
+  if (!value || typeof value !== "object") return false;
+  const profile = value as Partial<AdminProfile>;
+  return (
+    typeof profile.id === "string" &&
+    profile.id !== "" &&
+    typeof profile.accountNo === "string" &&
+    profile.accountNo !== "" &&
+    typeof profile.username === "string" &&
+    profile.username !== "" &&
+    typeof profile.fullName === "string" &&
+    profile.fullName !== "" &&
+    typeof profile.email === "string" &&
+    profile.email !== "" &&
+    typeof profile.role === "string"
+  );
+}
 
 async function verifyStoredAdminSession(): Promise<AdminSessionVerification> {
   const session = readAdminSession();
-  if (!session) return "invalid";
+  if (!session) return { status: "invalid" };
 
   let response: Response;
   try {
@@ -62,30 +87,34 @@ async function verifyStoredAdminSession(): Promise<AdminSessionVerification> {
       headers: { Authorization: `Bearer ${session.accessToken}` },
     });
   } catch {
-    return "unavailable";
+    return { status: "unavailable" };
   }
 
   if (!response.ok) {
     if (
-      response.status === HTTP_STATUS.UNAUTHORIZED ||
-      response.status === HTTP_STATUS.FORBIDDEN ||
-      response.status === HTTP_STATUS.NOT_FOUND
-    ) {
-      clearAdminSession();
-    }
-    return response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR ||
+      response.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR ||
       response.status === HTTP_STATUS.TOO_MANY_REQUESTS
-      ? "unavailable"
-      : "invalid";
+    ) {
+      return { status: "unavailable" };
+    }
+    clearAdminSession();
+    return { status: "invalid" };
   }
   try {
-    const body = (await response.json()) as ApiSuccess<AccountProfile>;
-    if (body.data?.role === ACCOUNT_ROLE.ADMIN) return "valid";
+    const body = (await response.json()) as ApiSuccess<unknown>;
+    if (!isAdminProfile(body.data)) {
+      clearAdminSession();
+      return { status: "invalid" };
+    }
+    if (body.data.role === ACCOUNT_ROLE.ADMIN) {
+      return { status: "valid", profile: body.data };
+    }
   } catch {
-    return "unavailable";
+    clearAdminSession();
+    return { status: "invalid" };
   }
   clearAdminSession();
-  return "invalid";
+  return { status: "invalid" };
 }
 
 export function verifyAdminSession(): Promise<AdminSessionVerification> {
