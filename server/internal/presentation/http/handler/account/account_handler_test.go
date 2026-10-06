@@ -16,6 +16,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
 	handleraccount "github.com/dont-wait/anomaly/internal/presentation/http/handler/account"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
+	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 )
 
 type memoryAccountRepository struct {
@@ -171,7 +172,8 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	adminToken := adminAuth.Data["token"].(string)
 
 	mux := http.NewServeMux()
-	handleraccount.RegisterRoutes(mux, handler, tokenService)
+	router := openapi.NewRegistry(mux, false)
+	handleraccount.RegisterRoutes(router, handler, tokenService)
 
 	accountsAsUser := routeRequest(t, mux, http.MethodGet, "/api/accounts", "", token)
 	if accountsAsUser.Code != http.StatusForbidden {

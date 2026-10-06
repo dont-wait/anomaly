@@ -180,6 +180,44 @@ func TestLoaderLoadEnvOr(t *testing.T) {
 	})
 }
 
+func TestLoaderLoadEnvBool(t *testing.T) {
+	t.Run("uses fallback when missing", func(t *testing.T) {
+		t.Setenv("SWAGGER_ENABLED", "")
+		if got := (&Loader{}).LoadEnvBool("SWAGGER_ENABLED", false); got {
+			t.Fatal("LoadEnvBool() = true, want false")
+		}
+	})
+
+	t.Run("parses true and false", func(t *testing.T) {
+		t.Setenv("SWAGGER_ENABLED", "true")
+		if got := (&Loader{}).LoadEnvBool("SWAGGER_ENABLED", false); !got {
+			t.Fatal("LoadEnvBool() = false, want true")
+		}
+		t.Setenv("SWAGGER_ENABLED", "false")
+		if got := (&Loader{}).LoadEnvBool("SWAGGER_ENABLED", true); got {
+			t.Fatal("LoadEnvBool() = true, want false")
+		}
+	})
+
+	t.Run("uses fallback for invalid value", func(t *testing.T) {
+		t.Setenv("SWAGGER_ENABLED", "sometimes")
+		if got := (&Loader{}).LoadEnvBool("SWAGGER_ENABLED", true); !got {
+			t.Fatal("LoadEnvBool() = false, want true")
+		}
+	})
+}
+
+func TestLoaderLoadDocsConfigDefaultsToDisabled(t *testing.T) {
+	t.Setenv("SWAGGER_ENABLED", "")
+	config := (&Loader{}).LoadDocsConfig()
+	if config == nil {
+		t.Fatal("LoadDocsConfig() returned nil")
+	}
+	if config.SwaggerEnabled {
+		t.Fatal("SwaggerEnabled = true, want false")
+	}
+}
+
 func TestFindProjectRoot(t *testing.T) {
 	tmpDir := t.TempDir()
 	writeTestFile(t, filepath.Join(tmpDir, "go.mod"), "module example.com/test\n")
