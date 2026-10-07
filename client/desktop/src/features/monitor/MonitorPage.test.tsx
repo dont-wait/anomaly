@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { setMockMonitorFailure } from "./api/monitorApi";
 import { MonitorPage } from "./MonitorPage";
+import { MonitorDashboardSkeleton } from "./components/MonitorDashboardSkeleton";
+import { RiskTrendChart } from "./components/RiskTrendChart";
 
 vi.mock("react-chartjs-2", () => ({
   Line: (props: { "aria-label"?: string }) => <canvas data-testid="chart-canvas" aria-label={props["aria-label"]} />,
@@ -17,10 +19,47 @@ describe("MonitorPage", () => {
 
     expect(await screen.findByRole("heading", { name: /Giám sát rủi ro/i })).toBeTruthy();
     expect(await screen.findByText("128.500.000 ₫")).toBeTruthy();
+    expect(screen.getByText(/PEAK 100pt/)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Risk Trend Timeline (24h)" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Top 5 tài khoản rủi ro cao/i })).toBeTruthy();
     expect(screen.getAllByText("ACC-001234")).toHaveLength(2);
     expect(screen.getByText("Realtime Alert Stream")).toBeTruthy();
+  });
+
+  it("renders the reusable dashboard skeleton", () => {
+    const { container } = render(<MonitorPage />);
+
+    expect(screen.queryByRole("status", { name: "Đang tải dashboard" })).toBeNull();
+
+    const skeleton = render(<MonitorDashboardSkeleton />);
+    expect(skeleton.getByRole("status", { name: "Đang tải dashboard" })).toBeTruthy();
+    expect(skeleton.container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(10);
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull();
+  });
+
+  it("shows the dashboard skeleton when the initial request takes longer", async () => {
+    vi.useFakeTimers();
+    render(<MonitorPage />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120);
+    });
+
+    expect(screen.getByRole("status", { name: "Đang tải dashboard" })).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(220);
+    });
+
+    expect(screen.getByText("128.500.000 ₫")).toBeTruthy();
+  });
+
+  it("renders an empty state when the risk series has no data", () => {
+    render(<RiskTrendChart series={[]} />);
+
+    expect(screen.getByRole("status", { name: "Chưa có dữ liệu" })).toBeTruthy();
+    expect(screen.getByText("Thử chọn khoảng thời gian khác.")).toBeTruthy();
+    expect(screen.queryByTestId("chart-canvas")).toBeNull();
   });
 
   it("changes the time range and shows an empty state for long ranges", async () => {
@@ -46,7 +85,7 @@ describe("MonitorPage", () => {
     render(<MonitorPage />);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(180);
+      await vi.advanceTimersByTimeAsync(340);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Làm mới" }));

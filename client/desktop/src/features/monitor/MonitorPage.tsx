@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowDown,
@@ -10,6 +10,7 @@ import {
 import { navigate, routes } from "@/app/routes";
 import { getMonitorDashboard } from "./api/monitorApi";
 import { RiskTrendChart } from "./components/RiskTrendChart";
+import { MonitorDashboardSkeleton } from "./components/MonitorDashboardSkeleton";
 import {
   ranges,
   type AccountRisk,
@@ -25,6 +26,8 @@ const surface = "bg-(--admin-surface)";
 const surfaceSubtle = "bg-(--admin-surface-subtle)";
 const surfaceHover = "hover:bg-(--admin-surface-hover)";
 const mono = "font-(family-name:--admin-font-mono)";
+const LOADING_SKELETON_DELAY_MS = 100;
+const MIN_SKELETON_VISIBLE_MS = 240;
 
 function MetricCard({ metric }: { metric: Metric }) {
   const valueClass =
@@ -178,19 +181,6 @@ function RealtimeAlertStream({ events }: { events: AlertEvent[] }) {
   );
 }
 
-function DashboardSkeleton() {
-  return (
-    <div className="grid gap-1" aria-label="Đang tải dashboard">
-      <div className={`${surfaceSubtle} h-21 animate-pulse rounded-(--admin-radius-md)`} />
-      <div className="grid grid-cols-2 gap-1 lg:grid-cols-5">
-        {Array.from({ length: 5 }, (_, index) => <div key={index} className={`${surfaceSubtle} h-23 animate-pulse rounded-(--admin-radius-md)`} />)}
-      </div>
-      <div className="grid grid-cols-12 gap-1"><div className={`${surfaceSubtle} col-span-12 h-75 animate-pulse rounded-(--admin-radius-md) xl:col-span-8`} /><div className={`${surfaceSubtle} col-span-12 h-75 animate-pulse rounded-(--admin-radius-md) xl:col-span-4`} /></div>
-      <div className="grid grid-cols-12 gap-1"><div className={`${surfaceSubtle} col-span-12 h-80 animate-pulse rounded-(--admin-radius-md) lg:col-span-7`} /><div className={`${surfaceSubtle} col-span-12 h-80 animate-pulse rounded-(--admin-radius-md) lg:col-span-5`} /></div>
-    </div>
-  );
-}
-
 function DashboardError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <section className={`${surfaceSubtle} grid min-h-55 place-items-center rounded-(--admin-radius-md) p-6 text-center`} role="alert">
@@ -208,12 +198,36 @@ export function MonitorPage() {
   const [range, setRange] = useState<TimeRange>("24h");
   const [response, setResponse] = useState<MonitorDashboardResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  const [skeletonForRequest, setSkeletonForRequest] = useState(true);
+  const skeletonOnLoadRef = useRef(true);
+  const skeletonVisibleAtRef = useRef<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [requestVersion, setRequestVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
+    let skeletonTimer: number | undefined;
+    let finishTimer: number | undefined;
+    let requestFailed = false;
+
+    if (skeletonOnLoadRef.current) {
+      skeletonTimer = window.setTimeout(() => {
+        if (!active) return;
+        skeletonVisibleAtRef.current = performance.now();
+        setShowSkeleton(true);
+      }, LOADING_SKELETON_DELAY_MS);
+    }
+
+    const finishLoading = () => {
+      skeletonOnLoadRef.current = false;
+      skeletonVisibleAtRef.current = null;
+      setSkeletonForRequest(false);
+      setShowSkeleton(false);
+      setIsLoading(false);
+      setIsRefreshing(false);
+    };
 
     getMonitorDashboard(range)
       .then((nextResponse) => {
@@ -222,17 +236,33 @@ export function MonitorPage() {
       })
       .catch((requestError: unknown) => {
         if (!active) return;
+        requestFailed = true;
         setResponse(null);
         setError(requestError instanceof Error ? requestError.message : "Vui lòng thử lại sau.");
       })
       .finally(() => {
         if (!active) return;
-        setIsLoading(false);
-        setIsRefreshing(false);
+        if (skeletonTimer !== undefined) window.clearTimeout(skeletonTimer);
+        if (requestFailed) {
+          finishLoading();
+          return;
+        }
+        const skeletonVisibleAt = skeletonVisibleAtRef.current;
+        const remainingVisibleTime = skeletonVisibleAt === null
+          ? 0
+          : Math.max(0, MIN_SKELETON_VISIBLE_MS - (performance.now() - skeletonVisibleAt));
+
+        if (remainingVisibleTime > 0) {
+          finishTimer = window.setTimeout(finishLoading, remainingVisibleTime);
+        } else {
+          finishLoading();
+        }
       });
 
     return () => {
       active = false;
+      if (skeletonTimer !== undefined) window.clearTimeout(skeletonTimer);
+      if (finishTimer !== undefined) window.clearTimeout(finishTimer);
     };
   }, [range, requestVersion]);
 
@@ -240,6 +270,10 @@ export function MonitorPage() {
     if (isLoading || isRefreshing) return;
     setIsRefreshing(true);
     setIsLoading(true);
+    setShowSkeleton(false);
+    const shouldShowSkeleton = response === null;
+    skeletonOnLoadRef.current = shouldShowSkeleton;
+    setSkeletonForRequest(shouldShowSkeleton);
     setError(null);
     setRequestVersion((version) => version + 1);
   };
@@ -249,6 +283,9 @@ export function MonitorPage() {
     setResponse(null);
     setError(null);
     setIsLoading(true);
+    setShowSkeleton(false);
+    skeletonOnLoadRef.current = true;
+    setSkeletonForRequest(true);
     setRange(nextRange);
   };
 
@@ -256,9 +293,9 @@ export function MonitorPage() {
   const busy = isLoading || isRefreshing;
 
   return (
-    <div className="grid gap-1" aria-label="Dashboard giám sát rủi ro">
+    <div className="grid gap-1" aria-busy={busy} aria-label="Dashboard giám sát rủi ro">
       <MonitorHeader range={range} onRangeChange={changeRange} isRefreshing={busy} onRefresh={refresh} />
-      {error && !snapshot ? <DashboardError message={error} onRetry={refresh} /> : isLoading && !snapshot ? <DashboardSkeleton /> : snapshot ? <>
+      {error && !snapshot ? <DashboardError message={error} onRetry={refresh} /> : showSkeleton && skeletonForRequest ? <MonitorDashboardSkeleton /> : snapshot ? <>
         <div className="grid grid-cols-2 gap-1 lg:grid-cols-5">{snapshot.metrics.map((metric) => <MetricCard key={metric.label} metric={metric} />)}</div>
         <div className="grid grid-cols-12 gap-1"><div className="col-span-12 xl:col-span-8"><RiskTrendChart series={snapshot.timeseries} /></div><div className="col-span-12 xl:col-span-4"><RiskBreakdown snapshot={snapshot} /></div></div>
         <div className="grid grid-cols-12 gap-1"><div className="col-span-12 lg:col-span-7"><RiskAccountsTable accounts={snapshot.accounts} /></div><div className="col-span-12 lg:col-span-5"><RealtimeAlertStream events={snapshot.events} /></div></div>
