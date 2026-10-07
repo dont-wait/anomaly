@@ -42,9 +42,11 @@ func main() {
 	}
 	defer eventstore.Disconnect(es)
 	for ctx.Err() == nil {
-		position, found, err := projection.Position(ctx)
+		position, found, err := loadCheckpoint(ctx, 2*time.Second, projection.Position, func(err error) {
+			log.Error().Err(err).Msg("load banking checkpoint; retrying")
+		})
 		if err != nil {
-			log.Fatal().Err(err).Msg("load banking checkpoint")
+			break
 		}
 		var from esdb.StreamPosition = esdb.Start{}
 		if found {
@@ -59,12 +61,33 @@ func main() {
 			break
 		}
 		log.Error().Err(err).Msg("bank projection stopped; retrying committed checkpoint")
-		timer := time.NewTimer(2 * time.Second)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-		case <-timer.C:
+		if !waitForRetry(ctx, 2*time.Second) {
+			break
 		}
+	}
+}
+
+func loadCheckpoint(ctx context.Context, retryDelay time.Duration, position func(context.Context) (uint64, bool, error), onError func(error)) (uint64, bool, error) {
+	for {
+		checkpoint, found, err := position(ctx)
+		if err == nil {
+			return checkpoint, found, nil
+		}
+		onError(err)
+		if !waitForRetry(ctx, retryDelay) {
+			return 0, false, ctx.Err()
+		}
+	}
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

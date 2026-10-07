@@ -82,11 +82,6 @@ func main() {
 	mux := netHTTP.NewServeMux()
 	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled)
 
-	mux.HandleFunc("GET /health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
-		w.WriteHeader(netHTTP.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	})
-
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
 	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(
 		"CORS_ALLOWED_ORIGINS",

@@ -56,6 +56,19 @@ func TestNewRouterSwaggerRoutesAreConditional(t *testing.T) {
 	})
 }
 
+func TestNewRouterHealth(t *testing.T) {
+	mux := NewRouter(http.NewServeMux(), nil, nil, nil, nil, nil, false)
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /health status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if recorder.Body.String() != "OK" {
+		t.Fatalf("GET /health body = %q, want %q", recorder.Body.String(), "OK")
+	}
+}
+
 func assertRouteStatus(t *testing.T, handler http.Handler, path string, want int) {
 	t.Helper()
 	request := httptest.NewRequest(http.MethodGet, path, nil)
