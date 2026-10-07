@@ -250,7 +250,60 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteSuccess(w, http.StatusOK, "Account verification completed", toAccountResponsePrivate(acc))
 }
 
-// Public endpoints — dùng AccountResponsePublic (không leak KYC URLs).
+func (h *Handler) authorizeAccountRead(w http.ResponseWriter, r *http.Request, acc *accountdomain.UserAccount) bool {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if ok && claims != nil && claims.UserID == acc.Id {
+		return true
+	}
+	if ok && claims != nil {
+		requester, err := h.getByID.Handle(r.Context(), queries.GetAccountByIDQuery{ID: claims.UserID})
+		if err != nil {
+			if !errors.Is(err, accountdomain.ErrAccountNotFound) {
+				httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+				return false
+			}
+		} else if requester.EffectiveRole() == accountdomain.AccountRoleAdmin {
+			return true
+		}
+	}
+	httpx.WriteError(w, h.logger, accountdomain.ErrAccountNotFound, accountErrorStatus, accountErrorCode)
+	return false
+}
+
+// RequireCurrentAdmin checks the persisted role so demoted admins lose access
+// immediately, even while their previously issued JWT remains valid.
+func (h *Handler) RequireCurrentAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := middleware.ClaimsFromContext(r.Context())
+		if !ok || claims == nil {
+			httpx.WriteError(w, h.logger, middleware.ErrInvalidToken, func(error) int {
+				return http.StatusUnauthorized
+			}, func(error) httpx.ErrorCode { return httpx.ErrorCodeInvalidToken })
+			return
+		}
+		account, err := h.getByID.Handle(r.Context(), queries.GetAccountByIDQuery{ID: claims.UserID})
+		if err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, accountdomain.ErrAccountNotFound) {
+				status = http.StatusForbidden
+			}
+			httpx.WriteError(w, h.logger, err, func(error) int { return status }, func(error) httpx.ErrorCode {
+				if status == http.StatusForbidden {
+					return httpx.ErrorCodeForbidden
+				}
+				return httpx.ErrorCodeForStatus(status)
+			})
+			return
+		}
+		if account.EffectiveRole() != accountdomain.AccountRoleAdmin {
+			httpx.WriteError(w, h.logger, middleware.ErrAdminRoleRequired, func(error) int {
+				return http.StatusForbidden
+			}, func(error) httpx.ErrorCode { return httpx.ErrorCodeForbidden })
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -258,6 +311,9 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	acc, err := h.getByID.Handle(r.Context(), queries.GetAccountByIDQuery{ID: id})
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	if !h.authorizeAccountRead(w, r, acc) {
 		return
 	}
 
@@ -270,6 +326,9 @@ func (h *Handler) GetByEmail(w http.ResponseWriter, r *http.Request) {
 	acc, err := h.getByEmail.Handle(r.Context(), queries.GetAccountByEmailQuery{Email: email})
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	if !h.authorizeAccountRead(w, r, acc) {
 		return
 	}
 

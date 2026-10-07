@@ -1,0 +1,17 @@
+[
+  {
+    "collMod": "accounts",
+    "validator": {},
+    "validationLevel": "off"
+  },
+  {
+    "update": "accounts",
+    "updates": [
+      {
+        "q": {},
+        "u": { "$unset": { "role": "" } },
+        "multi": true
+      }
+    ]
+  }
+]

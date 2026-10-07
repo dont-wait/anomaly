@@ -147,6 +147,7 @@ func TestApplyEventPreservesCurrentAccountCreatedPayload(t *testing.T) {
 		Id:         "507f1f77bcf86cd799439011",
 		CustomerId: "507f191e810c19729de860ea",
 		Username:   "current",
+		Role:       accountdomain.AccountRoleAdmin,
 		Version:    7,
 		Customer:   &accountdomain.Customer{Id: "507f191e810c19729de860ea"},
 	}

@@ -36,6 +36,7 @@ MONGO_DB=anomaly
 MONGO_ROOT_USERNAME=username
 MONGO_ROOT_PASSWORD=password
 CORS_ALLOWED_ORIGINS="http://localhost:1420,http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost"
+SWAGGER_ENABLED=false
 
 RUSTFS_ENDPOINT=http://localhost:9000
 RUSTFS_ACCESS_KEY=your_rustfs_access_key

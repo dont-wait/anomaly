@@ -5,10 +5,10 @@ file: file,fixtures/media.txt; text/plain
 HTTP 201
 Content-Type: application/json
 [Captures]
-media_key: jsonpath "$.key"
+media_key: jsonpath "$.data.key"
 [Asserts]
-jsonpath "$.key" startsWith "hurl/"
-jsonpath "$.key" endsWith ".txt"
+jsonpath "$.data.key" startsWith "hurl/"
+jsonpath "$.data.key" endsWith ".txt"
 
 GET {{base_url}}/api/media/download
 [Query]

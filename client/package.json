@@ -12,6 +12,7 @@
     "test": "yarn workspaces run test",
     "build": "yarn workspaces run build",
     "dev:mobile": "yarn workspace anomaly-mobile dev",
+    "dev:desktop": "yarn workspace anomaly-desktop dev",
     "format": "prettier --write \"*/src/**/*.{ts,tsx,css,json}\""
   },
   "dependencies": {

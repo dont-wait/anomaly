@@ -67,6 +67,8 @@ Endpoint chính:
 
 - API: `http://localhost:8080`
 - Health: `http://localhost:8080/health`
+- Swagger UI: `http://localhost:8080/swagger/` when `SWAGGER_ENABLED=true`
+- OpenAPI spec: `http://localhost:8080/openapi.json` when `SWAGGER_ENABLED=true`
 - RustFS API: `http://localhost:9000`
 - RustFS console: `http://localhost:9001`
 - MongoDB: `localhost:27017`
@@ -90,6 +92,26 @@ go mod download
 make migrate
 go run ./cmd/api
 ```
+
+Để bật Swagger khi chạy local, thêm vào `server/.env`:
+
+```env
+SWAGGER_ENABLED=true
+```
+
+Swagger bị tắt mặc định. Khi chạy Docker Compose, truyền biến tương tự trước
+khi start stack:
+
+```bash
+SWAGGER_ENABLED=true docker compose --profile app up --build
+```
+
+### Thêm API mới
+
+Các route HTTP phải được đăng ký qua `openapi.Registry` trong file `*_routes.go`.
+Registry vừa đăng ký route vào `http.ServeMux`, vừa sinh OpenAPI từ metadata và
+request/response struct. Vì vậy không chỉnh sửa `openapi.json` thủ công; khi
+thêm API chỉ cần khai báo operation, schema, auth và status code ngay tại route.
 
 ### Seed tài khoản demo
 
@@ -140,6 +162,8 @@ tài khoản. `cmd/seed` chỉ khởi tạo kết nối, dependency và gọi ru
 
 Tài khoản demo: CCCD `079123456789`, username `demo.customer`, email
 `demo.customer@example.com`, mật khẩu `DemoLocal@123`, số dư `128.540.000 VND`.
+Tài khoản quản trị local: CCCD `001234567890`, username `admin.staff`, mật khẩu
+`admin123`.
 Đây là dữ liệu công khai chỉ dùng cho local/dev. Lệnh yêu cầu `APP_ENV` là
 `development`, `dev`, hoặc `local` và `SEED_DEMO_ENABLED=true`.
 
@@ -148,6 +172,8 @@ tài khoản khớp sẽ được đưa về số dư demo. Nếu thông tin ho�
 đã tồn tại khác dữ liệu seed, lệnh báo lỗi thay vì ghi đè. Seed ghi account và
 số dư qua EventStoreDB; chạy projector để cập nhật MongoDB. Tài khoản từng seed
 bằng `SEED_*` trước đây cũng phải khớp dữ liệu trong code để chạy lại thành công.
+Thông báo lỗi liệt kê field không khớp; cần sửa hoặc xóa dữ liệu local tương ứng
+trước khi chạy lại, seeder không tự nâng một account `user` thành `admin`.
 Dashboard lấy profile bằng `GET /api/auth/me` sau khi login.
 
 ### 4. Chạy worker local
@@ -238,6 +264,10 @@ Account:
 - `GET /api/accounts/{id}`
 - `GET /api/accounts/by-email/{email}`
 
+`GET /api/accounts` chỉ dành cho admin. Hai endpoint tra cứu account cho phép
+admin hoặc chính chủ. Role được ký trong JWT; thay đổi role trong database có
+hiệu lực với token phát hành mới, token cũ còn hiệu lực đến thời điểm `exp`.
+
 Media:
 
 - `POST /api/media/upload`
@@ -280,6 +310,9 @@ Chạy API end-to-end tests bằng Hurl sau khi API, MongoDB và RustFS đã s�
 ```bash
 make test-api
 ```
+
+Suite yêu cầu admin seed đã tồn tại. Mặc định dùng CCCD `001234567890` và mật
+khẩu `admin123`; có thể override bằng `ADMIN_CCCD` và `ADMIN_PASSWORD`.
 
 Đổi endpoint khi cần:
 

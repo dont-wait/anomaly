@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -16,8 +17,35 @@ type tokenServiceStub struct {
 	parse func(string) (*auth.Claims, error)
 }
 
-func (s tokenServiceStub) Issue(string, string, bool) (string, time.Time, error) {
+func (s tokenServiceStub) Issue(string, string, string, bool) (string, time.Time, error) {
 	return "", time.Time{}, nil
+}
+
+func TestRequireAdminRejectsNonAdmin(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request = request.WithContext(context.WithValue(request.Context(), claimsCtxKey, &auth.Claims{Role: "user"}))
+
+	RequireAdmin(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("next handler should not be called")
+	})).ServeHTTP(recorder, request)
+
+	assertStatusResponse(t, recorder, http.StatusForbidden, httpx.ErrorCodeForbidden)
+}
+
+func TestRequireAdminAllowsAdmin(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request = request.WithContext(context.WithValue(request.Context(), claimsCtxKey, &auth.Claims{Role: "admin"}))
+	called := false
+
+	RequireAdmin(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	})).ServeHTTP(recorder, request)
+
+	if !called {
+		t.Fatal("next handler should be called")
+	}
 }
 
 func (s tokenServiceStub) Parse(token string) (*auth.Claims, error) {
@@ -71,5 +99,19 @@ func assertUnauthorizedResponse(t *testing.T, recorder *httptest.ResponseRecorde
 	}
 	if response.Errors[0].Detail != detail {
 		t.Fatalf("detail = %q, want %q", response.Errors[0].Detail, detail)
+	}
+}
+
+func assertStatusResponse(t *testing.T, recorder *httptest.ResponseRecorder, status int, code httpx.ErrorCode) {
+	t.Helper()
+	if recorder.Code != status {
+		t.Fatalf("status = %d, want %d", recorder.Code, status)
+	}
+	var response httpx.ErrorResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Errors) != 1 || response.Errors[0].Code != code {
+		t.Fatalf("errors = %#v, want code %q", response.Errors, code)
 	}
 }

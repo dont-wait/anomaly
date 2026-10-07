@@ -80,7 +80,7 @@ func main() {
 	transactionHandler := composition.NewTransactionHandler(bank, rdb, config.SMTPConfig, *logger)
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc)
+	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled)
 
 	mux.HandleFunc("GET /health", func(w netHTTP.ResponseWriter, r *netHTTP.Request) {
 		w.WriteHeader(netHTTP.StatusOK)
@@ -90,7 +90,7 @@ func main() {
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
 	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(
 		"CORS_ALLOWED_ORIGINS",
-		"http://localhost:1420,http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost",
+		"http://localhost:1420,http://localhost:1422,http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost",
 	))
 	srv := &netHTTP.Server{
 		Addr:              ":8080",

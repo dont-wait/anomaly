@@ -109,7 +109,7 @@ const DashboardPage = () => {
     .map(toDashboardTransaction);
 
   return (
-    <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-gradient-to-b from-violet-100 to-white">
+    <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-linear-to-b from-violet-100 to-white">
       <AppHeader notificationCount={3} />
 
       <main className="flex-1 space-y-6 overflow-y-auto px-4 py-5">

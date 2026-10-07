@@ -24,11 +24,12 @@ func NewTokenService(secret string, expiry time.Duration) *TokenService {
 	}
 }
 
-func (s *TokenService) Issue(userID, username string, isVerify bool) (string, time.Time, error) {
+func (s *TokenService) Issue(userID, username, role string, isVerify bool) (string, time.Time, error) {
 	expiresAt := time.Now().Add(s.expiry)
 	claims := jwt.MapClaims{
 		"sub":      userID,
 		"username": username,
+		"role":     role,
 		"isVerify": isVerify,
 		"exp":      expiresAt.Unix(),
 		"iat":      time.Now().Unix(),
@@ -65,6 +66,10 @@ func (s *TokenService) Parse(tokenString string) (*domainauth.Claims, error) {
 	if !ok || username == "" {
 		return nil, ErrInvalidToken
 	}
+	role, ok := claimsMap["role"].(string)
+	if !ok || role == "" {
+		role = "user"
+	}
 	isVerify, ok := claimsMap["isVerify"].(bool)
 	if !ok {
 		return nil, ErrInvalidToken
@@ -79,6 +84,7 @@ func (s *TokenService) Parse(tokenString string) (*domainauth.Claims, error) {
 	return &domainauth.Claims{
 		UserID:    sub,
 		Username:  username,
+		Role:      role,
 		IsVerify:  isVerify,
 		ExpiresAt: expiresAt,
 	}, nil
