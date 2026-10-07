@@ -413,6 +413,23 @@ func (r *BankRepository) FindTransfer(ctx context.Context, id, owner string) (mo
 	return tx.Tx, nil
 }
 
+func (r *BankRepository) FindTransferByIdempotencyKey(ctx context.Context, key, owner string) (mongorepo.TransferDocument, error) {
+	s, err := r.load(ctx)
+	if err != nil {
+		return mongorepo.TransferDocument{}, err
+	}
+	return s.transferByIdempotencyKey(key, owner)
+}
+
+func (s *bankState) transferByIdempotencyKey(key, owner string) (mongorepo.TransferDocument, error) {
+	id := s.Keys[strings.ToLower(key)]
+	tx, ok := s.Transfers[id]
+	if !ok || s.Accounts[owner] == nil || tx.Tx.Source.AccountID != financialID(owner) {
+		return mongorepo.TransferDocument{}, mongorepo.ErrTransactionAccountNotFound
+	}
+	return tx.Tx, nil
+}
+
 func (r *BankRepository) ConfirmTransfer(ctx context.Context, id, owner string) (mongorepo.TransferDocument, error) {
 	result, err := r.mutate(ctx, func(s *bankState) (*journal.Record, any, error) {
 		state, ok := s.Transfers[id]

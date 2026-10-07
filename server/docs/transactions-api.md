@@ -114,7 +114,7 @@ lần tạo trước đó đủ tiền.
 ```json
 {
   "id":"8bfbe3d4-742c-4602-b2bf-31ccf62de7ad",
-  "reference":"FT62DE7AD1234",
+  "reference":"FT8BFBE3D4742C4602B2BF31CCF62DE7AD",
   "direction":"out",
   "status":"success",
   "kind":"transfer",
@@ -140,6 +140,7 @@ lần tạo trước đó đủ tiền.
 - `balanceAfter` là số dư sau giao dịch của người đang xem, vắng ở giao dịch hủy.
 - `counterparty.bankCode` là mã ngân hàng; `bank` là tên hiển thị nếu có.
 - `id` dùng gọi detail/confirm, `reference` chỉ dùng hiển thị/tra soát.
+- `reference` là `FT` + toàn bộ UUID giao dịch viết hoa và bỏ dấu gạch nối (34 ký tự).
 - Detail chỉ trả giao dịch thuộc người đăng nhập. Pending hoặc không có quyền
   xem trả 404 `TRANSACTION_NOT_FOUND`.
 

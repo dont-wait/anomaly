@@ -26,6 +26,7 @@ type Repository interface {
 	FindOwnedAccount(context.Context, string) (mongorepo.TransferAccount, error)
 	FindRecipient(context.Context, string) (mongorepo.TransferAccount, error)
 	AccountObjectID(context.Context, string) (bson.ObjectID, error)
+	FindTransferByIdempotencyKey(context.Context, string, string) (mongorepo.TransferDocument, error)
 	CreatePending(context.Context, mongorepo.TransferDocument) (mongorepo.TransferDocument, bool, error)
 	FindTransfer(context.Context, string, string) (mongorepo.TransferDocument, error)
 	ConfirmTransfer(context.Context, string, string) (mongorepo.TransferDocument, error)
@@ -106,6 +107,21 @@ type createTransferResponse struct {
 	OTP    otp.TransferOTPInfo `json:"otp"`
 }
 
+func transferReference(id string) string {
+	return "FT" + strings.ToUpper(strings.ReplaceAll(id, "-", ""))
+}
+
+func sameCreateRequest(tx mongorepo.TransferDocument, req createTransferRequest) bool {
+	return tx.Destination.BankCode == req.ToBankCode && tx.Destination.AccountNo == req.ToAccountNo && tx.Amount == req.Amount && tx.Note == req.Note
+}
+
+func createResponse(tx mongorepo.TransferDocument, email string) createTransferResponse {
+	response := createTransferResponse{TransferID: tx.ID, Status: tx.Status, Amount: tx.Amount, Fee: tx.Fee, Note: tx.Note}
+	response.Recipient.AccountNo, response.Recipient.Name, response.Recipient.BankCode = tx.Destination.AccountNo, tx.Destination.Name, tx.Destination.BankCode
+	response.OTP = otp.TransferOTPInfo{Channel: "email", MaskedDestination: maskEmail(email), ExpiresAt: tx.OTPExpiresAt, AttemptsLeft: 3, ResendAvailableAt: tx.OTPResendAt}
+	return response
+}
+
 func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims == nil {
@@ -145,6 +161,25 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Idempotency-Key must be a UUID")
 		return
 	}
+	key = strings.ToLower(key)
+	existing, err := h.repo.FindTransferByIdempotencyKey(r.Context(), key, claims.UserID)
+	if err == nil {
+		if !sameCreateRequest(existing, req) {
+			writeAPIError(w, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with an existing transfer")
+			return
+		}
+		source, err := h.repo.FindOwnedAccount(r.Context(), claims.UserID)
+		if err != nil {
+			h.writeRepoError(w, err)
+			return
+		}
+		httpx.WriteJSON(w, http.StatusCreated, createResponse(existing, source.Email))
+		return
+	}
+	if !errors.Is(err, mongorepo.ErrTransactionAccountNotFound) {
+		h.writeRepoError(w, err)
+		return
+	}
 	source, err := h.repo.FindOwnedAccount(r.Context(), claims.UserID)
 	if err != nil {
 		h.writeRepoError(w, err)
@@ -168,8 +203,7 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := uuid.NewString()
-	compact := strings.ReplaceAll(id, "-", "")
-	tx := mongorepo.TransferDocument{ID: id, Reference: "FT" + strings.ToUpper(compact[len(compact)-11:]), Type: "transfer", Amount: req.Amount, Fee: 0, Currency: "VND", Channel: "web", Status: "awaiting_otp", Note: req.Note, IdempotencyKey: key, CreatedAt: time.Now().UTC(), OTPExpiresAt: time.Now().UTC().Add(5 * time.Minute), OTPResendAt: time.Now().UTC().Add(30 * time.Second)}
+	tx := mongorepo.TransferDocument{ID: id, Reference: transferReference(id), Type: "transfer", Amount: req.Amount, Fee: 0, Currency: "VND", Channel: "web", Status: "awaiting_otp", Note: req.Note, IdempotencyKey: key, CreatedAt: time.Now().UTC(), OTPExpiresAt: time.Now().UTC().Add(5 * time.Minute), OTPResendAt: time.Now().UTC().Add(30 * time.Second)}
 	tx.Source.AccountID, tx.Source.AccountNo, tx.Source.Name = source.ID, source.AccountNo, source.Name
 	tx.Destination.Type, tx.Destination.AccountID, tx.Destination.AccountNo = "internal", recipient.ID, recipient.AccountNo
 	tx.Destination.BankCode, tx.Destination.Name = "ANOMALY", recipient.Name
@@ -186,8 +220,7 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 		h.writeRepoError(w, err)
 		return
 	}
-	response := createTransferResponse{TransferID: tx.ID, Status: tx.Status, Amount: tx.Amount, Fee: tx.Fee, Note: tx.Note}
-	response.Recipient.AccountNo, response.Recipient.Name, response.Recipient.BankCode = tx.Destination.AccountNo, tx.Destination.Name, tx.Destination.BankCode
+	response := createResponse(tx, source.Email)
 	if created {
 		info, err := h.otp.Issue(r.Context(), tx.ID, source.Email)
 		if err != nil {
@@ -207,8 +240,6 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.OTP = info
-	} else {
-		response.OTP = otp.TransferOTPInfo{Channel: "email", MaskedDestination: maskEmail(source.Email), ExpiresAt: tx.OTPExpiresAt, AttemptsLeft: 3, ResendAvailableAt: tx.OTPResendAt}
 	}
 	httpx.WriteJSON(w, http.StatusCreated, response)
 }
@@ -529,7 +560,7 @@ func transactionResponse(row mongorepo.FeedDocument) map[string]any {
 }
 
 func normalizeSearch(value string) string {
-	value = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "đ", "d"))
+	value = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "đ", "d")
 	var b strings.Builder
 	for _, r := range norm.NFD.String(value) {
 		if !unicode.Is(unicode.Mn, r) {

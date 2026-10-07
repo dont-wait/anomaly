@@ -74,7 +74,7 @@ func RegisterRoutes(router *openapi.Registry, h *Handler, tokenSvc queries.Token
 	})
 	auth("POST /api/transfers", h.CreateTransfer, openapi.Operation{
 		ID: "createTransfer", Summary: "Create a transfer and send confirmation OTP",
-		Description: "Requires a verified KYC token and an active source account. Idempotency-Key must be a UUID: reuse it with the same body for retries. Minimum amount is 1000 whole VND; fee is currently 0; note is at most 100 characters. Initial status is awaiting_otp; retries can return the existing terminal status. OTP expires after 5 minutes, with 3 attempts and a 30-second resend cooldown. No funds are debited until confirmation.",
+		Description: "Requires a verified KYC token and an active source account. Idempotency-Key must be a UUID: reuse it with the same body for retries. Exact retries return the existing transfer before current account-status checks and do not issue another OTP. References are FT followed by the full uppercase UUID without hyphens. Minimum amount is 1000 whole VND; fee is currently 0; note is at most 100 characters. Initial status is awaiting_otp; retries can return the existing terminal status. OTP expires after 5 minutes, with 3 attempts and a 30-second resend cooldown. No funds are debited until confirmation.",
 		Parameters:  []openapi.Parameter{{Name: "Idempotency-Key", In: "header", Required: true, Type: "string", Format: "uuid"}},
 		Request:     createTransferRequest{}, Response: createTransferResponse{}, SuccessStatus: http.StatusCreated,
 		FailureStatuses: []int{400, 403, 404, 409, 422, 429, 503},
