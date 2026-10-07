@@ -260,7 +260,7 @@ export function MonitorPage() {
       <MonitorHeader range={range} onRangeChange={changeRange} isRefreshing={busy} onRefresh={refresh} />
       {error && !snapshot ? <DashboardError message={error} onRetry={refresh} /> : isLoading && !snapshot ? <DashboardSkeleton /> : snapshot ? <>
         <div className="grid grid-cols-2 gap-1 lg:grid-cols-5">{snapshot.metrics.map((metric) => <MetricCard key={metric.label} metric={metric} />)}</div>
-        <div className="grid grid-cols-12 gap-1"><div className="col-span-12 xl:col-span-8"><RiskTrendChart series={snapshot.timeseries} peakTime={snapshot.peakTime} peakVelocity={snapshot.peakVelocity} /></div><div className="col-span-12 xl:col-span-4"><RiskBreakdown snapshot={snapshot} /></div></div>
+        <div className="grid grid-cols-12 gap-1"><div className="col-span-12 xl:col-span-8"><RiskTrendChart series={snapshot.timeseries} /></div><div className="col-span-12 xl:col-span-4"><RiskBreakdown snapshot={snapshot} /></div></div>
         <div className="grid grid-cols-12 gap-1"><div className="col-span-12 lg:col-span-7"><RiskAccountsTable accounts={snapshot.accounts} /></div><div className="col-span-12 lg:col-span-5"><RealtimeAlertStream events={snapshot.events} /></div></div>
         <div className={`${mono} flex items-center justify-end gap-1 pt-1 text-[10px] text-(--admin-text-muted)`.trim()}><FontAwesomeIcon icon={faCircleExclamation} aria-hidden="true" />Cập nhật {response.updatedAt}{response.dataStatus === "stale" ? " · STALE" : ""}</div>
       </> : null}

@@ -47,8 +47,6 @@ export interface RiskSeriesPoint {
 export interface DashboardSnapshot {
   metrics: Metric[];
   timeseries: RiskSeriesPoint[];
-  peakTime: string;
-  peakVelocity: string;
   severities: { label: string; value: number; tone: string }[];
   detectionVectors: { label: string; value: number; tone: string }[];
   accounts: AccountRisk[];
@@ -92,8 +90,6 @@ export const dashboardData: Record<TimeRange, DashboardSnapshot> = {
       { label: "Tỷ lệ False Positive", value: "8.4%", change: "-2.1%", trend: "down", note: "Mục tiêu quý < 10%", tone: "primary", icon: faChartLine },
     ],
     timeseries: createTimeseries([12, 15, 22, 19, 31, 27, 39, 42, 46, 60, 71, 82, 76, 91, 100, 83, 59, 47, 44, 37, 29, 24, 15, 19]),
-    peakTime: "03:30 UTC+7",
-    peakVelocity: "Velocity Spike (60 req/min)",
     severities: [
       { label: "Critical", value: 7, tone: "danger" },
       { label: "High", value: 14, tone: "primary" },
@@ -129,8 +125,6 @@ export const dashboardData: Record<TimeRange, DashboardSnapshot> = {
       { label: "Tỷ lệ False Positive", value: "8.9%", change: "-1.4%", trend: "down", note: "Mục tiêu quý < 10%", tone: "primary", icon: faChartLine },
     ],
     timeseries: createTimeseries([25, 32, 30, 42, 36, 49, 44, 57, 62, 54, 69, 63, 78, 72, 86, 81, 74, 66, 71, 59, 63, 52, 47, 55]),
-    peakTime: "16:00 UTC+7",
-    peakVelocity: "Velocity Spike (74 req/min)",
     severities: [
       { label: "Critical", value: 19, tone: "danger" },
       { label: "High", value: 69, tone: "primary" },
@@ -155,8 +149,6 @@ export const dashboardData: Record<TimeRange, DashboardSnapshot> = {
       { label: "Tỷ lệ False Positive", value: "9.1%", change: "-0.7%", trend: "down", note: "Mục tiêu quý < 10%", tone: "primary", icon: faChartLine },
     ],
     timeseries: createTimeseries([34, 37, 43, 40, 47, 52, 48, 59, 56, 64, 70, 66, 74, 82, 79, 88, 91, 84, 76, 72, 69, 61, 65, 58]),
-    peakTime: "12:00 UTC+7",
-    peakVelocity: "Velocity Spike (82 req/min)",
     severities: [
       { label: "Critical", value: 41, tone: "danger" },
       { label: "High", value: 274, tone: "primary" },

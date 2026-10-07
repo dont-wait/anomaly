@@ -75,15 +75,11 @@ function createRiskMarkerPlugin(peakIndex: number): Plugin<"line"> {
 
 interface RiskTrendChartProps {
   series: RiskSeriesPoint[];
-  peakTime: string;
-  peakVelocity: string;
 }
 
-export function RiskTrendChart({ series, peakTime, peakVelocity }: RiskTrendChartProps) {
+export function RiskTrendChart({ series }: RiskTrendChartProps) {
   const values = series.map((point) => point.riskScoreAverage);
-  const peakValue = Math.max(...values);
-  const peakIndex = values.indexOf(peakValue);
-  const peakPosition = `${(peakIndex / Math.max(1, series.length - 1)) * 100}%`;
+  const peakIndex = values.indexOf(Math.max(...values));
   const labels = series.map((point) => formatTime(point.timestamp));
 
   const data = {
@@ -177,10 +173,6 @@ export function RiskTrendChart({ series, peakTime, peakVelocity }: RiskTrendChar
           plugins={[createRiskMarkerPlugin(peakIndex)]}
           aria-label="Biểu đồ điểm rủi ro trong khoảng thời gian đã chọn"
         />
-        <div className="pointer-events-none absolute -top-2 -translate-x-1/2 -translate-y-2 rounded-sm bg-(--admin-surface-hover) px-2 py-1 text-center" style={{ left: peakPosition }}>
-          <strong className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[10px] text-[#ffb4ab]">PEAK {peakValue}pt · {peakTime}</strong>
-          <span className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[9px] text-(--admin-text-muted)">{peakVelocity}</span>
-        </div>
       </div>
       <div className="font-(family-name:--admin-font-mono) flex items-center justify-between gap-2 pt-2 text-[10px] text-(--admin-text-muted)">
         <span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span><span>HIỆN TẠI (23:59)</span>
