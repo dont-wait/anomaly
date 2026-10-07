@@ -268,7 +268,7 @@ func (r *TransferRepository) FeedCollection() *mongodrv.Collection {
 }
 
 func normalizeFeedSearch(value string) string {
-	value = strings.ToLower(strings.ReplaceAll(value, "đ", "d"))
+	value = strings.ReplaceAll(strings.ToLower(value), "đ", "d")
 	var b strings.Builder
 	for _, char := range norm.NFD.String(value) {
 		if !unicode.Is(unicode.Mn, char) {

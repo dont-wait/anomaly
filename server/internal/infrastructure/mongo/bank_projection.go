@@ -70,7 +70,7 @@ func (p *BankProjection) Apply(ctx context.Context, record journal.Record, revis
 				if err := p.profile(sc, a); err != nil {
 					return nil, err
 				}
-				if err := p.balance(sc, journal.FinancialAccountID(a.Id), a.Balance.Current, sequence, record.At); err != nil {
+				if err := p.balance(sc, journal.FinancialAccountID(a.Id), a.Balance.Current, sequence, bankImportBalanceAt(a, record.At)); err != nil {
 					return nil, err
 				}
 			}
@@ -161,6 +161,16 @@ func (p *BankProjection) balance(ctx context.Context, id string, balance, versio
 		return fmt.Errorf("missing account projection for %s", id)
 	}
 	return nil
+}
+
+func bankImportBalanceAt(account *accountdomain.UserAccount, fallback time.Time) time.Time {
+	if !account.UpdatedAt.IsZero() {
+		return account.UpdatedAt
+	}
+	if !account.CreatedAt.IsZero() {
+		return account.CreatedAt
+	}
+	return fallback
 }
 
 func (p *BankProjection) feed(ctx context.Context, tx TransferDocument, direction string, balance *int64, at time.Time) error {
