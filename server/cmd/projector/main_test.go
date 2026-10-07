@@ -24,7 +24,6 @@ func TestLoadCheckpointRetriesPositionFailure(t *testing.T) {
 			t.Fatalf("logged error = %v, want %v", err, wantErr)
 		}
 	})
-
 	if err != nil {
 		t.Fatalf("loadCheckpoint() error = %v", err)
 	}
