@@ -1,13 +1,5 @@
 [
   {
-    "dropIndexes": "ledger_entries",
-    "index": "uniq_ledger_transaction_direction"
-  },
-  {
-    "dropIndexes": "accounts",
-    "index": "uniq_account_financial_id"
-  },
-  {
     "collMod": "accounts",
     "validator": {
       "$jsonSchema": {
@@ -26,7 +18,8 @@
           "version",
           "opened_at",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "role"
         ],
         "properties": {
           "_id": {
@@ -88,11 +81,54 @@
           },
           "updated_at": {
             "bsonType": "date"
+          },
+          "financial_id": {
+            "bsonType": "objectId"
+          },
+          "financial_version": {
+            "bsonType": "long",
+            "minimum": 0
+          },
+          "role": {
+            "enum": [
+              "user",
+              "admin"
+            ]
           }
         }
       }
     },
     "validationLevel": "strict",
     "validationAction": "error"
+  },
+  {
+    "createIndexes": "accounts",
+    "indexes": [
+      {
+        "key": {
+          "financial_id": 1
+        },
+        "name": "uniq_account_financial_id",
+        "unique": true,
+        "partialFilterExpression": {
+          "financial_id": {
+            "$type": "objectId"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "createIndexes": "ledger_entries",
+    "indexes": [
+      {
+        "key": {
+          "transaction_id": 1,
+          "direction": 1
+        },
+        "name": "uniq_ledger_transaction_direction",
+        "unique": true
+      }
+    ]
   }
 ]

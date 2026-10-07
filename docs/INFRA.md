@@ -101,7 +101,7 @@ go test ./internal/infrastructure/rustfs -v
 ## Banking Event Operations
 
 EventStoreDB là source of truth; API, seed và banking projector kết nối
-EventStoreDB. Migration `000005` bổ sung index cho projections.
+EventStoreDB. Migration `000006` bổ sung index cho projections.
 
 Với legacy account event streams, `make import-bank` lấy canonical account từ
 EventStoreDB. Với MVP từng ghi thẳng Mongo, đối soát/sao lưu dữ liệu rồi chọn rõ

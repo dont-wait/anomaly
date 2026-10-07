@@ -16,7 +16,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/dont-wait/anomaly/internal/application/account/queries"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/infrastructure/otp"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
@@ -45,25 +44,6 @@ type Handler struct {
 
 func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOTPStore) *Handler {
 	return &Handler{logger: logger, repo: repo, otp: otpStore}
-}
-
-// Register registers endpoints behind the same JWT middleware used by account APIs.
-func RegisterRoutes(mux *http.ServeMux, h *Handler, tokenSvc queries.TokenService) {
-	auth := func(pattern string, fn http.HandlerFunc) {
-		secured := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Cache-Control", "no-store")
-			fn.ServeHTTP(w, r)
-		})
-		mux.Handle(pattern, middleware.RequireAuth(tokenSvc)(secured))
-	}
-	auth("GET /api/accounts/lookup", h.Lookup)
-	auth("GET /api/transfers/recent-recipients", h.RecentRecipients)
-	auth("POST /api/transfers", h.CreateTransfer)
-	auth("POST /api/transfers/{transferId}/confirm", h.ConfirmTransfer)
-	auth("POST /api/transfers/{transferId}/otp/resend", h.ResendOTP)
-	auth("GET /api/transactions", h.ListTransactions)
-	auth("GET /api/transactions/summary", h.TransactionSummary)
-	auth("GET /api/transactions/{id}", h.TransactionDetail)
 }
 
 var accountNumberPattern = regexp.MustCompile(`^\d{6,19}$`)
@@ -109,7 +89,7 @@ type createTransferRequest struct {
 	ToBankCode  string `json:"toBankCode"`
 	ToAccountNo string `json:"toAccountNo"`
 	Amount      int64  `json:"amount"`
-	Note        string `json:"note"`
+	Note        string `json:"note,omitempty"`
 }
 
 type createTransferResponse struct {

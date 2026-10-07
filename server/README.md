@@ -6,6 +6,7 @@ Backend cho Anomaly, gồm HTTP API, banking projection worker và adapter hạ 
 
 - `README.md`: quick start và chỉ mục tài liệu
 - [Architecture](../docs/ARCHITECTURE.md): cấu trúc layer, executable, và runtime flow
+- [Transaction API for frontend](docs/transactions-api.md): request/response, OTP, retry, filters và mã lỗi
 - [Features](../docs/FEATURE.md): feature hiện có và phạm vi test
 - [Infrastructure](../docs/INFRA.md): service local, env, port, workflow vận hành
 
@@ -28,9 +29,9 @@ its expected revision. MongoDB stores rebuildable read projections:
 - `transactions`, `ledger_entries`, `account_transaction_feed`: transaction history
 - `checkpoints`: banking projector position
 
-Balances use whole `int64` VND values (BSON `long` in MongoDB). Migration `000004`
+Balances use whole `int64` VND values (BSON `long` in MongoDB). Migration `000005`
 creates transaction collections, including the legacy `outbox_events`; the active
-write path never writes that outbox. Migration `000005` adds banking projection
+write path never writes that outbox. Migration `000006` adds banking projection
 indexes and the financial account reference. Mongo projections commit their
 updates and checkpoint in one transaction, requiring a replica set or sharded
 MongoDB. Compose initializes local `rs0`.
@@ -379,6 +380,15 @@ account financial IDs, amount, fee, currency, channel, status, sequence, event
 ID/time and balance snapshots, without profile credentials, names, notes or OTPs.
 Channel remains `web`, matching the current API's existing behavior.
 
+
+### Migration numbering after merge
+
+Thứ tự hiện tại: `000004_add_account_role`, `000005_create_transaction_collections`,
+`000006_transaction_event_pipeline`. Nếu đã chạy bản nhánh cũ có transaction ở
+version 4 hoặc pipeline ở version 5, cần đối soát schema/version trước cutover;
+runner chỉ lưu version, không nhận biết migration cùng số đã đổi nội dung.
+Không tự chạy `down` hoặc `force` trên database đó.
+
 ### New database
 
 Run in `server/` with EventStoreDB and MongoDB `rs0` available:
@@ -403,7 +413,7 @@ explicit offline cutover before using this new canonical stream:
 
 1. Stop API, seeders, legacy workers and all projectors; back up the
    database and existing EventStoreDB data, and reconcile the old balances.
-2. Apply migration `000005`, then run `make import-mongo-bank` while writers remain
+2. Apply migrations through `000006`, then run `make import-mongo-bank` while writers remain
    stopped. This explicitly invokes `cmd/import-bank -offline -source mongo`.
 3. Start the new banking projector and then the API.
 

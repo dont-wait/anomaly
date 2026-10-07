@@ -406,7 +406,7 @@ func applyMigrations(t *testing.T, ctx context.Context, db *mongodrv.Database) {
 
 func restoreFeedValidator(t *testing.T, ctx context.Context, db *mongodrv.Database) {
 	t.Helper()
-	runMigration(t, ctx, db, "../../../migrations/000004_create_transaction_collections.up.json", "account_transaction_feed")
+	runMigration(t, ctx, db, "../../../migrations/000005_create_transaction_collections.up.json", "account_transaction_feed")
 }
 
 func runMigration(t *testing.T, ctx context.Context, db *mongodrv.Database, file, onlyCollection string) {

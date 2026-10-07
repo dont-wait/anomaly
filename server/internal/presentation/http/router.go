@@ -21,7 +21,7 @@ func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler
 	account.RegisterRoutes(router, accountHandler, tokenSvc)
 	media.RegisterRoutes(router, mediaHandler)
 	otp.RegisterRoutes(router, otpHandler)
-  transaction.RegisterRoutes(mux, transactionHandler, tokenSvc)
+	transaction.RegisterRoutes(router, transactionHandler, tokenSvc)
 	router.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))

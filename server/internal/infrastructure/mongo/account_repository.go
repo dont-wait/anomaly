@@ -193,7 +193,7 @@ func accountProfileUpdate(record accountRecord) bson.M {
 		"$set": bson.M{
 			"financial_id": record.FinancialID, "account_no": record.AccountNo, "customer_id": record.CustomerId, "username": record.Username,
 			"email": record.Email, "password_hash": record.PasswordHash, "type": record.Type, "currency": record.Currency,
-			"status": record.Status, "version": record.Version, "updated_at": record.UpdatedAt,
+			"role": record.Role, "status": record.Status, "version": record.Version, "updated_at": record.UpdatedAt,
 		},
 		"$setOnInsert": bson.M{
 			"balance": record.Balance, "financial_version": record.FinancialVersion,

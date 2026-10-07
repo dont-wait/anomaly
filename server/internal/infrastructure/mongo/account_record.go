@@ -23,7 +23,7 @@ type accountRecord struct {
 	Email            string        `bson:"email"`
 	PasswordHash     string        `bson:"password_hash"`
 	Type             string        `bson:"type"`
-  Role             string        `bson:"role"`
+	Role             string        `bson:"role"`
 	Currency         string        `bson:"currency"`
 	Balance          balanceRecord `bson:"balance"`
 	Status           string        `bson:"status"`
@@ -52,7 +52,7 @@ func toRecord(a *accountdomain.UserAccount) (accountRecord, error) {
 		Email:            a.Email,
 		PasswordHash:     a.PasswordHash,
 		Type:             string(a.Type),
-    Role:             string(a.EffectiveRole()),
+		Role:             string(a.EffectiveRole()),
 		Currency:         string(a.Currency),
 		Balance:          balanceRecord{Current: a.Balance.Current},
 		Status:           string(a.Status),
