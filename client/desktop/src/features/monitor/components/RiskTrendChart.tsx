@@ -45,14 +45,6 @@ function createRiskMarkerPlugin(peakIndex: number): Plugin<"line"> {
     const peak = peakElement.getProps(["x", "y"], true);
 
     ctx.save();
-    ctx.setLineDash([3, 3]);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(213, 32, 34, 0.6)";
-    ctx.beginPath();
-    ctx.moveTo(peak.x, peak.y);
-    ctx.lineTo(peak.x, chartArea.bottom);
-    ctx.stroke();
-
     ctx.setLineDash([]);
     ctx.fillStyle = chartColors.danger;
     ctx.beginPath();
