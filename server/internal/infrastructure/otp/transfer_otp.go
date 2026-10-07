@@ -3,7 +3,6 @@ package otp
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -27,6 +26,48 @@ const (
 	transferOTPCooldown = 30 * time.Second
 	transferOTPAttempts = 3
 )
+
+// transferOTPIssueScript installs a new challenge and clears state from any
+// previous challenge for the transfer.
+var transferOTPIssueScript = redis.NewScript(`
+redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+redis.call('DEL', KEYS[2], KEYS[3])
+return 1
+`)
+
+// transferOTPVerifyScript atomically moves a valid challenge to a retryable
+// authorization, or records a failed attempt bounded by the challenge TTL.
+// Returns {status, attempts left}: expired=0, invalid=1, verified=2, exceeded=3.
+var transferOTPVerifyScript = redis.NewScript(`
+if redis.call('EXISTS', KEYS[3]) == 1 then
+	return {2, tonumber(ARGV[2])}
+end
+
+local stored = redis.call('GET', KEYS[1])
+if not stored then
+	return {0, 0}
+end
+
+local ttl = redis.call('PTTL', KEYS[1])
+if ttl <= 0 then
+	redis.call('DEL', KEYS[1], KEYS[2])
+	return {0, 0}
+end
+
+if stored == ARGV[1] then
+	redis.call('SET', KEYS[3], '1', 'PX', ttl)
+	redis.call('DEL', KEYS[1], KEYS[2])
+	return {2, tonumber(ARGV[2])}
+end
+
+local attempts = redis.call('INCR', KEYS[2])
+if attempts >= tonumber(ARGV[2]) then
+	redis.call('DEL', KEYS[1], KEYS[2])
+	return {3, 0}
+end
+redis.call('PEXPIRE', KEYS[2], ttl)
+return {1, tonumber(ARGV[2]) - attempts}
+`)
 
 type TransferMailSender interface {
 	Send(context.Context, maildomain.MailMessage) error
@@ -72,60 +113,65 @@ func (s *TransferOTPStore) issue(ctx context.Context, transferID, email string) 
 	if !ok {
 		return TransferOTPInfo{}, ErrTransferOTPTooSoon
 	}
-	if err := s.rdb.Set(ctx, key, code, transferOTPTTL).Err(); err != nil {
+	if err := transferOTPIssueScript.Run(ctx, s.rdb, []string{
+		key,
+		transferOTPAttemptsKey(transferID),
+		transferOTPVerifiedKey(transferID),
+	}, code, transferOTPTTL.Milliseconds()).Err(); err != nil {
 		_ = s.rdb.Del(ctx, cooldownKey).Err()
 		return TransferOTPInfo{}, err
 	}
 	text := fmt.Sprintf("Mã OTP xác nhận chuyển tiền AnomalyBank của bạn là %s. Mã có hiệu lực trong 5 phút. Không chia sẻ mã này với bất kỳ ai.", code)
 	html := fmt.Sprintf("<p>Mã OTP xác nhận chuyển tiền AnomalyBank của bạn:</p><p style=\"font-size:24px;font-weight:bold;letter-spacing:4px\">%s</p><p>Mã có hiệu lực trong 5 phút. Không chia sẻ mã này với bất kỳ ai.</p>", code)
 	if err := s.mail.Send(ctx, maildomain.MailMessage{To: email, Subject: "OTP xác nhận chuyển tiền AnomalyBank", Text: text, HTML: html}); err != nil {
-		_ = s.rdb.Del(ctx, key).Err()
+		_ = s.Consume(ctx, transferID)
 		_ = s.rdb.Del(ctx, cooldownKey).Err()
 		return TransferOTPInfo{}, err
 	}
-	_ = s.rdb.Del(ctx, transferOTPAttemptsKey(transferID)).Err()
 	now := time.Now().UTC()
 	return TransferOTPInfo{Channel: "email", MaskedDestination: maskEmail(email), ExpiresAt: now.Add(transferOTPTTL), AttemptsLeft: transferOTPAttempts, ResendAvailableAt: now.Add(transferOTPCooldown)}, nil
 }
 
-// Verify does not consume a valid code; the caller consumes it only after the
-// MongoDB transaction commits, so transient database errors remain retryable.
+// Verify replaces a valid challenge with an authorization that remains usable
+// until the caller consumes it after the canonical EventStore append commits.
 func (s *TransferOTPStore) Verify(ctx context.Context, transferID, code string) (int, error) {
-	key := transferOTPKey(transferID)
-	stored, err := s.rdb.Get(ctx, key).Result()
-	if errors.Is(err, redis.Nil) {
-		return 0, ErrTransferOTPExpired
-	}
-	if err != nil {
-		return 0, err
-	}
+	// Invalid code syntax is deliberately sent through the same atomic failure
+	// path so it consumes an attempt exactly like any other wrong code.
 	if err := otpdomain.ValidateCode(code); err != nil {
-		return s.recordFailure(ctx, transferID)
+		code = ""
 	}
-	if subtle.ConstantTimeCompare([]byte(stored), []byte(code)) == 1 {
-		return transferOTPAttempts, nil
-	}
-	return s.recordFailure(ctx, transferID)
-}
-
-func (s *TransferOTPStore) recordFailure(ctx context.Context, transferID string) (int, error) {
-	count, err := s.rdb.Incr(ctx, transferOTPAttemptsKey(transferID)).Result()
+	result, err := transferOTPVerifyScript.Run(ctx, s.rdb, []string{
+		transferOTPKey(transferID),
+		transferOTPAttemptsKey(transferID),
+		transferOTPVerifiedKey(transferID),
+	}, code, transferOTPAttempts).Int64Slice()
 	if err != nil {
 		return 0, err
 	}
-	if count == 1 {
-		_ = s.rdb.Expire(ctx, transferOTPAttemptsKey(transferID), transferOTPTTL).Err()
+	if len(result) != 2 {
+		return 0, fmt.Errorf("unexpected transfer OTP verification result length: %d", len(result))
 	}
-	left := transferOTPAttempts - int(count)
-	if left <= 0 {
-		_ = s.rdb.Del(ctx, transferOTPKey(transferID), transferOTPAttemptsKey(transferID)).Err()
+	left := int(result[1])
+	switch result[0] {
+	case 0:
+		return 0, ErrTransferOTPExpired
+	case 1:
+		return left, ErrTransferOTPInvalid
+	case 2:
+		return left, nil
+	case 3:
 		return 0, ErrTransferOTPExceeded
+	default:
+		return 0, fmt.Errorf("unexpected transfer OTP verification result: %d", result[0])
 	}
-	return left, ErrTransferOTPInvalid
 }
 
 func (s *TransferOTPStore) Consume(ctx context.Context, transferID string) error {
-	return s.rdb.Del(ctx, transferOTPKey(transferID), transferOTPAttemptsKey(transferID)).Err()
+	return s.rdb.Del(ctx,
+		transferOTPKey(transferID),
+		transferOTPAttemptsKey(transferID),
+		transferOTPVerifiedKey(transferID),
+	).Err()
 }
 
 func (s *TransferOTPStore) Delete(ctx context.Context, transferID string) error {
@@ -134,6 +180,7 @@ func (s *TransferOTPStore) Delete(ctx context.Context, transferID string) error 
 
 func transferOTPKey(id string) string         { return "transfer:otp:" + id }
 func transferOTPAttemptsKey(id string) string { return "transfer:otp:attempts:" + id }
+func transferOTPVerifiedKey(id string) string { return "transfer:otp:verified:" + id }
 func transferOTPCooldownKey(email string) string {
 	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
 	return "transfer:otp:cooldown:" + hex.EncodeToString(sum[:])
