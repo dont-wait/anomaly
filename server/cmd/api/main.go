@@ -11,6 +11,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/helpers"
 	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
+	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	rustfs "github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	"github.com/dont-wait/anomaly/internal/logger"
@@ -43,7 +44,19 @@ func main() {
 	}
 	mediaRepo := rustfs.NewMediaRepository(rustfsClient, config.RustFSConfig.Bucket)
 
-	mongoRepo := mongo.NewAccountAggregateRepository(mongoClient, config.MongoConfig.MongoDBName)
+	esClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("connect eventstore failed")
+	}
+	defer eventstore.Disconnect(esClient)
+	bank := eventstore.NewBankRepository(esClient, mongo.NewTransferRepository(mongoClient, config.MongoConfig.MongoDBName))
+	legacyAccounts, err := mongoClient.Database(config.MongoConfig.MongoDBName).Collection("accounts").EstimatedDocumentCount(ctx)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("check existing account data")
+	}
+	if err := bank.EnsureReady(ctx, legacyAccounts > 0); err != nil {
+		logger.Fatal().Err(err).Msg("banking source of truth unavailable")
+	}
 
 	tokenSvc := auth.NewTokenService(config.AuthConfig.JWTSecret, config.AuthConfig.JWTExpiry)
 
@@ -61,10 +74,10 @@ func main() {
 		}
 	}()
 
-	accountHandler := composition.NewAccountHandler(mongoRepo, tokenSvc, *logger)
+	accountHandler := composition.NewAccountHandler(bank, tokenSvc, *logger)
 	mediaHandler := composition.NewMediaHandler(mediaRepo, *logger)
 	otpHandler := composition.NewOTPHandler(rdb, config.SMTPConfig, *logger)
-	transactionHandler := composition.NewTransactionHandler(mongoClient, config.MongoConfig.MongoDBName, rdb, config.SMTPConfig, *logger)
+	transactionHandler := composition.NewTransactionHandler(bank, rdb, config.SMTPConfig, *logger)
 
 	mux := netHTTP.NewServeMux()
 	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc)

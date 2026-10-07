@@ -86,12 +86,9 @@ func (r *AccountRepository) Save(ctx context.Context, a *accountdomain.UserAccou
 	if err != nil {
 		return err
 	}
-	_, err = r.col.ReplaceOne(
-		ctx,
-		bson.M{"_id": record.Id},
-		record,
-		options.Replace().SetUpsert(true),
-	)
+	// Account/KYC writes own profile fields. They never replace financial state
+	// on an existing account, including during compensation and legacy replay.
+	_, err = r.col.UpdateOne(ctx, bson.M{"_id": record.Id}, accountProfileUpdate(record), options.UpdateOne().SetUpsert(true))
 	return err
 }
 
@@ -189,4 +186,18 @@ func (r *AccountRepository) FindAll(ctx context.Context) ([]*accountdomain.UserA
 	}
 
 	return accounts, nil
+}
+
+func accountProfileUpdate(record accountRecord) bson.M {
+	return bson.M{
+		"$set": bson.M{
+			"financial_id": record.FinancialID, "account_no": record.AccountNo, "customer_id": record.CustomerId, "username": record.Username,
+			"email": record.Email, "password_hash": record.PasswordHash, "type": record.Type, "currency": record.Currency,
+			"status": record.Status, "version": record.Version, "updated_at": record.UpdatedAt,
+		},
+		"$setOnInsert": bson.M{
+			"balance": record.Balance, "financial_version": record.FinancialVersion,
+			"opened_at": record.OpenedAt, "created_at": record.CreatedAt,
+		},
+	}
 }

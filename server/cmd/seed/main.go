@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain"
-	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
+	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/logger"
 	"github.com/dont-wait/anomaly/internal/seeder"
 	"github.com/rs/zerolog"
@@ -18,24 +18,16 @@ func main() {
 	if err := seeder.ValidateEnvironment(os.Getenv("APP_ENV"), os.Getenv("SEED_DEMO_ENABLED")); err != nil {
 		log.Fatal().Err(err).Msg("seed refused")
 	}
-	config := loader.LoadMongoConfig()
+	config := loader.LoadEventStoreConfig()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	client, err := mongo.NewMongoClient(ctx, config)
+	client, err := eventstore.NewEventStoreClient(config)
 	if err != nil {
-		log.Fatal().Err(err).Msg("connect mongo failed")
+		log.Fatal().Err(err).Msg("connect eventstore failed")
 	}
-	defer func() {
-		if err := client.Disconnect(context.Background()); err != nil {
-			log.Error().Err(err).Msg("disconnect mongo failed")
-		}
-	}()
-
-	repo := mongo.NewAccountAggregateRepository(client, config.MongoDBName)
-	if err := repo.EnsureIndexes(ctx); err != nil {
-		log.Fatal().Err(err).Msg("ensure indexes failed")
-	}
+	defer eventstore.Disconnect(client)
+	repo := eventstore.SeedRepository{BankRepository: eventstore.NewBankRepository(client, nil)}
 
 	if err := seeder.Run(ctx, seeder.Dependencies{Accounts: repo}); err != nil {
 		log.Fatal().Err(err).Msg("seed failed")

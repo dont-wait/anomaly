@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/mail"
@@ -22,13 +23,27 @@ import (
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 )
 
+type Repository interface {
+	FindOwnedAccount(context.Context, string) (mongorepo.TransferAccount, error)
+	FindRecipient(context.Context, string) (mongorepo.TransferAccount, error)
+	AccountObjectID(context.Context, string) (bson.ObjectID, error)
+	CreatePending(context.Context, mongorepo.TransferDocument) (mongorepo.TransferDocument, bool, error)
+	FindTransfer(context.Context, string, string) (mongorepo.TransferDocument, error)
+	ConfirmTransfer(context.Context, string, string) (mongorepo.TransferDocument, error)
+	CancelPending(context.Context, string) error
+	SetOTPMetadata(context.Context, string, time.Time, time.Time) error
+	GetFeed(context.Context, bson.ObjectID, string) (mongorepo.FeedDocument, error)
+	ListFeed(context.Context, bson.ObjectID, bson.M, int64) ([]mongorepo.FeedDocument, error)
+	Summary(context.Context, bson.ObjectID, time.Time, time.Time) (int64, int64, error)
+}
+
 type Handler struct {
 	logger zerolog.Logger
-	repo   *mongorepo.TransferRepository
+	repo   Repository
 	otp    *otp.TransferOTPStore
 }
 
-func NewHandler(logger zerolog.Logger, repo *mongorepo.TransferRepository, otpStore *otp.TransferOTPStore) *Handler {
+func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOTPStore) *Handler {
 	return &Handler{logger: logger, repo: repo, otp: otpStore}
 }
 
@@ -172,10 +187,6 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "SELF_TRANSFER", "self transfer is not allowed")
 		return
 	}
-	if source.Balance < req.Amount {
-		writeAPIError(w, http.StatusBadRequest, "INSUFFICIENT_FUNDS", "insufficient funds")
-		return
-	}
 	id := uuid.NewString()
 	compact := strings.ReplaceAll(id, "-", "")
 	tx := mongorepo.TransferDocument{ID: id, Reference: "FT" + strings.ToUpper(compact[len(compact)-11:]), Type: "transfer", Amount: req.Amount, Fee: 0, Currency: "VND", Channel: "web", Status: "awaiting_otp", Note: req.Note, IdempotencyKey: key, CreatedAt: time.Now().UTC(), OTPExpiresAt: time.Now().UTC().Add(5 * time.Minute), OTPResendAt: time.Now().UTC().Add(30 * time.Second)}
@@ -183,6 +194,10 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 	tx.Destination.Type, tx.Destination.AccountID, tx.Destination.AccountNo = "internal", recipient.ID, recipient.AccountNo
 	tx.Destination.BankCode, tx.Destination.Name = "ANOMALY", recipient.Name
 	tx, created, err := h.repo.CreatePending(r.Context(), tx)
+	if errors.Is(err, mongorepo.ErrTransactionInsufficient) {
+		writeAPIError(w, http.StatusBadRequest, "INSUFFICIENT_FUNDS", "insufficient funds")
+		return
+	}
 	if errors.Is(err, mongorepo.ErrTransactionConflict) {
 		writeAPIError(w, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency key conflicts with an existing transfer")
 		return
@@ -196,7 +211,10 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 	if created {
 		info, err := h.otp.Issue(r.Context(), tx.ID, source.Email)
 		if err != nil {
-			_ = h.repo.CancelPending(r.Context(), tx.ID)
+			if cancelErr := h.repo.CancelPending(r.Context(), tx.ID); cancelErr != nil {
+				h.writeRepoError(w, cancelErr)
+				return
+			}
 			if errors.Is(err, otp.ErrTransferOTPTooSoon) {
 				writeAPIError(w, http.StatusTooManyRequests, "OTP_RESEND_TOO_SOON", "otp request is not available yet")
 				return
@@ -260,12 +278,18 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, otp.ErrTransferOTPExpired) {
-		_ = h.repo.CancelPending(r.Context(), id)
+		if cancelErr := h.repo.CancelPending(r.Context(), id); cancelErr != nil {
+			h.writeRepoError(w, cancelErr)
+			return
+		}
 		writeAPIError(w, http.StatusGone, "OTP_EXPIRED", "otp expired")
 		return
 	}
 	if errors.Is(err, otp.ErrTransferOTPExceeded) {
-		_ = h.repo.CancelPending(r.Context(), id)
+		if cancelErr := h.repo.CancelPending(r.Context(), id); cancelErr != nil {
+			h.writeRepoError(w, cancelErr)
+			return
+		}
 		writeAPIError(w, http.StatusLocked, "OTP_ATTEMPTS_EXCEEDED", "otp attempts exceeded")
 		return
 	}

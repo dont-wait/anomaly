@@ -5,9 +5,9 @@
 `docker-compose.yml` hiện dựng các service sau:
 
 - `anomaly-server`: HTTP API
-- `anomaly-worker`: projection worker
+- `anomaly-worker`: banking projector (`/app/projector`)
 - `rustfs`: object storage cho media
-- `mongo`: read model và checkpoint store
+- `mongo`: read projections và checkpoint
 - `eventstore`: event store
 - `redis`: cache hoặc infra phụ trợ
 - `kafka`: streaming broker
@@ -47,7 +47,7 @@ RUSTFS_REGION=us-east-1
 Ngoài ra code còn hỗ trợ:
 
 ```env
-EVENT_STORE_CONN_STRING=kurrentdb://localhost:2113?tls=false
+EVENT_STORE_CONN_STRING=esdb://localhost:2113?tls=false
 ```
 
 ## Common Workflows
@@ -80,7 +80,7 @@ go run ./cmd/api
 Chạy worker:
 
 ```bash
-go run ./cmd/worker
+go run ./cmd/projector
 ```
 
 ## Verification
@@ -96,3 +96,20 @@ Chạy riêng RustFS tests:
 ```bash
 go test ./internal/infrastructure/rustfs -v
 ```
+
+## Banking Event Operations
+
+EventStoreDB là source of truth; API, seed và banking projector kết nối
+EventStoreDB. Migration `000005` bổ sung index cho projections.
+
+Với legacy account event streams, `make import-bank` lấy canonical account từ
+EventStoreDB. Với MVP từng ghi thẳng Mongo, đối soát/sao lưu dữ liệu rồi chọn rõ
+`make import-mongo-bank`. Cả hai chỉ import offline vào banking stream trống,
+không ghi đè canonical history hiện có. Dừng API/writers/projectors trước cutover.
+
+Chạy một banking projector cho checkpoint của nó; dừng projector trước khi reset
+checkpoint để replay. Pipeline training thuộc repo riêng. EventStoreDB có volume
+`eventstore-data`; sao lưu/copy dữ liệu của container cũ không có volume trước
+khi recreate.
+
+[Lệnh migration, cutover và replay](../server/README.md#eventstore-first-banking).

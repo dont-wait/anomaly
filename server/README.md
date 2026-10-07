@@ -1,6 +1,6 @@
 # Anomaly Server
 
-Backend cho Anomaly, gồm HTTP API, projection worker, và adapter hạ tầng local.
+Backend cho Anomaly, gồm HTTP API, banking projection worker và adapter hạ tầng local.
 
 ## Docs Map
 
@@ -14,31 +14,26 @@ Backend cho Anomaly, gồm HTTP API, projection worker, và adapter hạ tầng 
 Stack hiện tại:
 
 - API server: Go
-- Account store: MongoDB
-- Event store: EventStoreDB 23 for legacy projections and future transaction events
+- Canonical account/financial store: EventStoreDB
+- Read projections: MongoDB
+- Event store: EventStoreDB 23 for legacy projections and transaction lifecycle events
 - Media storage: RustFS
 - Local infra: Docker Compose
 
-MongoDB stores account data directly in three business collections:
+EventStoreDB is the source of truth for registration, KYC, balances and transfers.
+Commands rebuild the banking aggregate from the `banking` stream and append with
+its expected revision. MongoDB stores rebuildable read projections:
 
-- `customers`: customer profile, identity, credit profile, and current KYC status
-- `kyc_sessions`: append-style history for each KYC attempt and its media metadata
-- `accounts`: financial account, balance, status, and authentication credentials
+- `customers`, `kyc_sessions`, `accounts`: account/KYC and financial projections
+- `transactions`, `ledger_entries`, `account_transaction_feed`: transaction history
+- `checkpoints`: banking projector position
 
-Account balances are stored as BSON `Decimal128`; domain operations currently use
-whole `int64` VND values and convert at the MongoDB boundary. Registration and
-verification do not append account lifecycle events. The legacy projection worker
-uses two technical collections:
-
-- `checkpoints`: resume EventStoreDB subscriptions after restart
-- `projection_failures`: dead-letter permanent projection errors before advancing the checkpoint
-
-Migration `000004_create_transaction_collections` adds `transactions`,
-append-only `ledger_entries`, the `account_transaction_feed` read projection,
-and `outbox_events`. Transfer confirmation writes the account balances and
-these transaction records in one MongoDB session transaction. MongoDB must run
-as a replica set or sharded cluster for that endpoint. The Compose MongoDB
-service configures a local single-node replica set (`rs0`).
+Balances use whole `int64` VND values (BSON `long` in MongoDB). Migration `000004`
+creates transaction collections, including the legacy `outbox_events`; the active
+write path never writes that outbox. Migration `000005` adds banking projection
+indexes and the financial account reference. Mongo projections commit their
+updates and checkpoint in one transaction, requiring a replica set or sharded
+MongoDB. Compose initializes local `rs0`.
 
 ## Quick Start
 
@@ -150,14 +145,15 @@ Tài khoản demo: CCCD `079123456789`, username `demo.customer`, email
 
 Seed đi qua command đăng ký của ứng dụng. Chạy lại không tạo tài khoản trùng;
 tài khoản khớp sẽ được đưa về số dư demo. Nếu thông tin hoặc mật khẩu tài khoản
-đã tồn tại khác dữ liệu seed, lệnh báo lỗi thay vì ghi đè. Tài khoản từng seed
+đã tồn tại khác dữ liệu seed, lệnh báo lỗi thay vì ghi đè. Seed ghi account và
+số dư qua EventStoreDB; chạy projector để cập nhật MongoDB. Tài khoản từng seed
 bằng `SEED_*` trước đây cũng phải khớp dữ liệu trong code để chạy lại thành công.
 Dashboard lấy profile bằng `GET /api/auth/me` sau khi login.
 
 ### 4. Chạy worker local
 
 ```bash
-go run ./cmd/worker
+go run ./cmd/projector
 ```
 
 ### MongoDB migrations
@@ -270,7 +266,7 @@ Chạy toàn bộ test backend:
 make test
 ```
 
-Các test Go không khởi động hoặc yêu cầu database thật.
+Các test Go mặc định không yêu cầu MongoDB hoặc EventStoreDB thật.
 
 Chạy account end-to-end test; Testcontainers tự khởi động và dọn dẹp MongoDB
 cô lập:
@@ -302,3 +298,156 @@ go test ./internal/infrastructure/rustfs -v
 ```
 
 RustFS hiện đã có integration test end-to-end ở mức repository cho luồng upload -> download -> delete với file tạm thật.
+
+## EventStore-first banking
+
+```text
+Register / KYC / transfer command
+  -> rebuild canonical aggregate from EventStoreDB banking stream
+  -> validate ownership, idempotency, status and current funds
+  -> append event with expected revision
+       -> banking projector -> Mongo read models + checkpoint (atomic)
+       -> external training repository consumes transfer event envelopes
+```
+
+A single banking stream is the MVP's concurrency boundary. Both sides of an
+internal transfer commit in one `TransferCompleted` event. If another command
+appends first, the command rebuilds and validates again before retrying. Concurrent
+transfers cannot spend the same remaining balance twice even when Mongo is stale
+or empty. The API never falls back to Mongo for command state or funds. Register,
+login/account queries and KYC use the same canonical repository. Paginated
+transaction history, recent recipients and summaries read the Mongo projection
+and are eventually consistent; confirm/detail responses use canonical transfer
+state, so a successful append does not depend on projection catching up.
+
+Registration uniqueness is also checked under that expected-revision boundary.
+New account numbers are deterministic 14-digit numbers, matching the transfer
+lookup contract. Public 24/32-character account IDs remain unchanged; a stable
+`financial_id` maps them to ObjectID ledger/feed references. Profile version and
+financial projection version are separate, and profile/KYC updates preserve
+current funds. Development seed funding emits `BankBalanceSeeded` after the
+existing `APP_ENV`/`SEED_DEMO_ENABLED` checks; there is no public balance setter.
+
+Canonical events include `BankAccountCreated`, `BankAccountUpdated`,
+`BankBalanceSeeded`, and the transfer lifecycle:
+
+- `TransferCreated`: sequence 1, awaiting OTP
+- `TransferOTPUpdated`: subsequent OTP timing updates, without the OTP code
+- `TransferCompleted`: one atomic debit/credit with before/after balance snapshots
+- `TransferCancelled`: terminal cancellation
+
+Transfer sequences advance for each lifecycle event. Stable IDs make terminal
+command retries idempotent. An append timeout can have an uncertain outcome;
+retry the same command/idempotency key so replay resolves whether it committed.
+The canonical record carries the immutable transaction snapshot required to
+rebuild the API's fields. The separate training repository can consume the sanitized
+transaction event envelope:
+account financial IDs, amount, fee, currency, channel, status, sequence, event
+ID/time and balance snapshots, without profile credentials, names, notes or OTPs.
+Channel remains `web`, matching the current API's existing behavior.
+
+### New database
+
+Run in `server/` with EventStoreDB and MongoDB `rs0` available:
+
+```bash
+make migrate-up
+make start-worker       # banking projector
+# Start API using the existing auth, Redis, SMTP and media configuration:
+make start-api
+```
+
+Compose's `anomaly-worker` now runs `/app/projector`. API and seed also connect
+to EventStoreDB. The old
+`cmd/worker`/`account-*` stream adapter is retained for legacy tooling and is not
+used by the active banking write path. Do not run that legacy projector alongside
+the new banking projector during cutover.
+
+### Existing direct-Mongo MVP data
+
+The previous MVP wrote accounts/transfers directly to Mongo. It requires an
+explicit offline cutover before using this new canonical stream:
+
+1. Stop API, seeders, legacy workers and all projectors; back up the
+   database and existing EventStoreDB data, and reconcile the old balances.
+2. Apply migration `000005`, then run `make import-mongo-bank` while writers remain
+   stopped. This explicitly invokes `cmd/import-bank -offline -source mongo`.
+3. Start the new banking projector and then the API.
+
+Import writes one `BankImported` snapshot and historical transfer records into an
+**empty** `banking` stream in one append batch. Current account balances are the
+explicit cutover baseline; old completion events retain their original ledger
+snapshots and are marked historical so those debits are not applied twice.
+Import is the only bridge from old Mongo data: normal commands never read Mongo
+as authoritative state. An identical import can be retried; an existing unrelated
+canonical stream is never overwritten. Incomplete/unsupported historical data
+fails validation. Imports above 3 MiB are rejected before append and need a
+separate staged migration; this command intentionally handles the small MVP
+cutover only. Legacy `outbox_events` remain archival and are not published.
+
+If an older deployment already has authoritative `account-*` events and no
+unlogged Mongo transfers, use `make import-bank` instead. Its default source is
+EventStoreDB: it migrates those canonical account aggregates into the banking
+stream. It refuses unlogged Mongo transfers rather than silently overriding the
+canonical balances. Reconcile mixed histories before explicitly choosing
+`-source mongo`; no automatic merge or source fallback occurs. The API refuses
+startup when the new canonical stream is missing but Mongo accounts or legacy
+authoritative account streams exist.
+
+EventStoreDB now persists `/var/lib/eventstore` in `eventstore-data`. When
+upgrading a container that had no volume, copy/backup its existing data before
+recreating it with this Compose configuration. No live data migration is performed
+by a Go build or unit test.
+
+### Banking replay
+
+Run one banking projector for its checkpoint. Stop the running projector before
+resetting its checkpoint:
+
+```bash
+go run ./cmd/projector -replay
+```
+
+Banking replay reconstructs customers, KYC, account balances, transactions, ledger
+and feed from the canonical journal. Delivery/restart retries do not debit again;
+projection and checkpoint commit together. Errors leave the committed checkpoint
+unchanged. Resetting a checkpoint replays into existing rows; to rebuild from an
+empty read model, clear the business projections offline first and retain their
+schema/indexes. Do not delete EventStoreDB data to rebuild MongoDB.
+
+### External training repository
+
+Model training lives in a separate repository. This repo owns the canonical
+journal and business projections; it does not run a training consumer, store a
+training dataset or export features.
+
+The external consumer subscribes to `banking`, filters the four transfer lifecycle
+record types listed above, and reads the record's `event` envelope. Its contract
+contains `eventId`, `transactionId`, `eventType`, `schemaVersion`, `sequence`,
+`occurredAt` and `payload`. Consume that envelope rather than the private `account`
+or `transfer` snapshots used to rebuild API state. The training repo owns its
+checkpoint, dataset, feature extraction, labels and model pipeline.
+
+Offline cutover records carry `historical: true`; their balance snapshots describe
+past transfers, while the imported account baseline already includes those transfers.
+
+### Validation and limits
+
+```bash
+make test
+make test-transaction-e2e
+```
+
+E2E starts isolated MongoDB `rs0` and EventStoreDB instances. It checks canonical
+registration/KYC/funding without Mongo writes, competing transfers while Mongo is
+empty, command idempotency and ownership, subscription resume, projection rollback
+with unchanged checkpoint, rebuilding the full read model, offline import
+without double debit and EventStore failures
+without a Mongo fallback. It does not exercise SMTP delivery or the installed
+mobile application.
+
+The MVP rebuilds the single stream for command reads and serializes its writes.
+This prioritizes correct funds/uniqueness invariants; throughput and replay cost
+will grow with the journal. Production scaling needs EventStore snapshots and a
+carefully designed account reservation/settlement boundary before splitting the
+stream. MongoDB must remain a projection after that change.

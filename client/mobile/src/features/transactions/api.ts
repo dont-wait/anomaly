@@ -1,10 +1,21 @@
 import { requestJson } from "@/shared/lib/http";
 import type { TransactionDirection, TransactionRecord } from "@/features/transactions/model";
-import { toRecord } from "@/features/transfer/api/transfer";
 
 interface TransactionDto extends Omit<TransactionRecord, "createdAt" | "counterparty"> {
   createdAt: string;
   counterparty: { name: string; accountNo?: string; bank?: string; bankCode?: string };
+}
+
+function toRecord(dto: TransactionDto): TransactionRecord {
+  return {
+    ...dto,
+    createdAt: new Date(dto.createdAt),
+    counterparty: {
+      name: dto.counterparty.name,
+      accountNo: dto.counterparty.accountNo,
+      bank: dto.counterparty.bank ?? dto.counterparty.bankCode,
+    },
+  };
 }
 
 export interface TransactionPage {
