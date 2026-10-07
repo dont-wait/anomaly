@@ -189,7 +189,14 @@ services:
     image: mongo:7.0
     restart: "no"
     entrypoint: ["/bin/bash", "-c"]
-    command: "if [ ! -s /key/replica.key ]; then openssl rand -base64 756 > /key/replica.key; fi; chmod 400 /key/replica.key; chown 999:999 /key/replica.key"
+    command:
+      - |
+        set -e
+        if [ ! -s /key/replica.key ]; then
+          openssl rand -base64 756 > /key/replica.key
+        fi
+        chmod 400 /key/replica.key
+        chown 999:999 /key/replica.key
     volumes:
       - mongo-key-data:/key
     networks:
