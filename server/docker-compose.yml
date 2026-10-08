@@ -6,11 +6,15 @@ services:
       dockerfile: Dockerfile
     profiles:
       - app
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
-      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=rs0
       MONGO_DB: anomaly
+      EVENT_STORE_CONN_STRING: esdb://eventstore:2113?tls=false
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRY: ${JWT_EXPIRY:-24h}
       TZ: Asia/Ho_Chi_Minh
       RUSTFS_ENDPOINT: http://rustfs:9000
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
@@ -27,6 +31,8 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
 
     depends_on:
+      eventstore:
+        condition: service_healthy
       kafka:
         condition: service_healthy
       mongo:
@@ -42,12 +48,13 @@ services:
 
   anomaly-worker:
     container_name: anomaly-worker
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["/app/worker"]
+    command: ["/app/projector"]
     environment:
-      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=rs0
       MONGO_DB: anomaly
       EVENT_STORE_CONN_STRING: esdb://eventstore:2113?tls=false
       JWT_SECRET: ${JWT_SECRET}
@@ -55,7 +62,7 @@ services:
       TZ: Asia/Ho_Chi_Minh
     depends_on:
       eventstore:
-        condition: service_started
+        condition: service_healthy
       mongo:
         condition: service_healthy
       anomaly-migrate:
@@ -69,7 +76,7 @@ services:
       dockerfile: Dockerfile
     command: ["/app/migrate", "up"]
     environment:
-      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=rs0
       MONGO_DB: anomaly
       TZ: Asia/Ho_Chi_Minh
     depends_on:
@@ -142,6 +149,8 @@ services:
       - anomaly-network
 
   eventstore:
+    volumes:
+      - eventstore-data:/var/lib/eventstore
     container_name: anomaly-eventstore
     image: eventstore/eventstore:23.10.8-bookworm-slim
     environment:
@@ -152,6 +161,12 @@ services:
     ports:
       - "8081:8081"
       - "2113:2113"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:2113/health/live >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     networks:
       - anomaly-network
 
@@ -159,6 +174,7 @@ services:
     container_name: anomaly-mongo
     image: mongo:7.0
     restart: no
+    command: ["mongod", "--replSet", "rs0", "--keyFile", "/etc/mongo-key/replica.key", "--bind_ip_all"]
     ports:
       - "27017:27017"
     environment:
@@ -166,12 +182,33 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
     volumes:
       - mongo-data:/data/db
+      - mongo-key-data:/etc/mongo-key:ro
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\" | grep 1 > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"try { if (rs.status().myState === 1) quit(0); } catch (e) {} try { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}); } catch (e) {} quit(1);\" >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    depends_on:
+      mongo-key-init:
+        condition: service_completed_successfully
+    networks:
+      - anomaly-network
+
+  mongo-key-init:
+    image: mongo:7.0
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        if [ ! -s /key/replica.key ]; then
+          openssl rand -base64 756 > /key/replica.key
+        fi
+        chmod 400 /key/replica.key
+        chown 999:999 /key/replica.key
+    volumes:
+      - mongo-key-data:/key
     networks:
       - anomaly-network
 
@@ -242,7 +279,9 @@ networks:
 
 volumes:
   mongo-data:
+  mongo-key-data:
   redis-data:
   kafka-data:
   rustfs-data:
   rustfs-logs:
+  eventstore-data:
