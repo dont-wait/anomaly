@@ -46,7 +46,6 @@ type Operation struct {
 	ResponseDescription string
 	SuccessStatus       int
 	FailureStatuses     []int
-	FailureResponses    map[int]any
 	Parameters          []Parameter
 	Auth                bool
 }
@@ -128,11 +127,7 @@ func (r *Registry) addOperation(pattern string, operation Operation) {
 		),
 	}
 	for _, status := range operation.FailureStatuses {
-		body := operation.FailureResponses[status]
-		if body == nil {
-			body = ErrorResponse{}
-		}
-		responses[statusKey(status)] = responseObject(http.StatusText(status), body, "application/json")
+		responses[statusKey(status)] = responseObject(http.StatusText(status), ErrorResponse{}, "application/json")
 	}
 
 	docOperation := map[string]any{
@@ -234,11 +229,6 @@ func parameterSchema(parameter Parameter) map[string]any {
 	}
 	if parameter.Example != "" {
 		schema["example"] = parameter.Example
-		if parameter.Type == "integer" {
-			if value, err := strconv.ParseInt(parameter.Example, 10, 64); err == nil {
-				schema["example"] = value
-			}
-		}
 	}
 	return schema
 }
@@ -266,10 +256,8 @@ func schemaFor(t reflect.Type) map[string]any {
 	if t == nil {
 		return map[string]any{}
 	}
-	if t.Kind() == reflect.Pointer {
-		schema := schemaFor(t.Elem())
-		schema["nullable"] = true
-		return schema
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
 	}
 	if t == reflect.TypeOf(Binary{}) {
 		return map[string]any{"type": "string", "format": "binary"}

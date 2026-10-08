@@ -18,10 +18,7 @@ help:
 	@echo ""
 	@echo "  help              Show available commands"
 	@echo "  start-app         Build and start the Docker Compose app profile"
-	@echo "  start-worker      Project the banking stream into MongoDB"
-	@echo "  import-bank       Offline import of legacy EventStore account streams"
-	@echo "  import-mongo-bank  Offline adoption of audited direct-Mongo MVP data"
-	@echo "  test-transaction-e2e  Run isolated MongoDB/EventStoreDB E2E"
+	@echo "  start-worker      Run worker development"
 	@echo "  start-api         Run API development"
 	@echo "  seed              Run all registered development seeders"
 	@echo "  migrate           Alias for migrate-up"
@@ -61,22 +58,10 @@ test-account-e2e:
 	go test -tags=e2e -count=1 -run '^TestConcurrentRegistrationPersistsOneAccountWithoutEventStore$$' ./cmd/api
 
 start-worker:
-	go run ./cmd/projector
+	go run ./cmd/worker/main.go
 
 start-api:
 	go run ./cmd/api/main.go
 
 seed:
 	go run ./cmd/seed
-
-.PHONY: import-bank import-mongo-bank test-transaction-e2e
-
-import-bank:
-	go run ./cmd/import-bank -offline
-
-# Adopt audited direct-Mongo MVP data only with all writers/projectors stopped.
-import-mongo-bank:
-	go run ./cmd/import-bank -offline -source mongo
-
-test-transaction-e2e:
-	go test -tags=e2e -count=1 -timeout=6m -run '^TestBankEventSourcing$$' ./internal/infrastructure/eventstore

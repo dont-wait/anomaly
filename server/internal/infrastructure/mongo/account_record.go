@@ -8,7 +8,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
-	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 )
 
 type balanceRecord struct {
@@ -16,23 +15,21 @@ type balanceRecord struct {
 }
 
 type accountRecord struct {
-	Id               any           `bson:"_id"`
-	AccountNo        string        `bson:"account_no"`
-	CustomerId       bson.ObjectID `bson:"customer_id"`
-	Username         string        `bson:"username"`
-	Email            string        `bson:"email"`
-	PasswordHash     string        `bson:"password_hash"`
-	Type             string        `bson:"type"`
-	Role             string        `bson:"role"`
-	Currency         string        `bson:"currency"`
-	Balance          balanceRecord `bson:"balance"`
-	Status           string        `bson:"status"`
-	Version          int64         `bson:"version"`
-	FinancialID      bson.ObjectID `bson:"financial_id"`
-	FinancialVersion int64         `bson:"financial_version"`
-	OpenedAt         time.Time     `bson:"opened_at"`
-	CreatedAt        time.Time     `bson:"created_at"`
-	UpdatedAt        time.Time     `bson:"updated_at"`
+	Id           any           `bson:"_id"`
+	AccountNo    string        `bson:"account_no"`
+	CustomerId   bson.ObjectID `bson:"customer_id"`
+	Username     string        `bson:"username"`
+	Email        string        `bson:"email"`
+	PasswordHash string        `bson:"password_hash"`
+	Type         string        `bson:"type"`
+	Role         string        `bson:"role"`
+	Currency     string        `bson:"currency"`
+	Balance      balanceRecord `bson:"balance"`
+	Status       string        `bson:"status"`
+	Version      int64         `bson:"version"`
+	OpenedAt     time.Time     `bson:"opened_at"`
+	CreatedAt    time.Time     `bson:"created_at"`
+	UpdatedAt    time.Time     `bson:"updated_at"`
 }
 
 func toRecord(a *accountdomain.UserAccount) (accountRecord, error) {
@@ -45,23 +42,21 @@ func toRecord(a *accountdomain.UserAccount) (accountRecord, error) {
 		return accountRecord{}, fmt.Errorf("invalid customer id %q: %w", a.CustomerId, err)
 	}
 	return accountRecord{
-		Id:               id,
-		AccountNo:        a.AccountNo,
-		CustomerId:       customerID,
-		Username:         a.Username,
-		Email:            a.Email,
-		PasswordHash:     a.PasswordHash,
-		Type:             string(a.Type),
-		Role:             string(a.EffectiveRole()),
-		Currency:         string(a.Currency),
-		Balance:          balanceRecord{Current: a.Balance.Current},
-		Status:           string(a.Status),
-		Version:          a.Version,
-		FinancialID:      financialRecordID(a.Id),
-		FinancialVersion: 0, // new accounts have no financial mutations
-		OpenedAt:         a.OpenedAt,
-		CreatedAt:        a.CreatedAt,
-		UpdatedAt:        a.UpdatedAt,
+		Id:           id,
+		AccountNo:    a.AccountNo,
+		CustomerId:   customerID,
+		Username:     a.Username,
+		Email:        a.Email,
+		PasswordHash: a.PasswordHash,
+		Type:         string(a.Type),
+		Role:         string(a.EffectiveRole()),
+		Currency:     string(a.Currency),
+		Balance:      balanceRecord{Current: a.Balance.Current},
+		Status:       string(a.Status),
+		Version:      a.Version,
+		OpenedAt:     a.OpenedAt,
+		CreatedAt:    a.CreatedAt,
+		UpdatedAt:    a.UpdatedAt,
 	}, nil
 }
 
@@ -111,9 +106,4 @@ func accountIDFromRecord(id any) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("invalid stored account id %v", id)
-}
-
-func financialRecordID(id string) bson.ObjectID {
-	result, _ := bson.ObjectIDFromHex(journal.FinancialAccountID(id))
-	return result
 }
