@@ -10,6 +10,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/ser
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/worker ./cmd/worker
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/migrate ./cmd/migrate
 
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/projector ./cmd/projector
+
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/import-bank ./cmd/import-bank
+
 FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates tzdata \
@@ -20,6 +24,8 @@ COPY --from=builder /app/go.mod ./go.mod
 COPY --from=builder /app/bin/server ./server
 COPY --from=builder /app/bin/worker ./worker
 COPY --from=builder /app/bin/migrate ./migrate
+COPY --from=builder /app/bin/projector ./projector
+COPY --from=builder /app/bin/import-bank ./import-bank
 COPY --from=builder /app/migrations ./migrations
 
 USER appuser
