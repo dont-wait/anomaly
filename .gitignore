@@ -2,7 +2,6 @@ AGENTS.md
 .direnv
 .env
 specs/
-!specs/transaction-api.md
 .codex
 .yarn
 # Created by https://www.toptal.com/developers/gitignore/api/go,python
@@ -206,4 +205,13 @@ pyrightconfig.json
 
 opencode.json
 .agent/*
+
+# Frontend dependencies and generated output
+node_modules/
+client/*/dist/
+client/*.tsbuildinfo
+client/vite.config.js
+client/vite.config.d.ts
+client/vitest.config.js
+client/vitest.config.d.ts
 .vscode/

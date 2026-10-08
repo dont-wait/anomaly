@@ -9,7 +9,7 @@ Hiện backend hỗ trợ các luồng account cơ bản:
 - lấy account theo `id`
 - lấy account theo `email`
 
-Register và KYC ghi event vào EventStoreDB. Banking projector dựng account/KYC trên MongoDB; số dư canonical được quản lý bởi các event tài chính.
+Write model đi qua event store, còn read model được materialize sang MongoDB bởi worker.
 
 ## Media Storage
 
@@ -51,15 +51,3 @@ go test ./internal/infrastructure/rustfs -v
 ```
 
 E2E hiện tại là ở mức repository integration với RustFS. Chưa có end-to-end xuyên suốt từ HTTP handler -> service -> repository -> RustFS.
-
-## Transactions
-
-- Transfer nội bộ có OTP/idempotency, kiểm tra số dư từ EventStoreDB.
-- Một event hoàn tất ghi nhận cả debit/credit, với expected revision chung.
-- Lifecycle gồm created, OTP timing updated, completed và cancelled.
-- Mongo balance, ledger, history/feed và checkpoint là projection atomic.
-- API confirm có thể trả thành công khi projection chưa cập nhật.
-- Repo training riêng có thể đọc canonical transaction event envelope từ EventStoreDB.
-- E2E kiểm chứng competing transfers khi Mongo trống và rebuild toàn bộ read model.
-
-Xem [contract và workflow](../server/README.md#eventstore-first-banking).
