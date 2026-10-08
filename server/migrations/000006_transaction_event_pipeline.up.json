@@ -1,0 +1,134 @@
+[
+  {
+    "collMod": "accounts",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "account_no",
+          "customer_id",
+          "username",
+          "email",
+          "password_hash",
+          "type",
+          "currency",
+          "balance",
+          "status",
+          "version",
+          "opened_at",
+          "created_at",
+          "updated_at",
+          "role"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": [
+              "objectId",
+              "string"
+            ]
+          },
+          "account_no": {
+            "bsonType": "string"
+          },
+          "customer_id": {
+            "bsonType": "objectId"
+          },
+          "username": {
+            "bsonType": "string"
+          },
+          "email": {
+            "bsonType": "string"
+          },
+          "password_hash": {
+            "bsonType": "string"
+          },
+          "type": {
+            "enum": [
+              "payment"
+            ]
+          },
+          "currency": {
+            "enum": [
+              "VND"
+            ]
+          },
+          "balance": {
+            "bsonType": "object",
+            "required": [
+              "current"
+            ],
+            "properties": {
+              "current": {
+                "bsonType": "long"
+              }
+            }
+          },
+          "status": {
+            "enum": [
+              "active"
+            ]
+          },
+          "version": {
+            "bsonType": "long",
+            "minimum": 0
+          },
+          "opened_at": {
+            "bsonType": "date"
+          },
+          "created_at": {
+            "bsonType": "date"
+          },
+          "updated_at": {
+            "bsonType": "date"
+          },
+          "financial_id": {
+            "bsonType": "objectId"
+          },
+          "financial_version": {
+            "bsonType": "long",
+            "minimum": 0
+          },
+          "role": {
+            "enum": [
+              "user",
+              "admin"
+            ]
+          }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "createIndexes": "accounts",
+    "indexes": [
+      {
+        "key": {
+          "financial_id": 1
+        },
+        "name": "uniq_account_financial_id",
+        "unique": true,
+        "partialFilterExpression": {
+          "financial_id": {
+            "$type": "objectId"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "createIndexes": "ledger_entries",
+    "indexes": [
+      {
+        "key": {
+          "transaction_id": 1,
+          "direction": 1
+        },
+        "name": "uniq_ledger_transaction_direction",
+        "unique": true
+      }
+    ]
+  }
+]
