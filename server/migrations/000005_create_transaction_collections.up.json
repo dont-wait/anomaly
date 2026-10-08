@@ -1,0 +1,164 @@
+[
+  {
+    "createIndexes": "transactions",
+    "indexes": [
+      { "key": { "transaction_id": 1 }, "name": "uniq_transaction_id", "unique": true },
+      { "key": { "idempotency_key": 1 }, "name": "uniq_transaction_idempotency_key", "unique": true },
+      { "key": { "reference": 1 }, "name": "uniq_transaction_reference", "unique": true },
+      { "key": { "source.account_id": 1, "created_at": -1 }, "name": "idx_transactions_source_created_at" },
+      { "key": { "destination.account_id": 1, "created_at": -1 }, "name": "idx_transactions_destination_created_at", "partialFilterExpression": { "destination.account_id": { "$type": "objectId" } } }
+    ]
+  },
+  {
+    "collMod": "transactions",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["transaction_id", "reference", "type", "source", "destination", "amount", "fee", "currency", "channel", "status", "note", "idempotency_key", "created_at"],
+        "properties": {
+          "transaction_id": { "bsonType": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+          "reference": { "bsonType": "string" },
+          "type": { "enum": ["transfer"] },
+          "source": {
+            "bsonType": "object",
+            "required": ["account_id", "account_no", "name"],
+            "properties": { "account_id": { "bsonType": "objectId" }, "account_no": { "bsonType": "string" }, "name": { "bsonType": "string" } }
+          },
+          "destination": {
+            "bsonType": "object",
+            "required": ["type", "account_no"],
+            "properties": {
+              "type": { "enum": ["internal", "external"] },
+              "account_id": { "bsonType": ["objectId", "null"] },
+              "account_no": { "bsonType": "string" },
+              "bank_code": { "bsonType": ["string", "null"] },
+              "name": { "bsonType": ["string", "null"] }
+            }
+          },
+          "amount": { "bsonType": "long", "minimum": 1 },
+          "fee": { "bsonType": "long", "minimum": 0 },
+          "currency": { "enum": ["VND"] },
+          "channel": { "enum": ["mobile", "web", "desktop"] },
+          "status": { "enum": ["awaiting_otp", "pending", "success", "failed", "cancelled"] },
+          "note": { "bsonType": "string", "maxLength": 100 },
+          "authentication": {
+            "bsonType": "object",
+            "properties": { "method": { "bsonType": "string" }, "verified": { "bsonType": "bool" } }
+          },
+          "device": { "bsonType": "object" },
+          "risk": { "bsonType": "object" },
+          "idempotency_key": { "bsonType": "string" },
+          "otp_expires_at": { "bsonType": ["date", "null"] },
+          "otp_resend_available_at": { "bsonType": ["date", "null"] },
+          "created_at": { "bsonType": "date" },
+          "posted_at": { "bsonType": ["date", "null"] }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "createIndexes": "ledger_entries",
+    "indexes": [
+      { "key": { "account_id": 1, "sequence": 1 }, "name": "uniq_ledger_account_sequence", "unique": true },
+      { "key": { "transaction_id": 1 }, "name": "idx_ledger_transaction_id" },
+      { "key": { "account_id": 1, "created_at": -1 }, "name": "idx_ledger_account_created_at" }
+    ]
+  },
+  {
+    "collMod": "ledger_entries",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["transaction_id", "account_id", "sequence", "direction", "amount", "balance_before", "balance_after", "created_at"],
+        "properties": {
+          "transaction_id": { "bsonType": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+          "account_id": { "bsonType": "objectId" },
+          "sequence": { "bsonType": "long", "minimum": 1 },
+          "direction": { "enum": ["DEBIT", "CREDIT"] },
+          "amount": { "bsonType": "long", "minimum": 1 },
+          "balance_before": { "bsonType": "long", "minimum": 0 },
+          "balance_after": { "bsonType": "long", "minimum": 0 },
+          "created_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "createIndexes": "account_transaction_feed",
+    "indexes": [
+      { "key": { "account_id": 1, "transaction_id": 1 }, "name": "uniq_feed_account_transaction", "unique": true },
+      { "key": { "account_id": 1, "occurred_at": -1, "_id": -1 }, "name": "idx_feed_account_occurred_at" },
+      { "key": { "account_id": 1, "direction": 1, "occurred_at": -1, "_id": -1 }, "name": "idx_feed_account_direction_occurred_at" }
+    ]
+  },
+  {
+    "collMod": "account_transaction_feed",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["account_id", "transaction_id", "direction", "type", "counterparty", "amount", "fee", "status", "note", "reference", "search_text", "occurred_at"],
+        "properties": {
+          "account_id": { "bsonType": "objectId" },
+          "transaction_id": { "bsonType": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+          "direction": { "enum": ["IN", "OUT"] },
+          "type": { "enum": ["transfer", "payment", "bill", "topup", "savings", "salary"] },
+          "counterparty": {
+            "bsonType": "object",
+            "required": ["account_no", "name"],
+            "properties": {
+              "account_no": { "bsonType": "string" },
+              "name": { "bsonType": "string" },
+              "bank_code": { "bsonType": ["string", "null"] }
+            }
+          },
+          "amount": { "bsonType": "long", "minimum": 1 },
+          "fee": { "bsonType": "long", "minimum": 0 },
+          "balance_after": { "bsonType": ["long", "null"], "minimum": 0 },
+          "status": { "enum": ["awaiting_otp", "pending", "success", "failed", "cancelled"] },
+          "note": { "bsonType": "string", "maxLength": 100 },
+          "reference": { "bsonType": "string" },
+          "search_text": { "bsonType": "string" },
+          "occurred_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "createIndexes": "outbox_events",
+    "indexes": [
+      { "key": { "event_id": 1 }, "name": "uniq_outbox_event_id", "unique": true },
+      { "key": { "status": 1, "next_retry_at": 1, "created_at": 1 }, "name": "idx_outbox_pending_retry" },
+      { "key": { "aggregate_type": 1, "aggregate_id": 1, "created_at": 1 }, "name": "idx_outbox_aggregate_created_at" }
+    ]
+  },
+  {
+    "collMod": "outbox_events",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["event_id", "aggregate_type", "aggregate_id", "event_type", "payload", "status", "attempt_count", "created_at"],
+        "properties": {
+          "event_id": { "bsonType": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+          "aggregate_type": { "bsonType": "string" },
+          "aggregate_id": { "bsonType": ["objectId", "string"] },
+          "event_type": { "bsonType": "string" },
+          "payload": { "bsonType": "object" },
+          "status": { "enum": ["PENDING", "PUBLISHED", "FAILED"] },
+          "attempt_count": { "bsonType": ["int", "long"], "minimum": 0 },
+          "next_retry_at": { "bsonType": ["date", "null"] },
+          "published_at": { "bsonType": ["date", "null"] },
+          "last_error": { "bsonType": ["string", "null"] },
+          "created_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  }
+]
