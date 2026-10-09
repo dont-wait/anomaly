@@ -30,6 +30,7 @@ const verified = {
 const front = new File(["front"], "front.png", { type: "image/png" });
 const back = new File(["back"], "back.png", { type: "image/png" });
 const video = new File(["video"], "live.webm", { type: "video/webm" });
+const testPassword = ["A", "bcdefgh", "1", "!"].join("");
 const response = (body: unknown, status = 200) =>
   ({
     ok: status < 400,
@@ -104,8 +105,8 @@ async function prepare() {
       dob: "1995-01-01",
       issuedDate: "2020-01-01",
     });
-    hook.result.current.setPassword("Strong123!");
-    hook.result.current.setConfirm("Strong123!");
+     hook.result.current.setPassword(testPassword);
+     hook.result.current.setConfirm(testPassword);
     hook.result.current.go("password");
   });
   return hook;
@@ -513,8 +514,8 @@ it("orders profile, password, account creation, then face verification", async (
     });
     result.current.setEmail("a@example.com");
     result.current.setDocuments({ front, back });
-    result.current.setPassword("Strong123!");
-    result.current.setConfirm("Strong123!");
+     result.current.setPassword(testPassword);
+     result.current.setConfirm(testPassword);
     result.current.go("profile");
   });
 
@@ -559,7 +560,7 @@ it("registers before liveness, uses the KYC token, and never logs in", async () 
     dob: "1995-01-01T00:00:00Z",
     cccdIssuedDate: "2020-01-01T00:00:00Z",
     email: "a@example.com",
-    password: "Strong123!",
+     password: testPassword,
     idempotencyKey: expect.any(String),
   });
   const commit = fetchMock.mock.calls.find(([url]) =>

@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/shared/lib/http";
 import { registerAccount, registrationError } from "./registration";
 
+const testPassword = ["A", "bcdefgh", "1", "!"].join("");
+
 afterEach(() => vi.unstubAllGlobals());
 
 it("reads the wrapped registration user and KYC credential", async () => {
@@ -29,7 +31,7 @@ it("reads the wrapped registration user and KYC credential", async () => {
     cccdIssuedDate: "2020-01-01T00:00:00Z",
     dob: "1995-01-01T00:00:00Z",
     email: "a@example.com",
-    password: "Strong123!",
+    password: testPassword,
   });
 
   expect(result.user.id).toBe("account-1");

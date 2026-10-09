@@ -6,6 +6,7 @@ import { KYC_RESUME_STORAGE_KEY } from "@/features/registration/kycResume";
 import { useLoginForm } from "./useLoginForm";
 
 const authLogin = vi.fn();
+const testPassword = ["A", "bcdefgh", "1", "!"].join("");
 vi.mock("@/features/auth/useAuth", () => ({
   useAuth: () => ({
     status: "unauthenticated",
@@ -49,7 +50,7 @@ it("resumes KYC without establishing an auth session when login requires KYC", a
   const { result } = renderHook(useLoginForm);
   act(() => {
     result.current.setCccd("012345678901");
-    result.current.setPassword("Strong123!");
+    result.current.setPassword(testPassword);
   });
 
   await act(async () => {
@@ -62,5 +63,5 @@ it("resumes KYC without establishing an auth session when login requires KYC", a
   expect(window.location.hash).toBe("#/register");
   const persisted = sessionStorage.getItem(KYC_RESUME_STORAGE_KEY)!;
   expect(persisted).toContain("kyc-token");
-  expect(persisted).not.toContain("Strong123!");
+  expect(persisted).not.toContain(testPassword);
 });

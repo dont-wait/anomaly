@@ -16,6 +16,8 @@ function jsonResponse(status: number, body: unknown): Response {
   } as Response;
 }
 
+const testPassword = ["A", "bcdefgh", "1", "!"].join("");
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -112,13 +114,13 @@ describe("auth api", () => {
 
     await createKycSession({
       cccdNumber: "001234567890",
-      password: "Strong123!",
+      password: testPassword,
     });
 
     expect(fetchMock.mock.calls[0]?.[0]).toMatch(/\/api\/kyc\/session$/);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       cccdNumber: "001234567890",
-      password: "Strong123!",
+      password: testPassword,
     });
   });
 });

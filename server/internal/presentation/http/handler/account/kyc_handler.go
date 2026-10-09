@@ -67,7 +67,11 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, h.logger, fmt.Errorf("invalid multipart request: %w", err), func(error) int { return http.StatusBadRequest })
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
+	defer func() {
+		if err := r.MultipartForm.RemoveAll(); err != nil {
+			h.logger.Warn().Err(err).Msg("remove KYC multipart temp files failed")
+		}
+	}()
 
 	challengeType := strings.TrimSpace(r.FormValue("challengeType"))
 	if challengeType == "" {

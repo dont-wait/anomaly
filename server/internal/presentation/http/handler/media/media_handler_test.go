@@ -23,15 +23,19 @@ type accountRepo struct{ account *accountdomain.UserAccount }
 func (r accountRepo) FindByID(context.Context, string) (*accountdomain.UserAccount, error) {
 	return r.account, nil
 }
+
 func (accountRepo) FindByEmail(context.Context, string) (*accountdomain.UserAccount, error) {
 	return nil, nil
 }
+
 func (accountRepo) FindByUsername(context.Context, string) (*accountdomain.UserAccount, error) {
 	return nil, nil
 }
+
 func (accountRepo) FindByCCCDNumber(context.Context, string) (*accountdomain.UserAccount, error) {
 	return nil, nil
 }
+
 func (accountRepo) FindAll(context.Context) ([]*accountdomain.UserAccount, error) { return nil, nil }
 
 func TestRemovedMediaUploadRoutesReturnNotFound(t *testing.T) {
