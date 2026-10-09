@@ -14,7 +14,7 @@ const TransferPage = () => {
   }
 
   return (
-    <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-gradient-to-b from-secondary-container/40 to-surface-container-lowest">
+    <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-linear-to-b from-secondary-container/40 to-surface-container-lowest">
       <TransferFlow
         token={token}
         source={{

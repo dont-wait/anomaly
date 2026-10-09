@@ -39,7 +39,7 @@ export function LoginView() {
             <div className="flex items-center space-x-2.5">
               <img
                 alt="AnomalyBank"
-                className="h-12 sm:h-14 md:h-16 w-auto max-w-[265px] object-contain"
+                className="h-12 sm:h-14 md:h-16 w-auto max-w-66.25 object-contain"
                 src={logoUrl}
               />
             </div>
@@ -84,7 +84,7 @@ export function LoginView() {
               }}
               className="w-full rounded-xl sm:rounded-2xl bg-surface-container-low/60 backdrop-blur-xl shadow-2xl shadow-indigo-900/10 flex flex-col overflow-hidden relative"
             >
-              <div className="absolute inset-x-0 top-0 h-20 sm:h-24 bg-gradient-to-b from-white/60 to-transparent pointer-events-none" />
+              <div className="absolute inset-x-0 top-0 h-20 sm:h-24 bg-linear-to-b from-white/60 to-transparent pointer-events-none" />
 
               <div className="p-4 sm:p-5 md:p-6 flex flex-col space-y-3.5 sm:space-y-4 relative z-10">
                 {/* Greeting */}

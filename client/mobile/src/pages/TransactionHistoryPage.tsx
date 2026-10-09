@@ -149,7 +149,7 @@ const TransactionHistoryPage = () => {
   const initialLoading = loading && records.length === 0;
 
   return (
-    <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-gradient-to-b from-secondary-container/40 to-surface-container-lowest">
+    <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-linear-to-b from-secondary-container/40 to-surface-container-lowest">
       <PageHeader
         title="Lịch sử giao dịch"
         onBack={() => navigate(routes.dashboard)}
