@@ -12,6 +12,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/helpers"
 	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
+	"github.com/dont-wait/anomaly/internal/infrastructure/kyc"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	rustfs "github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	"github.com/dont-wait/anomaly/internal/logger"
@@ -74,8 +75,8 @@ func main() {
 		}
 	}()
 
-	accountHandler := composition.NewAccountHandler(bank, tokenSvc, *logger)
-	mediaHandler := composition.NewMediaHandler(mediaRepo, *logger)
+	accountHandler := composition.NewAccountHandlerWithKYC(bank, tokenSvc, kyc.NewClient(config.KYCConfig.ServiceURL), mediaRepo, *logger)
+	mediaHandler := composition.NewMediaHandler(mediaRepo, bank, *logger)
 	otpHandler := composition.NewOTPHandler(rdb, config.SMTPConfig, *logger)
 	transactionHandler := composition.NewTransactionHandler(bank, rdb, config.SMTPConfig, *logger)
 

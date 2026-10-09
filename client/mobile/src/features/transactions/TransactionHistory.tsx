@@ -34,23 +34,46 @@ function matchesQuery(record: TransactionRecord, query: string) {
   return haystack.includes(normalize(query.trim()));
 }
 
-interface TransactionHistoryProps {
+export interface TransactionHistoryProps {
   records: TransactionRecord[];
   onSelect: (record: TransactionRecord) => void;
   now?: Date;
+  filter?: TransactionFilter;
+  onFilterChange?: (filter: TransactionFilter) => void;
+  query?: string;
+  onQueryChange?: (query: string) => void;
+  monthlySummary?: { totalIn: number; totalOut: number };
 }
 
 export const TransactionHistory = ({
   records,
   onSelect,
   now: nowProp,
+  filter: controlledFilter,
+  onFilterChange,
+  query: controlledQuery,
+  onQueryChange,
+  monthlySummary,
 }: TransactionHistoryProps) => {
   // `nowProp` (test/story) luôn thắng; không prop thì chốt theo tick và tự
   // refresh khi qua nửa đêm local để "Hôm nay" + tổng tháng đúng.
   const [tick, setTick] = useState(() => new Date());
   const now = nowProp ?? tick;
-  const [filter, setFilter] = useState<TransactionFilter>("all");
-  const [query, setQuery] = useState("");
+  const [internalFilter, setInternalFilter] =
+    useState<TransactionFilter>("all");
+  const [internalQuery, setInternalQuery] = useState("");
+  const filter = controlledFilter ?? internalFilter;
+  const query = controlledQuery ?? internalQuery;
+
+  const changeFilter = (nextFilter: TransactionFilter) => {
+    if (controlledFilter === undefined) setInternalFilter(nextFilter);
+    onFilterChange?.(nextFilter);
+  };
+
+  const changeQuery = (nextQuery: string) => {
+    if (controlledQuery === undefined) setInternalQuery(nextQuery);
+    onQueryChange?.(nextQuery);
+  };
 
   // Trang mở qua nửa đêm local thì refresh để "Hôm nay" + tổng tháng đúng.
   useEffect(() => {
@@ -64,7 +87,7 @@ export const TransactionHistory = ({
     return () => clearTimeout(timer);
   }, [tick, nowProp]);
 
-  const monthSummary = useMemo(() => {
+  const calculatedMonthSummary = useMemo(() => {
     const inMonth = records.filter(
       (r) =>
         r.status === "success" &&
@@ -77,6 +100,9 @@ export const TransactionHistory = ({
         .reduce((total, r) => total + r.amount, 0);
     return { in: sum("in"), out: sum("out") };
   }, [records, now]);
+  const monthSummary = monthlySummary
+    ? { in: monthlySummary.totalIn, out: monthlySummary.totalOut }
+    : calculatedMonthSummary;
 
   const groups = useMemo(
     () =>
@@ -124,7 +150,7 @@ export const TransactionHistory = ({
           <input
             type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => changeQuery(e.target.value)}
             placeholder="Tên, nội dung, mã giao dịch..."
             className="h-12 w-full bg-transparent text-base text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none"
           />
@@ -142,7 +168,7 @@ export const TransactionHistory = ({
                 key={item.id}
                 type="button"
                 aria-pressed={active}
-                onClick={() => setFilter(item.id)}
+                onClick={() => changeFilter(item.id)}
                 className={`min-h-11 rounded-full px-4 text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none ${
                   active
                     ? "bg-secondary-strong text-on-secondary shadow-md shadow-secondary/30"

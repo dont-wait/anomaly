@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/shared/lib/http";
-import { isValidCccd, login, normalizeCccd, toLoginError } from "./auth";
+import {
+  createKycSession,
+  isValidCccd,
+  login,
+  normalizeCccd,
+  toLoginError,
+} from "./auth";
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -16,7 +22,7 @@ afterEach(() => {
 
 describe("auth api", () => {
   it("normalizes CCCD whitespace before login", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
       jsonResponse(200, {
         status: 200,
         message: "Login successful",
@@ -88,5 +94,31 @@ describe("auth api", () => {
         ]),
       ),
     ).toBe("Số CCCD hoặc mật khẩu không đúng.");
+  });
+
+  it("creates a purpose-limited KYC session with the entered credentials", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(200, {
+        status: 200,
+        message: "KYC session created",
+        data: {
+          user: { id: "user-1", isVerify: false },
+          kycToken: "kyc-token",
+          kycExpiresAt: "2030-01-01T00:00:00Z",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createKycSession({
+      cccdNumber: "001234567890",
+      password: "Strong123!",
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/kyc\/session$/);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+      cccdNumber: "001234567890",
+      password: "Strong123!",
+    });
   });
 });

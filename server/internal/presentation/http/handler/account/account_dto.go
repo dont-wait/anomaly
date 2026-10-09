@@ -20,7 +20,7 @@ type AccountResponsePublic struct {
 }
 
 // AccountResponsePrivate dùng cho endpoint đã qua auth (GET /api/auth/me,
-// POST /api/accounts/{id}/verify, AuthResponse). Chứa đầy đủ field kể
+// POST /api/kyc/complete, AuthResponse). Chứa đầy đủ field kể
 // cả identity URLs — chỉ user sở hữu tài khoản mới được xem KYC của mình.
 type AccountResponsePrivate struct {
 	Id             string `json:"id"`
@@ -43,6 +43,21 @@ type AuthResponse struct {
 	Token     string                 `json:"token"`
 	ExpiresAt time.Time              `json:"expiresAt"`
 	User      AccountResponsePrivate `json:"user"`
+}
+
+type RegisterResponse struct {
+	User         AccountResponsePrivate `json:"user"`
+	KYCToken     string                 `json:"kycToken,omitempty"`
+	KYCExpiresAt *time.Time             `json:"kycExpiresAt,omitempty"`
+}
+
+type KYCSessionResponse = RegisterResponse
+
+type KYCCompleteResponse struct {
+	Decision      string                  `json:"decision"`
+	ReasonCode    string                  `json:"reasonCode,omitempty"`
+	ReasonMessage string                  `json:"reasonMessage,omitempty"`
+	User          *AccountResponsePrivate `json:"user,omitempty"`
 }
 
 func toAccountResponsePublic(a *accountdomain.UserAccount) AccountResponsePublic {

@@ -97,9 +97,9 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 	verify := commands.NewVerifyAccountCommandHandler(repository)
 	if _, err := verify.Handle(ctx, commands.VerifyAccountCommand{
 		AccountID:      account.Id,
-		IdCardFrontUrl: "media/migration-front.jpg",
-		IdCardBackUrl:  "media/migration-back.jpg",
-		LiveVideoUrl:   "media/migration-live.mp4",
+		IdCardFrontUrl: "kyc/" + account.Id + "/id-card-front/migration-front",
+		IdCardBackUrl:  "kyc/" + account.Id + "/id-card-back/migration-back",
+		LiveVideoUrl:   "kyc/" + account.Id + "/live-video/migration-live",
 	}); err != nil {
 		t.Fatalf("verify account against migrated schema: %v", err)
 	}

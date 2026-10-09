@@ -124,23 +124,45 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	if registered.Status != http.StatusCreated || registered.Message == "" {
 		t.Fatalf("register envelope = %#v, want status and message", registered)
 	}
-	if _, ok := registered.Data["id"].(string); !ok {
-		t.Fatalf("register data = %#v, want account object", registered.Data)
+	user, ok := registered.Data["user"].(map[string]any)
+	if !ok || user["isVerify"] != false {
+		t.Fatalf("register data = %#v, want unverified user", registered.Data)
+	}
+	kycToken, ok := registered.Data["kycToken"].(string)
+	if !ok || kycToken == "" {
+		t.Fatalf("register data = %#v, want KYC token", registered.Data)
+	}
+	if _, ok := registered.Data["kycExpiresAt"].(string); !ok {
+		t.Fatalf("register data = %#v, want KYC expiry", registered.Data)
 	}
 
 	login := request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"password123"}`, handler.Login)
-	if login.Code != http.StatusOK {
-		t.Fatalf("login status = %d, want 200", login.Code)
+	if login.Code != http.StatusForbidden {
+		t.Fatalf("unverified login status = %d, want 403", login.Code)
 	}
+	var kycRequired httpx.ErrorResponse
+	decodeJSON(t, login, &kycRequired)
+	if kycRequired.Errors[0].Code != httpx.ErrorCodeKYCRequired {
+		t.Fatalf("login code = %q, want KYC_REQUIRED", kycRequired.Errors[0].Code)
+	}
+	session := request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"password123"}`, handler.StartKYCSession)
+	if session.Code != http.StatusOK {
+		t.Fatalf("KYC session status = %d, want 200", session.Code)
+	}
+	resumed := decodeSuccess[map[string]any](t, session)
+	if resumed.Data["kycToken"] == "" {
+		t.Fatalf("KYC session data = %#v, want token", resumed.Data)
+	}
+	alice, _ := repo.FindByCCCDNumber(context.Background(), "001234567890")
+	alice.Customer.KYCStatus = accountdomain.KYCStatusVerified
+	verifiedSession := request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"password123"}`, handler.StartKYCSession)
+	if verifiedSession.Code != http.StatusForbidden {
+		t.Fatalf("verified KYC session status = %d, want 403", verifiedSession.Code)
+	}
+	login = request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"password123"}`, handler.Login)
 	loggedIn := decodeSuccess[map[string]any](t, login)
-	if loggedIn.Status != http.StatusOK {
-		t.Fatalf("login body status = %d, want 200", loggedIn.Status)
-	}
-	if token, ok := loggedIn.Data["token"].(string); !ok || token == "" {
-		t.Fatalf("login data = %#v, want token", loggedIn.Data)
-	}
 	token := loggedIn.Data["token"].(string)
-	accountID := registered.Data["id"].(string)
+	accountID := user["id"].(string)
 
 	adminRegister := request(t, http.MethodPost, `{
 		"username":"admin",
@@ -158,6 +180,7 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 		t.Fatalf("find admin account: %v", err)
 	}
 	adminAccount.Role = accountdomain.AccountRoleAdmin
+	adminAccount.Customer.KYCStatus = accountdomain.KYCStatusVerified
 	if err := repo.Save(context.Background(), adminAccount); err != nil {
 		t.Fatalf("save admin role: %v", err)
 	}
@@ -216,18 +239,22 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	if private.Data["id"] != accountID {
 		t.Fatalf("me data = %#v, want account %q", private.Data, accountID)
 	}
-
-	verify := routeRequest(t, mux, http.MethodPost, "/api/accounts/"+accountID+"/verify", `{
-		"idCardFrontUrl":"kyc/front.jpg",
-		"idCardBackUrl":"kyc/back.jpg",
-		"liveVideoUrl":"kyc/live.webm"
-	}`, token)
-	if verify.Code != http.StatusOK {
-		t.Fatalf("verify status = %d, want 200", verify.Code)
+	meWithKYC := routeRequest(t, mux, http.MethodGet, "/api/auth/me", "", kycToken)
+	if meWithKYC.Code != http.StatusUnauthorized {
+		t.Fatalf("me with KYC token status = %d, want 401", meWithKYC.Code)
 	}
-	verified := decodeSuccess[map[string]any](t, verify)
-	if verified.Data["isVerify"] != true {
-		t.Fatalf("verify data = %#v, want verified account", verified.Data)
+
+	oldVerify := routeRequest(t, mux, http.MethodPost, "/api/kyc/verify", `{}`, kycToken)
+	if oldVerify.Code != http.StatusNotFound {
+		t.Fatalf("old verify status = %d, want 404", oldVerify.Code)
+	}
+	idempotentComplete := routeRequest(t, mux, http.MethodPost, "/api/kyc/complete", "", kycToken)
+	if idempotentComplete.Code != http.StatusOK {
+		t.Fatalf("idempotent complete status = %d, want 200", idempotentComplete.Code)
+	}
+	completeResult := decodeSuccess[map[string]any](t, idempotentComplete)
+	if completeResult.Data["decision"] != "VERIFIED" {
+		t.Fatalf("idempotent complete = %#v", completeResult.Data)
 	}
 
 	invalidLogin := request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"wrongpass"}`, handler.Login)
@@ -241,6 +268,35 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	}
 	if errorResponse.Errors[0].Code != httpx.ErrorCodeInvalidCredentials {
 		t.Fatalf("invalid login code = %q, want %q", errorResponse.Errors[0].Code, httpx.ErrorCodeInvalidCredentials)
+	}
+}
+
+func TestVerifiedRegistrationReplayDoesNotMintKYCToken(t *testing.T) {
+	repo := newMemoryAccountRepository()
+	tokens := auth.NewTokenService("test-secret", time.Hour)
+	handler := composition.NewAccountHandler(repo, tokens, zerolog.Nop())
+	body := `{
+		"idempotencyKey":"f2c758e3-eaed-4c70-b322-d630fe934c2f",
+		"username":"replay-user","cccdNumber":"111222333444",
+		"cccdIssuedDate":"2020-01-01T00:00:00Z","dob":"1990-01-01T00:00:00Z",
+		"email":"replay@example.com","password":"password123"
+	}`
+	first := request(t, http.MethodPost, body, handler.Register)
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first registration = %d", first.Code)
+	}
+	account, err := repo.FindByCCCDNumber(context.Background(), "111222333444")
+	if err != nil {
+		t.Fatal(err)
+	}
+	account.Customer.KYCStatus = accountdomain.KYCStatusVerified
+	replay := request(t, http.MethodPost, body, handler.Register)
+	if replay.Code != http.StatusCreated {
+		t.Fatalf("registration replay = %d, body = %s", replay.Code, replay.Body.String())
+	}
+	response := decodeSuccess[map[string]any](t, replay)
+	if _, exists := response.Data["kycToken"]; exists {
+		t.Fatalf("verified replay minted KYC token: %#v", response.Data)
 	}
 }
 

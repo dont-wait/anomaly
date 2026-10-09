@@ -19,7 +19,7 @@ import (
 func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool) *http.ServeMux {
 	router := openapi.NewRegistry(mux, swaggerEnabled)
 	account.RegisterRoutes(router, accountHandler, tokenSvc)
-	media.RegisterRoutes(router, mediaHandler)
+	media.RegisterRoutes(router, mediaHandler, tokenSvc)
 	otp.RegisterRoutes(router, otpHandler)
 	transaction.RegisterRoutes(router, transactionHandler, tokenSvc)
 	router.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {

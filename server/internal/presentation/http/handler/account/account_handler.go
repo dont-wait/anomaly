@@ -1,7 +1,9 @@
 package account
 
 import (
+	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+	kycinfra "github.com/dont-wait/anomaly/internal/infrastructure/kyc"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 )
@@ -23,6 +26,18 @@ type Handler struct {
 	getByID    *queries.GetAccountByIDQueryHandler
 	getByEmail *queries.GetAccountByEmailQueryHandler
 	getAll     *queries.GetAllAccountsQueryHandler
+	tokens     queries.TokenService
+	kyc        KYCVerifier
+	media      MediaStore
+}
+
+type KYCVerifier interface {
+	VerifyFace(ctx context.Context, front, video kycinfra.Media, challengeType string) (*kycinfra.VerifyResult, error)
+}
+
+type MediaStore interface {
+	Upload(ctx context.Context, key string, body io.Reader, contentType string) error
+	Delete(ctx context.Context, key string) error
 }
 
 func NewHandler(
@@ -33,6 +48,9 @@ func NewHandler(
 	getByID *queries.GetAccountByIDQueryHandler,
 	getByEmail *queries.GetAccountByEmailQueryHandler,
 	getAll *queries.GetAllAccountsQueryHandler,
+	tokens queries.TokenService,
+	kyc KYCVerifier,
+	media MediaStore,
 ) *Handler {
 	return &Handler{
 		logger:     logger,
@@ -42,6 +60,9 @@ func NewHandler(
 		getByID:    getByID,
 		getByEmail: getByEmail,
 		getAll:     getAll,
+		tokens:     tokens,
+		kyc:        kyc,
+		media:      media,
 	}
 }
 
@@ -53,6 +74,8 @@ func accountErrorStatus(err error) int {
 		return http.StatusServiceUnavailable
 	case errors.Is(err, accountdomain.ErrInvalidCredentials):
 		return http.StatusUnauthorized
+	case errors.Is(err, accountdomain.ErrKYCRequired), errors.Is(err, accountdomain.ErrAccountAlreadyVerified):
+		return http.StatusForbidden
 	case errors.Is(err, accountdomain.ErrAccountNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, accountdomain.ErrInvalidIdempotencyKey), errors.Is(err, accountdomain.ErrInvalidEmail),
@@ -79,6 +102,10 @@ func accountErrorCode(err error) httpx.ErrorCode {
 		return httpx.ErrorCodeRegistrationPending
 	case errors.Is(err, accountdomain.ErrInvalidCredentials):
 		return httpx.ErrorCodeInvalidCredentials
+	case errors.Is(err, accountdomain.ErrKYCRequired):
+		return httpx.ErrorCodeKYCRequired
+	case errors.Is(err, accountdomain.ErrAccountAlreadyVerified):
+		return httpx.ErrorCodeAccountAlreadyVerified
 	case errors.Is(err, accountdomain.ErrAccountNotFound):
 		return httpx.ErrorCodeAccountNotFound
 	case errors.Is(err, accountdomain.ErrInvalidIdempotencyKey):
@@ -151,7 +178,22 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteSuccess(w, http.StatusCreated, "Account registered successfully", toAccountResponsePrivate(acc))
+	persisted, err := h.getByID.Handle(r.Context(), queries.GetAccountByIDQuery{ID: acc.Id})
+	if err != nil {
+		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	response := RegisterResponse{User: toAccountResponsePrivate(persisted)}
+	if !persisted.IsVerified() {
+		kycToken, kycExpiresAt, err := h.tokens.IssueKYC(persisted.Id)
+		if err != nil {
+			httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+			return
+		}
+		response.KYCToken = kycToken
+		response.KYCExpiresAt = &kycExpiresAt
+	}
+	httpx.WriteSuccess(w, http.StatusCreated, "Account registered successfully", response)
 }
 
 type loginRequest struct {
@@ -183,6 +225,30 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteSuccess(w, http.StatusOK, "Login successful", toAuthResponse(result.User, result.Token, result.ExpiresAt))
 }
 
+func (h *Handler) StartKYCSession(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, h.logger, err, func(err error) int {
+			if errors.Is(err, httpx.ErrBodyTooLarge) {
+				return http.StatusRequestEntityTooLarge
+			}
+			return http.StatusBadRequest
+		})
+		return
+	}
+	result, err := h.login.StartKYCSession(r.Context(), queries.LoginQuery{
+		CCCDNumber: strings.TrimSpace(req.CCCDNumber), Password: req.Password,
+	})
+	if err != nil {
+		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.WriteSuccess(w, http.StatusOK, "KYC session created", KYCSessionResponse{
+		User: toAccountResponsePrivate(result.User), KYCToken: result.KYCToken, KYCExpiresAt: &result.KYCExpiresAt,
+	})
+}
+
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims == nil {
@@ -200,54 +266,6 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", "no-store")
 	httpx.WriteSuccess(w, http.StatusOK, "Account retrieved successfully", toAccountResponsePrivate(acc))
-}
-
-type verifyRequest struct {
-	IdCardFrontUrl string `json:"idCardFrontUrl"`
-	IdCardBackUrl  string `json:"idCardBackUrl"`
-	LiveVideoUrl   string `json:"liveVideoUrl"`
-}
-
-func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-
-	claims, ok := middleware.ClaimsFromContext(r.Context())
-	if !ok || claims == nil {
-		httpx.WriteError(w, h.logger, errors.New("missing claims"), func(err error) int {
-			return http.StatusUnauthorized
-		})
-		return
-	}
-	if claims.UserID != id {
-		httpx.WriteError(w, h.logger, errors.New("user mismatch"), func(err error) int {
-			return http.StatusForbidden
-		}, func(err error) httpx.ErrorCode { return httpx.ErrorCodeUserMismatch })
-		return
-	}
-
-	var req verifyRequest
-	if err := httpx.DecodeJSON(w, r, &req); err != nil {
-		httpx.WriteError(w, h.logger, err, func(err error) int {
-			if errors.Is(err, httpx.ErrBodyTooLarge) {
-				return http.StatusRequestEntityTooLarge
-			}
-			return http.StatusBadRequest
-		})
-		return
-	}
-
-	acc, err := h.verify.Handle(r.Context(), commands.VerifyAccountCommand{
-		AccountID:      id,
-		IdCardFrontUrl: req.IdCardFrontUrl,
-		IdCardBackUrl:  req.IdCardBackUrl,
-		LiveVideoUrl:   req.LiveVideoUrl,
-	})
-	if err != nil {
-		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
-		return
-	}
-
-	httpx.WriteSuccess(w, http.StatusOK, "Account verification completed", toAccountResponsePrivate(acc))
 }
 
 func (h *Handler) authorizeAccountRead(w http.ResponseWriter, r *http.Request, acc *accountdomain.UserAccount) bool {

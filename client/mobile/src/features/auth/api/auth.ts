@@ -21,6 +21,12 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
+export interface KycSessionResponse {
+  user: AuthUser;
+  kycToken: string;
+  kycExpiresAt: string;
+}
+
 export const CCCD_LENGTH = 12;
 
 export function normalizeCccd(value: string): string {
@@ -57,6 +63,29 @@ export async function login(
 
   if (!data || typeof data.token !== "string" || !data.user) {
     throw new ApiError(0, "Phản hồi đăng nhập không hợp lệ.", data);
+  }
+  return data;
+}
+
+export async function createKycSession(
+  input: LoginInput,
+  options: { signal?: AbortSignal } = {},
+): Promise<KycSessionResponse> {
+  const credentials = assertValidLoginInput(input);
+  const data = await requestApi<KycSessionResponse>(API_ENDPOINTS.KYC.SESSION, {
+    method: "POST",
+    body: credentials,
+    signal: options.signal,
+  });
+  if (
+    !data?.user?.id ||
+    data.user.isVerify !== false ||
+    typeof data.kycToken !== "string" ||
+    !data.kycToken ||
+    typeof data.kycExpiresAt !== "string" ||
+    !Number.isFinite(Date.parse(data.kycExpiresAt))
+  ) {
+    throw new ApiError(0, "Phản hồi phiên xác thực không hợp lệ.", data);
   }
   return data;
 }

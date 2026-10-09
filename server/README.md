@@ -260,7 +260,8 @@ Account:
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/auth/me`
-- `POST /api/accounts/{id}/verify`
+- `POST /api/kyc/session`
+- `POST /api/kyc/complete` (KYC bearer token, multipart)
 - `GET /api/accounts`
 - `GET /api/accounts/{id}`
 - `GET /api/accounts/by-email/{email}`
@@ -271,8 +272,27 @@ hiệu lực với token phát hành mới, token cũ còn hiệu lực đến t
 
 Media:
 
-- `POST /api/media/upload`
-- `GET /api/media/download?key=...`
+- `GET /api/media/download?key=...` (access bearer token)
+
+Media download only accepts recognized `kyc/{userID}/...` keys referenced by
+the current owner's persisted verified KYC session. Unknown keys, other users'
+keys, and stale admin-role claims are denied.
+
+Registration returns `data.user` with `isVerify: false`, plus a 15-minute
+`data.kycToken` and `data.kycExpiresAt`. The KYC token is purpose-limited: it is
+accepted only by `/api/kyc/complete` and cannot authenticate normal
+API routes. Access tokens likewise cannot authenticate KYC routes.
+
+KYC completion accepts multipart fields `idCardFront`, `idCardBack`, `liveVideo`,
+and `challengeType`. The API validates media signatures, calls
+`KYC_SERVICE_URL` at `/v1/kyc/verify-face`, and stores all three objects under
+`kyc/{accountID}/...` only after `success=true` and `decision=VERIFIED`. Clients
+never submit storage keys. `POST /api/kyc/session` validates CCCD/password and
+issues a fresh KYC token only while the account remains unverified. Normal login
+returns `403 KYC_REQUIRED` for unverified accounts.
+
+`KYC_SERVICE_URL` defaults to `http://localhost:8090` for local execution. The
+Compose app service defaults it to `http://anomaly-kyc-service:8090`.
 
 Transactions (authenticated; transfer MVP supports internal accounts only):
 
@@ -321,8 +341,8 @@ khẩu `admin123`; có thể override bằng `ADMIN_CCCD` và `ADMIN_PASSWORD`.
 make test-api BASE_URL=http://localhost:18080
 ```
 
-Suite Hurl tạo account và media object riêng với ID ngẫu nhiên, kiểm tra toàn bộ
-luồng register -> MongoDB -> login -> JWT -> verify và upload -> download.
+Suite Hurl tạo account riêng, kiểm tra login gate, KYC session renewal, media
+signature rejection, và việc các endpoint upload/verify cũ không còn tồn tại.
 Nếu một dependency thật không hoạt động, lệnh sẽ trả về exit code khác `0`.
 
 Chạy riêng test RustFS:

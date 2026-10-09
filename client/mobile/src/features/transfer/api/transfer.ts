@@ -1,81 +1,76 @@
-import { transactionStore } from "@/features/transactions";
 import type { TransactionRecord } from "@/features/transactions/model";
-import {
-  ANOMALY_BANK,
-  type Bank,
-  type Recipient,
-  type SourceAccount,
-} from "@/features/transfer/model";
+import { ANOMALY_BANK, type Recipient } from "@/features/transfer/model";
+import { API_ENDPOINTS } from "@/shared/constants/endpoints";
+import { requestJson } from "@/shared/lib/http";
 
-// TODO: thay toàn bộ file này bằng API thật khi backend có endpoint chuyển tiền.
-export const MOCK_LATENCY_MS = 400;
-export const DEMO_OTP = "123456";
+interface RecipientDto {
+  accountNo: string;
+  name: string;
+  bankCode: string;
+}
 
-const vietQrBank = (
-  code: string,
-  bin: string,
-  shortName: string,
-  name: string,
-): Bank => ({
-  code,
-  bin,
-  shortName,
-  name,
-  logo: `https://cdn.vietqr.io/img/${code}.png`,
+export interface OtpInfo {
+  channel: string;
+  maskedDestination: string;
+  expiresAt: string;
+  attemptsLeft: number;
+  resendAvailableAt: string;
+}
+
+export interface TransferIntent {
+  transferId: string;
+  status: "awaiting_otp" | "success" | "cancelled";
+  recipient: RecipientDto;
+  amount: number;
+  fee: number;
+  note: string;
+  otp?: OtpInfo;
+}
+
+export interface CreateTransferInput {
+  toBankCode: "ANOMALY";
+  toAccountNo: string;
+  amount: number;
+  note: string;
+}
+
+interface TransactionDto extends Omit<
+  TransactionRecord,
+  "createdAt" | "counterparty"
+> {
+  createdAt: string;
+  counterparty: {
+    name: string;
+    accountNo?: string;
+    bank?: string;
+    bankCode?: string;
+  };
+}
+
+const toRecipient = (dto: RecipientDto): Recipient => ({
+  accountNo: dto.accountNo,
+  name: dto.name,
+  bank: ANOMALY_BANK,
 });
 
-const VCB = vietQrBank(
-  "VCB",
-  "970436",
-  "Vietcombank",
-  "Ngân hàng TMCP Ngoại Thương Việt Nam",
-);
-const TCB = vietQrBank(
-  "TCB",
-  "970407",
-  "Techcombank",
-  "Ngân hàng TMCP Kỹ thương Việt Nam",
-);
-const MB = vietQrBank("MB", "970422", "MBBank", "Ngân hàng TMCP Quân đội");
-const BIDV = vietQrBank(
-  "BIDV",
-  "970418",
-  "BIDV",
-  "Ngân hàng TMCP Đầu tư và Phát triển Việt Nam",
-);
+const toRecord = (dto: TransactionDto): TransactionRecord => ({
+  ...dto,
+  createdAt: new Date(dto.createdAt),
+  counterparty: {
+    name: dto.counterparty.name,
+    accountNo: dto.counterparty.accountNo,
+    bank: dto.counterparty.bank ?? dto.counterparty.bankCode,
+  },
+});
 
-const directory: Recipient[] = [
-  { accountNo: "99999180147", name: "TRAN THI BICH", bank: ANOMALY_BANK },
-  { accountNo: "99999180233", name: "LE VAN CUONG", bank: ANOMALY_BANK },
-  { accountNo: "99999180389", name: "NGUYEN MINH DUC", bank: ANOMALY_BANK },
-  { accountNo: "99999180412", name: "PHAM THU HA", bank: ANOMALY_BANK },
-  { accountNo: "0011001234567", name: "NGUYEN VAN AN", bank: VCB },
-  { accountNo: "19036541234012", name: "LE THI MAI", bank: TCB },
-  { accountNo: "0901234567", name: "HOANG DUC ANH", bank: MB },
-  { accountNo: "12510000123456", name: "TRAN QUOC BAO", bank: BIDV },
-];
-
-const delay = () =>
-  new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
-
-// Chừa vài tài khoản chưa lưu để demo được nút "Lưu vào danh bạ".
-const seedContacts: Recipient[] = directory.filter(
-  (recipient) => !["TCB", "BIDV"].includes(recipient.bank.code),
-);
-
-/**
- * Danh bạ mock trong RAM, cô lập theo STK chủ sở hữu.
- * Không owner (đường legacy/test) dùng `globalContacts`; có owner dùng map riêng
- * clone từ seed. `clear()` purge để khỏi leak + phình RAM sau logout.
- */
-const globalContacts: Recipient[] = [...seedContacts];
 const contactsByOwner = new Map<string, Recipient[]>();
+const globalContacts: Recipient[] = [];
 
 const resolveContacts = (ownerAccountNo?: string): Recipient[] => {
   if (ownerAccountNo === undefined) return globalContacts;
   let list = contactsByOwner.get(ownerAccountNo);
   if (!list) {
-    list = [...seedContacts];
+    list = [];
     contactsByOwner.set(ownerAccountNo, list);
   }
   return list;
@@ -84,7 +79,7 @@ const resolveContacts = (ownerAccountNo?: string): Recipient[] => {
 const sameRecipient = (a: Recipient, b: Recipient) =>
   a.accountNo === b.accountNo && a.bank.code === b.bank.code;
 
-/** Danh bạ người nhận trong bộ nhớ — thay bằng API danh bạ khi backend có. */
+/** Local-only contacts until a contacts API is available. */
 export const contactStore = {
   list: (ownerAccountNo?: string): Recipient[] =>
     [...resolveContacts(ownerAccountNo)].sort((a, b) =>
@@ -95,9 +90,11 @@ export const contactStore = {
       sameRecipient(contact, recipient),
     ),
   add: (recipient: Recipient, ownerAccountNo?: string) => {
+    if (recipient.bank.code !== ANOMALY_BANK.code) return;
     const list = resolveContacts(ownerAccountNo);
-    if (!list.some((contact) => sameRecipient(contact, recipient)))
+    if (!list.some((contact) => sameRecipient(contact, recipient))) {
       list.push(recipient);
+    }
   },
   remove: (recipient: Recipient, ownerAccountNo?: string) => {
     const list = resolveContacts(ownerAccountNo);
@@ -106,13 +103,9 @@ export const contactStore = {
     );
     if (index >= 0) list.splice(index, 1);
   },
-  /**
-   * Purge danh bạ khỏi RAM khi logout. Có owner: chỉ xóa của owner đó
-   * (map entry bị drop, lần sau clone lại từ seed). Không args: purge tất cả.
-   */
   clear: (ownerAccountNo?: string) => {
     if (ownerAccountNo === undefined) {
-      globalContacts.splice(0, globalContacts.length, ...seedContacts);
+      globalContacts.splice(0);
       contactsByOwner.clear();
       return;
     }
@@ -120,61 +113,62 @@ export const contactStore = {
   },
 };
 
-export const recentRecipients: Recipient[] = [
-  directory[0],
-  directory[4],
-  directory[1],
-  directory[5],
-];
-
-/** Tra cứu chủ tài khoản theo ngân hàng + số tài khoản; `null` nếu không tồn tại. */
 export async function lookupRecipient(
-  bank: Bank,
+  token: string,
   accountNo: string,
-): Promise<Recipient | null> {
-  await delay();
-  return (
-    directory.find(
-      (r) => r.bank.code === bank.code && r.accountNo === accountNo,
-    ) ?? null
+): Promise<Recipient> {
+  const params = new URLSearchParams({ bankCode: "ANOMALY", accountNo });
+  const dto = await requestJson<RecipientDto>(
+    `${API_ENDPOINTS.ACCOUNT_LOOKUP}?${params}`,
+    { token },
   );
+  return toRecipient(dto);
 }
 
-export class OtpError extends Error {}
-
-export interface TransferInput {
-  source: SourceAccount;
-  recipient: Recipient;
-  amount: number;
-  note: string;
-  otp: string;
+export function createTransfer(
+  token: string,
+  idempotencyKey: string,
+  input: CreateTransferInput,
+): Promise<TransferIntent> {
+  return requestJson<TransferIntent>(API_ENDPOINTS.TRANSFERS.CREATE, {
+    method: "POST",
+    token,
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: input,
+  });
 }
 
-export async function submitTransfer(
-  input: TransferInput,
+export async function confirmTransfer(
+  token: string,
+  transferId: string,
+  otp: string,
 ): Promise<TransactionRecord> {
-  await delay();
-  if (input.otp !== DEMO_OTP) throw new OtpError("Mã OTP không đúng");
+  const dto = await requestJson<TransactionDto>(
+    API_ENDPOINTS.TRANSFERS.CONFIRM(transferId),
+    { method: "POST", token, body: { otp } },
+  );
+  return toRecord(dto);
+}
 
-  const now = new Date();
-  const record: TransactionRecord = {
-    id: `tx_${now.getTime()}`,
-    reference: `FT${now.getTime().toString().slice(-11)}`,
-    direction: "out",
-    status: "success",
-    kind: "transfer",
-    amount: input.amount,
-    fee: 0,
-    note: input.note,
-    counterparty: {
-      name: input.recipient.name,
-      accountNo: input.recipient.accountNo,
-      bank: input.recipient.bank.shortName,
-    },
-    createdAt: now,
-    balanceAfter: input.source.balance - input.amount,
-    ownerAccountNo: input.source.accountNo,
-  };
-  transactionStore.add(record);
-  return record;
+export function resendTransferOtp(
+  token: string,
+  transferId: string,
+): Promise<OtpInfo> {
+  return requestJson<OtpInfo>(API_ENDPOINTS.TRANSFERS.RESEND_OTP(transferId), {
+    method: "POST",
+    token,
+  });
+}
+
+export async function listRecentRecipients(
+  token: string,
+  limit = 4,
+): Promise<Recipient[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const response = await requestJson<{
+    items: Array<RecipientDto & { lastTransferredAt: string }>;
+  }>(`${API_ENDPOINTS.TRANSFERS.RECENT_RECIPIENTS}?${params}`, { token });
+  return response.items
+    .filter((item) => item.bankCode === ANOMALY_BANK.code)
+    .map(toRecipient);
 }

@@ -67,6 +67,7 @@ type Config struct {
 	RedisConfig      *RedisConfig
 	SMTPConfig       *SMTPConfig
 	DocsConfig       *DocsConfig
+	KYCConfig        *KYCConfig
 }
 
 func (l *Loader) LoadAllConfig() *Config {
@@ -78,7 +79,17 @@ func (l *Loader) LoadAllConfig() *Config {
 		RedisConfig:      l.LoadRedisConfig(),
 		SMTPConfig:       l.LoadSMTPConfig(),
 		DocsConfig:       l.LoadDocsConfig(),
+		KYCConfig:        l.LoadKYCConfig(),
 	}
+}
+
+type KYCConfig struct {
+	ServiceURL string
+}
+
+func (l *Loader) LoadKYCConfig() *KYCConfig {
+	l.logger().Info().Msg("Load KYC config")
+	return &KYCConfig{ServiceURL: l.LoadEnvOr("KYC_SERVICE_URL", "http://localhost:8090")}
 }
 
 type DocsConfig struct {

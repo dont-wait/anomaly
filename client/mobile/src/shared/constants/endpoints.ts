@@ -6,13 +6,22 @@ export const API_ENDPOINTS = {
     OTP_REQUEST: "/api/auth/otp/request",
     OTP_VERIFY: "/api/auth/otp/verify",
   },
-  MEDIA: {
-    UPLOAD: "/api/media/upload",
-  },
-  ACCOUNTS: {
-    VERIFY: (id: string) => `/api/accounts/${encodeURIComponent(id)}/verify`,
-  },
+  ACCOUNT_LOOKUP: "/api/accounts/lookup",
   KYC: {
-    VERIFY_FACE: "/v1/kyc/verify-face",
+    SESSION: "/api/kyc/session",
+    COMPLETE: "/api/kyc/complete",
+  },
+  TRANSFERS: {
+    CREATE: "/api/transfers",
+    CONFIRM: (id: string) =>
+      `/api/transfers/${encodeURIComponent(id)}/confirm`,
+    RESEND_OTP: (id: string) =>
+      `/api/transfers/${encodeURIComponent(id)}/otp/resend`,
+    RECENT_RECIPIENTS: "/api/transfers/recent-recipients",
+  },
+  TRANSACTIONS: {
+    LIST: "/api/transactions",
+    DETAIL: (id: string) => `/api/transactions/${encodeURIComponent(id)}`,
+    SUMMARY: "/api/transactions/summary",
   },
 } as const;

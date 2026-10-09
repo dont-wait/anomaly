@@ -6,6 +6,8 @@ import (
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
 	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
+	"github.com/dont-wait/anomaly/internal/infrastructure/kyc"
+	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	handleraccount "github.com/dont-wait/anomaly/internal/presentation/http/handler/account"
 )
 
@@ -18,10 +20,15 @@ type AccountRepository interface {
 	queries.AccountQueryRepository
 }
 
-func NewAccountHandler(repo AccountRepository,
-	tokenSvc *auth.TokenService,
-	logger zerolog.Logger,
-) *handleraccount.Handler {
+func NewAccountHandler(repo AccountRepository, tokenSvc *auth.TokenService, logger zerolog.Logger) *handleraccount.Handler {
+	return newAccountHandler(repo, tokenSvc, nil, nil, logger)
+}
+
+func NewAccountHandlerWithKYC(repo AccountRepository, tokenSvc *auth.TokenService, kycClient *kyc.Client, mediaRepo *rustfs.MediaRepository, logger zerolog.Logger) *handleraccount.Handler {
+	return newAccountHandler(repo, tokenSvc, kycClient, mediaRepo, logger)
+}
+
+func newAccountHandler(repo AccountRepository, tokenSvc *auth.TokenService, kycClient *kyc.Client, mediaRepo *rustfs.MediaRepository, logger zerolog.Logger) *handleraccount.Handler {
 	return handleraccount.NewHandler(
 		logger,
 		commands.NewRegisterAccountCommandHandler(repo, repo),
@@ -30,5 +37,8 @@ func NewAccountHandler(repo AccountRepository,
 		queries.NewGetAccountByIDQueryHandler(repo),
 		queries.NewGetAccountByEmailQueryHandler(repo),
 		queries.NewGetAllAccountsQueryHandler(repo),
+		tokenSvc,
+		kycClient,
+		mediaRepo,
 	)
 }

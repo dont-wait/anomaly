@@ -1,6 +1,40 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/shared/lib/http";
-import { registrationError } from "./registration";
+import { registerAccount, registrationError } from "./registration";
+
+afterEach(() => vi.unstubAllGlobals());
+
+it("reads the wrapped registration user and KYC credential", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      text: async () =>
+        JSON.stringify({
+          status: 201,
+          message: "registered",
+          data: {
+            user: { id: "account-1", isVerify: false },
+            kycToken: "kyc-token",
+            kycExpiresAt: "2030-01-01T00:00:00Z",
+          },
+        }),
+    } as Response),
+  );
+
+  const result = await registerAccount({
+    username: "Nguyen A",
+    cccdNumber: "012345678901",
+    cccdIssuedDate: "2020-01-01T00:00:00Z",
+    dob: "1995-01-01T00:00:00Z",
+    email: "a@example.com",
+    password: "Strong123!",
+  });
+
+  expect(result.user.id).toBe("account-1");
+  expect(result.kycToken).toBe("kyc-token");
+});
 
 describe("registrationError", () => {
   it("maps validation codes to actionable messages", () => {
@@ -21,13 +55,15 @@ describe("registrationError", () => {
     ).toBe("Mật khẩu phải có ít nhất 8 ký tự.");
   });
 
-  it("maps invalid authentication codes to a session message", () => {
+  it("maps invalid authentication codes to a KYC session message", () => {
     expect(
       registrationError(
         new ApiError(401, "Unauthorized", undefined, [
           { code: "INVALID_TOKEN", detail: "invalid token" },
         ]),
       ),
-    ).toBe("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại để tiếp tục.");
+    ).toBe(
+      "Phiên xác thực danh tính không hợp lệ. Vui lòng đăng nhập để tiếp tục.",
+    );
   });
 });

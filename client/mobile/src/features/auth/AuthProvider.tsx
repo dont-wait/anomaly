@@ -18,12 +18,10 @@ import {
 import { getInfo, type AuthUser } from "./api/profile";
 import { ApiError } from "@/shared/lib/http";
 import { defaultAuthTokenStore, type AuthTokenStore } from "./lib/token-store";
-import { transactionStore } from "@/features/transactions/mocks/transactions";
 import { contactStore } from "@/features/transfer/api/transfer";
 
 /** Purge cache mock theo user khỏi RAM khi đổi/kết thúc session (chống leak + rác). */
 const purgeUserScopedMocks = () => {
-  transactionStore.clear();
   contactStore.clear();
 };
 

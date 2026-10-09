@@ -2,13 +2,10 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ShieldIcon } from "@/shared/icons";
 import { Button } from "@/shared/ui";
 import { formatVnd } from "@/features/transactions/utils/format";
-import { DEMO_OTP } from "@/features/transfer/api/transfer";
 import { OTP_LENGTH } from "@/features/transfer/model";
 import type { TransferFlowState } from "@/features/transfer/useTransferFlow";
 import { BankLogo } from "./BankLogo";
 import { OtpInput } from "./OtpInput";
-
-const RESEND_SECONDS = 60;
 
 const countdownLabel = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -24,7 +21,15 @@ const Row = ({ label, children }: { label: string; children: ReactNode }) => (
 
 type Props = Pick<
   TransferFlowState,
-  "recipient" | "amount" | "note" | "otpError" | "busy" | "submitOtp"
+  | "recipient"
+  | "amount"
+  | "note"
+  | "otpError"
+  | "otpInfo"
+  | "resendMessage"
+  | "resendOtp"
+  | "busy"
+  | "submitOtp"
 >;
 
 /** Nội dung sheet xác thực: tóm tắt giao dịch ở trên, 6 ô OTP ở dưới. */
@@ -33,21 +38,29 @@ export function ConfirmSheetContent({
   amount,
   note,
   otpError,
+  otpInfo,
+  resendMessage,
+  resendOtp,
   busy,
   submitOtp,
 }: Props) {
   const [otp, setOtp] = useState("");
-  const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
-  const [resent, setResent] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
-  // Đếm ngược cho nút gửi lại mã.
   useEffect(() => {
-    if (secondsLeft <= 0) return;
-    const timer = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [secondsLeft]);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  if (!recipient) return null;
+  if (!recipient || !otpInfo) return null;
+  const secondsLeft = Math.max(
+    0,
+    Math.ceil((new Date(otpInfo.resendAvailableAt).getTime() - now) / 1000),
+  );
+  const expirySeconds = Math.max(
+    0,
+    Math.ceil((new Date(otpInfo.expiresAt).getTime() - now) / 1000),
+  );
   // Người dùng đã bắt đầu gõ mã mới thì ẩn lỗi của lần trước.
   const error = otp.length === 0 ? otpError : "";
 
@@ -60,12 +73,6 @@ export function ConfirmSheetContent({
   const onChange = (value: string) => {
     setOtp(value);
     if (value.length === OTP_LENGTH && !busy) void submit(value);
-  };
-
-  // TODO: gọi API gửi lại OTP (2.5 trong specs/transaction-spec.md) khi backend có.
-  const resend = () => {
-    setSecondsLeft(RESEND_SECONDS);
-    setResent(true);
   };
 
   const onSubmit = (e: FormEvent) => {
@@ -112,7 +119,7 @@ export function ConfirmSheetContent({
           id="otp-help"
           className="mt-0.5 mb-3 text-xs text-on-surface-variant"
         >
-          Nhập {OTP_LENGTH} chữ số đã gửi đến email đăng ký của bạn.
+          Nhập {OTP_LENGTH} chữ số đã gửi đến {otpInfo.maskedDestination}.
         </p>
         <OtpInput
           id="transfer-otp"
@@ -120,7 +127,7 @@ export function ConfirmSheetContent({
           onChange={onChange}
           invalid={Boolean(error)}
           disabled={busy}
-          describedBy={error ? "otp-error otp-help" : "otp-help otp-demo"}
+          describedBy={error ? "otp-error otp-help" : "otp-help"}
         />
         {error && (
           <p
@@ -132,12 +139,9 @@ export function ConfirmSheetContent({
           </p>
         )}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <p id="otp-demo" className="text-xs text-on-surface-variant">
-            Môi trường demo — mã OTP là{" "}
-            <span className="font-mono font-semibold text-on-surface">
-              {DEMO_OTP}
-            </span>
-            .
+          <p className="text-xs text-on-surface-variant tabular-nums">
+            Mã hết hạn sau {countdownLabel(expirySeconds)} · Còn{" "}
+            {otpInfo.attemptsLeft} lần thử
           </p>
           {secondsLeft > 0 ? (
             <p className="text-xs text-on-surface-variant tabular-nums">
@@ -146,7 +150,8 @@ export function ConfirmSheetContent({
           ) : (
             <button
               type="button"
-              onClick={resend}
+              onClick={() => void resendOtp()}
+              disabled={busy}
               className="-mr-2 min-h-11 rounded-full px-3 text-sm font-semibold text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
             >
               Gửi lại mã
@@ -154,7 +159,7 @@ export function ConfirmSheetContent({
           )}
         </div>
         <p role="status" className="mt-1 text-xs text-success">
-          {resent && "Đã gửi lại mã OTP đến email của bạn."}
+          {resendMessage}
         </p>
       </div>
 

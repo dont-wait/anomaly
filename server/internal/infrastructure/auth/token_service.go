@@ -12,6 +12,12 @@ import (
 
 var ErrInvalidToken = errors.New("invalid token")
 
+const (
+	accessTokenPurpose = "access"
+	kycTokenPurpose    = "kyc"
+	kycTokenExpiry     = 15 * time.Minute
+)
+
 type TokenService struct {
 	secret []byte
 	expiry time.Duration
@@ -31,6 +37,7 @@ func (s *TokenService) Issue(userID, username, role string, isVerify bool) (stri
 		"username": username,
 		"role":     role,
 		"isVerify": isVerify,
+		"purpose":  accessTokenPurpose,
 		"exp":      expiresAt.Unix(),
 		"iat":      time.Now().Unix(),
 	}
@@ -43,8 +50,32 @@ func (s *TokenService) Issue(userID, username, role string, isVerify bool) (stri
 }
 
 func (s *TokenService) Parse(tokenString string) (*domainauth.Claims, error) {
+	return s.parse(tokenString, accessTokenPurpose)
+}
+
+func (s *TokenService) IssueKYC(userID string) (string, time.Time, error) {
+	now := time.Now()
+	expiresAt := now.Add(kycTokenExpiry)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":     userID,
+		"purpose": kycTokenPurpose,
+		"exp":     expiresAt.Unix(),
+		"iat":     now.Unix(),
+	})
+	signed, err := token.SignedString(s.secret)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("sign KYC token: %w", err)
+	}
+	return signed, expiresAt, nil
+}
+
+func (s *TokenService) ParseKYC(tokenString string) (*domainauth.Claims, error) {
+	return s.parse(tokenString, kycTokenPurpose)
+}
+
+func (s *TokenService) parse(tokenString, expectedPurpose string) (*domainauth.Claims, error) {
 	parsed, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+		if t.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return s.secret, nil
@@ -62,6 +93,25 @@ func (s *TokenService) Parse(tokenString string) (*domainauth.Claims, error) {
 	if !ok || sub == "" {
 		return nil, ErrInvalidToken
 	}
+	purpose, ok := claimsMap["purpose"].(string)
+	if !ok || purpose != expectedPurpose {
+		return nil, ErrInvalidToken
+	}
+
+	exp, err := claimsMap.GetExpirationTime()
+	if err != nil || exp == nil {
+		return nil, ErrInvalidToken
+	}
+
+	claims := &domainauth.Claims{
+		UserID:    sub,
+		Purpose:   purpose,
+		ExpiresAt: exp.Time,
+	}
+	if expectedPurpose == kycTokenPurpose {
+		return claims, nil
+	}
+
 	username, ok := claimsMap["username"].(string)
 	if !ok || username == "" {
 		return nil, ErrInvalidToken
@@ -75,17 +125,8 @@ func (s *TokenService) Parse(tokenString string) (*domainauth.Claims, error) {
 		return nil, ErrInvalidToken
 	}
 
-	expFloat, ok := claimsMap["exp"].(float64)
-	if !ok {
-		return nil, ErrInvalidToken
-	}
-	expiresAt := time.Unix(int64(expFloat), 0)
-
-	return &domainauth.Claims{
-		UserID:    sub,
-		Username:  username,
-		Role:      role,
-		IsVerify:  isVerify,
-		ExpiresAt: expiresAt,
-	}, nil
+	claims.Username = username
+	claims.Role = role
+	claims.IsVerify = isVerify
+	return claims, nil
 }

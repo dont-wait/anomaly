@@ -6,6 +6,7 @@ export interface RequestJsonOptions {
   method?: HttpMethod;
   body?: unknown;
   token?: string;
+  headers?: Record<string, string>;
   signal?: AbortSignal;
   timeoutMs?: number;
   baseUrl?: string;
@@ -44,7 +45,13 @@ export class ApiError extends Error {
   }
 
   hasCode(code: string): boolean {
-    return this.errors.some((error) => error.code === code);
+    if (this.errors.some((error) => error.code === code)) return true;
+    return (
+      this.body !== null &&
+      typeof this.body === "object" &&
+      "code" in this.body &&
+      (this.body as { code?: unknown }).code === code
+    );
   }
 }
 
@@ -113,6 +120,7 @@ export async function requestJson<T>(
     method = "GET",
     body,
     token,
+    headers,
     signal,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     baseUrl = API_BASE_URL,
@@ -136,6 +144,7 @@ export async function requestJson<T>(
           ? {}
           : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
       },
       body:
         body === undefined

@@ -14,10 +14,15 @@ import (
 )
 
 type tokenServiceStub struct {
-	parse func(string) (*auth.Claims, error)
+	parse    func(string) (*auth.Claims, error)
+	parseKYC func(string) (*auth.Claims, error)
 }
 
 func (s tokenServiceStub) Issue(string, string, string, bool) (string, time.Time, error) {
+	return "", time.Time{}, nil
+}
+
+func (s tokenServiceStub) IssueKYC(string) (string, time.Time, error) {
 	return "", time.Time{}, nil
 }
 
@@ -50,6 +55,34 @@ func TestRequireAdminAllowsAdmin(t *testing.T) {
 
 func (s tokenServiceStub) Parse(token string) (*auth.Claims, error) {
 	return s.parse(token)
+}
+
+func (s tokenServiceStub) ParseKYC(token string) (*auth.Claims, error) {
+	return s.parseKYC(token)
+}
+
+func TestRequireKYCAuthUsesKYCParser(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/", nil)
+	request.Header.Set("Authorization", "Bearer kyc-token")
+	called := false
+
+	RequireKYCAuth(tokenServiceStub{parseKYC: func(token string) (*auth.Claims, error) {
+		if token != "kyc-token" {
+			t.Fatalf("token = %q", token)
+		}
+		return &auth.Claims{UserID: "account-id", Purpose: "kyc"}, nil
+	}})(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		called = true
+		claims, _ := ClaimsFromContext(r.Context())
+		if claims.UserID != "account-id" {
+			t.Fatalf("claims = %#v", claims)
+		}
+	})).ServeHTTP(recorder, request)
+
+	if !called {
+		t.Fatal("next handler should be called")
+	}
 }
 
 func TestRequireAuthDistinguishesMissingHeader(t *testing.T) {

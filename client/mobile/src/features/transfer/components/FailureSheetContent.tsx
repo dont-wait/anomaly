@@ -25,9 +25,11 @@ export function FailureSheetContent({ result, retry, closeSheet }: Props) {
         </p>
       </div>
       <div className="space-y-3">
-        <Button className="w-full" onClick={retry}>
-          Thử lại
-        </Button>
+        {result.retryable && (
+          <Button className="w-full" onClick={retry}>
+            Thử lại
+          </Button>
+        )}
         <Button variant="secondary" className="w-full" onClick={closeSheet}>
           Sửa thông tin
         </Button>

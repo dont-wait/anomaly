@@ -19,7 +19,7 @@ func RegisterRoutes(
 		Summary:         "Register an account",
 		Tags:            []string{"Auth"},
 		Request:         registerRequest{},
-		Response:        httpx.SuccessResponse[AccountResponsePrivate]{},
+		Response:        httpx.SuccessResponse[RegisterResponse]{},
 		SuccessStatus:   http.StatusCreated,
 		FailureStatuses: []int{http.StatusBadRequest, http.StatusConflict, http.StatusRequestEntityTooLarge, http.StatusServiceUnavailable},
 	})
@@ -29,7 +29,16 @@ func RegisterRoutes(
 		Tags:            []string{"Auth"},
 		Request:         loginRequest{},
 		Response:        httpx.SuccessResponse[AuthResponse]{},
-		FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized},
+		FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden},
+	})
+	router.HandleFunc("POST /api/kyc/session", h.StartKYCSession, openapi.Operation{
+		ID:              "createKYCSession",
+		Summary:         "Resume KYC with account credentials",
+		Description:     "Returns a fresh purpose-limited KYC token only for an unverified account.",
+		Tags:            []string{"KYC"},
+		Request:         loginRequest{},
+		Response:        httpx.SuccessResponse[KYCSessionResponse]{},
+		FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden},
 	})
 
 	router.Handle("GET /api/auth/me",
@@ -41,15 +50,18 @@ func RegisterRoutes(
 			FailureStatuses: []int{http.StatusUnauthorized, http.StatusNotFound},
 			Auth:            true,
 		})
-	router.Handle("POST /api/accounts/{id}/verify",
-		middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.Verify)), openapi.Operation{
-			ID:              "verifyAccount",
-			Summary:         "Submit KYC media for verification",
-			Tags:            []string{"Accounts"},
-			Request:         verifyRequest{},
-			Response:        httpx.SuccessResponse[AccountResponsePrivate]{},
-			FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
-			Auth:            true,
+	router.Handle("POST /api/kyc/complete",
+		middleware.RequireKYCAuth(tokenSvc)(http.HandlerFunc(h.CompleteKYC)), openapi.Operation{
+			ID:                 "completeKYC",
+			Summary:            "Complete pre-login KYC",
+			Description:        "Requires a KYC bearer token. Validates media, calls the configured KYC service, and stores media only after a VERIFIED decision.",
+			Tags:               []string{"KYC"},
+			Request:            completeKYCRequest{},
+			RequestContentType: "multipart/form-data",
+			Response:           httpx.SuccessResponse[KYCCompleteResponse]{},
+			FailureStatuses:    []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusBadGateway},
+			Auth:               true,
+			AuthScheme:         "kycBearerAuth",
 		})
 
 	adminOnly := func(handler http.Handler) http.Handler {
@@ -81,4 +93,11 @@ func RegisterRoutes(
 			FailureStatuses: []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
 			Auth:            true,
 		})
+}
+
+type completeKYCRequest struct {
+	IDCardFront   string `json:"idCardFront" form:"idCardFront" format:"binary"`
+	IDCardBack    string `json:"idCardBack" form:"idCardBack" format:"binary"`
+	LiveVideo     string `json:"liveVideo" form:"liveVideo" format:"binary"`
+	ChallengeType string `json:"challengeType" form:"challengeType"`
 }

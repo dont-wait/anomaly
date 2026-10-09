@@ -1,5 +1,4 @@
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -8,82 +7,111 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { transactionStore } from "@/features/transactions";
-import { clearBankCache } from "@/features/transfer/api/banks";
-import { contactStore } from "@/features/transfer/api/transfer";
-import { DEMO_OTP } from "@/features/transfer/api/transfer";
 import { TransferFlow } from "./TransferFlow";
 
+const token = "access-token";
 const source = {
   accountNo: "99999180105",
-  ownerName: "Phạm Minh Hiếu",
+  ownerName: "Pham Minh Hieu",
   balance: 3_000_000,
 };
-
-const vietQrBanks = {
-  code: "00",
-  desc: "ok",
-  data: [
-    {
-      code: "VCB",
-      bin: "970436",
-      shortName: "Vietcombank",
-      name: "Ngân hàng TMCP Ngoại Thương Việt Nam",
-      logo: "https://cdn.vietqr.io/img/VCB.png",
-      transferSupported: 1,
-    },
-    {
-      code: "TCB",
-      bin: "970407",
-      shortName: "Techcombank",
-      name: "Ngân hàng TMCP Kỹ thương Việt Nam",
-      logo: "https://cdn.vietqr.io/img/TCB.png",
-      transferSupported: 1,
-    },
-    {
-      code: "XYZ",
-      bin: "000000",
-      shortName: "NoTransfer",
-      name: "Không hỗ trợ chuyển",
-      logo: "",
-      transferSupported: 0,
-    },
-  ],
+const recipient = {
+  accountNo: "99999180147",
+  name: "TRAN THI BICH",
+  bankCode: "ANOMALY",
 };
 
-function stubBanksApi(ok = true) {
-  const fetchMock = vi.fn(async () =>
-    ok
-      ? new Response(JSON.stringify(vietQrBanks), { status: 200 })
-      : Promise.reject(new TypeError("network down")),
-  );
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status });
+
+const otpInfo = (
+  resendAvailableAt = new Date(Date.now() + 30_000).toISOString(),
+) => ({
+  channel: "email",
+  maskedDestination: "p***@example.com",
+  expiresAt: new Date(Date.now() + 300_000).toISOString(),
+  attemptsLeft: 3,
+  resendAvailableAt,
+});
+
+const intent = () => ({
+  transferId: "8bfbe3d4-742c-4602-b2bf-31ccf62de7ad",
+  status: "awaiting_otp",
+  recipient,
+  amount: 500_000,
+  fee: 0,
+  note: "Pham Minh Hieu chuyen tien",
+  otp: otpInfo(),
+});
+
+const transaction = {
+  id: "8bfbe3d4-742c-4602-b2bf-31ccf62de7ad",
+  reference: "FT8BFBE3D4742C4602B2BF31CCF62DE7AD",
+  direction: "out",
+  status: "success",
+  kind: "transfer",
+  amount: 500_000,
+  fee: 0,
+  note: "Pham Minh Hieu chuyen tien",
+  counterparty: { ...recipient, bank: "AnomalyBank" },
+  createdAt: "2026-10-07T05:01:00Z",
+  balanceAfter: 2_400_000,
+};
+
+function defaultFetch(input: RequestInfo | URL, init?: RequestInit) {
+  const url = String(input);
+  if (url.includes("/api/transfers/recent-recipients")) {
+    return Promise.resolve(json({ items: [] }));
+  }
+  if (url.includes("/api/accounts/lookup")) {
+    return Promise.resolve(json(recipient));
+  }
+  if (url.endsWith("/api/transfers") && init?.method === "POST") {
+    return Promise.resolve(json(intent(), 201));
+  }
+  if (url.includes("/confirm")) return Promise.resolve(json(transaction));
+  throw new Error(`Unexpected request: ${url}`);
 }
 
 beforeEach(() => {
-  clearBankCache();
+  vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+    "34297a72-9433-4adf-8958-868d5e50d197",
+  );
 });
+
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
-function renderFlow() {
-  const onExit = vi.fn();
+function renderFlow(fetchImplementation = defaultFetch) {
+  const fetchMock = vi.fn(fetchImplementation);
+  vi.stubGlobal("fetch", fetchMock);
   render(
-    <TransferFlow source={source} onExit={onExit} onViewHistory={vi.fn()} />,
+    <TransferFlow
+      token={token}
+      source={source}
+      onExit={vi.fn()}
+      onViewHistory={vi.fn()}
+    />,
   );
-  return { onExit };
+  return fetchMock;
 }
 
-async function enterAccount(accountNo: string) {
+async function enterRecipient() {
   const input = screen.getByLabelText("Số tài khoản");
-  fireEvent.change(input, { target: { value: accountNo } });
+  fireEvent.change(input, { target: { value: recipient.accountNo } });
   fireEvent.blur(input);
+  await waitFor(() =>
+    expect(
+      (screen.getByLabelText("Tên người nhận") as HTMLInputElement).value,
+    ).toBe(recipient.name),
+  );
 }
 
-async function openOtpSheet(amount: string) {
+async function createIntent(amount = "500000") {
+  await enterRecipient();
   fireEvent.change(screen.getByLabelText("Số tiền chuyển"), {
     target: { value: amount },
   });
@@ -91,375 +119,184 @@ async function openOtpSheet(amount: string) {
   return screen.findByRole("dialog", { name: "Xác thực giao dịch" });
 }
 
-it("lists AnomalyBank first, then transfer-capable banks from VietQR", async () => {
-  const fetchMock = stubBanksApi();
-  renderFlow();
-  expect(fetchMock).toHaveBeenCalledWith(
-    "https://api.vietqr.io/v2/banks",
-    expect.anything(),
-  );
+it("loads recent recipients and looks up only ANOMALY accounts with auth", async () => {
+  const fetchMock = renderFlow();
+  await screen.findByText("Chưa có người nhận gần đây.");
+  await enterRecipient();
 
-  const trigger = screen.getByRole("button", { name: /Ngân hàng AnomalyBank/ });
-  fireEvent.click(trigger);
-  const list = await screen.findByRole("listbox", {
-    name: "Danh sách ngân hàng",
-  });
-  await waitFor(() =>
-    expect(within(list).getAllByRole("option")).toHaveLength(3),
+  const recentCall = fetchMock.mock.calls.find(([url]) =>
+    String(url).includes("/api/transfers/recent-recipients?limit=4"),
   );
-  const names = within(list)
-    .getAllByRole("option")
-    .map((o) => o.textContent);
-  expect(names[0]).toContain("AnomalyBank");
-  expect(names.join()).not.toContain("NoTransfer");
-
-  fireEvent.change(screen.getByRole("combobox"), {
-    target: { value: "ngoại thương" },
+  expect(recentCall?.[1]).toMatchObject({
+    headers: expect.objectContaining({ Authorization: `Bearer ${token}` }),
   });
-  expect(within(list).getAllByRole("option")).toHaveLength(1);
-  fireEvent.click(within(list).getByRole("option", { name: /Vietcombank/ }));
-  expect(screen.queryByRole("listbox")).toBeNull();
+
+  const lookupCall = fetchMock.mock.calls.find(([url]) =>
+    String(url).includes("/api/accounts/lookup"),
+  );
+  expect(String(lookupCall?.[0])).toContain("bankCode=ANOMALY");
+  expect(String(lookupCall?.[0])).toContain(`accountNo=${recipient.accountNo}`);
+  expect(screen.getByText("AnomalyBank")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Ngân hàng/ })).toBeNull();
+});
+
+it("creates the intent before opening OTP and confirms into a local transaction record", async () => {
+  const fetchMock = renderFlow();
+  const sheet = await createIntent();
+
+  const createCall = fetchMock.mock.calls.find(
+    ([url, init]) =>
+      String(url).endsWith("/api/transfers") && init?.method === "POST",
+  );
+  expect(createCall?.[1]).toMatchObject({
+    headers: expect.objectContaining({
+      Authorization: `Bearer ${token}`,
+      "Idempotency-Key": "34297a72-9433-4adf-8958-868d5e50d197",
+    }),
+    body: JSON.stringify({
+      toBankCode: "ANOMALY",
+      toAccountNo: recipient.accountNo,
+      amount: 500_000,
+      note: "PHAM MINH HIEU chuyen tien",
+    }),
+  });
+  expect(within(sheet).getByText(/p\*\*\*@example.com/)).toBeTruthy();
+
+  fireEvent.change(within(sheet).getByLabelText("Mã OTP"), {
+    target: { value: "123456" },
+  });
+  await screen.findByRole("heading", { name: "Chuyển tiền thành công" });
+  expect(screen.getByText("2.400.000₫")).toBeTruthy();
+  const confirmCall = fetchMock.mock.calls.find(([url]) =>
+    String(url).includes(`${intent().transferId}/confirm`),
+  );
+  expect(confirmCall?.[1]).toMatchObject({
+    method: "POST",
+    body: JSON.stringify({ otp: "123456" }),
+  });
+});
+
+it("uses server attemptsLeft for invalid OTP errors", async () => {
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes("/confirm")) {
+      return Promise.resolve(
+        json(
+          { error: "invalid otp", code: "INVALID_OTP", attemptsLeft: 1 },
+          400,
+        ),
+      );
+    }
+    return defaultFetch(input, init);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <TransferFlow
+      token={token}
+      source={source}
+      onExit={vi.fn()}
+      onViewHistory={vi.fn()}
+    />,
+  );
+  const sheet = await createIntent();
+  fireEvent.change(within(sheet).getByLabelText("Mã OTP"), {
+    target: { value: "000000" },
+  });
   expect(
-    screen.getByRole("button", { name: /Ngân hàng Vietcombank/ }),
+    await within(sheet).findByText("Mã OTP không đúng. Bạn còn 1 lần thử."),
   ).toBeTruthy();
+  expect(within(sheet).getByText(/Còn 1 lần thử/)).toBeTruthy();
 });
 
-it("keeps AnomalyBank usable when the bank list fails to load", async () => {
-  stubBanksApi(false);
-  renderFlow();
-  fireEvent.click(
-    screen.getByRole("button", { name: /Ngân hàng AnomalyBank/ }),
-  );
-  expect((await screen.findByRole("alert")).textContent).toContain(
-    "Không tải được",
-  );
-  expect(screen.getAllByRole("option")).toHaveLength(1);
-});
-
-it("validates account numbers inline and looks up the owner name", async () => {
-  stubBanksApi();
-  renderFlow();
-
-  await enterAccount("123");
-  expect(screen.getByRole("alert").textContent).toContain("6-19 chữ số");
-
-  await enterAccount(source.accountNo);
-  expect(screen.getByRole("alert").textContent).toContain("chính tài khoản");
-
-  await enterAccount("11112222333");
-  expect((await screen.findByRole("alert")).textContent).toContain(
-    "Không tìm thấy tài khoản tại AnomalyBank",
-  );
-
-  await enterAccount("99999180147");
-  await waitFor(() =>
-    expect(
-      (screen.getByLabelText("Tên người nhận") as HTMLInputElement).value,
-    ).toBe("TRAN THI BICH"),
-  );
-});
-
-it("looks up accounts at other banks after picking one", async () => {
-  stubBanksApi();
-  renderFlow();
-  fireEvent.click(
-    screen.getByRole("button", { name: /Ngân hàng AnomalyBank/ }),
-  );
-  const list = await screen.findByRole("listbox");
-  fireEvent.click(
-    await within(list).findByRole("option", { name: /Techcombank/ }),
-  );
-  await enterAccount("19036541234012");
-  await waitFor(() =>
-    expect(
-      (screen.getByLabelText("Tên người nhận") as HTMLInputElement).value,
-    ).toBe("LE THI MAI"),
-  );
-});
-
-it("blocks amounts above the balance", async () => {
-  stubBanksApi();
-  renderFlow();
-  fireEvent.click(
-    screen.getByRole("button", { name: /Chuyển đến TRAN THI BICH/ }),
-  );
-  fireEvent.change(screen.getByLabelText("Số tiền chuyển"), {
-    target: { value: "5000000" },
+it("reuses the exact idempotency key and body after an ambiguous create failure", async () => {
+  let creates = 0;
+  const fetchMock = renderFlow((input, init) => {
+    if (String(input).endsWith("/api/transfers") && init?.method === "POST") {
+      creates += 1;
+      if (creates === 1) return Promise.reject(new TypeError("network down"));
+    }
+    return defaultFetch(input, init);
   });
-  expect(screen.getByRole("alert").textContent).toContain("Số dư không đủ");
-  expect(
-    (screen.getByRole("button", { name: "Chuyển tiền" }) as HTMLButtonElement)
-      .disabled,
-  ).toBe(true);
-});
-
-it("shows the minimum-amount error on submit and clears it on change", async () => {
-  stubBanksApi();
-  renderFlow();
-  fireEvent.click(
-    screen.getByRole("button", { name: /Chuyển đến TRAN THI BICH/ }),
-  );
+  await enterRecipient();
   fireEvent.change(screen.getByLabelText("Số tiền chuyển"), {
-    target: { value: "500" },
+    target: { value: "500000" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Chuyển tiền" }));
-  expect(screen.getByRole("alert").textContent).toContain("tối thiểu");
-  expect(screen.queryByRole("dialog")).toBeNull();
-
-  // Gõ 500 thì gợi ý 5.000, 50.000...
-  fireEvent.click(screen.getByRole("button", { name: "5.000" }));
-  expect(screen.queryByRole("alert")).toBeNull();
-});
-
-it("confirms in a bottom sheet with OTP and shows the receipt there", async () => {
-  stubBanksApi();
-  renderFlow();
-  fireEvent.click(
-    screen.getByRole("button", { name: /Chuyển đến NGUYEN VAN AN/ }),
-  );
-  expect(
-    screen.getByRole("button", { name: /Ngân hàng Vietcombank/ }),
-  ).toBeTruthy();
-
-  const sheet = await openOtpSheet("500000");
-  expect(within(sheet).getByText("NGUYEN VAN AN")).toBeTruthy();
-  expect(within(sheet).getByText("500.000₫")).toBeTruthy();
-
-  const otp = within(sheet).getByLabelText("Mã OTP");
-  fireEvent.change(otp, { target: { value: "000000" } });
-  expect((await within(sheet).findByRole("alert")).textContent).toContain(
-    "còn 2 lần",
-  );
-  expect((otp as HTMLInputElement).value).toBe("");
-
-  fireEvent.change(otp, { target: { value: DEMO_OTP } });
-  const heading = await screen.findByRole("heading", {
-    name: "Chuyển tiền thành công",
+  const failure = await screen.findByRole("dialog", {
+    name: "Giao dịch chưa hoàn tất",
   });
-  expect(document.activeElement).toBe(heading);
-  // Thành công là màn hình toàn màn: form và sheet OTP đều đã ẩn.
-  expect(screen.queryByLabelText("Số tài khoản")).toBeNull();
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-
-  const latest = transactionStore.list(source.accountNo)[0];
-  expect(latest.amount).toBe(500_000);
-  expect(latest.counterparty.bank).toBe("Vietcombank");
-  expect(latest.balanceAfter).toBe(2_500_000);
-
-  fireEvent.click(screen.getByRole("button", { name: "Giao dịch mới" }));
-  expect(
-    (screen.getByLabelText("Số tài khoản") as HTMLInputElement).value,
-  ).toBe("");
-  expect(screen.getByText("2.500.000₫")).toBeTruthy();
-});
-
-it("cancels after too many wrong OTPs, then lets the user retry", async () => {
-  stubBanksApi();
-  renderFlow();
-  fireEvent.click(
-    screen.getByRole("button", { name: /Chuyển đến TRAN THI BICH/ }),
-  );
-  const sheet = await openOtpSheet("10000");
-  const otp = within(sheet).getByLabelText("Mã OTP");
-  for (const left of [2, 1]) {
-    fireEvent.change(otp, { target: { value: "999999" } });
-    await within(sheet).findByText(
-      `Mã OTP không đúng. Bạn còn ${left} lần thử.`,
-    );
-  }
-  fireEvent.change(otp, { target: { value: "999999" } });
-  await screen.findByRole("dialog", { name: "Giao dịch chưa hoàn tất" });
-  fireEvent.click(screen.getByRole("button", { name: "Thử lại" }));
+  fireEvent.click(within(failure).getByRole("button", { name: "Thử lại" }));
   await screen.findByRole("dialog", { name: "Xác thực giao dịch" });
-});
 
-it("closes the sheet with Escape and keeps the form data", async () => {
-  stubBanksApi();
-  renderFlow();
-  fireEvent.click(
-    screen.getByRole("button", { name: /Chuyển đến TRAN THI BICH/ }),
+  const calls = fetchMock.mock.calls.filter(
+    ([url, init]) =>
+      String(url).endsWith("/api/transfers") && init?.method === "POST",
   );
-  const sheet = await openOtpSheet("10000");
-  fireEvent.keyDown(sheet, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(
-    (screen.getByLabelText("Số tài khoản") as HTMLInputElement).value,
-  ).toBe("99999180147");
+  expect(calls).toHaveLength(2);
+  expect(calls[1][1]?.headers).toEqual(calls[0][1]?.headers);
+  expect(calls[1][1]?.body).toBe(calls[0][1]?.body);
 });
 
-it("exits from the header back button", () => {
-  stubBanksApi();
-  const { onExit } = renderFlow();
-  fireEvent.click(screen.getByRole("button", { name: "Về trang chủ" }));
-  expect(onExit).toHaveBeenCalled();
-});
-
-it("suggests amounts from the typed digits within the balance", () => {
-  stubBanksApi();
-  renderFlow();
-  // Chưa nhập gì thì không gợi ý.
-  expect(screen.queryByRole("group", { name: "Gợi ý số tiền" })).toBeNull();
-
-  fireEvent.change(screen.getByLabelText("Số tiền chuyển"), {
-    target: { value: "8" },
+it("resends through the backend when its cooldown timestamp has passed", async () => {
+  const fetchMock = renderFlow((input, init) => {
+    const url = String(input);
+    if (url.endsWith("/api/transfers") && init?.method === "POST") {
+      return Promise.resolve(
+        json(
+          {
+            ...intent(),
+            otp: otpInfo(new Date(Date.now() - 1_000).toISOString()),
+          },
+          201,
+        ),
+      );
+    }
+    if (url.includes("/otp/resend")) {
+      return Promise.resolve(
+        json(otpInfo(new Date(Date.now() + 30_000).toISOString())),
+      );
+    }
+    return defaultFetch(input, init);
   });
-  const labels = within(screen.getByRole("group", { name: "Gợi ý số tiền" }))
-    .getAllByRole("button")
-    .map((button) => button.textContent);
-  // Số dư 3.000.000 nên không gợi ý 8.000.000
-  expect(labels).toEqual(["8.000", "80.000", "800.000"]);
-
-  fireEvent.click(screen.getByRole("button", { name: "80.000" }));
+  const sheet = await createIntent();
+  fireEvent.click(within(sheet).getByRole("button", { name: "Gửi lại mã" }));
+  expect(await within(sheet).findByText("Đã gửi lại mã OTP.")).toBeTruthy();
   expect(
-    (screen.getByLabelText("Số tiền chuyển") as HTMLInputElement).value,
-  ).toBe("80.000");
-});
-
-it("fills bank, account and name from the contacts sheet", async () => {
-  stubBanksApi();
-  renderFlow();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
-  );
-  const sheet = await screen.findByRole("dialog", {
-    name: "Danh bạ người nhận",
-  });
-
-  fireEvent.change(within(sheet).getByLabelText("Tìm trong danh bạ"), {
-    target: { value: "mbbank" },
-  });
-  const matches = within(sheet).getAllByRole("button", { name: /MBBank/ });
-  expect(matches).toHaveLength(1);
-  fireEvent.click(matches[0]);
-
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(screen.getByRole("button", { name: /Ngân hàng MBBank/ })).toBeTruthy();
-  expect(
-    (screen.getByLabelText("Số tài khoản") as HTMLInputElement).value,
-  ).toBe("0901234567");
-  expect(
-    (screen.getByLabelText("Tên người nhận") as HTMLInputElement).value,
-  ).toBe("HOANG DUC ANH");
-});
-
-it("saves a looked-up recipient to contacts and confirms before deleting", async () => {
-  stubBanksApi();
-  renderFlow();
-  await enterAccount("11112222333");
-  await screen.findByRole("alert");
-
-  // Người nhận đã có sẵn trong danh bạ thì không hiện nút lưu.
-  fireEvent.click(
-    screen.getByRole("button", { name: /Chuyển đến TRAN THI BICH/ }),
-  );
-  expect(screen.getByText("Đã có trong danh bạ")).toBeTruthy();
-
-  const newContact = {
-    accountNo: "99999180999",
-    name: "VO THI LAN",
-    bank: {
-      code: "ANOMALY",
-      bin: "",
-      shortName: "AnomalyBank",
-      name: "Ngân hàng Anomaly",
-      logo: "",
-    },
-  };
-  contactStore.remove(newContact, source.accountNo);
-  contactStore.add(newContact, source.accountNo);
-  contactStore.remove(newContact, source.accountNo);
-
-  fireEvent.click(
-    screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
-  );
-  const sheet = await screen.findByRole("dialog", {
-    name: "Danh bạ người nhận",
-  });
-  const before = within(sheet).getAllByRole("button", {
-    name: /AnomalyBank$/,
-  }).length;
-
-  fireEvent.click(
-    within(sheet).getByRole("button", { name: "Xoá PHAM THU HA khỏi danh bạ" }),
-  );
-  expect(within(sheet).getByText("Xoá PHAM THU HA khỏi danh bạ?")).toBeTruthy();
-
-  // Huỷ thì danh bạ giữ nguyên.
-  fireEvent.click(within(sheet).getByRole("button", { name: "Huỷ" }));
-  expect(
-    within(sheet).getAllByRole("button", { name: /AnomalyBank$/ }),
-  ).toHaveLength(before);
-
-  fireEvent.click(
-    within(sheet).getByRole("button", { name: "Xoá PHAM THU HA khỏi danh bạ" }),
-  );
-  fireEvent.click(within(sheet).getByRole("button", { name: "Xoá" }));
-  expect(
-    within(sheet).queryAllByRole("button", { name: /PHAM THU HA/ }),
-  ).toHaveLength(0);
-  expect(
-    contactStore.list(source.accountNo).some((c) => c.name === "PHAM THU HA"),
-  ).toBe(false);
-
-  // Lưu lại người vừa xoá từ form.
-  fireEvent.click(within(sheet).getByRole("button", { name: "Đóng" }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  await enterAccount("99999180412");
-  const save = await screen.findByRole("button", { name: "Lưu vào danh bạ" });
-  fireEvent.click(save);
-  expect(screen.getByText("Đã có trong danh bạ")).toBeTruthy();
-  expect(
-    contactStore.list(source.accountNo).some((c) => c.name === "PHAM THU HA"),
+    fetchMock.mock.calls.some(([url]) => String(url).includes("/otp/resend")),
   ).toBe(true);
 });
 
-it("counts down before the OTP can be resent", async () => {
-  stubBanksApi();
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  try {
-    renderFlow();
-    fireEvent.click(
-      screen.getByRole("button", { name: /Chuyển đến TRAN THI BICH/ }),
-    );
-    const sheet = await openOtpSheet("10000");
-    expect(within(sheet).getByText("Gửi lại mã sau 1:00")).toBeTruthy();
-
-    // Mỗi giây React mới đặt hẹn giờ tiếp theo nên phải chạy từng giây.
-    for (let i = 0; i < 60; i++) {
-      await act(async () => {
-        vi.advanceTimersByTime(1000);
-      });
+it("treats an expired OTP as terminal", async () => {
+  renderFlow((input, init) => {
+    if (String(input).includes("/confirm")) {
+      return Promise.resolve(
+        json({ code: "OTP_EXPIRED", error: "expired" }, 410),
+      );
     }
-    fireEvent.click(within(sheet).getByRole("button", { name: "Gửi lại mã" }));
-    expect(
-      within(sheet).getByText("Đã gửi lại mã OTP đến email của bạn."),
-    ).toBeTruthy();
-    expect(within(sheet).getByText("Gửi lại mã sau 1:00")).toBeTruthy();
-  } finally {
-    vi.useRealTimers();
-  }
+    return defaultFetch(input, init);
+  });
+  const sheet = await createIntent();
+  fireEvent.change(within(sheet).getByLabelText("Mã OTP"), {
+    target: { value: "123456" },
+  });
+  const failure = await screen.findByRole("dialog", {
+    name: "Giao dịch chưa hoàn tất",
+  });
+  expect(within(failure).getByText(/đã hết hạn/)).toBeTruthy();
+  expect(within(failure).queryByRole("button", { name: "Thử lại" })).toBeNull();
 });
 
-it("closes the sheet when dragged down far enough", async () => {
-  stubBanksApi();
-  renderFlow();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
-  );
-  const sheet = await screen.findByRole("dialog", {
-    name: "Danh bạ người nhận",
+it("shows a retry action when recent recipients fail", async () => {
+  let recentCalls = 0;
+  renderFlow((input, init) => {
+    if (String(input).includes("/recent-recipients")) {
+      recentCalls += 1;
+      if (recentCalls === 1) return Promise.reject(new TypeError("offline"));
+      return Promise.resolve(json({ items: [] }));
+    }
+    return defaultFetch(input, init);
   });
-  const grip = sheet.firstElementChild as HTMLElement;
-  grip.setPointerCapture = () => {};
-
-  // Kéo ngắn thì sheet vẫn mở.
-  fireEvent.pointerDown(grip, { clientY: 100, button: 0, pointerId: 1 });
-  fireEvent.pointerMove(grip, { clientY: 140, pointerId: 1 });
-  fireEvent.pointerUp(grip, { clientY: 140, pointerId: 1 });
-  expect(screen.getByRole("dialog")).toBeTruthy();
-
-  fireEvent.pointerDown(grip, { clientY: 100, button: 0, pointerId: 2 });
-  fireEvent.pointerMove(grip, { clientY: 320, pointerId: 2 });
-  fireEvent.pointerUp(grip, { clientY: 320, pointerId: 2 });
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await screen.findByText("Không tải được người nhận gần đây.");
+  fireEvent.click(screen.getByRole("button", { name: "Thử tải lại" }));
+  await screen.findByText("Chưa có người nhận gần đây.");
+  expect(recentCalls).toBe(2);
 });

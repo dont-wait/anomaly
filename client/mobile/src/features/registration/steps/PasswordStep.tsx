@@ -35,7 +35,7 @@ export function PasswordStep({
         title="Tạo mật khẩu đăng nhập"
         icon={faLock}
       >
-        Bước cuối cùng để bảo vệ tài khoản của bạn.
+        Tạo mật khẩu trước khi xác thực khuôn mặt và hoàn tất hồ sơ.
       </StepHeading>
       <form className="form-card" onSubmit={submit}>
         <fieldset disabled={busy}>
@@ -71,12 +71,6 @@ export function PasswordStep({
               Mật khẩu xác nhận chưa khớp.
             </p>
           )}
-          {createdAccount && (
-            <p className="field-hint">
-              Tài khoản đã được tạo. Nếu bước sau gặp lỗi, nhấn tiếp tục để hoàn
-              tất xác thực.
-            </p>
-          )}
           {error && (
             <p role="alert" className="error-text">
               {error}
@@ -90,11 +84,7 @@ export function PasswordStep({
               password !== confirm
             }
           >
-            {busy
-              ? "Đang xử lý…"
-              : createdAccount
-                ? "Tiếp tục xác thực"
-                : "Hoàn tất đăng ký"}
+            {busy ? "Đang tạo tài khoản…" : "Tạo tài khoản và tiếp tục"}
           </Next>
         </fieldset>
       </form>

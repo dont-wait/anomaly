@@ -15,7 +15,8 @@ export function FaceStep({
         title="Xác thực khuôn mặt"
         icon={faFingerprint}
       >
-        Đưa khuôn mặt vào khung hình và làm theo hướng dẫn.
+        Tài khoản chưa được xác thực. Đưa khuôn mặt vào khung hình và làm theo
+        hướng dẫn để hoàn tất.
       </StepHeading>
       <FaceCapture onComplete={verifyVideo} />
       <p className="attempts">Còn {remaining}/3 lượt xác thực</p>
