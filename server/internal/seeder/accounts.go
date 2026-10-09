@@ -141,6 +141,9 @@ func validateExistingSeed(account *accountdomain.UserAccount, seed accountSeed) 
 	if account.Email != seed.Email {
 		mismatches = append(mismatches, "email")
 	}
+	if account.EffectiveRole() != seed.role() {
+		mismatches = append(mismatches, "role")
+	}
 	if bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(seed.Password)) != nil {
 		mismatches = append(mismatches, "password")
 	}
