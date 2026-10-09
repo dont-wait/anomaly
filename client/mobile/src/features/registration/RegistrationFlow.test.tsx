@@ -13,6 +13,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { FormEvent, ReactNode } from "react";
 import { AuthProvider } from "@/features/auth";
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
+import { KYC_RESUME_STORAGE_KEY } from "./kycResume";
 import { RegistrationFlow } from "./RegistrationFlow";
 import { useRegistrationFlow } from "./useRegistrationFlow";
 
@@ -475,6 +476,31 @@ it("keeps a rejected code on screen so the user can correct it", async () => {
   await waitFor(() => expect(result.current.otpErrorMsg).not.toBe(""));
   expect(result.current.otpCode).toBe("123456");
   expect(result.current.otpErrorMsg).toContain("Mã OTP không đúng");
+});
+it("restores an unexpired KYC session at document re-selection without password", () => {
+  sessionStorage.setItem(
+    KYC_RESUME_STORAGE_KEY,
+    JSON.stringify({
+      kycToken: "resume-token",
+      kycExpiresAt: "2030-01-01T00:00:00Z",
+      user: { id: user.id, isVerify: false },
+      profile: {
+        name: "Nguyen A",
+        id: "012345678901",
+        dob: "1995-01-01",
+        issuedDate: "2020-01-01",
+        email: "a@example.com",
+      },
+    }),
+  );
+
+  const { result } = renderHook(useRegistrationFlow, { wrapper });
+
+  expect(result.current.screen).toBe("document");
+  expect(result.current.createdAccount?.id).toBe(user.id);
+  expect(result.current.profile.id).toBe("012345678901");
+  expect(result.current.password).toBe("");
+  expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(0);
 });
 it("orders profile, password, account creation, then face verification", async () => {
   const { result } = renderHook(useRegistrationFlow, { wrapper });

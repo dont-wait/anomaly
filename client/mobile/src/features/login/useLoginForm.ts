@@ -43,7 +43,10 @@ export function useLoginForm() {
             cccdNumber: cccd,
             password,
           });
-          saveKycResumeSession(session);
+          saveKycResumeSession({
+            ...session,
+            user: { id: session.user.id, isVerify: false },
+          });
           setPassword("");
           navigate(routes.register);
           return;

@@ -22,20 +22,28 @@ import {
 const OTP_RESEND_SECONDS = 30;
 
 export function useRegistrationFlow() {
-  const [screen, setScreen] = useState<Screen>("email");
-  const [email, setEmail] = useState("");
+  const [resume] = useState(restoreKycResumeSession);
+  const restoredSession = resume.session;
+  const [screen, setScreen] = useState<Screen>(
+    restoredSession ? "document" : "email",
+  );
+  const [email, setEmail] = useState(restoredSession?.profile?.email ?? "");
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState("");
   const [documents, setDocuments] = useState<{
     front: File | null;
     back: File | null;
   }>({ front: null, back: null });
-  const [profile, setProfile] = useState({
-    name: "",
-    id: "",
-    dob: "",
-    issuedDate: "",
-  });
+  const [profile, setProfile] = useState(
+    restoredSession?.profile
+      ? {
+          name: restoredSession.profile.name,
+          id: restoredSession.profile.id,
+          dob: restoredSession.profile.dob,
+          issuedDate: restoredSession.profile.issuedDate,
+        }
+      : { name: "", id: "", dob: "", issuedDate: "" },
+  );
   const [otpCode, setOtpCode] = useState("");
   // otpBusy = đang xác thực (khoá ô nhập); otpSending = đang gửi mã (vẫn cho
   // nhập); otpSent = đã gửi xong ít nhất một lần kể từ khi vào màn OTP.
@@ -51,11 +59,17 @@ export function useRegistrationFlow() {
   const [dialog, setDialog] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
-  const [createdAccount, setCreatedAccount] = useState<AuthUser | null>(null);
+  const [createdAccount, setCreatedAccount] = useState<
+    Pick<AuthUser, "id" | "isVerify"> | null
+  >(
+    restoredSession?.user ?? null,
+  );
   const heading = useRef<HTMLHeadingElement>(null);
   const operation = useRef<AbortController | null>(null);
-  const kycToken = useRef("");
-  const kycExpiresAt = useRef(0);
+  const kycToken = useRef(restoredSession?.kycToken ?? "");
+  const kycExpiresAt = useRef(
+    restoredSession ? Date.parse(restoredSession.kycExpiresAt) : 0,
+  );
   const registrationKey = useRef("");
   const step =
     screen === "processing" || screen === "error"
@@ -65,31 +79,13 @@ export function useRegistrationFlow() {
         : stages.indexOf(screen);
   useEffect(() => () => operation.current?.abort(), []);
   useEffect(() => {
-    const restored = restoreKycResumeSession();
-    if (restored.expired) {
+    if (resume.expired) {
       toast.error(
         "Phiên xác thực danh tính đã hết hạn. Vui lòng đăng nhập để tiếp tục.",
       );
       navigate(routes.login);
-      return;
     }
-    if (!restored.session) return;
-    const session = restored.session;
-    kycToken.current = session.kycToken;
-    kycExpiresAt.current = Date.parse(session.kycExpiresAt);
-    setCreatedAccount(session.user);
-    if (session.profile) {
-      setEmail(session.profile.email);
-      setProfile({
-        name: session.profile.name,
-        id: session.profile.id,
-        dob: session.profile.dob,
-        issuedDate: session.profile.issuedDate,
-      });
-    }
-    setDocuments({ front: null, back: null });
-    setScreen("document");
-  }, []);
+  }, [resume.expired]);
   useEffect(() => {
     heading.current?.focus();
   }, [screen]);
@@ -309,7 +305,7 @@ export function useRegistrationFlow() {
       saveKycResumeSession({
         kycToken: result.kycToken!,
         kycExpiresAt: result.kycExpiresAt!,
-        user: result.user,
+        user: { id: result.user.id, isVerify: false },
         profile: {
           name: profile.name.trim(),
           id: profile.id,

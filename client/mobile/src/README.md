@@ -12,19 +12,18 @@ Thêm trang: khai báo URL trong `app/routes.ts`, tạo trang trong `pages/` và
 
 Đăng ký dùng các API thật theo thứ tự:
 
-1. Thu email, ảnh CCCD hai mặt, họ tên (`username`), số CCCD, ngày sinh và ngày cấp. Không có bước OTP vì server chưa có endpoint gửi/xác minh OTP. Endpoint đăng ký chưa nhận địa chỉ thường trú.
-2. Ghi video trực tiếp 12 giây với hướng dẫn nhìn thẳng, quay trái/phải và chớp mắt. Gửi `cccd_front_image`, `live_video`, `challenge_type=TURN_HEAD_LEFT_RIGHT_BLINK` qua multipart tới `POST /v1/kyc/verify-face`.
-3. Chỉ khi KYC trả `success: true` và `decision: VERIFIED`, cho tạo mật khẩu. Gọi `POST /api/auth/register` với `idempotencyKey` (UUID) cố định trong bộ nhớ cho lần onboarding; retry cùng dữ liệu và key nhận lại tài khoản đã tạo, key dùng với dữ liệu khác trả 409; ngày được gửi theo RFC3339 UTC.
-4. Gọi `useAuth().login` với CCCD/mật khẩu. Token lưu qua logic login hiện có (`anomaly.auth.token`). Không tạo token mới hoặc gửi token này sang KYC service.
-5. Upload 3 tệp bằng `POST /api/media/upload` (`file`, `key`), sau đó gửi các key qua `POST /api/accounts/{id}/verify` với Bearer token. Dù tên field là URL, server hiện lưu chúng vào `StorageKey`.
-6. Refresh profile trong `AuthProvider`, hiển thị hoàn tất. Nếu login/upload/verify lỗi, giữ tài khoản đã tạo và các key upload thành công để thử lại ngay trên trang, không gọi register lại.
+1. Thu email và xác thực OTP, sau đó thu ảnh CCCD hai mặt, họ tên (`username`), số CCCD, ngày sinh và ngày cấp. Ngày được gửi theo RFC3339 UTC.
+2. Gọi `POST /api/auth/register` với `idempotencyKey` (UUID) cố định trong lần onboarding. Tài khoản chưa xác thực nhận `kycToken` và `kycExpiresAt`; password chỉ gửi trong request đăng ký và không được lưu vào storage.
+3. Ghi video trực tiếp 12 giây. Gửi ảnh CCCD, video và `challengeType` qua multipart tới `POST /api/kyc/complete` với `Authorization: Bearer <kycToken>`. Backend gọi KYC service server-to-server; client không gọi trực tiếp KYC service.
+4. Chỉ khi KYC trả `decision: VERIFIED` mới hiển thị hoàn tất và xoá resume state. Sau đó người dùng tự đăng nhập bằng CCCD/mật khẩu để nhận access token.
+5. Nếu login trả `KYC_REQUIRED`, client gọi `POST /api/kyc/session` bằng chính credential vừa nhập, xoá password khỏi state rồi quay lại bước chọn lại giấy tờ. Resume state chỉ nằm trong `sessionStorage` và bị xoá khi token hết hạn hoặc KYC hoàn tất.
 
-Trong `client/.env`, cấu hình `VITE_API_ENDPOINT` trỏ server và `VITE_KYC_ENDPOINT` trỏ KYC (mặc định development: `http://localhost:8090`). Endpoint KYC phải dùng HTTPS; chỉ cho phép HTTP loopback (`localhost`, `127.0.0.1`, `[::1]`) trong development với dữ liệu giả. Android emulator/IP LAN cần endpoint HTTPS truy cập được; `localhost` trong Android là máy ảo. Restart Vite sau khi đổi env. Origin của client phải có trong CORS allowlist của cả server và KYC.
+Trong `client/.env`, chỉ cấu hình API endpoint trỏ tới server. Client không cấu hình hoặc gọi KYC service; việc tích hợp KYC chỉ diễn ra server-to-server. Android emulator/IP LAN cần API server truy cập được; `localhost` trong Android là máy ảo. Restart Vite sau khi đổi env.
 
-Dữ liệu form/media chỉ giữ trong bộ nhớ; rời trang hoặc reload sẽ mất tiến trình. Camera và request đang chạy được dừng khi rời trang. Android manifest đã khai báo CAMERA; cần rebuild/cài lại app để nhận quyền mới. Trên trình duyệt, camera yêu cầu secure context (HTTPS hoặc localhost). Nếu mất phản hồi register, thử lại ngay trên trang để dùng cùng idempotency key. Nếu đã tạo tài khoản rồi mới reload, dùng trang login với CCCD/mật khẩu; hiện chưa có màn khôi phục onboarding dở dang.
+Dữ liệu media chỉ giữ trong bộ nhớ; rời trang hoặc reload sẽ yêu cầu chọn lại giấy tờ. Camera và request đang chạy được dừng khi rời trang. Android manifest đã khai báo CAMERA; cần rebuild/cài lại app để nhận quyền mới. Trên trình duyệt, camera yêu cầu secure context (HTTPS hoặc localhost).
 
 Giới hạn hiện tại của dịch vụ:
 
-- KYC chỉ triển khai stub, mặc định disabled; khi chưa cấu hình pipeline, API trả 503. Client hiển thị lỗi, không tự chuyển thành VERIFIED. Không coi kết quả stub là nhận diện thật.
-- KYC stateless, không có session/retry API; giới hạn 3 lượt đang nằm ở UI. RETRY_ALLOWED trừ lượt; FAILED_FINAL khóa lại; lỗi hệ thống/mạng giữ lượt. Đây không phải giới hạn bảo mật phía server.
-- `/api/accounts/{id}/verify` hiện tin media keys từ client, chưa xác minh lại kết quả KYC phía server. Tích hợp này gọi đúng hợp đồng đang có; để dùng xác minh danh tính thật cần server kiểm chứng kết quả KYC trước khi ghi verified.
+- Khi chưa cấu hình pipeline KYC, backend trả `SYSTEM_ERROR`/502. Client giữ nguyên lượt thử và không tự chuyển thành `VERIFIED`.
+- KYC stateless; giới hạn 3 lượt đang nằm ở UI. `RETRY_ALLOWED` trừ lượt, `FAILED_FINAL` khóa lại, còn lỗi hệ thống/mạng giữ lượt. Đây không phải giới hạn bảo mật phía server.
+- Backend chỉ lưu media và cập nhật `isVerify=true` sau khi KYC service trả kết quả `VERIFIED`; access token và KYC token là hai loại token khác nhau.

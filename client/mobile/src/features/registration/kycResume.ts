@@ -1,5 +1,3 @@
-import type { AuthUser } from "@/features/auth/api";
-
 export const KYC_RESUME_STORAGE_KEY = "anomaly.kyc.resume";
 
 export interface KycResumeProfile {
@@ -13,7 +11,10 @@ export interface KycResumeProfile {
 export interface KycResumeSession {
   kycToken: string;
   kycExpiresAt: string;
-  user: AuthUser;
+  user: {
+    id: string;
+    isVerify: boolean;
+  };
   profile?: KycResumeProfile;
 }
 

@@ -207,3 +207,11 @@ pyrightconfig.json
 opencode.json
 .agent/*
 .vscode/
+
+# Local frontend build/typecheck artifacts
+/client/*.js
+/client/*.d.ts
+/client/*.tsbuildinfo
+
+# Local Stitch output, intentionally not versioned
+/stitch_remix_of_anomaly/

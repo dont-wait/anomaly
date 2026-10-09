@@ -97,7 +97,7 @@ describe("auth api", () => {
   });
 
   it("creates a purpose-limited KYC session with the entered credentials", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn<typeof fetch>(async () =>
       jsonResponse(200, {
         status: 200,
         message: "KYC session created",
@@ -115,8 +115,8 @@ describe("auth api", () => {
       password: "Strong123!",
     });
 
-    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/kyc\/session$/);
-    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+    expect(fetchMock.mock.calls[0]?.[0]).toMatch(/\/api\/kyc\/session$/);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       cccdNumber: "001234567890",
       password: "Strong123!",
     });
