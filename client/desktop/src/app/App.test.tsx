@@ -8,6 +8,10 @@ import {
 } from "@testing-library/react";
 import App from "./App";
 
+vi.mock("react-chartjs-2", () => ({
+  Line: (props: { "aria-label"?: string }) => <canvas data-testid="chart-canvas" aria-label={props["aria-label"]} />,
+}));
+
 const session = {
   accessToken: "admin-token",
   expiresAt: "2030-01-01T00:00:00Z",
@@ -64,7 +68,9 @@ describe("App admin route", () => {
     );
 
     expect(
-      await screen.findByText("Monitoring workspace sẵn sàng"),
+      await screen.findByRole("heading", {
+        name: /Giám sát rủi ro & bất thường hệ thống/i,
+      }),
     ).toBeTruthy();
     expect(screen.getAllByText("Admin Staff")).toHaveLength(2);
     expect(fetchMock).toHaveBeenCalledTimes(1);
