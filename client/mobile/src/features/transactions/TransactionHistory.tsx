@@ -121,7 +121,7 @@ export const TransactionHistory = ({
     <div className="space-y-5">
       <section
         aria-label={`Tổng quan tháng ${now.getMonth() + 1}/${now.getFullYear()}`}
-        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-cta-from to-cta-to p-5 text-on-cta shadow-lg shadow-cta-from/30"
+        className="relative overflow-hidden rounded-3xl bg-linear-to-br from-cta-from to-cta-to p-5 text-on-cta shadow-lg shadow-cta-from/30"
       >
         <div className="pointer-events-none absolute -top-10 -right-8 h-32 w-32 rounded-full bg-on-cta/15 blur-2xl" />
         <p className="relative text-sm text-on-cta">
