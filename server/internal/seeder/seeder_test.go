@@ -137,7 +137,7 @@ func TestRunRejectsExistingPasswordCollision(t *testing.T) {
 	}
 }
 
-func TestRunRejectsAdminRoleCollision(t *testing.T) {
+func TestRunReconcilesAdminRole(t *testing.T) {
 	t.Setenv("ANOMALY_DEMO_ADMIN_PASSWORD", "DemoAdmin@123")
 	repo := &memoryRepository{}
 	if err := Run(context.Background(), Dependencies{Accounts: repo}); err != nil {
@@ -146,12 +146,11 @@ func TestRunRejectsAdminRoleCollision(t *testing.T) {
 	admin := repo.accounts[demoAccounts()[1].CCCD]
 	admin.Role = accountdomain.AccountRoleUser
 
-	err := Run(context.Background(), Dependencies{Accounts: repo})
-	if err == nil || !strings.Contains(err.Error(), "role") {
-		t.Fatalf("collision error = %v, want role mismatch", err)
+	if err := Run(context.Background(), Dependencies{Accounts: repo}); err != nil {
+		t.Fatal(err)
 	}
-	if admin.Role != accountdomain.AccountRoleUser {
-		t.Fatalf("admin role was overwritten: %q", admin.Role)
+	if admin.Role != accountdomain.AccountRoleAdmin {
+		t.Fatalf("admin role = %q, want %q", admin.Role, accountdomain.AccountRoleAdmin)
 	}
 }
 
