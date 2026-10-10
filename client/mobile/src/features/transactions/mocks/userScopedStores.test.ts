@@ -56,7 +56,6 @@ it("cô lập giao dịch theo STK và purge khi logout", () => {
 });
 
 it("cô lập danh bạ theo STK và purge khi logout", () => {
-  // Seed demo hiện với mọi owner; chỉ contact user tự thêm mới cô lập.
   const ownContact = {
     accountNo: "99999180999",
     name: "VO THI LAN",
@@ -70,32 +69,25 @@ it("cô lập danh bạ theo STK và purge khi logout", () => {
     false,
   );
 
-  // Purge 1 owner: contact tự thêm mất, seed giữ nguyên.
-  contactStore.clear(OWNER_A);
-  expect(contactStore.list(OWNER_A).some((c) => c.name === "VO THI LAN")).toBe(
-    false,
-  );
-  expect(contactStore.list(OWNER_A).some((c) => c.name === "PHAM THU HA")).toBe(
-    true, // seed còn
-  );
-
-  const contact = {
+  // Purge một owner không tạo lại dữ liệu demo và không ảnh hưởng owner khác.
+  const otherContact = {
     accountNo: "99999180412",
     name: "PHAM THU HA",
     bank: ANOMALY_BANK,
   };
-  contactStore.remove(contact, OWNER_A);
-
-  contactStore.remove(contact, OWNER_A);
-  expect(contactStore.list(OWNER_A).some((c) => c.name === "PHAM THU HA")).toBe(
+  contactStore.add(otherContact, OWNER_B);
+  contactStore.clear(OWNER_A);
+  expect(contactStore.list(OWNER_A).some((c) => c.name === "VO THI LAN")).toBe(
     false,
   );
-  // Xoá seed của A không ảnh hưởng seed của B.
   expect(contactStore.list(OWNER_B).some((c) => c.name === "PHAM THU HA")).toBe(
     true,
   );
   contactStore.clear();
   expect(contactStore.list(OWNER_A).some((c) => c.name === "PHAM THU HA")).toBe(
-    true,
+    false,
+  );
+  expect(contactStore.list(OWNER_B).some((c) => c.name === "PHAM THU HA")).toBe(
+    false,
   );
 });

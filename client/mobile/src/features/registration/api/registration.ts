@@ -11,59 +11,31 @@ export interface RegisterInput {
   email: string;
   password: string;
 }
-export interface VerificationMedia {
-  idCardFrontUrl: string;
-  idCardBackUrl: string;
-  liveVideoUrl: string;
+export interface RegisterResult {
+  user: AuthUser;
+  kycToken?: string;
+  kycExpiresAt?: string;
 }
 export async function registerAccount(
   input: RegisterInput,
   signal?: AbortSignal,
   idempotencyKey?: string,
 ) {
-  const user = await requestApi<AuthUser>(API_ENDPOINTS.AUTH.REGISTER, {
+  const result = await requestApi<RegisterResult>(API_ENDPOINTS.AUTH.REGISTER, {
     method: "POST",
     body: { ...input, idempotencyKey },
     signal,
   });
-  if (!user?.id) throw new ApiError(0, "Phản hồi đăng ký không hợp lệ.");
-  return user;
-}
-export async function uploadMedia(
-  file: File,
-  key: string,
-  token: string,
-  signal?: AbortSignal,
-) {
-  const body = new FormData();
-  body.append("key", key);
-  body.append("file", file);
-  const result = await requestApi<{ key: string }>(API_ENDPOINTS.MEDIA.UPLOAD, {
-    method: "POST",
-    body,
-    token,
-    signal,
-    timeoutMs: 120000,
-  });
-  if (result?.key !== key)
-    throw new ApiError(0, "Phản hồi tải tệp không hợp lệ.");
-  return result.key;
-}
-export async function verifyAccount(
-  id: string,
-  media: VerificationMedia,
-  token: string,
-  signal?: AbortSignal,
-) {
-  const user = await requestApi<AuthUser>(API_ENDPOINTS.ACCOUNTS.VERIFY(id), {
-    method: "POST",
-    body: media,
-    token,
-    signal,
-  });
-  if (user?.id !== id || !user.isVerify)
-    throw new ApiError(0, "Tài khoản chưa được xác thực. Vui lòng thử lại.");
-  return user;
+  if (
+    !result?.user?.id ||
+    typeof result.user.isVerify !== "boolean" ||
+    (!result.user.isVerify &&
+      (!result.kycToken ||
+        !result.kycExpiresAt ||
+        !Number.isFinite(Date.parse(result.kycExpiresAt))))
+  )
+    throw new ApiError(0, "Phản hồi đăng ký không hợp lệ.");
+  return result;
 }
 export function registrationError(error: unknown) {
   if (error instanceof ApiError) {
@@ -85,7 +57,7 @@ export function registrationError(error: unknown) {
     if (error.hasCode("INVALID_VERIFY_PAYLOAD"))
       return "Vui lòng hoàn tất đầy đủ thông tin xác thực.";
     if (error.hasCode("INVALID_TOKEN") || error.hasCode("MISSING_AUTH_HEADER"))
-      return "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại để tiếp tục.";
+      return "Phiên xác thực danh tính không hợp lệ. Vui lòng đăng nhập để tiếp tục.";
     if (error.hasCode("FILE_TOO_LARGE"))
       return "Tệp quá lớn. Vui lòng chọn ảnh hoặc quay video ngắn hơn.";
     if (error.status === HTTP_STATUS.CONFLICT)
@@ -94,7 +66,7 @@ export function registrationError(error: unknown) {
       error.status === HTTP_STATUS.UNAUTHORIZED ||
       error.status === HTTP_STATUS.FORBIDDEN
     )
-      return "Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại để tiếp tục.";
+      return "Phiên xác thực danh tính không hợp lệ. Vui lòng đăng nhập để tiếp tục.";
     if (error.status === HTTP_STATUS.PAYLOAD_TOO_LARGE)
       return "Tệp quá lớn. Vui lòng chọn ảnh hoặc quay video ngắn hơn.";
     if (error.status === HTTP_STATUS.SERVICE_UNAVAILABLE)

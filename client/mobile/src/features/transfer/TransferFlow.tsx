@@ -9,10 +9,9 @@ import {
   type SourceAccount,
 } from "@/features/transfer/model";
 import { contactStore } from "@/features/transfer/api/transfer";
-import { useBanks } from "@/features/transfer/useBanks";
 import { useTransferFlow } from "@/features/transfer/useTransferFlow";
 import { suggestAmounts } from "@/features/transfer/utils/amountSuggestions";
-import { BankSelect } from "./components/BankSelect";
+import { BankLogo } from "./components/BankLogo";
 import { ConfirmSheetContent } from "./components/ConfirmSheetContent";
 import { ContactsSheetContent } from "./components/ContactsSheetContent";
 import { FailureSheetContent } from "./components/FailureSheetContent";
@@ -39,19 +38,22 @@ const inputClass = (invalid: boolean) =>
   }`;
 
 interface TransferFlowProps {
+  token: string;
   source: SourceAccount;
+  onUnauthorized?: () => void;
   onExit: () => void;
   onViewHistory: () => void;
 }
 
 /** Màn chuyển tiền một trang; xác thực OTP trong sheet trượt lên, thành công hiện toàn màn. */
 export function TransferFlow({
+  token,
   source,
+  onUnauthorized,
   onExit,
   onViewHistory,
 }: TransferFlowProps) {
-  const flow = useTransferFlow(source);
-  const banks = useBanks();
+  const flow = useTransferFlow(source, token, onUnauthorized);
   const { lookup, amountError } = flow;
   const accountError = lookup.status === "error" ? lookup.message : "";
   const [contactsOpen, setContactsOpen] = useState(false);
@@ -81,7 +83,7 @@ export function TransferFlow({
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    flow.openConfirm();
+    void flow.openConfirm();
   };
 
   const sheetTitle =
@@ -133,17 +135,23 @@ export function TransferFlow({
 
           <Card title="Người nhận">
             <RecentRecipients
+              token={token}
+              onUnauthorized={onUnauthorized}
               selected={flow.recipient}
               onSelect={flow.chooseRecipient}
             />
 
-            <BankSelect
-              banks={banks.banks}
-              status={banks.status}
-              onRetry={banks.retry}
-              value={flow.bank}
-              onChange={flow.setBank}
-            />
+            <div>
+              <p className="text-sm font-semibold text-on-surface-variant">
+                Ngân hàng nhận
+              </p>
+              <div className="mt-1 flex h-14 items-center gap-3 rounded-2xl border border-outline-variant px-4">
+                <BankLogo bank={flow.bank} size="sm" />
+                <span className="font-semibold text-on-surface">
+                  AnomalyBank
+                </span>
+              </div>
+            </div>
 
             <div>
               <label
@@ -338,7 +346,7 @@ export function TransferFlow({
             </span>
           </div>
           <Button type="submit" className="w-full" disabled={!flow.canSubmit}>
-            Chuyển tiền
+            {flow.busy ? "Đang tạo giao dịch..." : "Chuyển tiền"}
           </Button>
         </div>
       </form>

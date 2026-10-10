@@ -27,6 +27,18 @@ var (
 // TokenService, và inject *domainauth.Claims vào context để handler downstream dùng.
 // Fail (thiếu header, token sai, hết hạn) -> 401.
 func RequireAuth(tokenService queries.TokenService) func(http.Handler) http.Handler {
+	return requireToken(func(raw string) (*domainauth.Claims, error) {
+		return tokenService.Parse(raw)
+	})
+}
+
+func RequireKYCAuth(tokenService queries.TokenService) func(http.Handler) http.Handler {
+	return requireToken(func(raw string) (*domainauth.Claims, error) {
+		return tokenService.ParseKYC(raw)
+	})
+}
+
+func requireToken(parse func(string) (*domainauth.Claims, error)) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			raw, err := extractBearer(r.Header.Get("Authorization"))
@@ -35,7 +47,7 @@ func RequireAuth(tokenService queries.TokenService) func(http.Handler) http.Hand
 				return
 			}
 
-			claims, err := tokenService.Parse(raw)
+			claims, err := parse(raw)
 			if err != nil {
 				writeUnauthorized(w, ErrInvalidToken, httpx.ErrorCodeInvalidToken)
 				return

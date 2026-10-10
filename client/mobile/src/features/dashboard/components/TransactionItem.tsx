@@ -51,7 +51,7 @@ export const TransactionItem = ({ transaction }: TransactionItemProps) => {
   return (
     <div className="flex items-center gap-3 py-3">
       <span
-        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${CATEGORY_COLOR[transaction.category ?? "other"]}`}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${CATEGORY_COLOR[transaction.category ?? "other"]}`}
       >
         <Icon className="h-5 w-5" />
       </span>
@@ -67,7 +67,7 @@ export const TransactionItem = ({ transaction }: TransactionItemProps) => {
         )}
       </div>
 
-      <span className="flex flex-shrink-0 items-center gap-1 text-sm font-semibold text-gray-900">
+      <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-gray-900">
         {isCredit ? (
           <TrendUpIcon className="h-3.5 w-3.5 text-green-500" />
         ) : (

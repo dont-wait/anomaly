@@ -22,9 +22,9 @@ func TestVerifyAccountIsIdempotentForVerifiedAccount(t *testing.T) {
 	handler := NewVerifyAccountCommandHandler(repo)
 	cmd := VerifyAccountCommand{
 		AccountID:      repo.account.Id,
-		IdCardFrontUrl: "front.jpg",
-		IdCardBackUrl:  "back.jpg",
-		LiveVideoUrl:   "live.mp4",
+		IdCardFrontUrl: "kyc/account-id/id-card-front/front",
+		IdCardBackUrl:  "kyc/account-id/id-card-back/back",
+		LiveVideoUrl:   "kyc/account-id/live-video/live",
 	}
 
 	first, err := handler.Handle(context.Background(), cmd)
@@ -57,6 +57,20 @@ func TestVerifyAccountIsIdempotentForVerifiedAccount(t *testing.T) {
 	}
 	if second.Version != version {
 		t.Errorf("account version = %d, want %d", second.Version, version)
+	}
+}
+
+func TestVerifyAccountRejectsMediaFromAnotherAccount(t *testing.T) {
+	repo := &verifyAccountRepository{account: &accountdomain.UserAccount{Id: "account-id"}}
+	handler := NewVerifyAccountCommandHandler(repo)
+	_, err := handler.Handle(context.Background(), VerifyAccountCommand{
+		AccountID:      "account-id",
+		IdCardFrontUrl: "kyc/other/id-card-front/front",
+		IdCardBackUrl:  "kyc/account-id/id-card-back/back",
+		LiveVideoUrl:   "kyc/account-id/live-video/live",
+	})
+	if err != accountdomain.ErrInvalidVerifyPayload {
+		t.Fatalf("Handle() error = %v, want %v", err, accountdomain.ErrInvalidVerifyPayload)
 	}
 }
 

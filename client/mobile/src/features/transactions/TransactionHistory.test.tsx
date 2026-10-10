@@ -92,3 +92,48 @@ it("groups by day, filters by direction and searches without diacritics", () => 
   });
   expect(screen.getByText("Không có giao dịch phù hợp")).toBeTruthy();
 });
+
+it("supports controlled filters, query and a server-provided monthly summary", () => {
+  const onFilterChange = vi.fn();
+  const onQueryChange = vi.fn();
+  const { rerender } = render(
+    <TransactionHistory
+      records={records.slice(0, 1)}
+      onSelect={vi.fn()}
+      now={now}
+      filter="all"
+      onFilterChange={onFilterChange}
+      query=""
+      onQueryChange={onQueryChange}
+      monthlySummary={{ totalIn: 5_000_000, totalOut: 1_500_000 }}
+    />,
+  );
+
+  expect(screen.getByText("+5.000.000₫")).toBeTruthy();
+  expect(screen.getByText("-1.500.000₫")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Tiền ra" }));
+  fireEvent.change(screen.getByLabelText("Tìm kiếm giao dịch"), {
+    target: { value: "coffee" },
+  });
+  expect(onFilterChange).toHaveBeenCalledWith("out");
+  expect(onQueryChange).toHaveBeenCalledWith("coffee");
+
+  rerender(
+    <TransactionHistory
+      records={records.slice(0, 1)}
+      onSelect={vi.fn()}
+      now={now}
+      filter="all"
+      onFilterChange={onFilterChange}
+      query=""
+      onQueryChange={onQueryChange}
+      monthlySummary={{ totalIn: 5_000_000, totalOut: 1_500_000 }}
+    />,
+  );
+  expect(
+    screen.getByRole("button", { name: "Tất cả" }).getAttribute("aria-pressed"),
+  ).toBe("true");
+  expect(
+    (screen.getByLabelText("Tìm kiếm giao dịch") as HTMLInputElement).value,
+  ).toBe("");
+});

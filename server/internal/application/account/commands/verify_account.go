@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
@@ -24,6 +25,12 @@ func NewVerifyAccountCommandHandler(repo AccountRepository) *VerifyAccountComman
 
 func (h *VerifyAccountCommandHandler) Handle(ctx context.Context, cmd VerifyAccountCommand) (*accountdomain.UserAccount, error) {
 	if cmd.IdCardFrontUrl == "" || cmd.IdCardBackUrl == "" || cmd.LiveVideoUrl == "" {
+		return nil, accountdomain.ErrInvalidVerifyPayload
+	}
+	prefix := "kyc/" + cmd.AccountID + "/"
+	if !strings.HasPrefix(cmd.IdCardFrontUrl, prefix+"id-card-front/") ||
+		!strings.HasPrefix(cmd.IdCardBackUrl, prefix+"id-card-back/") ||
+		!strings.HasPrefix(cmd.LiveVideoUrl, prefix+"live-video/") {
 		return nil, accountdomain.ErrInvalidVerifyPayload
 	}
 

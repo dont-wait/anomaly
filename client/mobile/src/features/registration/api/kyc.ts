@@ -1,65 +1,78 @@
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
-import { ApiError, requestJson } from "@/shared/lib/http";
-export const KYC_BASE_URL =
-  import.meta.env.VITE_KYC_ENDPOINT || "http://localhost:8090";
-export function validateKycEndpoint(
-  endpoint: string,
-  development = import.meta.env.DEV,
-): string {
-  const url = new URL(endpoint);
-  const loopback =
-    url.hostname === "localhost" ||
-    url.hostname === "[::1]" ||
-    /^127\.\d+\.\d+\.\d+$/.test(url.hostname);
-  if (
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    (url.protocol !== "https:" &&
-      !(development && loopback && url.protocol === "http:"))
-  ) {
-    throw new Error(
-      "KYC yêu cầu HTTPS; HTTP chỉ được dùng trên loopback khi phát triển.",
-    );
-  }
-  return url.toString().replace(/\/+$/, "");
-}
+import { ApiError, requestApi } from "@/shared/lib/http";
+import type { AuthUser } from "@/features/auth/api";
 export const LIVENESS_CHALLENGE = "TURN_HEAD_LEFT_RIGHT_BLINK";
 export type KycDecision =
   "VERIFIED" | "RETRY_ALLOWED" | "FAILED_FINAL" | "SYSTEM_ERROR";
 export interface KycResult {
-  success: boolean;
   decision: KycDecision;
-  reason_code: string | null;
-  reason_message: string | null;
+  reasonCode?: string;
+  reasonMessage?: string;
+  user?: AuthUser;
 }
-export async function verifyFace(
-  front: File,
-  video: File,
-  signal?: AbortSignal,
-): Promise<KycResult> {
-  const baseUrl = validateKycEndpoint(KYC_BASE_URL);
-  const body = new FormData();
-  body.append("cccd_front_image", front);
-  body.append("live_video", video);
-  body.append("challenge_type", LIVENESS_CHALLENGE);
-  const result = await requestJson<KycResult>(API_ENDPOINTS.KYC.VERIFY_FACE, {
-    method: "POST",
-    body,
-    baseUrl,
-    signal,
-    timeoutMs: 120000,
-  });
+const decisions: KycDecision[] = [
+  "VERIFIED",
+  "RETRY_ALLOWED",
+  "FAILED_FINAL",
+  "SYSTEM_ERROR",
+];
+
+function validateResult(value: unknown): KycResult {
+  if (!value || typeof value !== "object")
+    throw new ApiError(0, "Phản hồi xác thực không hợp lệ. Vui lòng thử lại.");
+  const result = value as KycResult;
   if (
-    !result ||
-    typeof result.success !== "boolean" ||
-    !["VERIFIED", "RETRY_ALLOWED", "FAILED_FINAL", "SYSTEM_ERROR"].includes(
-      result.decision,
-    ) ||
-    (result.decision === "VERIFIED") !== result.success
+    !decisions.includes(result.decision) ||
+    (result.reasonCode !== undefined && typeof result.reasonCode !== "string") ||
+    (result.reasonMessage !== undefined &&
+      typeof result.reasonMessage !== "string") ||
+    (result.decision === "VERIFIED"
+      ? !result.user?.id || result.user.isVerify !== true
+      : result.user !== undefined)
   ) {
     throw new ApiError(0, "Phản hồi xác thực không hợp lệ. Vui lòng thử lại.");
   }
   return result;
+}
+
+function wrappedErrorData(error: ApiError): unknown {
+  if (!error.body || typeof error.body !== "object") return undefined;
+  return (error.body as { data?: unknown }).data;
+}
+
+export async function completeKyc(
+  front: File,
+  back: File,
+  video: File,
+  token: string,
+  signal?: AbortSignal,
+): Promise<KycResult> {
+  const body = new FormData();
+  body.append("idCardFront", front);
+  body.append("idCardBack", back);
+  body.append("liveVideo", video);
+  body.append("challengeType", LIVENESS_CHALLENGE);
+  try {
+    return validateResult(
+      await requestApi<KycResult>(API_ENDPOINTS.KYC.COMPLETE, {
+        method: "POST",
+        body,
+        token,
+        signal,
+        timeoutMs: 120000,
+      }),
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 502) {
+      const data = wrappedErrorData(error);
+      if (
+        data &&
+        typeof data === "object" &&
+        (data as { decision?: unknown }).decision === "SYSTEM_ERROR"
+      ) {
+        return validateResult(data);
+      }
+    }
+    throw error;
+  }
 }

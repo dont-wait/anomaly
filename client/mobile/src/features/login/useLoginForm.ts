@@ -2,8 +2,14 @@ import { toast } from "@/shared/notifications/toast";
 import { AUTH_STATUS } from "@/features/auth/authStatus";
 import { useState, type FormEvent } from "react";
 import { useAuth } from "@/features/auth/useAuth";
-import { assertValidLoginInput, toLoginError } from "@/features/auth/api/auth";
+import {
+  assertValidLoginInput,
+  createKycSession,
+  toLoginError,
+} from "@/features/auth/api/auth";
 import { navigate, routes } from "@/app/routes";
+import { ApiError } from "@/shared/lib/http";
+import { saveKycResumeSession } from "@/features/registration/kycResume";
 export function useLoginForm() {
   const { status: authStatus, user, login, logout } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
@@ -31,6 +37,25 @@ export function useLoginForm() {
       setPassword("");
       navigate(routes.dashboard);
     } catch (submitError) {
+      if (submitError instanceof ApiError && submitError.hasCode("KYC_REQUIRED")) {
+        try {
+          const session = await createKycSession({
+            cccdNumber: cccd,
+            password,
+          });
+          saveKycResumeSession({
+            ...session,
+            user: { id: session.user.id, isVerify: false },
+          });
+          setPassword("");
+          navigate(routes.register);
+          return;
+        } catch (sessionError) {
+          setPassword("");
+          toast.error(toLoginError(sessionError));
+          return;
+        }
+      }
       toast.error(toLoginError(submitError));
     } finally {
       setIsSubmitting(false);

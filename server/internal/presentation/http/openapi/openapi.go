@@ -49,6 +49,7 @@ type Operation struct {
 	FailureResponses    map[int]any
 	Parameters          []Parameter
 	Auth                bool
+	AuthScheme          string
 }
 
 type Registry struct {
@@ -151,7 +152,11 @@ func (r *Registry) addOperation(pattern string, operation Operation) {
 		docOperation["tags"] = operation.Tags
 	}
 	if operation.Auth {
-		docOperation["security"] = []map[string][]string{{"bearerAuth": []string{}}}
+		authScheme := operation.AuthScheme
+		if authScheme == "" {
+			authScheme = "bearerAuth"
+		}
+		docOperation["security"] = []map[string][]string{{authScheme: []string{}}}
 	}
 	if len(parameters) > 0 {
 		docOperation["parameters"] = parameters
@@ -189,6 +194,11 @@ func (r *Registry) spec() []byte {
 					"type":         "http",
 					"scheme":       "bearer",
 					"bearerFormat": "JWT",
+				},
+				"kycBearerAuth": map[string]any{
+					"type":         "http",
+					"scheme":       "bearer",
+					"bearerFormat": "JWT (purpose: kyc)",
 				},
 			},
 		},
@@ -329,6 +339,9 @@ func structSchema(t reflect.Type) map[string]any {
 		fieldSchema := schemaFor(field.Type)
 		if format := field.Tag.Get("format"); format != "" {
 			fieldSchema["format"] = format
+		}
+		if enum := field.Tag.Get("enum"); enum != "" {
+			fieldSchema["enum"] = strings.Split(enum, ",")
 		}
 		properties[name] = fieldSchema
 		if !contains(options, "omitempty") {

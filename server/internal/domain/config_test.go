@@ -112,6 +112,9 @@ func TestLoaderLoadAllConfig(t *testing.T) {
 	if got.AuthConfig.JWTSecret != "test-secret-32-chars-minimum-len-xx" {
 		t.Fatalf("JWTSecret = %q, want %q", got.AuthConfig.JWTSecret, "test-secret-32-chars-minimum-len-xx")
 	}
+	if got.KYCConfig == nil || got.KYCConfig.ServiceURL != "http://localhost:8090" {
+		t.Fatalf("KYCConfig = %#v, want local default", got.KYCConfig)
+	}
 }
 
 func TestLoaderLoadMongoConfigUsesDefaults(t *testing.T) {

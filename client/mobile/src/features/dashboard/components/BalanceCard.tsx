@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faRotateRight } from "@fortawesome/free-solid-svg-icons";
 import { Badge } from "@/shared/ui";
 import { CopyIcon, EyeIcon, EyeOffIcon } from "@/shared/icons";
 import type { Account } from "@/features/dashboard/model/types";
@@ -13,10 +15,16 @@ const maskAccountNumber = (accountNumber: string) => {
 
 interface BalanceCardProps {
   account: Account;
+  onRefresh: () => void;
+  isRefreshing: boolean;
 }
 
 /** Thẻ số dư tài khoản chính — gradient thương hiệu, có chiều sâu bằng hoạ tiết mờ. */
-export const BalanceCard = ({ account }: BalanceCardProps) => {
+export const BalanceCard = ({
+  account,
+  onRefresh,
+  isRefreshing,
+}: BalanceCardProps) => {
   const [isVisible, setIsVisible] = useState(true);
   const [copyMessage, setCopyMessage] = useState("");
 
@@ -30,7 +38,7 @@ export const BalanceCard = ({ account }: BalanceCardProps) => {
   };
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-indigo-700 to-secondary p-5 text-white shadow-xl shadow-primary/30">
+    <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-primary via-indigo-700 to-secondary p-5 text-white shadow-xl shadow-primary/30">
       {/* Hoạ tiết trang trí mờ phía sau, tạo chiều sâu cho thẻ */}
       <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
       <div className="pointer-events-none absolute -bottom-14 -left-10 h-36 w-36 rounded-full bg-white/10 blur-2xl" />
@@ -50,6 +58,20 @@ export const BalanceCard = ({ account }: BalanceCardProps) => {
         <div className="mt-4 flex items-center gap-2 text-sm text-white/80">
           Số dư khả dụng
           <button
+            type="button"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            aria-label="Làm mới số dư"
+            title="Làm mới số dư"
+            className="rounded-full p-1 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <FontAwesomeIcon
+              icon={faRotateRight}
+              className={isRefreshing ? "animate-spin" : undefined}
+            />
+          </button>
+          <button
+            type="button"
             onClick={() => setIsVisible((prev) => !prev)}
             aria-label={isVisible ? "Ẩn số dư" : "Hiện số dư"}
           >

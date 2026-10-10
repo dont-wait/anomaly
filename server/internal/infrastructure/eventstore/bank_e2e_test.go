@@ -59,7 +59,7 @@ func TestBankEventSourcing(t *testing.T) {
 		ids = append(ids, a.Id)
 	}
 	verify := commands.NewVerifyAccountCommandHandler(bank)
-	if _, err := verify.Handle(ctx, commands.VerifyAccountCommand{AccountID: ids[0], IdCardFrontUrl: "front", IdCardBackUrl: "back", LiveVideoUrl: "live"}); err != nil {
+	if _, err := verify.Handle(ctx, commands.VerifyAccountCommand{AccountID: ids[0], IdCardFrontUrl: "kyc/" + ids[0] + "/id-card-front/front", IdCardBackUrl: "kyc/" + ids[0] + "/id-card-back/back", LiveVideoUrl: "kyc/" + ids[0] + "/live-video/live"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := bank.SetSeedBalance(ctx, ids[0], 1000); err != nil {

@@ -1,105 +1,108 @@
 package media_test
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
-	"mime/multipart"
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 
 	"github.com/dont-wait/anomaly/internal/domain"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	"github.com/dont-wait/anomaly/internal/presentation/http/handler/media"
-	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
+	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 )
 
-func TestUploadUsesSuccessEnvelope(t *testing.T) {
-	storage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut {
-			t.Fatalf("storage method = %s, want PUT", r.Method)
+type accountRepo struct{ account *accountdomain.UserAccount }
+
+func (r accountRepo) FindByID(context.Context, string) (*accountdomain.UserAccount, error) {
+	return r.account, nil
+}
+
+func (accountRepo) FindByEmail(context.Context, string) (*accountdomain.UserAccount, error) {
+	return nil, nil
+}
+
+func (accountRepo) FindByUsername(context.Context, string) (*accountdomain.UserAccount, error) {
+	return nil, nil
+}
+
+func (accountRepo) FindByCCCDNumber(context.Context, string) (*accountdomain.UserAccount, error) {
+	return nil, nil
+}
+
+func (accountRepo) FindAll(context.Context) ([]*accountdomain.UserAccount, error) { return nil, nil }
+
+func TestRemovedMediaUploadRoutesReturnNotFound(t *testing.T) {
+	tokens := auth.NewTokenService("test-secret", time.Hour)
+	mux := http.NewServeMux()
+	media.RegisterRoutes(openapi.NewRegistry(mux, false), media.NewHandler(zerolog.Nop(), nil), tokens)
+	for _, path := range []string{"/api/media/upload", "/api/kyc/media"} {
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, path, strings.NewReader("ignored")))
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("POST %s status = %d, want 404", path, recorder.Code)
 		}
-		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func TestDownloadDefaultsToDenyForUnknownAndOtherOwnerKeys(t *testing.T) {
+	account := &accountdomain.UserAccount{Id: "owner", Customer: &accountdomain.Customer{KYCStatus: accountdomain.KYCStatusVerified}}
+	tokens := auth.NewTokenService("test-secret", time.Hour)
+	token, _, err := tokens.Issue("owner", "owner", "admin", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := media.NewHandler(zerolog.Nop(), nil, accountRepo{account: account})
+	mux := http.NewServeMux()
+	media.RegisterRoutes(openapi.NewRegistry(mux, false), handler, tokens)
+	for _, key := range []string{"public/file", "kyc/other/id-card-front/file.jpg", "kyc/owner/unknown/file.jpg"} {
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/media/download?key="+key, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		mux.ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("key %q status = %d, want 403", key, recorder.Code)
+		}
+	}
+}
+
+func TestOwnerDownloadUsesSafeResponseHeaders(t *testing.T) {
+	key := "kyc/owner/id-card-front/front.jpg"
+	storage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		_, _ = w.Write([]byte("jpeg"))
 	}))
 	defer storage.Close()
-
-	client := rustfs.NewClient(&domain.RustFSConfig{
-		Endpoint:  storage.URL,
-		AccessKey: "test-access",
-		SecretKey: "test-secret",
-		Bucket:    "media",
-		Region:    "us-east-1",
-	})
-	handler := media.NewHandler(
-		zerolog.Nop(),
-		rustfs.NewMediaRepository(client, "media"),
-	)
-
-	body, contentType := multipartBody(t, true)
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/media/upload", body)
-	request.Header.Set("Content-Type", contentType)
-	handler.Upload(recorder, request)
-
-	if recorder.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want 201", recorder.Code)
+	client := rustfs.NewClient(&domain.RustFSConfig{Endpoint: storage.URL, AccessKey: "access", SecretKey: "secret", Bucket: "media", Region: "us-east-1"})
+	account := &accountdomain.UserAccount{
+		Id: "owner", Customer: &accountdomain.Customer{KYCStatus: accountdomain.KYCStatusVerified, VerifiedKYCSessionId: "session"},
+		KYCSessions: []*accountdomain.KYCSession{{Id: "session", Media: accountdomain.KYCMedia{IdentityFront: accountdomain.MediaObject{StorageKey: key}}}},
 	}
-	var response httpx.SuccessResponse[map[string]string]
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if response.Status != http.StatusCreated {
-		t.Fatalf("body status = %d, want 201", response.Status)
-	}
-	if response.Data["key"] != "kyc/front.jpg" {
-		t.Fatalf("data = %#v, want uploaded key", response.Data)
-	}
-}
-
-func TestUploadMissingKeyUsesErrorEnvelope(t *testing.T) {
-	body, contentType := multipartBody(t, false)
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/media/upload", body)
-	request.Header.Set("Content-Type", contentType)
-
-	media.NewHandler(zerolog.Nop(), nil).Upload(recorder, request)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", recorder.Code)
-	}
-	var response httpx.ErrorResponse
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if response.Status != http.StatusBadRequest || len(response.Errors) != 1 {
-		t.Fatalf("error response = %#v, want bad request envelope", response)
-	}
-	if response.Errors[0].Code != httpx.ErrorCodeMissingKey {
-		t.Fatalf("error code = %q, want %q", response.Errors[0].Code, httpx.ErrorCodeMissingKey)
-	}
-}
-
-func multipartBody(t *testing.T, includeKey bool) (io.Reader, string) {
-	t.Helper()
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	if includeKey {
-		if err := writer.WriteField("key", "kyc/front.jpg"); err != nil {
-			t.Fatalf("write key: %v", err)
-		}
-	}
-	file, err := writer.CreateFormFile("file", "front.jpg")
+	tokens := auth.NewTokenService("test-secret", time.Hour)
+	token, _, err := tokens.Issue("owner", "owner", "user", true)
 	if err != nil {
-		t.Fatalf("create form file: %v", err)
+		t.Fatal(err)
 	}
-	if _, err := file.Write([]byte("image")); err != nil {
-		t.Fatalf("write file: %v", err)
+	handler := media.NewHandler(zerolog.Nop(), rustfs.NewMediaRepository(client, "media"), accountRepo{account: account})
+	mux := http.NewServeMux()
+	media.RegisterRoutes(openapi.NewRegistry(mux, false), handler, tokens)
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/media/download?key="+key, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	mux.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close multipart writer: %v", err)
+	if recorder.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatal("missing nosniff header")
 	}
-	return &body, writer.FormDataContentType()
+	if disposition := recorder.Header().Get("Content-Disposition"); disposition != `attachment; filename=front.jpg` {
+		t.Fatalf("Content-Disposition = %q", disposition)
+	}
 }

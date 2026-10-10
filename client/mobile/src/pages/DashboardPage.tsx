@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { toast } from "@/shared/notifications/toast";
 import { toLoginError } from "@/features/auth/api/auth";
 import { AUTH_STATUS } from "@/features/auth/authStatus";
 import { AppHeader } from "@/shared/layout/AppHeader";
 import { BottomNav } from "@/shared/layout/BottomNav";
+import { ProfileSidebar } from "@/shared/layout/ProfileSidebar";
 import { BalanceCard } from "@/features/dashboard/components/BalanceCard";
 import { QuickActions } from "@/features/dashboard/components/QuickActions";
 import { PromoBanner } from "@/features/dashboard/components/PromoBanner";
@@ -12,11 +14,13 @@ import {
   mockPromoBanner,
   mockQuickActions,
 } from "@/features/dashboard/mocks/dashboard";
-import { transactionStore } from "@/features/transactions";
+import { listTransactions } from "@/features/transactions/api";
 import type { TransactionRecord } from "@/features/transactions/model";
 import { Avatar } from "@/shared/ui";
 import { useAuth } from "@/features/auth/useAuth";
 import { navigate, routes } from "@/app/routes";
+import { ApiError } from "@/shared/lib/http";
+import { HTTP_STATUS } from "@/shared/constants/httpStatus";
 
 const dashboardDateFormat = new Intl.DateTimeFormat("vi-VN", {
   day: "2-digit",
@@ -54,9 +58,62 @@ const toDashboardTransaction = (record: TransactionRecord): Transaction => {
 };
 
 const DashboardPage = () => {
-  const { status, user, refreshProfile } = useAuth();
+  const { status, user, token, logout, refreshProfile } = useAuth();
   const quickActions = mockQuickActions;
   const promo = mockPromoBanner;
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [transactionsError, setTransactionsError] = useState<string | null>(
+    null,
+  );
+  const [transactionsReloadKey, setTransactionsReloadKey] = useState(0);
+  const [balanceRefreshing, setBalanceRefreshing] = useState(false);
+  const [profileSidebarOpen, setProfileSidebarOpen] = useState(false);
+
+  const refreshBalance = async () => {
+    if (balanceRefreshing) return;
+    setBalanceRefreshing(true);
+    try {
+      await refreshProfile();
+    } catch (error) {
+      toast.error(toLoginError(error));
+    } finally {
+      setBalanceRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    void Promise.resolve().then(() => {
+      if (controller.signal.aborted) return;
+      setTransactionsLoading(true);
+      setTransactionsError(null);
+    });
+
+    void listTransactions(token, { limit: 4, signal: controller.signal })
+      .then((page) => setTransactions(page.items.map(toDashboardTransaction)))
+      .catch((requestError: unknown) => {
+        if (controller.signal.aborted) return;
+        if (
+          requestError instanceof ApiError &&
+          requestError.status === HTTP_STATUS.UNAUTHORIZED
+        ) {
+          logout();
+          return;
+        }
+        setTransactionsError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Không thể tải giao dịch gần đây.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTransactionsLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [token, transactionsReloadKey, logout]);
 
   if (status === AUTH_STATUS.RESTORING || status === AUTH_STATUS.IDLE) {
     return (
@@ -102,15 +159,12 @@ const DashboardPage = () => {
     cardLabel: "ANOMALYBANK SIGNATURE",
   };
 
-  // Cùng nguồn `transactionStore` với trang lịch sử để chuyển tiền xong hiện ngay.
-  const transactions = transactionStore
-    .list(user.accountNo)
-    .slice(0, 4)
-    .map(toDashboardTransaction);
-
   return (
     <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-linear-to-b from-violet-100 to-white">
-      <AppHeader notificationCount={3} />
+      <AppHeader
+        notificationCount={3}
+        onProfileClick={() => setProfileSidebarOpen(true)}
+      />
 
       <main className="flex-1 space-y-6 overflow-y-auto px-4 py-5">
         <div className="flex items-center gap-2">
@@ -123,7 +177,11 @@ const DashboardPage = () => {
           </p>
         </div>
 
-        <BalanceCard account={account} />
+        <BalanceCard
+          account={account}
+          onRefresh={() => void refreshBalance()}
+          isRefreshing={balanceRefreshing}
+        />
         <QuickActions
           actions={quickActions}
           onSelect={(action) => {
@@ -133,11 +191,24 @@ const DashboardPage = () => {
         <PromoBanner promo={promo} />
         <TransactionList
           transactions={transactions}
+          loading={transactionsLoading}
+          error={transactionsError}
+          onRetry={() => setTransactionsReloadKey((key) => key + 1)}
           onViewAll={() => navigate(routes.transactions)}
         />
       </main>
 
       <BottomNav onQrScan={() => console.log("TODO: mở màn hình quét QR")} />
+
+      <ProfileSidebar
+        open={profileSidebarOpen}
+        name={account.ownerName}
+        onClose={() => setProfileSidebarOpen(false)}
+        onLogout={() => {
+          setProfileSidebarOpen(false);
+          logout();
+        }}
+      />
     </div>
   );
 };

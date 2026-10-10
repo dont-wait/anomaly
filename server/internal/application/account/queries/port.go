@@ -21,4 +21,6 @@ type AccountQueryRepository interface {
 type TokenService interface {
 	Issue(userID, username, role string, isVerify bool) (token string, expiresAt time.Time, err error)
 	Parse(tokenString string) (*auth.Claims, error)
+	IssueKYC(userID string) (token string, expiresAt time.Time, err error)
+	ParseKYC(tokenString string) (*auth.Claims, error)
 }

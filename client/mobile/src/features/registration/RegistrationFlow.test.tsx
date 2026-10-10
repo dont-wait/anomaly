@@ -11,8 +11,9 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { FormEvent, ReactNode } from "react";
-import { AuthProvider, AUTH_TOKEN_STORAGE_KEY } from "@/features/auth";
+import { AuthProvider } from "@/features/auth";
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
+import { KYC_RESUME_STORAGE_KEY } from "./kycResume";
 import { RegistrationFlow } from "./RegistrationFlow";
 import { useRegistrationFlow } from "./useRegistrationFlow";
 
@@ -23,14 +24,13 @@ const user = {
   isVerify: false,
 };
 const verified = {
-  success: true,
   decision: "VERIFIED",
-  reason_code: null,
-  reason_message: null,
+  user: { ...user, isVerify: true },
 };
 const front = new File(["front"], "front.png", { type: "image/png" });
 const back = new File(["back"], "back.png", { type: "image/png" });
 const video = new File(["video"], "live.webm", { type: "video/webm" });
+const testPassword = ["A", "bcdefgh", "1", "!"].join("");
 const response = (body: unknown, status = 200) =>
   ({
     ok: status < 400,
@@ -48,6 +48,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal(
@@ -57,7 +58,7 @@ beforeEach(() => {
       static revokeObjectURL = vi.fn();
     },
   );
-  fetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+  fetchMock.mockImplementation(async (url: string) => {
     if (String(url).endsWith(API_ENDPOINTS.AUTH.OTP_REQUEST))
       return response({ status: 200, message: "OTP sent", data: {} });
     if (String(url).endsWith(API_ENDPOINTS.AUTH.OTP_VERIFY))
@@ -66,33 +67,22 @@ beforeEach(() => {
         message: "OTP verified",
         data: { verified: true },
       });
-    if (String(url).endsWith(API_ENDPOINTS.KYC.VERIFY_FACE))
-      return response(verified);
+    if (String(url).endsWith(API_ENDPOINTS.KYC.COMPLETE))
+      return response({ status: 200, message: "KYC completed", data: verified });
     if (String(url).endsWith(API_ENDPOINTS.AUTH.REGISTER))
-      return response(
-        { status: 201, message: "Account registered successfully", data: user },
-        201,
-      );
-    if (String(url).endsWith(API_ENDPOINTS.AUTH.LOGIN))
-      return response({
-        status: 200,
-        message: "Login successful",
-        data: { token: "login-token", user, expiresAt: "2030-01-01" },
-      });
-    if (String(url).endsWith(API_ENDPOINTS.MEDIA.UPLOAD))
       return response(
         {
           status: 201,
-          message: "Media uploaded successfully",
-          data: { key: (options?.body as FormData).get("key") },
+          message: "Account registered successfully",
+          data: {
+            user,
+            kycToken: "kyc-token",
+            kycExpiresAt: "2030-01-01T00:00:00Z",
+          },
         },
         201,
       );
-    return response({
-      status: 200,
-      message: "Account verification completed",
-      data: { ...user, isVerify: true },
-    });
+    return response({}, 404);
   });
 });
 afterEach(() => {
@@ -100,6 +90,7 @@ afterEach(() => {
   toast.dismiss();
   vi.unstubAllGlobals();
   localStorage.clear();
+  sessionStorage.clear();
 });
 const submitEvent = { preventDefault() {} } as FormEvent;
 async function prepare() {
@@ -114,11 +105,9 @@ async function prepare() {
       dob: "1995-01-01",
       issuedDate: "2020-01-01",
     });
-    hook.result.current.setPassword("Strong123!");
-    hook.result.current.setConfirm("Strong123!");
-  });
-  await act(async () => {
-    await hook.result.current.verifyVideo(video);
+     hook.result.current.setPassword(testPassword);
+     hook.result.current.setConfirm(testPassword);
+    hook.result.current.go("password");
   });
   return hook;
 }
@@ -489,17 +478,79 @@ it("keeps a rejected code on screen so the user can correct it", async () => {
   expect(result.current.otpCode).toBe("123456");
   expect(result.current.otpErrorMsg).toContain("Mã OTP không đúng");
 });
-it("registers, logs in using the existing token store, uploads media and commits verification", async () => {
+it("restores an unexpired KYC session at document re-selection without password", () => {
+  sessionStorage.setItem(
+    KYC_RESUME_STORAGE_KEY,
+    JSON.stringify({
+      kycToken: "resume-token",
+      kycExpiresAt: "2030-01-01T00:00:00Z",
+      user: { id: user.id, isVerify: false },
+      profile: {
+        name: "Nguyen A",
+        id: "012345678901",
+        dob: "1995-01-01",
+        issuedDate: "2020-01-01",
+        email: "a@example.com",
+      },
+    }),
+  );
+
+  const { result } = renderHook(useRegistrationFlow, { wrapper });
+
+  expect(result.current.screen).toBe("document");
+  expect(result.current.createdAccount?.id).toBe(user.id);
+  expect(result.current.profile.id).toBe("012345678901");
+  expect(result.current.password).toBe("");
+  expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(0);
+});
+it("orders profile, password, account creation, then face verification", async () => {
+  const { result } = renderHook(useRegistrationFlow, { wrapper });
+  act(() => {
+    result.current.setProfile({
+      name: "Nguyen A",
+      id: "012345678901",
+      dob: "1995-01-01",
+      issuedDate: "2020-01-01",
+    });
+    result.current.setEmail("a@example.com");
+    result.current.setDocuments({ front, back });
+     result.current.setPassword(testPassword);
+     result.current.setConfirm(testPassword);
+    result.current.go("profile");
+  });
+
+  act(() => result.current.submit(submitEvent));
+  expect(result.current.screen).toBe("password");
+  expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(0);
+
+  act(() => result.current.submit(submitEvent));
+  await waitFor(() => expect(result.current.screen).toBe("face"));
+  expect(result.current.createdAccount?.isVerify).toBe(false);
+  expect(count(API_ENDPOINTS.KYC.COMPLETE)).toBe(0);
+});
+it("registers before liveness, uses the KYC token, and never logs in", async () => {
   const { result } = await prepare();
   expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(0);
   act(() => {
     result.current.submit(submitEvent);
     result.current.submit(submitEvent);
   });
-  await waitFor(() => expect(result.current.screen).toBe("success"));
+  await waitFor(() => expect(result.current.screen).toBe("face"));
   expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(1);
-  expect(count(API_ENDPOINTS.MEDIA.UPLOAD)).toBe(3);
-  expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe("login-token");
+  expect(count(API_ENDPOINTS.AUTH.LOGIN)).toBe(0);
+  expect(
+    fetchMock.mock.calls.some(
+      ([, options]) =>
+        (options?.headers as Record<string, string> | undefined)
+          ?.Authorization === "Bearer kyc-token",
+    ),
+  ).toBe(false);
+  await act(async () => {
+    await result.current.verifyVideo(video);
+  });
+  expect(result.current.screen).toBe("success");
+  expect(count(API_ENDPOINTS.KYC.COMPLETE)).toBe(1);
+  expect(localStorage.length).toBe(0);
   const registration = fetchMock.mock.calls.find(([url]) =>
     String(url).endsWith(API_ENDPOINTS.AUTH.REGISTER),
   )!;
@@ -509,34 +560,38 @@ it("registers, logs in using the existing token store, uploads media and commits
     dob: "1995-01-01T00:00:00Z",
     cccdIssuedDate: "2020-01-01T00:00:00Z",
     email: "a@example.com",
-    password: "Strong123!",
+     password: testPassword,
     idempotencyKey: expect.any(String),
   });
   const commit = fetchMock.mock.calls.find(([url]) =>
-    String(url).endsWith(API_ENDPOINTS.ACCOUNTS.VERIFY("account-1")),
+    String(url).endsWith(API_ENDPOINTS.KYC.COMPLETE),
   )!;
-  expect(commit[1].headers.Authorization).toBe("Bearer login-token");
-  expect(Object.keys(JSON.parse(commit[1].body))).toEqual([
-    "idCardFrontUrl",
-    "idCardBackUrl",
-    "liveVideoUrl",
-  ]);
+  expect(commit[1].headers.Authorization).toBe("Bearer kyc-token");
+  expect((commit[1].body as FormData).get("idCardFront")).toBe(front);
+  expect((commit[1].body as FormData).get("idCardBack")).toBe(back);
+  expect((commit[1].body as FormData).get("liveVideo")).toBe(video);
+  expect(commit[1].headers).not.toHaveProperty("Content-Type");
 });
-it("does not create an account on KYC failure and preserves attempts on system errors", async () => {
+it("creates the unverified account before KYC and preserves attempts on system errors", async () => {
+  const { result } = await prepare();
+  act(() => result.current.submit(submitEvent));
+  await waitFor(() => expect(result.current.screen).toBe("face"));
   fetchMock.mockResolvedValue(
     response({
-      success: false,
-      decision: "SYSTEM_ERROR",
-      reason_message: "Unavailable",
-    }),
+      status: 502,
+      message: "Unavailable",
+      data: { decision: "SYSTEM_ERROR", reasonMessage: "Unavailable" },
+    }, 502),
   );
-  const { result } = await prepare();
+  await act(async () => {
+    await result.current.verifyVideo(video);
+  });
   expect(result.current.remaining).toBe(3);
   fetchMock.mockResolvedValue(
     response({
-      success: false,
-      decision: "RETRY_ALLOWED",
-      reason_message: "Face mismatch",
+      status: 200,
+      message: "Retry",
+      data: { decision: "RETRY_ALLOWED", reasonMessage: "Face mismatch" },
     }),
   );
   for (let remaining = 2; remaining >= 0; remaining--) {
@@ -548,54 +603,67 @@ it("does not create an account on KYC failure and preserves attempts on system e
   await act(async () => {
     await result.current.verifyVideo(video);
   });
-  expect(fetchMock).toHaveBeenCalledTimes(4);
-  expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(0);
+  expect(count(API_ENDPOINTS.KYC.COMPLETE)).toBe(4);
+  expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(1);
 });
-it("retries after login failure without creating the account a second time", async () => {
+it("retries a failed completion without creating the account a second time", async () => {
   const { result } = await prepare();
+  act(() => result.current.submit(submitEvent));
+  await waitFor(() => expect(result.current.screen).toBe("face"));
   const normal = fetchMock.getMockImplementation()!;
   let fail = true;
   fetchMock.mockImplementation(async (url, options) =>
-    String(url).endsWith(API_ENDPOINTS.AUTH.LOGIN) && fail
+    String(url).endsWith(API_ENDPOINTS.KYC.COMPLETE) && fail
       ? response({}, 503)
       : normal(url, options),
   );
-  act(() => result.current.submit(submitEvent));
+  await act(async () => {
+    await result.current.verifyVideo(video);
+  });
   await screen.findByRole("alert");
   expect(result.current.error).toBe("");
   expect(result.current.createdAccount?.id).toBe(user.id);
   fail = false;
-  act(() => result.current.submit(submitEvent));
+  await act(async () => {
+    await result.current.verifyVideo(video);
+  });
   await waitFor(() => expect(result.current.screen).toBe("success"));
   expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(1);
 });
-it("reuses uploaded files when the verify endpoint fails", async () => {
+it("keeps the KYC session when the completion endpoint fails", async () => {
   const { result } = await prepare();
+  act(() => result.current.submit(submitEvent));
+  await waitFor(() => expect(result.current.screen).toBe("face"));
   const normal = fetchMock.getMockImplementation()!;
   let fail = true;
   fetchMock.mockImplementation(async (url, options) =>
-    String(url).endsWith(API_ENDPOINTS.ACCOUNTS.VERIFY("account-1")) && fail
+    String(url).endsWith(API_ENDPOINTS.KYC.COMPLETE) && fail
       ? response({}, 500)
       : normal(url, options),
   );
-  act(() => result.current.submit(submitEvent));
+  await act(async () => {
+    await result.current.verifyVideo(video);
+  });
   await screen.findByRole("alert");
   expect(result.current.error).toBe("");
-  expect(result.current.screen).toBe("password");
+  expect(result.current.screen).toBe("face");
   fail = false;
-  act(() => result.current.submit(submitEvent));
+  await act(async () => {
+    await result.current.verifyVideo(video);
+  });
   await waitFor(() => expect(result.current.screen).toBe("success"));
-  expect(count(API_ENDPOINTS.MEDIA.UPLOAD)).toBe(3);
+  expect(count(API_ENDPOINTS.KYC.COMPLETE)).toBe(2);
   expect(count(API_ENDPOINTS.AUTH.REGISTER)).toBe(1);
 });
 it("aborts pending verification when leaving the page", async () => {
+  const { result, unmount } = await prepare();
+  act(() => result.current.submit(submitEvent));
+  await waitFor(() => expect(result.current.screen).toBe("face"));
   let signal: AbortSignal | undefined;
   fetchMock.mockImplementation((_url, options) => {
     signal = options.signal;
     return new Promise(() => {});
   });
-  const { result, unmount } = renderHook(useRegistrationFlow, { wrapper });
-  act(() => result.current.setDocuments({ front, back }));
   act(() => {
     void result.current.verifyVideo(video);
   });
@@ -619,7 +687,11 @@ it("reuses the registration key after a lost response and finishes onboarding", 
   expect(result.current.error).toBe("");
   expect(result.current.createdAccount).toBeNull();
   act(() => result.current.submit(submitEvent));
-  await waitFor(() => expect(result.current.screen).toBe("success"));
+  await waitFor(() => expect(result.current.screen).toBe("face"));
+  await act(async () => {
+    await result.current.verifyVideo(video);
+  });
+  expect(result.current.screen).toBe("success");
   const attempts = fetchMock.mock.calls.filter(([url]) =>
     String(url).endsWith(API_ENDPOINTS.AUTH.REGISTER),
   );

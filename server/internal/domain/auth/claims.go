@@ -10,5 +10,6 @@ type Claims struct {
 	Username  string
 	Role      string
 	IsVerify  bool
+	Purpose   string
 	ExpiresAt time.Time
 }

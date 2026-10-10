@@ -146,12 +146,11 @@ func TestRunReconcilesAdminRole(t *testing.T) {
 	admin := repo.accounts[demoAccounts()[1].CCCD]
 	admin.Role = accountdomain.AccountRoleUser
 
-	err := Run(context.Background(), Dependencies{Accounts: repo})
-	if err != nil {
-		t.Fatalf("reconcile admin role: %v", err)
+	if err := Run(context.Background(), Dependencies{Accounts: repo}); err != nil {
+		t.Fatal(err)
 	}
 	if admin.Role != accountdomain.AccountRoleAdmin {
-		t.Fatalf("admin role = %q, want admin", admin.Role)
+		t.Fatalf("admin role = %q, want %q", admin.Role, accountdomain.AccountRoleAdmin)
 	}
 }
 

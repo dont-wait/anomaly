@@ -101,9 +101,9 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 	verify := commands.NewVerifyAccountCommandHandler(repo)
 	if _, err := verify.Handle(ctx, commands.VerifyAccountCommand{
 		AccountID:      accountID,
-		IdCardFrontUrl: "media/e2e-front.jpg",
-		IdCardBackUrl:  "media/e2e-back.jpg",
-		LiveVideoUrl:   "media/e2e-live.mp4",
+		IdCardFrontUrl: "kyc/" + accountID + "/id-card-front/e2e-front",
+		IdCardBackUrl:  "kyc/" + accountID + "/id-card-back/e2e-back",
+		LiveVideoUrl:   "kyc/" + accountID + "/live-video/e2e-live",
 	}); err != nil {
 		t.Fatalf("verify MongoDB account: %v", err)
 	}
