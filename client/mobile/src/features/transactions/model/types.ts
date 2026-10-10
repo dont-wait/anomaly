@@ -1,5 +1,9 @@
 export type TransactionDirection = "in" | "out";
 export type TransactionStatus = "success" | "pending" | "failed";
+export interface TransactionDateRange {
+  from: string;
+  to: string;
+}
 export type TransactionKind =
   "transfer" | "payment" | "bill" | "topup" | "savings" | "salary";
 

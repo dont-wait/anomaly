@@ -1,8 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { SearchIcon } from "@/shared/icons";
-import { TransactionRow } from "@/features/transactions/components";
-import { formatVnd, groupByDay } from "@/features/transactions/utils/format";
+import {
+  TransactionDateRangePicker,
+  TransactionRow,
+} from "@/features/transactions/components";
+import {
+  allowedTransactionDateRange,
+  currentMonthRange,
+  dateValueFromDate,
+  formatDateValue,
+  formatVnd,
+  groupByDay,
+  isDateInRange,
+} from "@/features/transactions/utils";
 import type {
+  TransactionDateRange,
   TransactionFilter,
   TransactionRecord,
 } from "@/features/transactions/model";
@@ -42,7 +54,11 @@ export interface TransactionHistoryProps {
   onFilterChange?: (filter: TransactionFilter) => void;
   query?: string;
   onQueryChange?: (query: string) => void;
-  monthlySummary?: { totalIn: number; totalOut: number };
+  summary?: { totalIn: number; totalOut: number };
+  dateRange?: TransactionDateRange;
+  onDateRangeChange?: (range: TransactionDateRange) => void;
+  minDate?: string;
+  maxDate?: string;
 }
 
 export const TransactionHistory = ({
@@ -53,10 +69,12 @@ export const TransactionHistory = ({
   onFilterChange,
   query: controlledQuery,
   onQueryChange,
-  monthlySummary,
+  summary,
+  dateRange,
+  onDateRangeChange,
+  minDate,
+  maxDate,
 }: TransactionHistoryProps) => {
-  // `nowProp` (test/story) luôn thắng; không prop thì chốt theo tick và tự
-  // refresh khi qua nửa đêm local để "Hôm nay" + tổng tháng đúng.
   const [tick, setTick] = useState(() => new Date());
   const now = nowProp ?? tick;
   const [internalFilter, setInternalFilter] =
@@ -64,6 +82,10 @@ export const TransactionHistory = ({
   const [internalQuery, setInternalQuery] = useState("");
   const filter = controlledFilter ?? internalFilter;
   const query = controlledQuery ?? internalQuery;
+  const activeDateRange = dateRange ?? currentMonthRange(now);
+  const allowedRange = allowedTransactionDateRange(now);
+  const earliestDate = minDate ?? allowedRange.from;
+  const latestDate = maxDate ?? allowedRange.to;
 
   const changeFilter = (nextFilter: TransactionFilter) => {
     if (controlledFilter === undefined) setInternalFilter(nextFilter);
@@ -75,7 +97,6 @@ export const TransactionHistory = ({
     onQueryChange?.(nextQuery);
   };
 
-  // Trang mở qua nửa đêm local thì refresh để "Hôm nay" + tổng tháng đúng.
   useEffect(() => {
     if (nowProp !== undefined) return;
     const midnight = new Date();
@@ -87,22 +108,21 @@ export const TransactionHistory = ({
     return () => clearTimeout(timer);
   }, [tick, nowProp]);
 
-  const calculatedMonthSummary = useMemo(() => {
-    const inMonth = records.filter(
+  const calculatedRangeSummary = useMemo(() => {
+    const inRange = records.filter(
       (r) =>
         r.status === "success" &&
-        r.createdAt.getMonth() === now.getMonth() &&
-        r.createdAt.getFullYear() === now.getFullYear(),
+        isDateInRange(dateValueFromDate(r.createdAt), activeDateRange),
     );
     const sum = (direction: TransactionFilter) =>
-      inMonth
+      inRange
         .filter((r) => r.direction === direction)
         .reduce((total, r) => total + r.amount, 0);
     return { in: sum("in"), out: sum("out") };
-  }, [records, now]);
-  const monthSummary = monthlySummary
-    ? { in: monthlySummary.totalIn, out: monthlySummary.totalOut }
-    : calculatedMonthSummary;
+  }, [activeDateRange, records]);
+  const rangeSummary = summary
+    ? { in: summary.totalIn, out: summary.totalOut }
+    : calculatedRangeSummary;
 
   const groups = useMemo(
     () =>
@@ -120,28 +140,35 @@ export const TransactionHistory = ({
   return (
     <div className="space-y-5">
       <section
-        aria-label={`Tổng quan tháng ${now.getMonth() + 1}/${now.getFullYear()}`}
+        aria-label={`Tổng quan từ ${formatDateValue(activeDateRange.from)} đến ${formatDateValue(activeDateRange.to)}`}
         className="relative overflow-hidden rounded-3xl bg-linear-to-br from-cta-from to-cta-to p-5 text-on-cta shadow-lg shadow-cta-from/30"
       >
         <div className="pointer-events-none absolute -top-10 -right-8 h-32 w-32 rounded-full bg-on-cta/15 blur-2xl" />
         <p className="relative text-sm text-on-cta">
-          Tháng {now.getMonth() + 1}/{now.getFullYear()}
+          {formatDateValue(activeDateRange.from)} - {formatDateValue(activeDateRange.to)}
         </p>
         <div className="relative mt-3 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-on-cta/15 p-3">
             <p className="text-xs text-on-cta">Tiền vào</p>
             <p className="mt-1 font-bold tabular-nums">
-              +{formatVnd(monthSummary.in)}
+              +{formatVnd(rangeSummary.in)}
             </p>
           </div>
           <div className="rounded-2xl bg-on-cta/15 p-3">
             <p className="text-xs text-on-cta">Tiền ra</p>
             <p className="mt-1 font-bold tabular-nums">
-              -{formatVnd(monthSummary.out)}
+              -{formatVnd(rangeSummary.out)}
             </p>
           </div>
         </div>
       </section>
+
+      <TransactionDateRangePicker
+        value={activeDateRange}
+        minDate={earliestDate}
+        maxDate={latestDate}
+        onConfirm={(nextRange) => onDateRangeChange?.(nextRange)}
+      />
 
       <div className="space-y-3">
         <label className="flex items-center gap-2 rounded-2xl border border-outline-variant bg-surface-container-lowest px-4 focus-within:border-secondary focus-within:ring-2 focus-within:ring-primary/20">
