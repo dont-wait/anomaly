@@ -49,6 +49,44 @@ func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOT
 
 var accountNumberPattern = regexp.MustCompile(`^\d{6,19}$`)
 
+var transactionLocation = time.FixedZone("ICT", 7*60*60)
+
+func transactionDateBounds(now time.Time) (time.Time, time.Time) {
+	now = now.In(transactionLocation)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, transactionLocation)
+	return today.AddDate(0, -2, 0), today.AddDate(0, 0, 1).Add(-time.Nanosecond)
+}
+
+func parseTransactionDateRange(r *http.Request) (time.Time, time.Time, bool, string, string) {
+	rawFrom := r.URL.Query().Get("from")
+	rawTo := r.URL.Query().Get("to")
+	if rawFrom == "" && rawTo == "" {
+		return time.Time{}, time.Time{}, false, "", ""
+	}
+	if rawFrom == "" || rawTo == "" {
+		return time.Time{}, time.Time{}, false, "INVALID_DATE_RANGE", "from and to are required together"
+	}
+	from, err := time.Parse(time.RFC3339, rawFrom)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, "INVALID_DATE", "from and to must use RFC3339"
+	}
+	to, err := time.Parse(time.RFC3339, rawTo)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, "INVALID_DATE", "from and to must use RFC3339"
+	}
+	if from.After(to) {
+		return time.Time{}, time.Time{}, false, "INVALID_DATE_RANGE", "from must be before or equal to to"
+	}
+	minDate, maxDate := transactionDateBounds(time.Now())
+	if from.Before(minDate) {
+		return time.Time{}, time.Time{}, false, "DATE_RANGE_TOO_OLD", "date range cannot start before the last three months"
+	}
+	if to.After(maxDate) {
+		return time.Time{}, time.Time{}, false, "DATE_RANGE_IN_FUTURE", "date range cannot end after today"
+	}
+	return from, to, true, "", ""
+}
+
 func (h *Handler) Lookup(w http.ResponseWriter, r *http.Request) {
 	bankCode := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("bankCode")))
 	accountNo := strings.TrimSpace(r.URL.Query().Get("accountNo"))
@@ -444,19 +482,13 @@ func (h *Handler) ListTransactions(w http.ResponseWriter, r *http.Request) {
 	if q := normalizeSearch(r.URL.Query().Get("q")); q != "" {
 		filter["search_text"] = bson.M{"$regex": regexp.QuoteMeta(q)}
 	}
-	dateFilter := bson.M{}
-	for key, op := range map[string]string{"from": "$gte", "to": "$lte"} {
-		if raw := r.URL.Query().Get(key); raw != "" {
-			parsed, err := time.Parse(time.RFC3339, raw)
-			if err != nil {
-				writeAPIError(w, http.StatusBadRequest, "INVALID_DATE", "from and to must use RFC3339")
-				return
-			}
-			dateFilter[op] = parsed
-		}
+	from, to, hasDateRange, dateCode, dateMessage := parseTransactionDateRange(r)
+	if dateCode != "" {
+		writeAPIError(w, http.StatusBadRequest, dateCode, dateMessage)
+		return
 	}
-	if len(dateFilter) > 0 {
-		filter["occurred_at"] = dateFilter
+	if hasDateRange {
+		filter["occurred_at"] = bson.M{"$gte": from, "$lte": to}
 	}
 	if raw := r.URL.Query().Get("cursor"); raw != "" {
 		cursor, err := mongorepo.DecodeFeedCursor(raw)
@@ -489,15 +521,21 @@ func (h *Handler) ListTransactions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) TransactionSummary(w http.ResponseWriter, r *http.Request) {
-	month := r.URL.Query().Get("month")
-	parsed, err := time.Parse("2006-01", month)
-	if err != nil || parsed.Format("2006-01") != month {
-		writeAPIError(w, http.StatusBadRequest, "INVALID_MONTH", "month must use YYYY-MM")
+	from, to, hasDateRange, dateCode, dateMessage := parseTransactionDateRange(r)
+	if dateCode != "" {
+		writeAPIError(w, http.StatusBadRequest, dateCode, dateMessage)
 		return
 	}
-	location := time.FixedZone("ICT", 7*60*60)
-	from := time.Date(parsed.Year(), parsed.Month(), 1, 0, 0, 0, 0, location)
-	to := from.AddDate(0, 1, 0)
+	month := r.URL.Query().Get("month")
+	if !hasDateRange {
+		parsed, err := time.Parse("2006-01", month)
+		if err != nil || parsed.Format("2006-01") != month {
+			writeAPIError(w, http.StatusBadRequest, "INVALID_MONTH", "month must use YYYY-MM")
+			return
+		}
+		from = time.Date(parsed.Year(), parsed.Month(), 1, 0, 0, 0, 0, transactionLocation)
+		to = from.AddDate(0, 1, 0)
+	}
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims == nil {
 		writeAPIError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
@@ -508,12 +546,23 @@ func (h *Handler) TransactionSummary(w http.ResponseWriter, r *http.Request) {
 		h.writeRepoError(w, err)
 		return
 	}
-	in, out, err := h.repo.Summary(r.Context(), accountID, from.UTC(), to.UTC())
+	summaryTo := to
+	if hasDateRange {
+		summaryTo = to.Add(time.Nanosecond)
+	}
+	in, out, err := h.repo.Summary(r.Context(), accountID, from.UTC(), summaryTo.UTC())
 	if err != nil {
 		h.writeRepoError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"month": month, "totalIn": in, "totalOut": out})
+	response := map[string]any{"totalIn": in, "totalOut": out}
+	if hasDateRange {
+		response["from"] = from.Format(time.RFC3339Nano)
+		response["to"] = to.Format(time.RFC3339Nano)
+	} else {
+		response["month"] = month
+	}
+	httpx.WriteJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) TransactionDetail(w http.ResponseWriter, r *http.Request) {
