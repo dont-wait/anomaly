@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faRotateRight } from "@fortawesome/free-solid-svg-icons";
 import { Badge } from "@/shared/ui";
 import { CopyIcon, EyeIcon, EyeOffIcon } from "@/shared/icons";
 import type { Account } from "@/features/dashboard/model/types";
@@ -13,10 +15,16 @@ const maskAccountNumber = (accountNumber: string) => {
 
 interface BalanceCardProps {
   account: Account;
+  onRefresh: () => void;
+  isRefreshing: boolean;
 }
 
 /** Thẻ số dư tài khoản chính — gradient thương hiệu, có chiều sâu bằng hoạ tiết mờ. */
-export const BalanceCard = ({ account }: BalanceCardProps) => {
+export const BalanceCard = ({
+  account,
+  onRefresh,
+  isRefreshing,
+}: BalanceCardProps) => {
   const [isVisible, setIsVisible] = useState(true);
   const [copyMessage, setCopyMessage] = useState("");
 
@@ -50,6 +58,20 @@ export const BalanceCard = ({ account }: BalanceCardProps) => {
         <div className="mt-4 flex items-center gap-2 text-sm text-white/80">
           Số dư khả dụng
           <button
+            type="button"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            aria-label="Làm mới số dư"
+            title="Làm mới số dư"
+            className="rounded-full p-1 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <FontAwesomeIcon
+              icon={faRotateRight}
+              className={isRefreshing ? "animate-spin" : undefined}
+            />
+          </button>
+          <button
+            type="button"
             onClick={() => setIsVisible((prev) => !prev)}
             aria-label={isVisible ? "Ẩn số dư" : "Hiện số dư"}
           >

@@ -11,7 +11,13 @@ afterEach(() => {
 it("copies the full account number while keeping the displayed number masked", async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText } });
-  render(<BalanceCard account={mockAccount} />);
+  render(
+    <BalanceCard
+      account={mockAccount}
+      onRefresh={vi.fn()}
+      isRefreshing={false}
+    />,
+  );
 
   fireEvent.click(
     screen.getByRole("button", { name: "Sao chép số tài khoản" }),
@@ -31,7 +37,13 @@ it.each(["denied", "unavailable"])(
           ? { writeText: vi.fn().mockRejectedValue(new Error("Denied")) }
           : undefined,
     });
-    render(<BalanceCard account={mockAccount} />);
+    render(
+      <BalanceCard
+        account={mockAccount}
+        onRefresh={vi.fn()}
+        isRefreshing={false}
+      />,
+    );
 
     fireEvent.click(
       screen.getByRole("button", { name: "Sao chép số tài khoản" }),

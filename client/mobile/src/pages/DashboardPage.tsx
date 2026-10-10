@@ -4,6 +4,7 @@ import { toLoginError } from "@/features/auth/api/auth";
 import { AUTH_STATUS } from "@/features/auth/authStatus";
 import { AppHeader } from "@/shared/layout/AppHeader";
 import { BottomNav } from "@/shared/layout/BottomNav";
+import { ProfileSidebar } from "@/shared/layout/ProfileSidebar";
 import { BalanceCard } from "@/features/dashboard/components/BalanceCard";
 import { QuickActions } from "@/features/dashboard/components/QuickActions";
 import { PromoBanner } from "@/features/dashboard/components/PromoBanner";
@@ -66,6 +67,20 @@ const DashboardPage = () => {
     null,
   );
   const [transactionsReloadKey, setTransactionsReloadKey] = useState(0);
+  const [balanceRefreshing, setBalanceRefreshing] = useState(false);
+  const [profileSidebarOpen, setProfileSidebarOpen] = useState(false);
+
+  const refreshBalance = async () => {
+    if (balanceRefreshing) return;
+    setBalanceRefreshing(true);
+    try {
+      await refreshProfile();
+    } catch (error) {
+      toast.error(toLoginError(error));
+    } finally {
+      setBalanceRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -146,7 +161,10 @@ const DashboardPage = () => {
 
   return (
     <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-linear-to-b from-violet-100 to-white">
-      <AppHeader notificationCount={3} />
+      <AppHeader
+        notificationCount={3}
+        onProfileClick={() => setProfileSidebarOpen(true)}
+      />
 
       <main className="flex-1 space-y-6 overflow-y-auto px-4 py-5">
         <div className="flex items-center gap-2">
@@ -159,7 +177,11 @@ const DashboardPage = () => {
           </p>
         </div>
 
-        <BalanceCard account={account} />
+        <BalanceCard
+          account={account}
+          onRefresh={() => void refreshBalance()}
+          isRefreshing={balanceRefreshing}
+        />
         <QuickActions
           actions={quickActions}
           onSelect={(action) => {
@@ -177,6 +199,16 @@ const DashboardPage = () => {
       </main>
 
       <BottomNav onQrScan={() => console.log("TODO: mở màn hình quét QR")} />
+
+      <ProfileSidebar
+        open={profileSidebarOpen}
+        name={account.ownerName}
+        onClose={() => setProfileSidebarOpen(false)}
+        onLogout={() => {
+          setProfileSidebarOpen(false);
+          logout();
+        }}
+      />
     </div>
   );
 };
