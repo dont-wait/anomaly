@@ -540,6 +540,55 @@ func (r *BankRepository) SetSeedBalance(ctx context.Context, id string, balance 
 	return err
 }
 
+// AddSeedBalanceByAccountNo appends a development-only balance funding event
+// for an active account identified by its public account number.
+func (r *BankRepository) AddSeedBalanceByAccountNo(ctx context.Context, accountNo string, amount int64) error {
+	accountNo = strings.TrimSpace(accountNo)
+	if accountNo == "" || amount <= 0 {
+		return accountdomain.ErrInvalidAmount
+	}
+
+	operationID := uuid.NewString()
+	_, err := r.mutate(ctx, func(s *bankState) (*journal.Record, any, error) {
+		record, err := s.seedBalanceByAccountNo(accountNo, amount, operationID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return record, nil, nil
+	})
+	return err
+}
+
+func (s *bankState) seedBalanceByAccountNo(accountNo string, amount int64, operationID string) (*journal.Record, error) {
+	if accountNo == "" || amount <= 0 {
+		return nil, accountdomain.ErrInvalidAmount
+	}
+
+	var account *accountdomain.UserAccount
+	for _, candidate := range s.Accounts {
+		if candidate.AccountNo == accountNo && candidate.Status == accountdomain.AccountStatusActive {
+			account = candidate
+			break
+		}
+	}
+	if account == nil {
+		return nil, accountdomain.ErrAccountNotFound
+	}
+
+	current := s.Balances[financialID(account.Id).Hex()]
+	if current > math.MaxInt64-amount {
+		return nil, accountdomain.ErrInvalidAmount
+	}
+	balance := current + amount
+	return &journal.Record{
+		ID:        operationID,
+		Type:      journal.BalanceSeeded,
+		At:        time.Now().UTC(),
+		AccountID: account.Id,
+		Balance:   &balance,
+	}, nil
+}
+
 type SeedRepository struct{ *BankRepository }
 
 func (r SeedRepository) Save(ctx context.Context, a *accountdomain.UserAccount) error {

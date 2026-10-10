@@ -8,7 +8,7 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: help start-app start-worker start-api seed migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
+.PHONY: help start-app start-worker start-api seed add-money migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
 
 start-app:
 	docker compose --profile app up --build
@@ -24,6 +24,7 @@ help:
 	@echo "  test-transaction-e2e  Run isolated MongoDB/EventStoreDB E2E"
 	@echo "  start-api         Run API development"
 	@echo "  seed              Run all registered development seeders"
+	@echo "  add-money         Add AMOUNT to an account: make add-money ACCOUNT_NO=<no_account> AMOUNT=<amount>"
 	@echo "  migrate           Alias for migrate-up"
 	@echo "  migrate-up        Apply all pending migrations"
 	@echo "  migrate-up-one    Apply the next pending migration"
@@ -68,6 +69,9 @@ start-api:
 
 seed:
 	go run ./cmd/seed
+
+add-money:
+	go run ./cmd/add-money -account-no "$(ACCOUNT_NO)" -amount "$(AMOUNT)"
 
 .PHONY: import-bank import-mongo-bank test-transaction-e2e
 

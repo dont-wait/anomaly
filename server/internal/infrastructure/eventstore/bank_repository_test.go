@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 )
 
@@ -31,5 +32,43 @@ func TestTransferByIdempotencyKeyIsOwnerScopedAndCaseInsensitive(t *testing.T) {
 	}
 	if _, err := state.transferByIdempotencyKey(key, otherOwner); !errors.Is(err, mongorepo.ErrTransactionAccountNotFound) {
 		t.Fatalf("other owner error = %v, want account not found", err)
+	}
+}
+
+func TestSeedBalanceByAccountNoBuildsIncrementalBalanceEvent(t *testing.T) {
+	const accountID = "account-id"
+	state := bankState{
+		Accounts: map[string]*accountdomain.UserAccount{
+			accountID: {
+				Id:        accountID,
+				AccountNo: "12345678901234",
+				Status:    accountdomain.AccountStatusActive,
+			},
+		},
+		Balances: map[string]int64{financialID(accountID).Hex(): 125000},
+	}
+
+	record, err := state.seedBalanceByAccountNo("12345678901234", 75000, "operation-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Type != journal.BalanceSeeded {
+		t.Fatalf("record type = %q, want %q", record.Type, journal.BalanceSeeded)
+	}
+	if record.AccountID != accountID || record.Balance == nil || *record.Balance != 200000 {
+		t.Fatalf("record = %#v, want account %q and balance 200000", record, accountID)
+	}
+}
+
+func TestSeedBalanceByAccountNoRejectsUnknownOrInvalidInput(t *testing.T) {
+	state := bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}}
+	if _, err := state.seedBalanceByAccountNo("missing", 1, "operation-id"); !errors.Is(err, accountdomain.ErrAccountNotFound) {
+		t.Fatalf("missing account error = %v, want account not found", err)
+	}
+	if _, err := state.seedBalanceByAccountNo("", 1, "operation-id"); !errors.Is(err, accountdomain.ErrInvalidAmount) {
+		t.Fatalf("empty account error = %v, want invalid amount", err)
+	}
+	if _, err := state.seedBalanceByAccountNo("missing", 0, "operation-id"); !errors.Is(err, accountdomain.ErrInvalidAmount) {
+		t.Fatalf("zero amount error = %v, want invalid amount", err)
 	}
 }
