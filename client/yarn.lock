@@ -585,10 +585,10 @@
     "@tailwindcss/oxide" "4.3.3"
     tailwindcss "4.3.3"
 
-"@tauri-apps/api@2", "@tauri-apps/api@^2.11.0":
-  version "2.12.0"
-  resolved "https://registry.yarnpkg.com/@tauri-apps/api/-/api-2.12.0.tgz#9048cede2961ac8e255d2c023692a54b31bffd6a"
-  integrity sha512-fUSxFX8VABYe9W9K5ROdEaKVkNUFRcMSRofjruvaxztXA+I0XnQHcYHF8m/a6iExRUxsUf0HsFWhPBuH9IgzJw==
+"@tauri-apps/api@2", "@tauri-apps/api@^2.12.0":
+  version "2.12.3"
+  resolved "https://registry.yarnpkg.com/@tauri-apps/api/-/api-2.12.3.tgz#e96869b71f5f4d711e3d49809dee204638a32a21"
+  integrity sha512-9s0PKw0p4r3kFq92jhpivYSp+cSht15o0gXpZxuQd0+dV9KCexEVkNaLELVoLdJWyoH4KlfQo5h3W2LIM8siJg==
 
 "@tauri-apps/cli-darwin-arm64@2.11.4":
   version "2.11.4"
@@ -663,11 +663,11 @@
     "@tauri-apps/cli-win32-x64-msvc" "2.11.4"
 
 "@tauri-apps/plugin-opener@2":
-  version "2.5.5"
-  resolved "https://registry.yarnpkg.com/@tauri-apps/plugin-opener/-/plugin-opener-2.5.5.tgz#ef7b9aca07cb3416575e5024b996926c43276b69"
-  integrity sha512-xvzGai5aQds8j8R8RsUK/lW6pGG50YgOYIPLzvkqmkwAj7dfySOD7sGtejRzvVdMmv1EQfKVEFh1MvmDp8QR0g==
+  version "2.7.0"
+  resolved "https://registry.yarnpkg.com/@tauri-apps/plugin-opener/-/plugin-opener-2.7.0.tgz#14d631a70282cbc07b46f4442ba6085d2200f301"
+  integrity sha512-mBorYfVKh9Lt7s4ZFtKbMUTxBw+Y/sVmSlKCtkkoBgMTC/DIbt/kaPm67L/2djAUqDI1wbixy5OHHVmipjuGMw==
   dependencies:
-    "@tauri-apps/api" "^2.11.0"
+    "@tauri-apps/api" "^2.12.0"
 
 "@testing-library/dom@10.4.1":
   version "10.4.1"
