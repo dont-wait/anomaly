@@ -39,7 +39,7 @@ const TransactionHistoryPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const loadMoreController = useRef<AbortController | null>(null);
-  const hasLoadedRef = useRef(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const dateBounds = allowedTransactionDateRange();
 
   useEffect(() => {
@@ -68,7 +68,7 @@ const TransactionHistoryPage = () => {
       signal: controller.signal,
     })
       .then((page) => {
-        hasLoadedRef.current = true;
+        setHasLoaded(true);
         setRecords(page.items);
         setNextCursor(page.nextCursor);
       })
@@ -158,7 +158,7 @@ const TransactionHistoryPage = () => {
   };
 
   const retry = () => setReloadKey((key) => key + 1);
-  const initialLoading = loading && !hasLoadedRef.current;
+  const initialLoading = loading && !hasLoaded;
 
   return (
     <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-linear-to-b from-secondary-container/40 to-surface-container-lowest">
