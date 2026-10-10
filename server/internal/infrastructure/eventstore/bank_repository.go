@@ -543,7 +543,27 @@ func (r *BankRepository) SetSeedBalance(ctx context.Context, id string, balance 
 type SeedRepository struct{ *BankRepository }
 
 func (r SeedRepository) Save(ctx context.Context, a *accountdomain.UserAccount) error {
-	return r.SetSeedBalance(ctx, a.Id, a.Balance.Current)
+	targetBalance := a.Balance.Current
+	current, err := r.FindByID(ctx, a.Id)
+	if err != nil {
+		return err
+	}
+	if current == nil {
+		return accountdomain.ErrAccountNotFound
+	}
+
+	if current.EffectiveRole() != a.EffectiveRole() {
+		a.Version = current.Version + 1
+		a.UpdatedAt = time.Now().UTC()
+		if a.Customer != nil {
+			a.Customer.UpdatedAt = a.UpdatedAt
+		}
+		if err := r.BankRepository.Save(ctx, a); err != nil {
+			return err
+		}
+	}
+
+	return r.SetSeedBalance(ctx, a.Id, targetBalance)
 }
 
 // EnsureReady prevents starting a fresh canonical history over existing Mongo

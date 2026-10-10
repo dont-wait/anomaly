@@ -5,6 +5,7 @@ import {
   type AdminProfile,
 } from "@/features/auth/api/adminSession";
 import { AdminShell } from "@/components/layout/AdminShell";
+import { MonitorPage } from "@/features/monitor/MonitorPage";
 import {
   isProtectedRoute,
   navigate,
@@ -51,6 +52,7 @@ function PlaceholderPage({ route }: { route: ProtectedRoute }) {
 
 function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
   const [profile, setProfile] = useState<AdminProfile | null>(null);
+  const isMonitor = route === routes.monitor;
   useEffect(() => {
     let active = true;
     let retryTimer: number | undefined;
@@ -88,7 +90,7 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
   }
   return (
     <AdminShell currentRoute={route} user={profile}>
-      <PlaceholderPage route={route} />
+      {isMonitor ? <MonitorPage /> : <PlaceholderPage route={route} />}
     </AdminShell>
   );
 }
