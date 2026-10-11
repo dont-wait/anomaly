@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	appotp "github.com/dont-wait/anomaly/internal/application/otp"
 	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
 	otpdomain "github.com/dont-wait/anomaly/internal/domain/otp"
 	"github.com/redis/go-redis/v9"
@@ -121,9 +122,13 @@ func (s *TransferOTPStore) issue(ctx context.Context, transferID, email string) 
 		_ = s.rdb.Del(ctx, cooldownKey).Err()
 		return TransferOTPInfo{}, err
 	}
-	text := fmt.Sprintf("Mã OTP xác nhận chuyển tiền AnomalyBank của bạn là %s. Mã có hiệu lực trong 5 phút. Không chia sẻ mã này với bất kỳ ai.", code)
-	html := fmt.Sprintf("<p>Mã OTP xác nhận chuyển tiền AnomalyBank của bạn:</p><p style=\"font-size:24px;font-weight:bold;letter-spacing:4px\">%s</p><p>Mã có hiệu lực trong 5 phút. Không chia sẻ mã này với bất kỳ ai.</p>", code)
-	if err := s.mail.Send(ctx, maildomain.MailMessage{To: email, Subject: "OTP xác nhận chuyển tiền AnomalyBank", Text: text, HTML: html}); err != nil {
+	subject, text, html, err := appotp.RenderOTPEmail(code, transferOTPTTL, appotp.OTPEmailTransfer)
+	if err != nil {
+		_ = s.Consume(ctx, transferID)
+		_ = s.rdb.Del(ctx, cooldownKey).Err()
+		return TransferOTPInfo{}, err
+	}
+	if err := s.mail.Send(ctx, maildomain.MailMessage{To: email, Subject: subject, Text: text, HTML: html}); err != nil {
 		_ = s.Consume(ctx, transferID)
 		_ = s.rdb.Del(ctx, cooldownKey).Err()
 		return TransferOTPInfo{}, err

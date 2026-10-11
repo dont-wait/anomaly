@@ -16,6 +16,8 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"golang.org/x/text/unicode/norm"
 
+	apptransaction "github.com/dont-wait/anomaly/internal/application/transaction"
+	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/infrastructure/otp"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
@@ -37,14 +39,19 @@ type Repository interface {
 	Summary(context.Context, bson.ObjectID, time.Time, time.Time) (int64, int64, error)
 }
 
-type Handler struct {
-	logger zerolog.Logger
-	repo   Repository
-	otp    *otp.TransferOTPStore
+type ReceiptSender interface {
+	Send(context.Context, maildomain.MailMessage) error
 }
 
-func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOTPStore) *Handler {
-	return &Handler{logger: logger, repo: repo, otp: otpStore}
+type Handler struct {
+	logger  zerolog.Logger
+	repo    Repository
+	otp     *otp.TransferOTPStore
+	receipt ReceiptSender
+}
+
+func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOTPStore, receiptSender ReceiptSender) *Handler {
+	return &Handler{logger: logger, repo: repo, otp: otpStore, receipt: receiptSender}
 }
 
 var accountNumberPattern = regexp.MustCompile(`^\d{6,19}$`)
@@ -302,13 +309,13 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		h.writeRepoError(w, err)
 		return
 	}
-	accountID, err := h.repo.AccountObjectID(r.Context(), claims.UserID)
+	owner, err := h.repo.FindOwnedAccount(r.Context(), claims.UserID)
 	if err != nil {
 		h.writeRepoError(w, err)
 		return
 	}
 	if tx.Status == "success" {
-		feed, err := h.repo.GetFeed(r.Context(), accountID, tx.ID)
+		feed, err := h.repo.GetFeed(r.Context(), owner.ID, tx.ID)
 		if err != nil {
 			h.writeRepoError(w, err)
 			return
@@ -368,12 +375,45 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.otp.Consume(r.Context(), id)
-	feed, err := h.repo.GetFeed(r.Context(), accountID, confirmed.ID)
+	h.sendTransferReceipt(r.Context(), owner, confirmed)
+	feed, err := h.repo.GetFeed(r.Context(), owner.ID, confirmed.ID)
 	if err != nil {
 		h.writeRepoError(w, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, transactionResponse(feed))
+}
+
+func (h *Handler) sendTransferReceipt(ctx context.Context, owner mongorepo.TransferAccount, tx mongorepo.TransferDocument) {
+	if h.receipt == nil || strings.TrimSpace(owner.Email) == "" {
+		return
+	}
+
+	authMethod := tx.Authentication.Method
+	if authMethod == "email_otp" {
+		authMethod = "Email OTP"
+	}
+	subject, text, html, err := apptransaction.RenderTransferReceipt(apptransaction.TransferReceiptData{
+		Reference:        tx.Reference,
+		SenderName:       owner.Name,
+		SenderAccount:    owner.AccountNo,
+		RecipientName:    tx.Destination.Name,
+		RecipientAccount: tx.Destination.AccountNo,
+		RecipientBank:    tx.Destination.BankCode,
+		Amount:           tx.Amount,
+		Fee:              tx.Fee,
+		Currency:         tx.Currency,
+		Note:             tx.Note,
+		PostedAt:         tx.PostedAt,
+		AuthMethod:       authMethod,
+	})
+	if err != nil {
+		h.logger.Error().Err(err).Str("transferId", tx.ID).Msg("render transfer receipt failed")
+		return
+	}
+	if err := h.receipt.Send(ctx, maildomain.MailMessage{To: owner.Email, Subject: subject, Text: text, HTML: html}); err != nil {
+		h.logger.Error().Err(err).Str("transferId", tx.ID).Msg("send transfer receipt failed")
+	}
 }
 
 func (h *Handler) ResendOTP(w http.ResponseWriter, r *http.Request) {

@@ -18,5 +18,5 @@ func NewTransactionHandler(repo *eventstore.BankRepository, rdb *redis.Client, s
 		logger.Warn().Err(err).Msg("smtp not configured, transaction otp will fail closed")
 		sender = mail.NewDisabledSender(err)
 	}
-	return handlertransaction.NewHandler(logger, repo, otpinfra.NewTransferOTPStore(rdb, sender))
+	return handlertransaction.NewHandler(logger, repo, otpinfra.NewTransferOTPStore(rdb, sender), sender)
 }
