@@ -1,9 +1,14 @@
 import { requestJson } from "@/shared/lib/http";
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import type {
+  TransactionDateRange,
   TransactionDirection,
   TransactionRecord,
 } from "@/features/transactions/model";
+import {
+  toRfc3339End,
+  toRfc3339Start,
+} from "@/features/transactions/utils/dateRange";
 
 interface TransactionDto extends Omit<
   TransactionRecord,
@@ -36,20 +41,10 @@ export interface TransactionPage {
 }
 
 export interface TransactionSummary {
-  month: string;
+  from: string;
+  to: string;
   totalIn: number;
   totalOut: number;
-}
-
-function transactionMonth(date: Date): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Ho_Chi_Minh",
-    year: "numeric",
-    month: "2-digit",
-  }).formatToParts(date);
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  return `${year}-${month}`;
 }
 
 export async function listTransactions(
@@ -59,6 +54,7 @@ export async function listTransactions(
     query?: string;
     cursor?: string;
     limit?: number;
+    dateRange?: TransactionDateRange;
     signal?: AbortSignal;
   } = {},
 ): Promise<TransactionPage> {
@@ -68,6 +64,10 @@ export async function listTransactions(
   });
   if (options.query?.trim()) params.set("q", options.query.trim());
   if (options.cursor) params.set("cursor", options.cursor);
+  if (options.dateRange) {
+    params.set("from", toRfc3339Start(options.dateRange.from));
+    params.set("to", toRfc3339End(options.dateRange.to));
+  }
   const page = await requestJson<{
     items: TransactionDto[];
     nextCursor: string | null;
@@ -95,11 +95,13 @@ export async function getTransaction(
 
 export async function getTransactionSummary(
   token: string,
-  date = new Date(),
+  dateRange: TransactionDateRange,
   options: { signal?: AbortSignal } = {},
 ): Promise<TransactionSummary> {
-  const month = transactionMonth(date);
-  const params = new URLSearchParams({ month });
+  const params = new URLSearchParams({
+    from: toRfc3339Start(dateRange.from),
+    to: toRfc3339End(dateRange.to),
+  });
   return requestJson<TransactionSummary>(
     `${API_ENDPOINTS.TRANSACTIONS.SUMMARY}?${params}`,
     {

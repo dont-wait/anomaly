@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -124,6 +125,37 @@ func TestTransferReferenceUsesFullUppercaseCompactUUID(t *testing.T) {
 func TestNormalizeSearchHandlesUppercaseVietnameseD(t *testing.T) {
 	if got, want := normalizeSearch("  Đặng Đình  "), "dang dinh"; got != want {
 		t.Fatalf("normalizeSearch() = %q, want %q", got, want)
+	}
+}
+
+func TestParseTransactionDateRange(t *testing.T) {
+	minDate, maxDate := transactionDateBounds(time.Now())
+	tests := []struct {
+		name string
+		from time.Time
+		to   time.Time
+		code string
+	}{
+		{name: "valid", from: minDate, to: maxDate},
+		{name: "too old", from: minDate.Add(-time.Nanosecond), to: maxDate, code: "DATE_RANGE_TOO_OLD"},
+		{name: "future", from: minDate, to: maxDate.Add(time.Nanosecond), code: "DATE_RANGE_IN_FUTURE"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			query := url.Values{}
+			query.Set("from", test.from.Format(time.RFC3339Nano))
+			query.Set("to", test.to.Format(time.RFC3339Nano))
+			request := httptest.NewRequest(http.MethodGet, "/api/transactions?"+query.Encode(), nil)
+			from, to, present, code, message := parseTransactionDateRange(request)
+
+			if code != test.code {
+				t.Fatalf("code = %q, want %q (%s)", code, test.code, message)
+			}
+			if test.code == "" && (!present || !from.Equal(test.from) || !to.Equal(test.to)) {
+				t.Fatalf("range = %s - %s, want %s - %s", from, to, test.from, test.to)
+			}
+		})
 	}
 }
 

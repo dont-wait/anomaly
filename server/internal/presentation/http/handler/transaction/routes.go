@@ -111,10 +111,12 @@ func RegisterRoutes(router *openapi.Registry, h *Handler, tokenSvc queries.Token
 		}{}, FailureStatuses: []int{400, 404},
 	})
 	auth("GET /api/transactions/summary", h.TransactionSummary, openapi.Operation{
-		ID: "transactionSummary", Summary: "Get monthly incoming and outgoing totals",
-		Description: "month is required in YYYY-MM format. Calendar boundaries use UTC+07:00. Totals include successful transaction amounts; outgoing totals exclude fees. Eventually consistent projection.",
-		Parameters:  []openapi.Parameter{query("month", "2026-10", true)}, Response: struct {
-			Month    string `json:"month"`
+		ID: "transactionSummary", Summary: "Get incoming and outgoing totals for a date range",
+		Description: "Use from and to as an RFC3339 date range within the last three months, or month in YYYY-MM format for legacy monthly totals. Calendar boundaries use UTC+07:00. Totals include successful transaction amounts; outgoing totals exclude fees. Eventually consistent projection.",
+		Parameters:  []openapi.Parameter{query("month", "2026-10", false), {Name: "from", In: "query", Type: "string", Format: "date-time"}, {Name: "to", In: "query", Type: "string", Format: "date-time"}}, Response: struct {
+			Month    string `json:"month,omitempty"`
+			From     string `json:"from,omitempty"`
+			To       string `json:"to,omitempty"`
 			TotalIn  int64  `json:"totalIn"`
 			TotalOut int64  `json:"totalOut"`
 		}{}, FailureStatuses: []int{400, 404},

@@ -46,7 +46,7 @@ nguyên VND, không gửi chuỗi, số thập phân hoặc giá trị đã form
 | `POST /api/transfers/{transferId}/otp/resend` | Không cần body | 200: `OTPInfo` |
 | `GET /api/transfers/recent-recipients` | `limit`: mặc định 4, tối đa 10 | 200: `{items:[{accountNo,name,bankCode,lastTransferredAt}]}` |
 | `GET /api/transactions` | Filters/cursor bên dưới | 200: `{items:TransactionRecord[],nextCursor:string\|null}` |
-| `GET /api/transactions/summary` | `month=YYYY-MM` bắt buộc | 200: `{month,totalIn,totalOut}` |
+| `GET /api/transactions/summary` | `from` + `to` RFC3339, hoặc `month=YYYY-MM` legacy | 200: `{from,to,totalIn,totalOut}` hoặc `{month,totalIn,totalOut}` |
 | `GET /api/transactions/{id}` | `id` là UUID giao dịch (`transferId`) | 200: `TransactionRecord` |
 
 Hiện chỉ chuyển nội bộ `ANOMALY`. Số tài khoản gồm 6–19 chữ số, không cho chuyển
@@ -147,7 +147,7 @@ lần tạo trước đó đủ tiền.
 ### History, phân trang và summary
 
 ```http
-GET /api/transactions?direction=out&limit=20&q=chuyen&from=2026-10-01T00%3A00%3A00%2B07%3A00&to=2026-10-31T23%3A59%3A59%2B07%3A00
+GET /api/transactions?direction=out&limit=20&q=chuyen&from=2026-10-01T00%3A00%3A00%2B07%3A00&to=2026-10-31T23%3A59%3A59.999999999%2B07%3A00
 ```
 
 Dùng `URLSearchParams` để encode query, nhất là dấu `+` của timezone.
@@ -156,17 +156,18 @@ Dùng `URLSearchParams` để encode query, nhất là dấu `+` của timezone.
 |---|---|
 | `direction` | `all` (mặc định), `in`, `out` |
 | `q` | Tìm tên/STK đối tác, note, reference, amount; không phân biệt hoa/thường/dấu |
-| `from`, `to` | RFC3339, biên bao gồm cả hai đầu; tùy chọn |
+| `from`, `to` | RFC3339, biên bao gồm cả hai đầu; tùy chọn cùng nhau; nếu gửi thì chỉ trong ba tháng gần nhất |
 | `limit` | Mặc định 20, tối đa 50; giá trị không hợp lệ dùng mặc định |
 | `cursor` | Chuỗi opaque từ `nextCursor`, không tự decode hoặc dựng |
 
 Danh sách sắp mới nhất trước. Giữ nguyên filters khi lấy trang kế tiếp; đổi
 filters thì bỏ cursor và tải từ đầu. `nextCursor=null` là hết trang.
 
-Summary bắt buộc `month=2026-10`, tính tháng theo UTC+07:00, chỉ cộng amount của
-giao dịch thành công; `totalOut` chưa bao gồm fee. Đây là tổng tháng, không phải
-tổng của trang hoặc filters history hiện tại. Recent recipients khử trùng người
-nhận từ tối đa 100 dòng outgoing thành công gần nhất.
+Summary nhận cùng `from`/`to` với history và tính biên theo UTC+07:00. Có thể
+dùng `month=2026-10` cho client cũ. Chỉ cộng amount của giao dịch thành công;
+`totalOut` chưa bao gồm fee. Đây là tổng của toàn bộ khoảng ngày, không phải tổng
+của trang hiện tại. Recent recipients khử trùng người nhận từ tối đa 100 dòng
+outgoing thành công gần nhất.
 
 History, summary và recent recipients đọc Mongo projection nên có thể cập nhật
 chậm hơn confirm. Confirm/detail đọc canonical state: FE giữ record confirm để
