@@ -45,6 +45,9 @@ nguyên VND, không gửi chuỗi, số thập phân hoặc giá trị đã form
 | `POST /api/transfers/{transferId}/confirm` | Body `{"otp":"123456"}` | 200: `TransactionRecord` |
 | `POST /api/transfers/{transferId}/otp/resend` | Không cần body | 200: `OTPInfo` |
 | `GET /api/transfers/recent-recipients` | `limit`: mặc định 4, tối đa 10 | 200: `{items:[{accountNo,name,bankCode,lastTransferredAt}]}` |
+| `GET /api/contacts/recipients` | Query `q` tùy chọn | 200: `{items:[{accountNo,name,bankCode}]}` |
+| `POST /api/contacts/recipients` | Body `{"accountNo":"12345678901234","bankCode":"ANOMALY"}` | 201/200: `{accountNo,name,bankCode}` |
+| `DELETE /api/contacts/recipients/{bankCode}/{accountNo}` | Không cần body | 204 |
 | `GET /api/transactions` | Filters/cursor bên dưới | 200: `{items:TransactionRecord[],nextCursor:string\|null}` |
 | `GET /api/transactions/summary` | `from` + `to` RFC3339, hoặc `month=YYYY-MM` legacy | 200: `{from,to,totalIn,totalOut}` hoặc `{month,totalIn,totalOut}` |
 | `GET /api/transactions/{id}` | `id` là UUID giao dịch (`transferId`) | 200: `TransactionRecord` |
@@ -173,6 +176,30 @@ History, summary và recent recipients đọc Mongo projection nên có thể c�
 chậm hơn confirm. Confirm/detail đọc canonical state: FE giữ record confirm để
 hiển thị ngay và refresh history sau đó; không coi việc record chưa có trong
 history là confirm thất bại.
+
+### Danh bạ người nhận
+
+Danh bạ được lưu theo tài khoản nguồn của người dùng trên MongoDB, đồng bộ giữa
+các thiết bị. Backend tự lookup tên người nhận từ số tài khoản; frontend không
+được tự gửi tên. Chỉ tài khoản AnomalyBank đang hoạt động mới được lưu, không
+cho lưu chính tài khoản nguồn. Lưu trùng là idempotent.
+
+```http
+GET /api/contacts/recipients?q=nguyen
+Authorization: Bearer <accessToken>
+```
+
+```http
+POST /api/contacts/recipients
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{"accountNo":"12345678901234","bankCode":"ANOMALY"}
+```
+
+Danh bạ được cô lập theo tài khoản đăng nhập; không truyền `ownerAccountNo` từ
+client. Migration `000007_create_recipient_contacts` tạo collection, validator
+và unique index chống trùng người nhận.
 
 ## Mã lỗi cần đồng bộ UI
 

@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { ChevronRightIcon, SearchIcon, TrashIcon } from "@/shared/icons";
-import { contactStore } from "@/features/transfer/api/transfer";
 import type { Recipient } from "@/features/transfer/model";
 import { BankLogo } from "./BankLogo";
 
@@ -8,21 +7,24 @@ const contactKey = (contact: Recipient) =>
   `${contact.bank.code}-${contact.accountNo}`;
 
 interface ContactsSheetContentProps {
+  contacts: Recipient[];
+  loading: boolean;
+  error: string;
   onSelect: (recipient: Recipient) => void;
-  /** STK chủ sở hữu để cô lập danh bạ theo account. */
-  ownerAccountNo?: string;
+  onRemove: (recipient: Recipient) => Promise<boolean>;
 }
 
 /** Danh bạ người nhận đã lưu: tìm kiếm, chọn để chuyển, xoá có bước xác nhận. */
 export function ContactsSheetContent({
+  contacts,
+  loading,
+  error,
   onSelect,
-  ownerAccountNo,
+  onRemove,
 }: ContactsSheetContentProps) {
   const [query, setQuery] = useState("");
-  const [contacts, setContacts] = useState(() =>
-    contactStore.list(ownerAccountNo),
-  );
   const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
+  const [removingKey, setRemovingKey] = useState<string | null>(null);
   const [removedName, setRemovedName] = useState("");
 
   const filtered = useMemo(() => {
@@ -35,11 +37,15 @@ export function ContactsSheetContent({
     );
   }, [contacts, query]);
 
-  const remove = (contact: Recipient) => {
-    contactStore.remove(contact, ownerAccountNo);
-    setContacts(contactStore.list(ownerAccountNo));
-    setConfirmingKey(null);
-    setRemovedName(contact.name);
+  const remove = async (contact: Recipient) => {
+    const key = contactKey(contact);
+    setRemovingKey(key);
+    const removed = await onRemove(contact);
+    if (removed) {
+      setConfirmingKey(null);
+      setRemovedName(contact.name);
+    }
+    setRemovingKey(null);
   };
 
   return (
@@ -63,7 +69,20 @@ export function ContactsSheetContent({
         {removedName && `Đã xoá ${removedName} khỏi danh bạ`}
       </p>
 
-      {filtered.length === 0 ? (
+      {loading && (
+        <p
+          role="status"
+          className="py-8 text-center text-sm text-on-surface-variant"
+        >
+          Đang tải danh bạ người nhận...
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="py-2 text-center text-sm text-error">
+          {error}
+        </p>
+      )}
+      {!loading && filtered.length === 0 ? (
         <p className="py-8 text-center text-sm text-on-surface-variant">
           {contacts.length === 0
             ? "Danh bạ trống. Lưu người nhận sau khi nhập số tài khoản."
@@ -88,10 +107,11 @@ export function ContactsSheetContent({
                   <div className="mt-3 flex gap-2">
                     <button
                       type="button"
-                      onClick={() => remove(contact)}
+                      onClick={() => void remove(contact)}
+                      disabled={removingKey === key}
                       className="min-h-11 flex-1 rounded-full bg-error px-4 text-sm font-semibold text-on-error transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-error/50 focus-visible:outline-none"
                     >
-                      Xoá
+                      {removingKey === key ? "Đang xoá..." : "Xoá"}
                     </button>
                     <button
                       type="button"

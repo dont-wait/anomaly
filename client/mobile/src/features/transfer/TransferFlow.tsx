@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { BookmarkPlusIcon, ContactsIcon } from "@/shared/icons";
 import { PageHeader } from "@/shared/layout";
 import { BottomSheet, Button } from "@/shared/ui";
@@ -8,7 +8,11 @@ import {
   type Recipient,
   type SourceAccount,
 } from "@/features/transfer/model";
-import { contactStore } from "@/features/transfer/api/transfer";
+import {
+  addRecipientContact,
+  deleteRecipientContact,
+  listRecipientContacts,
+} from "@/features/transfer/api/transfer";
 import { useTransferFlow } from "@/features/transfer/useTransferFlow";
 import { suggestAmounts } from "@/features/transfer/utils/amountSuggestions";
 import { BankLogo } from "./components/BankLogo";
@@ -17,6 +21,7 @@ import { ContactsSheetContent } from "./components/ContactsSheetContent";
 import { FailureSheetContent } from "./components/FailureSheetContent";
 import { RecentRecipients } from "./components/RecentRecipients";
 import { SuccessScreen } from "./components/SuccessScreen";
+import { ApiError } from "@/shared/lib/http";
 const MAX_AMOUNT_DIGITS = 12;
 const numberFormat = new Intl.NumberFormat("vi-VN");
 
@@ -57,9 +62,10 @@ export function TransferFlow({
   const { lookup, amountError } = flow;
   const accountError = lookup.status === "error" ? lookup.message : "";
   const [contactsOpen, setContactsOpen] = useState(false);
-  const [contacts, setContacts] = useState(() =>
-    contactStore.list(source.accountNo),
-  );
+  const [contacts, setContacts] = useState<Recipient[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(true);
+  const [contactsError, setContactsError] = useState("");
+  const [contactSaving, setContactSaving] = useState(false);
   const isSaved =
     flow.recipient !== null &&
     contacts.some(
@@ -69,16 +75,79 @@ export function TransferFlow({
     );
   const amountSuggestions = suggestAmounts(flow.amount, flow.source.balance);
 
+  useEffect(() => {
+    let active = true;
+    void listRecipientContacts(token)
+      .then((items) => {
+        if (!active) return;
+        setContacts(items);
+        setContactsError("");
+        setContactsLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        if (error instanceof ApiError && error.status === 401) {
+          onUnauthorized?.();
+          return;
+        }
+        setContactsError("Không tải được danh bạ người nhận.");
+        setContactsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token, onUnauthorized]);
+
   const chooseContact = (contact: Recipient) => {
     flow.chooseRecipient(contact);
     setContactsOpen(false);
-    setContacts(contactStore.list(source.accountNo));
   };
 
-  const saveContact = () => {
+  const saveContact = async () => {
     if (!flow.recipient) return;
-    contactStore.add(flow.recipient, source.accountNo);
-    setContacts(contactStore.list(source.accountNo));
+    setContactSaving(true);
+    setContactsError("");
+    try {
+      const saved = await addRecipientContact(token, flow.recipient);
+      setContacts((current) =>
+        current.some(
+          (contact) =>
+            contact.accountNo === saved.accountNo &&
+            contact.bank.code === saved.bank.code,
+        )
+          ? current
+          : [...current, saved],
+      );
+    } catch (error: unknown) {
+      if (error instanceof ApiError && error.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
+      setContactsError("Không thể lưu người nhận. Vui lòng thử lại.");
+    } finally {
+      setContactSaving(false);
+    }
+  };
+
+  const removeContact = async (recipient: Recipient): Promise<boolean> => {
+    try {
+      await deleteRecipientContact(token, recipient);
+      setContacts((current) =>
+        current.filter(
+          (contact) =>
+            contact.accountNo !== recipient.accountNo ||
+            contact.bank.code !== recipient.bank.code,
+        ),
+      );
+      return true;
+    } catch (error: unknown) {
+      if (error instanceof ApiError && error.status === 401) {
+        onUnauthorized?.();
+        return false;
+      }
+      setContactsError("Không thể xoá người nhận. Vui lòng thử lại.");
+      return false;
+    }
   };
 
   const onSubmit = (e: FormEvent) => {
@@ -235,12 +304,18 @@ export function TransferFlow({
                   <button
                     type="button"
                     onClick={saveContact}
-                    className="mt-2 -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-semibold text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
+                    disabled={contactSaving}
+                    className="mt-2 -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-semibold text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none disabled:opacity-50"
                   >
                     <BookmarkPlusIcon aria-hidden="true" className="h-4 w-4" />
-                    Lưu vào danh bạ
+                    {contactSaving ? "Đang lưu..." : "Lưu vào danh bạ"}
                   </button>
                 ))}
+              {contactsError && (
+                <p role="alert" className="mt-2 text-sm font-medium text-error">
+                  {contactsError}
+                </p>
+              )}
             </div>
           </Card>
 
@@ -366,12 +441,14 @@ export function TransferFlow({
         title="Danh bạ người nhận"
         onClose={() => {
           setContactsOpen(false);
-          setContacts(contactStore.list(source.accountNo));
         }}
       >
         <ContactsSheetContent
-          ownerAccountNo={source.accountNo}
+          contacts={contacts}
+          loading={contactsLoading}
+          error={contactsError}
           onSelect={chooseContact}
+          onRemove={removeContact}
         />
       </BottomSheet>
     </>

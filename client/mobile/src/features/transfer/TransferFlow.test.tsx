@@ -60,6 +60,12 @@ const transaction = {
 
 function defaultFetch(input: RequestInfo | URL, init?: RequestInit) {
   const url = String(input);
+  if (url.includes("/api/contacts/recipients")) {
+    if (init?.method === "POST") return Promise.resolve(json(recipient, 201));
+    if (init?.method === "DELETE")
+      return Promise.resolve(new Response(null, { status: 204 }));
+    return Promise.resolve(json({ items: [] }));
+  }
   if (url.includes("/api/transfers/recent-recipients")) {
     return Promise.resolve(json({ items: [] }));
   }
@@ -138,6 +144,29 @@ it("loads recent recipients and looks up only ANOMALY accounts with auth", async
   expect(String(lookupCall?.[0])).toContain(`accountNo=${recipient.accountNo}`);
   expect(screen.getByText("AnomalyBank")).toBeTruthy();
   expect(screen.queryByRole("button", { name: /Ngân hàng/ })).toBeNull();
+});
+
+it("persists a recipient contact through the contacts API", async () => {
+  const fetchMock = renderFlow();
+  await enterRecipient();
+
+  fireEvent.click(screen.getByRole("button", { name: "Lưu vào danh bạ" }));
+  await waitFor(() =>
+    expect(screen.getByText("Đã có trong danh bạ")).toBeTruthy(),
+  );
+
+  const saveCall = fetchMock.mock.calls.find(
+    ([url, init]) =>
+      String(url).endsWith("/api/contacts/recipients") &&
+      init?.method === "POST",
+  );
+  expect(saveCall?.[1]).toMatchObject({
+    headers: expect.objectContaining({ Authorization: `Bearer ${token}` }),
+    body: JSON.stringify({
+      accountNo: recipient.accountNo,
+      bankCode: "ANOMALY",
+    }),
+  });
 });
 
 it("creates the intent before opening OTP and confirms into a local transaction record", async () => {

@@ -172,3 +172,53 @@ export async function listRecentRecipients(
     .filter((item) => item.bankCode === ANOMALY_BANK.code)
     .map(toRecipient);
 }
+
+interface RecipientContactDto {
+  accountNo: string;
+  name: string;
+  bankCode: string;
+}
+
+export async function listRecipientContacts(
+  token: string,
+  query?: string,
+): Promise<Recipient[]> {
+  const params = new URLSearchParams();
+  if (query?.trim()) params.set("q", query.trim());
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const response = await requestJson<{ items: RecipientContactDto[] }>(
+    `${API_ENDPOINTS.CONTACTS.RECIPIENTS}${suffix}`,
+    { token },
+  );
+  return response.items
+    .filter((item) => item.bankCode === ANOMALY_BANK.code)
+    .map(toRecipient);
+}
+
+export async function addRecipientContact(
+  token: string,
+  recipient: Recipient,
+): Promise<Recipient> {
+  const response = await requestJson<RecipientContactDto>(
+    API_ENDPOINTS.CONTACTS.RECIPIENTS,
+    {
+      method: "POST",
+      token,
+      body: { accountNo: recipient.accountNo, bankCode: recipient.bank.code },
+    },
+  );
+  return toRecipient(response);
+}
+
+export async function deleteRecipientContact(
+  token: string,
+  recipient: Recipient,
+): Promise<void> {
+  await requestJson<void>(
+    API_ENDPOINTS.CONTACTS.DELETE_RECIPIENT(
+      recipient.bank.code,
+      recipient.accountNo,
+    ),
+    { method: "DELETE", token },
+  );
+}

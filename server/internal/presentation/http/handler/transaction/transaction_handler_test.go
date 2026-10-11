@@ -88,7 +88,7 @@ func createTransferRequestForTest(t *testing.T, repo Repository, key, body strin
 	if err != nil {
 		t.Fatalf("issue token: %v", err)
 	}
-	handler := NewHandler(zerolog.Nop(), repo, nil, nil)
+	handler := NewHandler(zerolog.Nop(), repo, nil, nil, nil)
 	secured := middleware.RequireAuth(tokens)(http.HandlerFunc(handler.CreateTransfer))
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(body))

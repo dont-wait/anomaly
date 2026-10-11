@@ -101,6 +101,29 @@ func RegisterRoutes(router *openapi.Registry, h *Handler, tokenSvc queries.Token
 			} `json:"items"`
 		}{}, FailureStatuses: []int{404},
 	})
+	auth("GET /api/contacts/recipients", h.ListRecipientContacts, openapi.Operation{
+		ID: "listRecipientContacts", Summary: "List saved recipient contacts",
+		Description: "Returns recipient contacts saved by the authenticated account. Optional q searches recipient name, account number, or bank code.",
+		Parameters:  []openapi.Parameter{query("q", "nguyen", false)},
+		Response: struct {
+			Items []recipientContactResponse `json:"items"`
+		}{}, FailureStatuses: []int{404},
+	})
+	auth("POST /api/contacts/recipients", h.AddRecipientContact, openapi.Operation{
+		ID: "addRecipientContact", Summary: "Save a recipient contact",
+		Description: "Saves an active internal AnomalyBank recipient for the authenticated account. Duplicate saves are idempotent; saving the owner's own account is rejected.",
+		Request:     recipientContactRequest{}, Response: recipientContactResponse{}, SuccessStatus: http.StatusCreated,
+		FailureStatuses: []int{400, 404, 422},
+	})
+	auth("DELETE /api/contacts/recipients/{bankCode}/{accountNo}", h.DeleteRecipientContact, openapi.Operation{
+		ID: "deleteRecipientContact", Summary: "Delete a saved recipient contact",
+		Description: "Deletes a recipient contact belonging to the authenticated account.",
+		Parameters: []openapi.Parameter{
+			{Name: "bankCode", In: "path", Type: "string", Required: true, Example: "ANOMALY"},
+			{Name: "accountNo", In: "path", Type: "string", Required: true, Example: "12345678901234"},
+		},
+		SuccessStatus: http.StatusNoContent, FailureStatuses: []int{400, 404},
+	})
 	auth("GET /api/transactions", h.ListTransactions, openapi.Operation{
 		ID: "listTransactions", Summary: "List and search transaction history",
 		Description: "direction: all/in/out (default all). q searches counterparty, note, reference and amount, case/accent insensitive. from/to are RFC3339 inclusive bounds. limit defaults to 20 and is capped at 50. Pass the opaque nextCursor unchanged; keep filters unchanged between pages. Sorted newest first; nextCursor null means end. Read projection is eventually consistent. Status is success/failed; pending transfers are not included in this feed.",

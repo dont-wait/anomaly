@@ -44,6 +44,10 @@ func main() {
 		logger.Fatal().Err(err).Msg("ensure rustfs bucket failed")
 	}
 	mediaRepo := rustfs.NewMediaRepository(rustfsClient, config.RustFSConfig.Bucket)
+	recipientContacts := mongo.NewRecipientContactRepository(mongoClient, config.MongoConfig.MongoDBName)
+	if err := recipientContacts.EnsureIndexes(ctx); err != nil {
+		logger.Fatal().Err(err).Msg("ensure recipient contact indexes failed")
+	}
 
 	esClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
 	if err != nil {
@@ -78,7 +82,7 @@ func main() {
 	accountHandler := composition.NewAccountHandlerWithKYC(bank, tokenSvc, kyc.NewClient(config.KYCConfig.ServiceURL), mediaRepo, *logger)
 	mediaHandler := composition.NewMediaHandler(mediaRepo, bank, *logger)
 	otpHandler := composition.NewOTPHandler(rdb, config.SMTPConfig, *logger)
-	transactionHandler := composition.NewTransactionHandler(bank, rdb, config.SMTPConfig, *logger)
+	transactionHandler := composition.NewTransactionHandler(bank, recipientContacts, rdb, config.SMTPConfig, *logger)
 
 	mux := netHTTP.NewServeMux()
 	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled)

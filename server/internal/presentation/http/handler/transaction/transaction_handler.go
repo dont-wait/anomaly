@@ -39,19 +39,26 @@ type Repository interface {
 	Summary(context.Context, bson.ObjectID, time.Time, time.Time) (int64, int64, error)
 }
 
+type ContactRepository interface {
+	List(context.Context, bson.ObjectID, string) ([]mongorepo.RecipientContact, error)
+	Add(context.Context, bson.ObjectID, string, string, string) (bool, error)
+	Delete(context.Context, bson.ObjectID, string, string) (bool, error)
+}
+
 type ReceiptSender interface {
 	Send(context.Context, maildomain.MailMessage) error
 }
 
 type Handler struct {
-	logger  zerolog.Logger
-	repo    Repository
-	otp     *otp.TransferOTPStore
-	receipt ReceiptSender
+	logger   zerolog.Logger
+	repo     Repository
+	otp      *otp.TransferOTPStore
+	receipt  ReceiptSender
+	contacts ContactRepository
 }
 
-func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOTPStore, receiptSender ReceiptSender) *Handler {
-	return &Handler{logger: logger, repo: repo, otp: otpStore, receipt: receiptSender}
+func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOTPStore, receiptSender ReceiptSender, contacts ContactRepository) *Handler {
+	return &Handler{logger: logger, repo: repo, otp: otpStore, receipt: receiptSender, contacts: contacts}
 }
 
 var accountNumberPattern = regexp.MustCompile(`^\d{6,19}$`)
@@ -494,6 +501,136 @@ func (h *Handler) RecentRecipients(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+type recipientContactRequest struct {
+	AccountNo string `json:"accountNo"`
+	BankCode  string `json:"bankCode"`
+}
+
+type recipientContactResponse struct {
+	AccountNo string `json:"accountNo"`
+	Name      string `json:"name"`
+	BankCode  string `json:"bankCode"`
+}
+
+func (h *Handler) ListRecipientContacts(w http.ResponseWriter, r *http.Request) {
+	if h.contacts == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "CONTACTS_UNAVAILABLE", "recipient contacts are unavailable")
+		return
+	}
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims == nil {
+		writeAPIError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	owner, err := h.repo.FindOwnedAccount(r.Context(), claims.UserID)
+	if err != nil {
+		h.writeRepoError(w, err)
+		return
+	}
+	contacts, err := h.contacts.List(r.Context(), owner.ID, r.URL.Query().Get("q"))
+	if err != nil {
+		h.writeRepoError(w, err)
+		return
+	}
+	items := make([]recipientContactResponse, 0, len(contacts))
+	for _, contact := range contacts {
+		items = append(items, recipientContactResponse{AccountNo: contact.RecipientAccountNo, Name: contact.RecipientName, BankCode: contact.BankCode})
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handler) AddRecipientContact(w http.ResponseWriter, r *http.Request) {
+	if h.contacts == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "CONTACTS_UNAVAILABLE", "recipient contacts are unavailable")
+		return
+	}
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims == nil {
+		writeAPIError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	var req recipientContactRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+	req.AccountNo = strings.TrimSpace(req.AccountNo)
+	req.BankCode = strings.ToUpper(strings.TrimSpace(req.BankCode))
+	if req.BankCode != "ANOMALY" {
+		writeAPIError(w, http.StatusBadRequest, "UNSUPPORTED_BANK", "unsupported bank")
+		return
+	}
+	if !accountNumberPattern.MatchString(req.AccountNo) {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_ACCOUNT_NO", "invalid account number")
+		return
+	}
+	owner, err := h.repo.FindOwnedAccount(r.Context(), claims.UserID)
+	if err != nil {
+		h.writeRepoError(w, err)
+		return
+	}
+	recipient, err := h.repo.FindRecipient(r.Context(), req.AccountNo)
+	if errors.Is(err, mongorepo.ErrTransactionAccountNotFound) {
+		writeAPIError(w, http.StatusNotFound, "ACCOUNT_NOT_FOUND", "account not found")
+		return
+	}
+	if err != nil {
+		h.writeRepoError(w, err)
+		return
+	}
+	if owner.ID == recipient.ID {
+		writeAPIError(w, http.StatusUnprocessableEntity, "SELF_TRANSFER", "cannot save your own account as a recipient")
+		return
+	}
+	created, err := h.contacts.Add(r.Context(), owner.ID, recipient.AccountNo, recipient.Name, req.BankCode)
+	if err != nil {
+		h.writeRepoError(w, err)
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	httpx.WriteJSON(w, status, recipientContactResponse{AccountNo: recipient.AccountNo, Name: recipient.Name, BankCode: req.BankCode})
+}
+
+func (h *Handler) DeleteRecipientContact(w http.ResponseWriter, r *http.Request) {
+	if h.contacts == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "CONTACTS_UNAVAILABLE", "recipient contacts are unavailable")
+		return
+	}
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims == nil {
+		writeAPIError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	accountNo := strings.TrimSpace(r.PathValue("accountNo"))
+	bankCode := strings.ToUpper(strings.TrimSpace(r.PathValue("bankCode")))
+	if bankCode != "ANOMALY" {
+		writeAPIError(w, http.StatusBadRequest, "UNSUPPORTED_BANK", "unsupported bank")
+		return
+	}
+	if !accountNumberPattern.MatchString(accountNo) {
+		writeAPIError(w, http.StatusBadRequest, "INVALID_ACCOUNT_NO", "invalid account number")
+		return
+	}
+	owner, err := h.repo.FindOwnedAccount(r.Context(), claims.UserID)
+	if err != nil {
+		h.writeRepoError(w, err)
+		return
+	}
+	deleted, err := h.contacts.Delete(r.Context(), owner.ID, accountNo, bankCode)
+	if err != nil {
+		h.writeRepoError(w, err)
+		return
+	}
+	if !deleted {
+		writeAPIError(w, http.StatusNotFound, "CONTACT_NOT_FOUND", "recipient contact not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) ListTransactions(w http.ResponseWriter, r *http.Request) {
