@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { BookmarkPlusIcon, ContactsIcon } from "@/shared/icons";
 import { PageHeader } from "@/shared/layout";
 import { BottomSheet, Button } from "@/shared/ui";
@@ -62,11 +62,20 @@ export function TransferFlow({
   const { lookup, amountError } = flow;
   const accountError = lookup.status === "error" ? lookup.message : "";
   const [contactsOpen, setContactsOpen] = useState(false);
-  const [contacts, setContacts] = useState<Recipient[]>([]);
-  const [contactsLoading, setContactsLoading] = useState(true);
-  const [contactsError, setContactsError] = useState("");
+  const [contactsState, setContactsState] = useState<{
+    token: string;
+    items: Recipient[];
+    loading: boolean;
+    loaded: boolean;
+    error: string;
+  }>({ token, items: [], loading: false, loaded: false, error: "" });
+  const contactsRequestToken = useRef<string | null>(null);
   const [contactSaving, setContactSaving] = useState(false);
-  const [contactsReload, setContactsReload] = useState(0);
+  const contacts = contactsState.token === token ? contactsState.items : [];
+  const contactsLoading =
+    contactsState.token === token && contactsState.loading;
+  const contactsError =
+    contactsState.token === token ? contactsState.error : "";
   const isSaved =
     flow.recipient !== null &&
     contacts.some(
@@ -76,33 +85,57 @@ export function TransferFlow({
     );
   const amountSuggestions = suggestAmounts(flow.amount, flow.source.balance);
 
-  useEffect(() => {
-    let active = true;
+  const loadContacts = (force = false) => {
+    if (
+      !force &&
+      contactsState.token === token &&
+      (contactsState.loaded || contactsRequestToken.current === token)
+    ) {
+      return;
+    }
+    const requestToken = token;
+    contactsRequestToken.current = requestToken;
+    setContactsState((current) => ({
+      token: requestToken,
+      items: current.token === requestToken ? current.items : [],
+      loading: true,
+      loaded: false,
+      error: "",
+    }));
     void listRecipientContacts(token)
       .then((items) => {
-        if (!active) return;
-        setContacts(items);
-        setContactsError("");
-        setContactsLoading(false);
+        if (contactsRequestToken.current !== requestToken) return;
+        setContactsState({
+          token: requestToken,
+          items,
+          loading: false,
+          loaded: true,
+          error: "",
+        });
       })
       .catch((error: unknown) => {
-        if (!active) return;
+        if (contactsRequestToken.current !== requestToken) return;
+        contactsRequestToken.current = null;
         if (error instanceof ApiError && error.status === 401) {
+          setContactsState((current) => ({ ...current, loading: false }));
           onUnauthorized?.();
           return;
         }
-        setContactsError("Không tải được danh bạ người nhận.");
-        setContactsLoading(false);
+        setContactsState((current) => ({
+          ...current,
+          loading: false,
+          error: "Không tải được danh bạ người nhận.",
+        }));
       });
-    return () => {
-      active = false;
-    };
-  }, [token, onUnauthorized, contactsReload]);
+  };
 
   const retryContacts = () => {
-    setContactsError("");
-    setContactsLoading(true);
-    setContactsReload((value) => value + 1);
+    loadContacts(true);
+  };
+
+  const openContacts = () => {
+    setContactsOpen(true);
+    loadContacts();
   };
 
   const chooseContact = (contact: Recipient) => {
@@ -113,24 +146,28 @@ export function TransferFlow({
   const saveContact = async () => {
     if (!flow.recipient) return;
     setContactSaving(true);
-    setContactsError("");
+    setContactsState((current) => ({ ...current, error: "" }));
     try {
       const saved = await addRecipientContact(token, flow.recipient);
-      setContacts((current) =>
-        current.some(
+      setContactsState((current) => ({
+        ...current,
+        items: current.items.some(
           (contact) =>
             contact.accountNo === saved.accountNo &&
             contact.bank.code === saved.bank.code,
         )
-          ? current
-          : [...current, saved],
-      );
+          ? current.items
+          : [...current.items, saved],
+      }));
     } catch (error: unknown) {
       if (error instanceof ApiError && error.status === 401) {
         onUnauthorized?.();
         return;
       }
-      setContactsError("Không thể lưu người nhận. Vui lòng thử lại.");
+      setContactsState((current) => ({
+        ...current,
+        error: "Không thể lưu người nhận. Vui lòng thử lại.",
+      }));
     } finally {
       setContactSaving(false);
     }
@@ -139,20 +176,24 @@ export function TransferFlow({
   const removeContact = async (recipient: Recipient): Promise<boolean> => {
     try {
       await deleteRecipientContact(token, recipient);
-      setContacts((current) =>
-        current.filter(
+      setContactsState((current) => ({
+        ...current,
+        items: current.items.filter(
           (contact) =>
             contact.accountNo !== recipient.accountNo ||
             contact.bank.code !== recipient.bank.code,
         ),
-      );
+      }));
       return true;
     } catch (error: unknown) {
       if (error instanceof ApiError && error.status === 401) {
         onUnauthorized?.();
         return false;
       }
-      setContactsError("Không thể xoá người nhận. Vui lòng thử lại.");
+      setContactsState((current) => ({
+        ...current,
+        error: "Không thể xoá người nhận. Vui lòng thử lại.",
+      }));
       return false;
     }
   };
@@ -253,7 +294,7 @@ export function TransferFlow({
                 />
                 <button
                   type="button"
-                  onClick={() => setContactsOpen(true)}
+                  onClick={openContacts}
                   aria-label="Mở danh bạ người nhận"
                   className="absolute top-1/2 right-1.5 mt-0.5 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
                 >

@@ -175,7 +175,9 @@ outgoing thành công gần nhất.
 History, summary và recent recipients đọc Mongo projection nên có thể cập nhật
 chậm hơn confirm. Confirm/detail đọc canonical state: FE giữ record confirm để
 hiển thị ngay và refresh history sau đó; không coi việc record chưa có trong
-history là confirm thất bại.
+history là confirm thất bại. Sau khi confirm thành công, biên lai được ghi vào
+outbox `receipt_outbox` theo `transferId`; worker gửi email bất đồng bộ và retry
+theo exponential backoff khi SMTP tạm thời lỗi.
 
 ### Danh bạ người nhận
 
@@ -199,7 +201,8 @@ Content-Type: application/json
 
 Danh bạ được cô lập theo tài khoản đăng nhập; không truyền `ownerAccountNo` từ
 client. Migration `000007_create_recipient_contacts` tạo collection, validator
-và unique index chống trùng người nhận.
+và unique index chống trùng người nhận. Migration `000008_create_receipt_outbox`
+tạo outbox biên lai và index phục vụ retry.
 
 ## Mã lỗi cần đồng bộ UI
 
@@ -225,8 +228,8 @@ và unique index chống trùng người nhận.
 ## Trạng thái tích hợp FE
 
 `client/mobile/src/features/transactions/api.ts` có adapter cho list/detail/summary.
-`client/mobile/src/features/transfer/api/transfer.ts` hiện vẫn mock lookup và
-submitTransfer; cần nối lookup/create/confirm/resend/recent-recipients theo contract
-này. Dùng `requestJson` cho direct JSON; `requestSuccess` dành cho API có wrapper.
+`client/mobile/src/features/transfer/api/transfer.ts` có adapter cho
+lookup/create/confirm/resend/recent-recipients và contacts theo contract này.
+Dùng `requestJson` cho direct JSON; `requestSuccess` dành cho API có wrapper.
 Lỗi transfer nằm ở `ApiError.body.code`, không nằm trong `ApiError.errors`;
 adapter giữ tên field API, chuyển date và ánh xạ `bank ?? bankCode` sang tên ngân hàng hiển thị.

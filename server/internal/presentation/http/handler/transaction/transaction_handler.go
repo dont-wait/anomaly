@@ -49,16 +49,25 @@ type ReceiptSender interface {
 	Send(context.Context, maildomain.MailMessage) error
 }
 
+type ReceiptOutbox interface {
+	Enqueue(context.Context, string, maildomain.MailMessage) error
+}
+
 type Handler struct {
 	logger   zerolog.Logger
 	repo     Repository
 	otp      *otp.TransferOTPStore
 	receipt  ReceiptSender
+	outbox   ReceiptOutbox
 	contacts ContactRepository
 }
 
-func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOTPStore, receiptSender ReceiptSender, contacts ContactRepository) *Handler {
-	return &Handler{logger: logger, repo: repo, otp: otpStore, receipt: receiptSender, contacts: contacts}
+func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOTPStore, receiptSender ReceiptSender, contacts ContactRepository, receiptOutbox ...ReceiptOutbox) *Handler {
+	var outbox ReceiptOutbox
+	if len(receiptOutbox) > 0 {
+		outbox = receiptOutbox[0]
+	}
+	return &Handler{logger: logger, repo: repo, otp: otpStore, receipt: receiptSender, outbox: outbox, contacts: contacts}
 }
 
 var accountNumberPattern = regexp.MustCompile(`^\d{6,19}$`)
@@ -322,6 +331,13 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if tx.Status == "success" {
+		// Re-enqueue on an idempotent confirm retry. If the original request
+		// completed the transfer but could not persist the receipt, a later
+		// retry can recover it without debiting the account again. Enqueue is
+		// keyed by transfer ID, so already queued/sent receipts are unchanged.
+		if h.outbox != nil {
+			h.sendTransferReceipt(r.Context(), owner, tx)
+		}
 		feed, err := h.repo.GetFeed(r.Context(), owner.ID, tx.ID)
 		if err != nil {
 			h.writeRepoError(w, err)
@@ -418,8 +434,19 @@ func (h *Handler) sendTransferReceipt(ctx context.Context, owner mongorepo.Trans
 		h.logger.Error().Err(err).Str("transferId", tx.ID).Msg("render transfer receipt failed")
 		return
 	}
-	if err := h.receipt.Send(ctx, maildomain.MailMessage{To: owner.Email, Subject: subject, Text: text, HTML: html}); err != nil {
-		h.logger.Error().Err(err).Str("transferId", tx.ID).Msg("send transfer receipt failed")
+	message := maildomain.MailMessage{To: owner.Email, Subject: subject, Text: text, HTML: html}
+	if h.outbox != nil {
+		if err := h.outbox.Enqueue(ctx, tx.ID, message); err == nil {
+			return
+		} else {
+			h.logger.Error().Err(err).Str("transferId", tx.ID).Msg("enqueue transfer receipt failed")
+		}
+	}
+	if h.receipt == nil {
+		return
+	}
+	if err := h.receipt.Send(ctx, message); err != nil {
+		h.logger.Error().Err(err).Str("transferId", tx.ID).Msg("send transfer receipt fallback failed")
 	}
 }
 

@@ -146,6 +146,33 @@ it("loads recent recipients and looks up only ANOMALY accounts with auth", async
   expect(screen.queryByRole("button", { name: /Ngân hàng/ })).toBeNull();
 });
 
+it("loads contacts only when opened and reuses the cached list", async () => {
+  const fetchMock = renderFlow();
+  const contactGets = () =>
+    fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        String(url).endsWith("/api/contacts/recipients") &&
+        (!init?.method || init.method === "GET"),
+    );
+
+  expect(contactGets()).toHaveLength(0);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
+  );
+  await screen.findByRole("dialog", { name: "Danh bạ người nhận" });
+  await screen.findByText(
+    "Danh bạ trống. Lưu người nhận sau khi nhập số tài khoản.",
+  );
+  expect(contactGets()).toHaveLength(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "Đóng" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
+  );
+  await screen.findByRole("dialog", { name: "Danh bạ người nhận" });
+  expect(contactGets()).toHaveLength(1);
+});
+
 it("persists a recipient contact through the contacts API", async () => {
   const fetchMock = renderFlow();
   await enterRecipient();
