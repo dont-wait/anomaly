@@ -12,6 +12,7 @@ interface ContactsSheetContentProps {
   error: string;
   onSelect: (recipient: Recipient) => void;
   onRemove: (recipient: Recipient) => Promise<boolean>;
+  onRetry: () => void;
 }
 
 /** Danh bạ người nhận đã lưu: tìm kiếm, chọn để chuyển, xoá có bước xác nhận. */
@@ -21,6 +22,7 @@ export function ContactsSheetContent({
   error,
   onSelect,
   onRemove,
+  onRetry,
 }: ContactsSheetContentProps) {
   const [query, setQuery] = useState("");
   const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
@@ -78,9 +80,18 @@ export function ContactsSheetContent({
         </p>
       )}
       {error && (
-        <p role="alert" className="py-2 text-center text-sm text-error">
-          {error}
-        </p>
+        <div className="flex items-center justify-center gap-2 py-2">
+          <p role="alert" className="text-sm text-error">
+            {error}
+          </p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="min-h-9 rounded-full px-3 text-xs font-semibold text-secondary-strong focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
+          >
+            Thử tải lại
+          </button>
+        </div>
       )}
       {!loading && filtered.length === 0 ? (
         <p className="py-8 text-center text-sm text-on-surface-variant">

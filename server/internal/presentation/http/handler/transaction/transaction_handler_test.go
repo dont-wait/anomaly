@@ -22,6 +22,8 @@ type transferRepositoryFake struct {
 	existing       mongorepo.TransferDocument
 	lookupErr      error
 	source         mongorepo.TransferAccount
+	recipient      mongorepo.TransferAccount
+	recipientErr   error
 	lookupCalls    int
 	lookupKey      string
 	lookupOwner    string
@@ -37,7 +39,13 @@ func (f *transferRepositoryFake) FindOwnedAccount(context.Context, string) (mong
 
 func (f *transferRepositoryFake) FindRecipient(context.Context, string) (mongorepo.TransferAccount, error) {
 	f.recipientCalls++
-	return mongorepo.TransferAccount{}, mongorepo.ErrTransactionAccountNotFound
+	if f.recipientErr != nil {
+		return mongorepo.TransferAccount{}, f.recipientErr
+	}
+	if f.recipient.ID == (bson.ObjectID{}) {
+		return mongorepo.TransferAccount{}, mongorepo.ErrTransactionAccountNotFound
+	}
+	return f.recipient, nil
 }
 
 func (f *transferRepositoryFake) AccountObjectID(context.Context, string) (bson.ObjectID, error) {
@@ -97,6 +105,126 @@ func createTransferRequestForTest(t *testing.T, repo Repository, key, body strin
 	request.Header.Set("Idempotency-Key", key)
 	secured.ServeHTTP(recorder, request)
 	return recorder
+}
+
+type recipientContactsFake struct {
+	items []mongorepo.RecipientContact
+}
+
+func (f *recipientContactsFake) List(_ context.Context, ownerID bson.ObjectID, _ string) ([]mongorepo.RecipientContact, error) {
+	items := make([]mongorepo.RecipientContact, 0)
+	for _, item := range f.items {
+		if item.OwnerAccountID == ownerID {
+			items = append(items, item)
+		}
+	}
+	return items, nil
+}
+
+func (f *recipientContactsFake) Add(_ context.Context, ownerID bson.ObjectID, accountNo, name, bankCode string) (bool, error) {
+	for _, item := range f.items {
+		if item.OwnerAccountID == ownerID && item.RecipientAccountNo == accountNo && item.BankCode == bankCode {
+			return false, nil
+		}
+	}
+	f.items = append(f.items, mongorepo.RecipientContact{OwnerAccountID: ownerID, RecipientAccountNo: accountNo, RecipientName: name, BankCode: bankCode})
+	return true, nil
+}
+
+func (f *recipientContactsFake) Delete(_ context.Context, ownerID bson.ObjectID, accountNo, bankCode string) (bool, error) {
+	for i, item := range f.items {
+		if item.OwnerAccountID == ownerID && item.RecipientAccountNo == accountNo && item.BankCode == bankCode {
+			f.items = append(f.items[:i], f.items[i+1:]...)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func recipientContactRequestForTest(t *testing.T, h *Handler, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	tokens := infraauth.NewTokenService("test-secret", time.Hour)
+	token, _, err := tokens.Issue("owner-id", "owner", "user", true)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	if method == http.MethodDelete {
+		request.SetPathValue("bankCode", "ANOMALY")
+		request.SetPathValue("accountNo", "99999180147")
+	}
+	var handler http.HandlerFunc
+	switch method {
+	case http.MethodGet:
+		handler = h.ListRecipientContacts
+	case http.MethodPost:
+		handler = h.AddRecipientContact
+	case http.MethodDelete:
+		handler = h.DeleteRecipientContact
+	default:
+		t.Fatalf("unsupported test method %s", method)
+	}
+	middleware.RequireAuth(tokens)(handler).ServeHTTP(recorder, request)
+	return recorder
+}
+
+func TestRecipientContactEndpointsAreOwnerScopedAndIdempotent(t *testing.T) {
+	ownerID := bson.NewObjectID()
+	recipientID := bson.NewObjectID()
+	repo := &transferRepositoryFake{
+		source:    mongorepo.TransferAccount{ID: ownerID, AccountNo: "99999180105"},
+		recipient: mongorepo.TransferAccount{ID: recipientID, AccountNo: "99999180147", Name: "TRAN THI BICH"},
+	}
+	contacts := &recipientContactsFake{}
+	h := NewHandler(zerolog.Nop(), repo, nil, nil, contacts)
+
+	first := recipientContactRequestForTest(t, h, http.MethodPost, "/api/contacts/recipients", `{"accountNo":"99999180147","bankCode":"ANOMALY"}`)
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first save status = %d, want %d; body = %s", first.Code, http.StatusCreated, first.Body.String())
+	}
+	second := recipientContactRequestForTest(t, h, http.MethodPost, "/api/contacts/recipients", `{"accountNo":"99999180147","bankCode":"ANOMALY"}`)
+	if second.Code != http.StatusOK {
+		t.Fatalf("duplicate save status = %d, want %d; body = %s", second.Code, http.StatusOK, second.Body.String())
+	}
+
+	list := recipientContactRequestForTest(t, h, http.MethodGet, "/api/contacts/recipients", "")
+	if list.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d; body = %s", list.Code, http.StatusOK, list.Body.String())
+	}
+	var listed struct {
+		Items []recipientContactResponse `json:"items"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listed.Items) != 1 || listed.Items[0].AccountNo != "99999180147" {
+		t.Fatalf("listed contacts = %#v, want one saved recipient", listed.Items)
+	}
+
+	deleted := recipientContactRequestForTest(t, h, http.MethodDelete, "/api/contacts/recipients/ANOMALY/99999180147", "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want %d; body = %s", deleted.Code, http.StatusNoContent, deleted.Body.String())
+	}
+	missing := recipientContactRequestForTest(t, h, http.MethodDelete, "/api/contacts/recipients/ANOMALY/99999180147", "")
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("second delete status = %d, want %d; body = %s", missing.Code, http.StatusNotFound, missing.Body.String())
+	}
+}
+
+func TestAddRecipientContactRejectsOwnAccount(t *testing.T) {
+	ownerID := bson.NewObjectID()
+	repo := &transferRepositoryFake{
+		source:    mongorepo.TransferAccount{ID: ownerID, AccountNo: "99999180105"},
+		recipient: mongorepo.TransferAccount{ID: ownerID, AccountNo: "99999180105", Name: "OWNER"},
+	}
+	h := NewHandler(zerolog.Nop(), repo, nil, nil, &recipientContactsFake{})
+	recorder := recipientContactRequestForTest(t, h, http.MethodPost, "/api/contacts/recipients", `{"accountNo":"99999180105","bankCode":"ANOMALY"}`)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("self-contact status = %d, want %d; body = %s", recorder.Code, http.StatusUnprocessableEntity, recorder.Body.String())
+	}
 }
 
 func existingTransfer() mongorepo.TransferDocument {

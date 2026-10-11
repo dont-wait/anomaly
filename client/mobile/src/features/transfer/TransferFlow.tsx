@@ -66,6 +66,7 @@ export function TransferFlow({
   const [contactsLoading, setContactsLoading] = useState(true);
   const [contactsError, setContactsError] = useState("");
   const [contactSaving, setContactSaving] = useState(false);
+  const [contactsReload, setContactsReload] = useState(0);
   const isSaved =
     flow.recipient !== null &&
     contacts.some(
@@ -96,7 +97,13 @@ export function TransferFlow({
     return () => {
       active = false;
     };
-  }, [token, onUnauthorized]);
+  }, [token, onUnauthorized, contactsReload]);
+
+  const retryContacts = () => {
+    setContactsError("");
+    setContactsLoading(true);
+    setContactsReload((value) => value + 1);
+  };
 
   const chooseContact = (contact: Recipient) => {
     flow.chooseRecipient(contact);
@@ -449,6 +456,7 @@ export function TransferFlow({
           error={contactsError}
           onSelect={chooseContact}
           onRemove={removeContact}
+          onRetry={retryContacts}
         />
       </BottomSheet>
     </>

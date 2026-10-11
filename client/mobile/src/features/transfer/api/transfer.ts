@@ -63,56 +63,6 @@ const toRecord = (dto: TransactionDto): TransactionRecord => ({
   },
 });
 
-const contactsByOwner = new Map<string, Recipient[]>();
-const globalContacts: Recipient[] = [];
-
-const resolveContacts = (ownerAccountNo?: string): Recipient[] => {
-  if (ownerAccountNo === undefined) return globalContacts;
-  let list = contactsByOwner.get(ownerAccountNo);
-  if (!list) {
-    list = [];
-    contactsByOwner.set(ownerAccountNo, list);
-  }
-  return list;
-};
-
-const sameRecipient = (a: Recipient, b: Recipient) =>
-  a.accountNo === b.accountNo && a.bank.code === b.bank.code;
-
-/** Local-only contacts until a contacts API is available. */
-export const contactStore = {
-  list: (ownerAccountNo?: string): Recipient[] =>
-    [...resolveContacts(ownerAccountNo)].sort((a, b) =>
-      a.name.localeCompare(b.name, "vi"),
-    ),
-  has: (recipient: Recipient, ownerAccountNo?: string) =>
-    resolveContacts(ownerAccountNo).some((contact) =>
-      sameRecipient(contact, recipient),
-    ),
-  add: (recipient: Recipient, ownerAccountNo?: string) => {
-    if (recipient.bank.code !== ANOMALY_BANK.code) return;
-    const list = resolveContacts(ownerAccountNo);
-    if (!list.some((contact) => sameRecipient(contact, recipient))) {
-      list.push(recipient);
-    }
-  },
-  remove: (recipient: Recipient, ownerAccountNo?: string) => {
-    const list = resolveContacts(ownerAccountNo);
-    const index = list.findIndex((contact) =>
-      sameRecipient(contact, recipient),
-    );
-    if (index >= 0) list.splice(index, 1);
-  },
-  clear: (ownerAccountNo?: string) => {
-    if (ownerAccountNo === undefined) {
-      globalContacts.splice(0);
-      contactsByOwner.clear();
-      return;
-    }
-    contactsByOwner.delete(ownerAccountNo);
-  },
-};
-
 export async function lookupRecipient(
   token: string,
   accountNo: string,

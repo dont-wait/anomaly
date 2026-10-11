@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -30,7 +31,14 @@ func NewRecipientContactRepository(client *mongodrv.Client, dbName string) *Reci
 }
 
 func (r *RecipientContactRepository) EnsureIndexes(ctx context.Context) error {
-	_, err := r.col.Indexes().CreateMany(ctx, []mongodrv.IndexModel{
+	collections, err := r.col.Database().ListCollectionNames(ctx, bson.M{"name": r.col.Name()})
+	if err != nil {
+		return err
+	}
+	if len(collections) == 0 {
+		return fmt.Errorf("recipient_contacts collection is missing; run migrations before starting the API")
+	}
+	_, err = r.col.Indexes().CreateMany(ctx, []mongodrv.IndexModel{
 		{
 			Keys: bson.D{
 				{Key: "owner_account_id", Value: 1},

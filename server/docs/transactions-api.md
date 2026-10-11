@@ -6,7 +6,7 @@ nhập JWT từ login. Base URL local mặc định: `http://localhost:8080`.
 
 ## Auth và cách đọc response
 
-Tất cả 8 endpoint dưới đây cần `Authorization: Bearer <accessToken>`.
+Tất cả 11 endpoint dưới đây cần `Authorization: Bearer <accessToken>`.
 `POST /api/transfers` còn yêu cầu JWT có `isVerify=true`; sau KYC cần lấy token
 được cập nhật theo luồng auth của ứng dụng. Source account luôn lấy từ JWT, không
 truyền account người gửi trong body.
