@@ -9,17 +9,17 @@ func TestCalculateAnnualLoanRateBps_IncomeBoundaries(t *testing.T) {
 		income      int64
 		expectedBps int64
 	}{
-		{"below 7 million", 6_999_999, 1750},
-		{"exactly 7 million", 7_000_000, 1690},
-		{"below 10 million", 9_999_999, 1690},
-		{"exactly 10 million", 10_000_000, 1630},
-		{"below 15 million", 14_999_999, 1630},
-		{"exactly 15 million", 15_000_000, 1570},
-		{"below 20 million", 19_999_999, 1570},
-		{"exactly 20 million", 20_000_000, 1500},
-		{"below 30 million", 29_999_999, 1500},
-		{"exactly 30 million", 30_000_000, 1440},
-		{"above 30 million", 50_000_000, 1440},
+		{"below 7 million", 6_999_999, 1790},
+		{"exactly 7 million", 7_000_000, 1730},
+		{"below 10 million", 9_999_999, 1730},
+		{"exactly 10 million", 10_000_000, 1670},
+		{"below 15 million", 14_999_999, 1670},
+		{"exactly 15 million", 15_000_000, 1610},
+		{"below 20 million", 19_999_999, 1610},
+		{"exactly 20 million", 20_000_000, 1540},
+		{"below 30 million", 29_999_999, 1540},
+		{"exactly 30 million", 30_000_000, 1480},
+		{"above 30 million", 50_000_000, 1480},
 	}
 
 	for _, tt := range tests {
@@ -51,9 +51,9 @@ func TestCalculateAnnualLoanRateBps_Regions(t *testing.T) {
 		region      string
 		expectedBps int64
 	}{
-		{"KV01", 1630},
+		{"KV01", 1670},
 		{"KV02", 1650},
-		{"KV03", 1670},
+		{"KV03", 1630},
 	}
 
 	for _, tt := range tests {
@@ -86,12 +86,12 @@ func TestCalculateAnnualLoanRateBps_Terms(t *testing.T) {
 		term        int
 		expectedBps int64
 	}{
-		{"6 months", 6, 1600},
-		{"12 months", 12, 1630},
-		{"24 months", 24, 1650},
-		{"36 months", 36, 1670},
-		{"48 months", 48, 1690},
-		{"60 months", 60, 1710},
+		{"6 months", 6, 1640},
+		{"12 months", 12, 1670},
+		{"24 months", 24, 1690},
+		{"36 months", 36, 1710},
+		{"48 months", 48, 1730},
+		{"60 months", 60, 1750},
 	}
 
 	for _, tt := range tests {
@@ -118,9 +118,10 @@ func TestCalculateAnnualLoanRateBps_Terms(t *testing.T) {
 }
 
 // Kiểm tra kết hợp thu nhập, khu vực và kỳ hạn.
+// Kiểm tra kết hợp thu nhập, khu vực và kỳ hạn.
 func TestCalculateAnnualLoanRateBps_Combined(t *testing.T) {
 	// Lương 30 triệu, KV03, kỳ hạn 60 tháng.
-	// 14.4% + 0.4% + 0.8% = 15.6%/năm.
+	// 14.4% + 0.0% + 0.8% = 15.2%/năm.
 	rate, err := CalculateAnnualLoanRateBps(
 		30_000_000,
 		"KV03",
@@ -131,8 +132,8 @@ func TestCalculateAnnualLoanRateBps_Combined(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if rate != 1560 {
-		t.Errorf("expected 1560 bps, got %d bps", rate)
+	if rate != 1520 {
+		t.Errorf("expected 1520 bps, got %d bps", rate)
 	}
 }
 

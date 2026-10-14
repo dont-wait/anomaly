@@ -26,11 +26,11 @@ func CalculateAnnualLoanRateBps(
 
 	switch regionCode {
 	case "KV01":
-		regionAdjustmentBps = 0
+		regionAdjustmentBps = 40
 	case "KV02":
 		regionAdjustmentBps = 20
 	case "KV03":
-		regionAdjustmentBps = 40
+		regionAdjustmentBps = 0
 	default:
 		return 0, fmt.Errorf(
 			"invalid loan region: %s", regionCode,
