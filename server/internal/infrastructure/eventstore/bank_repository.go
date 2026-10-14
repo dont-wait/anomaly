@@ -37,13 +37,21 @@ type transferState struct {
 	Tx    mongorepo.TransferDocument
 	Event journal.Event
 }
+
+type loanCreditState struct {
+	AccountID string
+	Amount    int64
+	At        time.Time
+}
+
 type bankState struct {
-	Accounts  map[string]*accountdomain.UserAccount
-	Balances  map[string]int64
-	Transfers map[string]transferState
-	Keys      map[string]string
-	Exists    bool
-	Revision  uint64
+	Accounts    map[string]*accountdomain.UserAccount
+	Balances    map[string]int64
+	Transfers   map[string]transferState
+	Keys        map[string]string
+	Exists      bool
+	Revision    uint64
+	LoanCredits map[string]loanCreditState
 }
 
 func financialID(id string) bson.ObjectID {
@@ -52,7 +60,7 @@ func financialID(id string) bson.ObjectID {
 }
 
 func (r *BankRepository) load(ctx context.Context) (*bankState, error) {
-	s := &bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}, Transfers: map[string]transferState{}, Keys: map[string]string{}}
+	s := &bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}, Transfers: map[string]transferState{}, Keys: map[string]string{}, LoanCredits: map[string]loanCreditState{}}
 	var from esdb.StreamPosition = esdb.Start{}
 	for {
 		stream, err := r.client.ReadStream(ctx, journal.BankStream, esdb.ReadStreamOptions{From: from, RequiresLeader: true}, PAGESIZE)
@@ -125,6 +133,33 @@ func (s *bankState) apply(record journal.Record) error {
 		for _, a := range record.Accounts {
 			s.Accounts[a.Id] = a
 			s.Balances[financialID(a.Id).Hex()] = a.Balance.Current
+		}
+	case journal.LoanDisbursementCredited:
+		if _, exists := s.LoanCredits[record.LoanID]; exists {
+			return fmt.Errorf("duplicate loan credit journal")
+		}
+
+		account := s.Accounts[record.AccountID]
+
+		if account == nil ||
+			s.Balances[financialID(record.AccountID).Hex()] !=
+				*record.BalanceBefore {
+			return fmt.Errorf(
+				"loan credit account or balance mismatch",
+			)
+		}
+
+		s.Balances[financialID(record.AccountID).Hex()] =
+			*record.BalanceAfter
+
+		if s.LoanCredits == nil {
+			s.LoanCredits = map[string]loanCreditState{}
+		}
+
+		s.LoanCredits[record.LoanID] = loanCreditState{
+			AccountID: record.AccountID,
+			Amount:    record.LoanAmount,
+			At:        record.At,
 		}
 	default:
 		var tx mongorepo.TransferDocument
@@ -635,4 +670,77 @@ func (r *BankRepository) EnsureReady(ctx context.Context, hasMongoAccounts bool)
 		}
 	}
 	return nil
+}
+
+// CreditLoanDisbursement ghi một lần duy nhất khoản tiền giải ngân
+// vào banking stream. Retry cùng LoanID không được cộng tiền lần hai.
+func (r *BankRepository) CreditLoanDisbursement(
+	ctx context.Context,
+	loanID string,
+	accountID string,
+	amount int64,
+) (time.Time, error) {
+	if strings.TrimSpace(loanID) == "" ||
+		strings.TrimSpace(accountID) == "" ||
+		amount <= 0 {
+		return time.Time{}, accountdomain.ErrInvalidAmount
+	}
+
+	result, err := r.mutate(
+		ctx,
+		func(s *bankState) (*journal.Record, any, error) {
+
+			if previous, exists := s.LoanCredits[loanID]; exists {
+				if previous.AccountID != accountID ||
+					previous.Amount != amount {
+					return nil, nil, fmt.Errorf(
+						"loan credit idempotency conflict",
+					)
+				}
+
+				return nil, previous.At, nil
+			}
+
+			owner := s.Accounts[accountID]
+
+			if owner == nil ||
+				owner.Status != accountdomain.AccountStatusActive ||
+				owner.Type != accountdomain.AccountTypePayment ||
+				!owner.IsVerified() {
+				return nil, nil, accountdomain.ErrAccountNotFound
+			}
+
+			before := s.Balances[financialID(accountID).Hex()]
+
+			if before < 0 ||
+				amount > math.MaxInt64-before {
+				return nil, nil, accountdomain.ErrInvalidAmount
+			}
+
+			after := before + amount
+			at := time.Now().UTC()
+
+			rec := &journal.Record{
+				ID: journal.EventID(
+					loanID,
+					journal.LoanDisbursementCredited,
+				),
+				Type:          journal.LoanDisbursementCredited,
+				At:            at,
+				AccountID:     accountID,
+				LoanID:        loanID,
+				LoanAmount:    amount,
+				BalanceBefore: &before,
+				BalanceAfter:  &after,
+			}
+
+			return rec, at, nil
+		},
+	)
+
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return result.(time.Time), nil
 }

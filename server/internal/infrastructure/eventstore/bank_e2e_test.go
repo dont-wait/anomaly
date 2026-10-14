@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -40,7 +41,26 @@ func TestBankEventSourcing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := mongorepo.NewMongoClient(ctx, &domain.MongoConfig{MongoURI: uri})
+
+	// Kết nối trực tiếp tới cổng MongoDB được Docker
+	// ánh xạ ra localhost, không dùng IP nội bộ replica set.
+	parsedURI, err := url.Parse(uri)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	query := parsedURI.Query()
+	query.Set("directConnection", "true")
+	parsedURI.RawQuery = query.Encode()
+
+	uri = parsedURI.String()
+
+	client, err := mongorepo.NewMongoClient(
+		ctx,
+		&domain.MongoConfig{
+			MongoURI: uri,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
