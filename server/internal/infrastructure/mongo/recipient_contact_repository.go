@@ -26,6 +26,11 @@ type RecipientContactRepository struct {
 	col *mongodrv.Collection
 }
 
+const (
+	defaultRecipientContactLimit int64 = 50
+	maxRecipientContactLimit     int64 = 100
+)
+
 func NewRecipientContactRepository(client *mongodrv.Client, dbName string) *RecipientContactRepository {
 	return &RecipientContactRepository{col: client.Database(dbName).Collection("recipient_contacts")}
 }
@@ -55,7 +60,13 @@ func (r *RecipientContactRepository) EnsureIndexes(ctx context.Context) error {
 	return err
 }
 
-func (r *RecipientContactRepository) List(ctx context.Context, ownerID bson.ObjectID, query string) ([]RecipientContact, error) {
+func (r *RecipientContactRepository) List(ctx context.Context, ownerID bson.ObjectID, query string, limit int64) ([]RecipientContact, error) {
+	if limit < 1 {
+		limit = defaultRecipientContactLimit
+	}
+	if limit > maxRecipientContactLimit {
+		limit = maxRecipientContactLimit
+	}
 	filter := bson.M{"owner_account_id": ownerID}
 	if query = strings.TrimSpace(query); query != "" {
 		pattern := bson.M{"$regex": regexp.QuoteMeta(query), "$options": "i"}
@@ -66,7 +77,9 @@ func (r *RecipientContactRepository) List(ctx context.Context, ownerID bson.Obje
 		}
 	}
 
-	cursor, err := r.col.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "recipient_name", Value: 1}, {Key: "created_at", Value: -1}}))
+	findOptions := options.Find().SetSort(bson.D{{Key: "recipient_name", Value: 1}, {Key: "created_at", Value: -1}})
+	findOptions.SetLimit(limit)
+	cursor, err := r.col.Find(ctx, filter, findOptions)
 	if err != nil {
 		return nil, err
 	}

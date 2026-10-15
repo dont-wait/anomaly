@@ -40,7 +40,7 @@ type Repository interface {
 }
 
 type ContactRepository interface {
-	List(context.Context, bson.ObjectID, string) ([]mongorepo.RecipientContact, error)
+	List(context.Context, bson.ObjectID, string, int64) ([]mongorepo.RecipientContact, error)
 	Add(context.Context, bson.ObjectID, string, string, string) (bool, error)
 	Delete(context.Context, bson.ObjectID, string, string) (bool, error)
 }
@@ -556,7 +556,8 @@ func (h *Handler) ListRecipientContacts(w http.ResponseWriter, r *http.Request) 
 		h.writeRepoError(w, err)
 		return
 	}
-	contacts, err := h.contacts.List(r.Context(), owner.ID, r.URL.Query().Get("q"))
+	limit := parseLimit(r.URL.Query().Get("limit"), 50, 100)
+	contacts, err := h.contacts.List(r.Context(), owner.ID, r.URL.Query().Get("q"), int64(limit))
 	if err != nil {
 		h.writeRepoError(w, err)
 		return

@@ -46,7 +46,8 @@ func TestRenderTransferReceiptBilingualAndBranded(t *testing.T) {
 	if strings.Contains(html, "{{") {
 		t.Fatal("HTML contains unrendered template action")
 	}
-	if strings.Contains(html, "012345678901") || strings.Contains(html, "987654321098") {
+	if strings.Contains(html, "012345678901") || strings.Contains(html, "987654321098") ||
+		strings.Contains(text, "012345678901") || strings.Contains(text, "987654321098") {
 		t.Fatal("receipt exposes an unmasked account number")
 	}
 	for _, color := range []string{"#00236f", "#b582b5", "#8b5cf6", "#faf8ff", "#f2f3ff"} {

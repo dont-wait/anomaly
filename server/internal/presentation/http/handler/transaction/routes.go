@@ -103,8 +103,8 @@ func RegisterRoutes(router *openapi.Registry, h *Handler, tokenSvc queries.Token
 	})
 	auth("GET /api/contacts/recipients", h.ListRecipientContacts, openapi.Operation{
 		ID: "listRecipientContacts", Summary: "List saved recipient contacts",
-		Description: "Returns recipient contacts saved by the authenticated account. Optional q searches recipient name, account number, or bank code.",
-		Parameters:  []openapi.Parameter{query("q", "nguyen", false)},
+		Description: "Returns up to 50 recipient contacts saved by the authenticated account. Optional q searches recipient name, account number, or bank code; limit is capped at 100.",
+		Parameters:  []openapi.Parameter{query("q", "nguyen", false), limit("50")},
 		Response: struct {
 			Items []recipientContactResponse `json:"items"`
 		}{}, FailureStatuses: []int{404},

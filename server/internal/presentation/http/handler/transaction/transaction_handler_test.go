@@ -108,10 +108,12 @@ func createTransferRequestForTest(t *testing.T, repo Repository, key, body strin
 }
 
 type recipientContactsFake struct {
-	items []mongorepo.RecipientContact
+	items     []mongorepo.RecipientContact
+	listLimit int64
 }
 
-func (f *recipientContactsFake) List(_ context.Context, ownerID bson.ObjectID, _ string) ([]mongorepo.RecipientContact, error) {
+func (f *recipientContactsFake) List(_ context.Context, ownerID bson.ObjectID, _ string, limit int64) ([]mongorepo.RecipientContact, error) {
+	f.listLimit = limit
 	items := make([]mongorepo.RecipientContact, 0)
 	for _, item := range f.items {
 		if item.OwnerAccountID == ownerID {
@@ -173,12 +175,15 @@ func recipientContactRequestForTest(t *testing.T, h *Handler, method, path, body
 
 func TestRecipientContactEndpointsAreOwnerScopedAndIdempotent(t *testing.T) {
 	ownerID := bson.NewObjectID()
+	otherOwnerID := bson.NewObjectID()
 	recipientID := bson.NewObjectID()
 	repo := &transferRepositoryFake{
 		source:    mongorepo.TransferAccount{ID: ownerID, AccountNo: "99999180105"},
 		recipient: mongorepo.TransferAccount{ID: recipientID, AccountNo: "99999180147", Name: "TRAN THI BICH"},
 	}
-	contacts := &recipientContactsFake{}
+	contacts := &recipientContactsFake{items: []mongorepo.RecipientContact{{
+		OwnerAccountID: otherOwnerID, RecipientAccountNo: "99999180199", RecipientName: "OTHER OWNER", BankCode: "ANOMALY",
+	}}}
 	h := NewHandler(zerolog.Nop(), repo, nil, nil, contacts)
 
 	first := recipientContactRequestForTest(t, h, http.MethodPost, "/api/contacts/recipients", `{"accountNo":"99999180147","bankCode":"ANOMALY"}`)
@@ -202,6 +207,9 @@ func TestRecipientContactEndpointsAreOwnerScopedAndIdempotent(t *testing.T) {
 	}
 	if len(listed.Items) != 1 || listed.Items[0].AccountNo != "99999180147" {
 		t.Fatalf("listed contacts = %#v, want one saved recipient", listed.Items)
+	}
+	if contacts.listLimit != 50 {
+		t.Fatalf("list limit = %d, want default limit 50", contacts.listLimit)
 	}
 
 	deleted := recipientContactRequestForTest(t, h, http.MethodDelete, "/api/contacts/recipients/ANOMALY/99999180147", "")

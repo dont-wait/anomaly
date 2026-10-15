@@ -45,7 +45,7 @@ nguyên VND, không gửi chuỗi, số thập phân hoặc giá trị đã form
 | `POST /api/transfers/{transferId}/confirm` | Body `{"otp":"123456"}` | 200: `TransactionRecord` |
 | `POST /api/transfers/{transferId}/otp/resend` | Không cần body | 200: `OTPInfo` |
 | `GET /api/transfers/recent-recipients` | `limit`: mặc định 4, tối đa 10 | 200: `{items:[{accountNo,name,bankCode,lastTransferredAt}]}` |
-| `GET /api/contacts/recipients` | Query `q` tùy chọn | 200: `{items:[{accountNo,name,bankCode}]}` |
+| `GET /api/contacts/recipients` | Query `q` và `limit` tùy chọn; `limit` mặc định 50, tối đa 100 | 200: `{items:[{accountNo,name,bankCode}]}` |
 | `POST /api/contacts/recipients` | Body `{"accountNo":"12345678901234","bankCode":"ANOMALY"}` | 201/200: `{accountNo,name,bankCode}` |
 | `DELETE /api/contacts/recipients/{bankCode}/{accountNo}` | Không cần body | 204 |
 | `GET /api/transactions` | Filters/cursor bên dưới | 200: `{items:TransactionRecord[],nextCursor:string\|null}` |
@@ -187,7 +187,7 @@ các thiết bị. Backend tự lookup tên người nhận từ số tài kho�
 cho lưu chính tài khoản nguồn. Lưu trùng là idempotent.
 
 ```http
-GET /api/contacts/recipients?q=nguyen
+GET /api/contacts/recipients?q=nguyen&limit=50
 Authorization: Bearer <accessToken>
 ```
 
@@ -200,7 +200,8 @@ Content-Type: application/json
 ```
 
 Danh bạ được cô lập theo tài khoản đăng nhập; không truyền `ownerAccountNo` từ
-client. Migration `000007_create_recipient_contacts` tạo collection, validator
+client. `limit` mặc định là 50 và bị giới hạn tối đa 100 để tránh tải toàn bộ
+danh bạ không giới hạn về mobile. Migration `000007_create_recipient_contacts` tạo collection, validator
 và unique index chống trùng người nhận. Migration `000008_create_receipt_outbox`
 tạo outbox biên lai và index phục vụ retry.
 
