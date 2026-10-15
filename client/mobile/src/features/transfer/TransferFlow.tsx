@@ -1,4 +1,10 @@
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { BookmarkPlusIcon, ContactsIcon } from "@/shared/icons";
 import { PageHeader } from "@/shared/layout";
 import { BottomSheet, Button } from "@/shared/ui";
@@ -62,20 +68,34 @@ export function TransferFlow({
   const { lookup, amountError } = flow;
   const accountError = lookup.status === "error" ? lookup.message : "";
   const [contactsOpen, setContactsOpen] = useState(false);
+  const contactsSessionKey = `${token}:${source.accountNo}`;
   const [contactsState, setContactsState] = useState<{
-    token: string;
+    sessionKey: string;
     items: Recipient[];
     loading: boolean;
     loaded: boolean;
     error: string;
-  }>({ token, items: [], loading: false, loaded: false, error: "" });
-  const contactsRequestToken = useRef<string | null>(null);
+  }>({
+    sessionKey: contactsSessionKey,
+    items: [],
+    loading: false,
+    loaded: false,
+    error: "",
+  });
+  const latestContactsSessionKey = useRef(contactsSessionKey);
+  useLayoutEffect(() => {
+    latestContactsSessionKey.current = contactsSessionKey;
+  }, [contactsSessionKey]);
+  const contactsRequestId = useRef(0);
+  const contactsRequestSessionKey = useRef<string | null>(null);
+  const contactsMutationVersion = useRef(0);
   const [contactSaving, setContactSaving] = useState(false);
-  const contacts = contactsState.token === token ? contactsState.items : [];
+  const contacts =
+    contactsState.sessionKey === contactsSessionKey ? contactsState.items : [];
   const contactsLoading =
-    contactsState.token === token && contactsState.loading;
+    contactsState.sessionKey === contactsSessionKey && contactsState.loading;
   const contactsError =
-    contactsState.token === token ? contactsState.error : "";
+    contactsState.sessionKey === contactsSessionKey ? contactsState.error : "";
   const isSaved =
     flow.recipient !== null &&
     contacts.some(
@@ -88,25 +108,35 @@ export function TransferFlow({
   const loadContacts = (force = false) => {
     if (
       !force &&
-      contactsState.token === token &&
-      (contactsState.loaded || contactsRequestToken.current === token)
+      contactsState.sessionKey === contactsSessionKey &&
+      (contactsState.loaded ||
+        contactsRequestSessionKey.current === contactsSessionKey)
     ) {
       return;
     }
-    const requestToken = token;
-    contactsRequestToken.current = requestToken;
+    const requestSessionKey = contactsSessionKey;
+    const requestId = ++contactsRequestId.current;
+    const requestMutationVersion = contactsMutationVersion.current;
+    contactsRequestSessionKey.current = requestSessionKey;
     setContactsState((current) => ({
-      token: requestToken,
-      items: current.token === requestToken ? current.items : [],
+      sessionKey: requestSessionKey,
+      items: current.sessionKey === requestSessionKey ? current.items : [],
       loading: true,
       loaded: false,
       error: "",
     }));
     void listRecipientContacts(token)
       .then((items) => {
-        if (contactsRequestToken.current !== requestToken) return;
+        if (
+          latestContactsSessionKey.current !== requestSessionKey ||
+          contactsRequestId.current !== requestId ||
+          contactsMutationVersion.current !== requestMutationVersion
+        ) {
+          return;
+        }
+        contactsRequestSessionKey.current = null;
         setContactsState({
-          token: requestToken,
+          sessionKey: requestSessionKey,
           items,
           loading: false,
           loaded: true,
@@ -114,15 +144,32 @@ export function TransferFlow({
         });
       })
       .catch((error: unknown) => {
-        if (contactsRequestToken.current !== requestToken) return;
-        contactsRequestToken.current = null;
+        if (
+          latestContactsSessionKey.current !== requestSessionKey ||
+          contactsRequestId.current !== requestId ||
+          contactsMutationVersion.current !== requestMutationVersion
+        ) {
+          return;
+        }
+        contactsRequestSessionKey.current = null;
         if (error instanceof ApiError && error.status === 401) {
-          setContactsState((current) => ({ ...current, loading: false }));
+          setContactsState((current) =>
+            current.sessionKey === requestSessionKey
+              ? { ...current, loading: false }
+              : current,
+          );
           onUnauthorized?.();
           return;
         }
         setContactsState((current) => ({
-          ...current,
+          ...(current.sessionKey === requestSessionKey
+            ? current
+            : {
+                sessionKey: requestSessionKey,
+                items: [],
+                loading: false,
+                loaded: false,
+              }),
           loading: false,
           error: "Không tải được danh bạ người nhận.",
         }));
@@ -145,53 +192,87 @@ export function TransferFlow({
 
   const saveContact = async () => {
     if (!flow.recipient) return;
+    const requestSessionKey = contactsSessionKey;
+    const mutationVersion = ++contactsMutationVersion.current;
+    ++contactsRequestId.current;
+    contactsRequestSessionKey.current = null;
     setContactSaving(true);
-    setContactsState((current) => ({ ...current, error: "" }));
+    setContactsState((current) =>
+      current.sessionKey === requestSessionKey
+        ? { ...current, error: "" }
+        : current,
+    );
     try {
-      const saved = await addRecipientContact(token, flow.recipient);
-      setContactsState((current) => ({
-        ...current,
-        items: current.items.some(
-          (contact) =>
-            contact.accountNo === saved.accountNo &&
-            contact.bank.code === saved.bank.code,
-        )
-          ? current.items
-          : [...current.items, saved],
-      }));
+      await addRecipientContact(token, flow.recipient);
+      if (
+        latestContactsSessionKey.current === requestSessionKey &&
+        contactsMutationVersion.current === mutationVersion
+      ) {
+        loadContacts(true);
+      }
     } catch (error: unknown) {
+      const isCurrent =
+        latestContactsSessionKey.current === requestSessionKey &&
+        contactsMutationVersion.current === mutationVersion;
+      if (!isCurrent) return;
       if (error instanceof ApiError && error.status === 401) {
         onUnauthorized?.();
         return;
       }
       setContactsState((current) => ({
-        ...current,
+        ...(current.sessionKey === requestSessionKey
+          ? current
+          : {
+              sessionKey: requestSessionKey,
+              items: [],
+              loading: false,
+              loaded: false,
+            }),
         error: "Không thể lưu người nhận. Vui lòng thử lại.",
       }));
     } finally {
-      setContactSaving(false);
+      if (
+        latestContactsSessionKey.current === requestSessionKey &&
+        contactsMutationVersion.current === mutationVersion
+      ) {
+        setContactSaving(false);
+      }
     }
   };
 
   const removeContact = async (recipient: Recipient): Promise<boolean> => {
+    const requestSessionKey = contactsSessionKey;
+    const mutationVersion = ++contactsMutationVersion.current;
+    ++contactsRequestId.current;
+    contactsRequestSessionKey.current = null;
     try {
       await deleteRecipientContact(token, recipient);
-      setContactsState((current) => ({
-        ...current,
-        items: current.items.filter(
-          (contact) =>
-            contact.accountNo !== recipient.accountNo ||
-            contact.bank.code !== recipient.bank.code,
-        ),
-      }));
+      if (
+        latestContactsSessionKey.current !== requestSessionKey ||
+        contactsMutationVersion.current !== mutationVersion
+      ) {
+        return false;
+      }
+      loadContacts(true);
       return true;
     } catch (error: unknown) {
+      const isCurrent =
+        latestContactsSessionKey.current === requestSessionKey &&
+        contactsMutationVersion.current === mutationVersion;
+      if (!isCurrent) return false;
       if (error instanceof ApiError && error.status === 401) {
         onUnauthorized?.();
         return false;
       }
       setContactsState((current) => ({
-        ...current,
+        ...(current.sessionKey === requestSessionKey
+          ? current
+          : {
+              sessionKey: requestSessionKey,
+              items: [],
+              loading: false,
+              loaded: false,
+            }),
         error: "Không thể xoá người nhận. Vui lòng thử lại.",
       }));
       return false;

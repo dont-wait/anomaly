@@ -93,7 +93,7 @@ export function ContactsSheetContent({
           </button>
         </div>
       )}
-      {!loading && filtered.length === 0 ? (
+      {!loading && !error && filtered.length === 0 ? (
         <p className="py-8 text-center text-sm text-on-surface-variant">
           {contacts.length === 0
             ? "Danh bạ trống. Lưu người nhận sau khi nhập số tài khoản."

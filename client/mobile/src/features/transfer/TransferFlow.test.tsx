@@ -147,7 +147,15 @@ it("loads recent recipients and looks up only ANOMALY accounts with auth", async
 });
 
 it("loads contacts only when opened and reuses the cached list", async () => {
-  const fetchMock = renderFlow();
+  const fetchMock = renderFlow((input, init) => {
+    if (
+      String(input).endsWith("/api/contacts/recipients") &&
+      (!init?.method || init.method === "GET")
+    ) {
+      return Promise.resolve(json({ items: [recipient] }));
+    }
+    return defaultFetch(input, init);
+  });
   const contactGets = () =>
     fetchMock.mock.calls.filter(
       ([url, init]) =>
@@ -160,9 +168,11 @@ it("loads contacts only when opened and reuses the cached list", async () => {
     screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
   );
   await screen.findByRole("dialog", { name: "Danh bạ người nhận" });
-  await screen.findByText(
-    "Danh bạ trống. Lưu người nhận sau khi nhập số tài khoản.",
-  );
+  expect(
+    await screen.findByRole("button", {
+      name: `${recipient.name}, ${recipient.accountNo}, AnomalyBank`,
+    }),
+  ).toBeTruthy();
   expect(contactGets()).toHaveLength(1);
 
   fireEvent.click(screen.getByRole("button", { name: "Đóng" }));
@@ -170,11 +180,54 @@ it("loads contacts only when opened and reuses the cached list", async () => {
     screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
   );
   await screen.findByRole("dialog", { name: "Danh bạ người nhận" });
+  expect(
+    await screen.findByRole("button", {
+      name: `${recipient.name}, ${recipient.accountNo}, AnomalyBank`,
+    }),
+  ).toBeTruthy();
   expect(contactGets()).toHaveLength(1);
 });
 
+it("does not present a failed contacts load as an empty address book", async () => {
+  const fetchMock = renderFlow((input, init) => {
+    if (
+      String(input).endsWith("/api/contacts/recipients") &&
+      (!init?.method || init.method === "GET")
+    ) {
+      return Promise.reject(new Error("contacts unavailable"));
+    }
+    return defaultFetch(input, init);
+  });
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
+  );
+  expect(
+    (await screen.findAllByText("Không tải được danh bạ người nhận.")).length,
+  ).toBeGreaterThan(0);
+  expect(
+    screen.queryByText(
+      "Danh bạ trống. Lưu người nhận sau khi nhập số tài khoản.",
+    ),
+  ).toBeNull();
+  expect(fetchMock).toHaveBeenCalled();
+});
+
 it("persists a recipient contact through the contacts API", async () => {
-  const fetchMock = renderFlow();
+  let saved = false;
+  const fetchMock = renderFlow((input, init) => {
+    const url = String(input);
+    if (
+      url.endsWith("/api/contacts/recipients") &&
+      (!init?.method || init.method === "GET")
+    ) {
+      return Promise.resolve(json({ items: saved ? [recipient] : [] }));
+    }
+    if (url.endsWith("/api/contacts/recipients") && init?.method === "POST") {
+      saved = true;
+    }
+    return defaultFetch(input, init);
+  });
   await enterRecipient();
 
   fireEvent.click(screen.getByRole("button", { name: "Lưu vào danh bạ" }));
