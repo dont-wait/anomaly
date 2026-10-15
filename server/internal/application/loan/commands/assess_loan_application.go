@@ -48,7 +48,6 @@ func (h *AssessLoanApplicationCommandHandler) Handle(
 	ctx context.Context,
 	cmd AssessLoanApplicationCommand,
 ) (*loandomain.Application, error) {
-
 	// 1. Kiểm tra dependency.
 	if h == nil ||
 		h.repo == nil ||

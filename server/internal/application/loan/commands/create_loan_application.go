@@ -45,7 +45,6 @@ func (h *CreateLoanApplicationCommandHandler) Handle(
 	ctx context.Context,
 	cmd CreateLoanApplicationCommand,
 ) (*loandomain.Application, error) {
-
 	// 1. Kiểm tra dependency.
 	if h == nil || h.repo == nil {
 		return nil, fmt.Errorf("loan repository is not configured")

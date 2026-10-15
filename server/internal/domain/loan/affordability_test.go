@@ -29,7 +29,6 @@ func evaluateTestAffordability(
 		6,
 		affordabilityTestDate(),
 	)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -117,7 +116,6 @@ func TestEvaluateLoanAffordability_DTIThresholds(t *testing.T) {
 		6,
 		affordabilityTestDate(),
 	)
-
 	if err != nil {
 		t.Fatalf("failed to calculate schedule: %v", err)
 	}

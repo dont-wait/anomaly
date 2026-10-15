@@ -39,7 +39,6 @@ func (h *StartLoanReviewCommandHandler) Handle(
 	ctx context.Context,
 	cmd StartLoanReviewCommand,
 ) (*loandomain.Application, error) {
-
 	// 1. Kiểm tra dependency.
 	if h == nil || h.repo == nil {
 		return nil, fmt.Errorf(

@@ -39,7 +39,6 @@ func (h *ManualLoanDecisionCommandHandler) Handle(
 	ctx context.Context,
 	cmd ManualLoanDecisionCommand,
 ) (*loandomain.Application, error) {
-
 	// 1. Kiểm tra dependency.
 	if h == nil || h.repo == nil || h.authorizer == nil {
 		return nil, fmt.Errorf(

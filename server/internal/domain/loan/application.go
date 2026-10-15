@@ -72,7 +72,6 @@ func NewDraftApplication(
 	requestedAmount int64,
 	termMonths int,
 ) (*Application, error) {
-
 	// Kiểm tra các định danh bắt buộc.
 	if strings.TrimSpace(id) == "" ||
 		strings.TrimSpace(applicationNo) == "" ||
@@ -249,7 +248,6 @@ func (a *Application) StartReview() error {
 func (a *Application) ApplyAssessment(
 	input LoanAssessmentInput,
 ) (*LoanAssessmentResult, error) {
-
 	// 1. Kiểm tra hồ sơ tồn tại.
 	if a == nil {
 		return nil, fmt.Errorf("loan application is nil")
@@ -262,7 +260,6 @@ func (a *Application) ApplyAssessment(
 
 	// 3. Chấm điểm theo quy tắc nội bộ.
 	result, err := AssessLoanApplication(input)
-
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +308,6 @@ func (a *Application) ApplyManualDecision(
 	decision ApplicationStatus,
 	reason string,
 ) error {
-
 	// 1. Kiểm tra hồ sơ tồn tại.
 	if a == nil {
 		return fmt.Errorf("loan application is nil")

@@ -29,7 +29,6 @@ func TestCalculateAnnualLoanRateBps_IncomeBoundaries(t *testing.T) {
 				"KV01",
 				12,
 			)
-
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -63,7 +62,6 @@ func TestCalculateAnnualLoanRateBps_Regions(t *testing.T) {
 				tt.region,
 				12,
 			)
-
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -101,7 +99,6 @@ func TestCalculateAnnualLoanRateBps_Terms(t *testing.T) {
 				"KV01",
 				tt.term,
 			)
-
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -127,7 +124,6 @@ func TestCalculateAnnualLoanRateBps_Combined(t *testing.T) {
 		"KV03",
 		60,
 	)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

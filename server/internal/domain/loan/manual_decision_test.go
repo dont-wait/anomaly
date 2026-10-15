@@ -264,7 +264,6 @@ func TestApplyManualDecision_Twice(t *testing.T) {
 		ApplicationStatusApproved,
 		"Approved after review",
 	)
-
 	if err != nil {
 		t.Fatalf("first decision failed: %v", err)
 	}

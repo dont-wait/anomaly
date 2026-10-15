@@ -1015,7 +1015,6 @@ func (h *Handler) decide(
 			r.Context(),
 			a.Id,
 		)
-
 		if err != nil {
 			if errors.Is(err, mongodrv.ErrNoDocuments) {
 				fail(w, 404, "loan evidence not found")
@@ -1113,7 +1112,6 @@ func (h *Handler) quote(
 			Official:            false,
 		},
 	)
-
 }
 
 // POST /api/loans/{applicationId}/disburse

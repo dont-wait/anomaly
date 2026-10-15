@@ -114,7 +114,6 @@ func TestManualLoanDecision_Success(t *testing.T) {
 				context.Background(),
 				cmd,
 			)
-
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -338,8 +337,7 @@ func TestManualLoanDecision_InvalidRequests(t *testing.T) {
 				cmd *ManualLoanDecisionCommand,
 				repo *addLoanDocumentRepoStub,
 			) {
-				repo.app.AssessmentDecision =
-					loandomain.AssessmentAutoEligible
+				repo.app.AssessmentDecision = loandomain.AssessmentAutoEligible
 			},
 		},
 		{

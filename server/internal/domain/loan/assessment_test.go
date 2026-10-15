@@ -28,7 +28,6 @@ func TestAssessLoanApplication_AutoEligible(t *testing.T) {
 	input := validAssessmentTestInput()
 
 	result, err := AssessLoanApplication(input)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -151,7 +150,6 @@ func TestAssessLoanApplication_InsuranceMonths(t *testing.T) {
 		input.InsuranceMonths = tt.months
 
 		result, err := AssessLoanApplication(input)
-
 		if err != nil {
 			t.Fatalf("months %d: %v", tt.months, err)
 		}

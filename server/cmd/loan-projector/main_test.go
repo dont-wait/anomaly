@@ -62,7 +62,6 @@ func TestReconcileCreditsOnce_RetryAfterFailure(t *testing.T) {
 
 	// Lần quét tiếp theo: phục hồi thành công.
 	err = reconcileCreditsOnce(ctx, list, finalize)
-
 	if err != nil {
 		t.Fatalf("retry failed: %v", err)
 	}

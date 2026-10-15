@@ -204,8 +204,7 @@ func TestLoanRepositoryAppendBatchE2E(t *testing.T) {
 
 	// Trường hợp 1: Hai sự kiện hợp lệ được lưu cùng nhau.
 	t.Run("valid batch commits both events", func(t *testing.T) {
-		id, revision, baseTime :=
-			createLoanUnderReviewForBatchTest(t, ctx, repo)
+		id, revision, baseTime := createLoanUnderReviewForBatchTest(t, ctx, repo)
 
 		events := automaticLoanApprovalBatch(baseTime)
 
@@ -266,15 +265,13 @@ func TestLoanRepositoryAppendBatchE2E(t *testing.T) {
 	// Trường hợp 2: Event thứ hai không hợp lệ.
 	// Không được ghi cả Event thứ nhất.
 	t.Run("invalid second event writes nothing", func(t *testing.T) {
-		id, revision, baseTime :=
-			createLoanUnderReviewForBatchTest(t, ctx, repo)
+		id, revision, baseTime := createLoanUnderReviewForBatchTest(t, ctx, repo)
 
 		events := automaticLoanApprovalBatch(baseTime)
 
 		// Kết quả chấm điểm là auto_approve_eligible,
 		// nhưng event thứ hai lại yêu cầu từ chối.
-		events[1].EventType =
-			eventstore.EventLoanApplicationRejected
+		events[1].EventType = eventstore.EventLoanApplicationRejected
 
 		err := repo.AppendBatch(
 			ctx,
@@ -317,8 +314,7 @@ func TestLoanRepositoryAppendBatchE2E(t *testing.T) {
 
 	// Trường hợp 3: Revision không còn hợp lệ.
 	t.Run("stale revision writes nothing", func(t *testing.T) {
-		id, revision, baseTime :=
-			createLoanUnderReviewForBatchTest(t, ctx, repo)
+		id, revision, baseTime := createLoanUnderReviewForBatchTest(t, ctx, repo)
 
 		events := automaticLoanApprovalBatch(baseTime)
 

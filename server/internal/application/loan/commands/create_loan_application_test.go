@@ -86,7 +86,6 @@ func TestCreateLoanApplication_Success(t *testing.T) {
 		context.Background(),
 		validCreateLoanCommand(),
 	)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

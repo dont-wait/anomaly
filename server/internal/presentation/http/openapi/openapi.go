@@ -2,15 +2,12 @@ package openapi
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/aws/smithy-go"
 	"github.com/swaggest/swgui/v5emb"
 )
 
@@ -69,26 +66,26 @@ func NewRegistry(mux *http.ServeMux, enabled bool) *Registry {
 	}
 }
 
-func isLoanDocumentNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
+// func isLoanDocumentNotFound(err error) bool {
+// 	if err == nil {
+// 		return false
+// 	}
 
-	var noSuchKey *types.NoSuchKey
-	if errors.As(err, &noSuchKey) {
-		return true
-	}
+// 	var noSuchKey *types.NoSuchKey
+// 	if errors.As(err, &noSuchKey) {
+// 		return true
+// 	}
 
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		switch apiErr.ErrorCode() {
-		case "NoSuchKey", "NotFound":
-			return true
-		}
-	}
+// 	var apiErr smithy.APIError
+// 	if errors.As(err, &apiErr) {
+// 		switch apiErr.ErrorCode() {
+// 		case "NoSuchKey", "NotFound":
+// 			return true
+// 		}
+// 	}
 
-	return false
-}
+// 	return false
+// }
 
 func (r *Registry) Handle(pattern string, handler http.Handler, operation Operation) {
 	r.mux.Handle(pattern, handler)

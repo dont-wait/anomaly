@@ -149,8 +149,7 @@ func (s *bankState) apply(record journal.Record) error {
 			)
 		}
 
-		s.Balances[financialID(record.AccountID).Hex()] =
-			*record.BalanceAfter
+		s.Balances[financialID(record.AccountID).Hex()] = *record.BalanceAfter
 
 		if s.LoanCredits == nil {
 			s.LoanCredits = map[string]loanCreditState{}
@@ -689,7 +688,6 @@ func (r *BankRepository) CreditLoanDisbursement(
 	result, err := r.mutate(
 		ctx,
 		func(s *bankState) (*journal.Record, any, error) {
-
 			if previous, exists := s.LoanCredits[loanID]; exists {
 				if previous.AccountID != accountID ||
 					previous.Amount != amount {
@@ -737,7 +735,6 @@ func (r *BankRepository) CreditLoanDisbursement(
 			return rec, at, nil
 		},
 	)
-
 	if err != nil {
 		return time.Time{}, err
 	}

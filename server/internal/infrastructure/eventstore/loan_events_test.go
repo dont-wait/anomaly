@@ -35,7 +35,6 @@ func mustReplayLoanEvent(
 		eventType,
 		loanReplayJSON(t, payload),
 	)
-
 	if err != nil {
 		t.Fatalf("replay %s failed: %v", eventType, err)
 	}
@@ -61,7 +60,6 @@ func prepareLoanReviewReplay(
 		10_000_000,
 		12,
 	)
-
 	if err != nil {
 		t.Fatalf("failed to create draft: %v", err)
 	}

@@ -153,7 +153,6 @@ func (s *EvidenceStore) Save(
 		},
 		options.Replace().SetUpsert(true),
 	)
-
 	if err != nil {
 		return fmt.Errorf("save loan evidence: %w", err)
 	}
@@ -173,7 +172,6 @@ func (s *EvidenceStore) Find(
 		ctx,
 		bson.M{"_id": applicationID},
 	).Decode(&rec)
-
 	if err != nil {
 		return loandomain.VerifiedEvidence{}, err
 	}

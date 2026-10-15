@@ -18,7 +18,6 @@ func newTestApplication(t *testing.T) *Application {
 		50000000,
 		12,
 	)
-
 	if err != nil {
 		t.Fatalf("failed to create application: %v", err)
 	}
@@ -44,7 +43,6 @@ func TestAddDocument_Success(t *testing.T) {
 	doc := validTestDocument()
 
 	err := app.AddDocument(doc)
-
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

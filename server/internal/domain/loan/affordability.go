@@ -39,7 +39,6 @@ func EvaluateLoanAffordability(
 	termMonths int,
 	disbursementDate time.Time,
 ) (*LoanAffordability, error) {
-
 	// 1. Kiểm tra dữ liệu đầu vào.
 	if monthlyIncome <= 0 {
 		return nil, fmt.Errorf("monthly income must be greater than zero")
@@ -74,7 +73,6 @@ func EvaluateLoanAffordability(
 		termMonths,
 		disbursementDate,
 	)
-
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +111,6 @@ func EvaluateLoanAffordability(
 		dtiNumerator,
 		big.NewInt(monthlyIncome),
 	)
-
 	if err != nil {
 		return nil, err
 	}

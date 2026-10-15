@@ -18,7 +18,6 @@ func TestCalculateRepaymentSchedule_Success(t *testing.T) {
 		6,
 		disbursementDate,
 	)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -129,7 +128,6 @@ func TestCalculateRepaymentSchedule_SupportedTerms(t *testing.T) {
 					term,
 					time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
 				)
-
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -157,7 +155,6 @@ func TestCalculateRepaymentSchedule_ZeroInterest(t *testing.T) {
 		12,
 		time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
 	)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

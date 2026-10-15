@@ -76,7 +76,6 @@ func TestListMigrations(t *testing.T) {
 		entries[6].name != "allow_loan_disbursement_feed" {
 		t.Fatalf("unexpected migrations: %+v", entries)
 	}
-
 }
 
 func TestListMigrationsRejectsEmptyOrMissingUp(t *testing.T) {

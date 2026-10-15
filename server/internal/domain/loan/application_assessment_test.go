@@ -24,7 +24,6 @@ func TestApplyAssessment_AutoApproved(t *testing.T) {
 	input := validAssessmentTestInput()
 
 	result, err := app.ApplyAssessment(input)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -71,7 +70,6 @@ func TestApplyAssessment_ManualReview(t *testing.T) {
 	input.Affordability.TotalMonthlyDebt = 4_500_000
 
 	result, err := app.ApplyAssessment(input)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -110,7 +108,6 @@ func TestApplyAssessment_Rejected(t *testing.T) {
 	input.Affordability.TotalMonthlyDebt = 5_000_001
 
 	result, err := app.ApplyAssessment(input)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

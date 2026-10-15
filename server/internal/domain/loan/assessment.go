@@ -52,7 +52,6 @@ type LoanAssessmentResult struct {
 func AssessLoanApplication(
 	input LoanAssessmentInput,
 ) (*LoanAssessmentResult, error) {
-
 	// 1. Kiểm tra dữ liệu đầu vào.
 	if input.MonthlyIncome <= 0 {
 		return nil, fmt.Errorf("monthly income must be positive")

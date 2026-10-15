@@ -96,7 +96,6 @@ func (r *LoanRepository) Create(
 			Data:        data,
 		},
 	)
-
 	if err != nil {
 		return wrapLoanAppendError(app.Id, err)
 	}
@@ -152,7 +151,6 @@ func (r *LoanRepository) FindByIDWithRevision(
 			opts,
 			pageSize,
 		)
-
 		if err != nil {
 			if isLoanStreamNotFound(err) && !found {
 				return nil, 0, nil
@@ -401,7 +399,6 @@ func (r *LoanRepository) AppendBatch(
 		},
 		eventData...,
 	)
-
 	if err != nil {
 		return wrapLoanAppendError(
 			applicationID,

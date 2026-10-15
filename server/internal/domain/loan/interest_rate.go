@@ -13,7 +13,6 @@ func CalculateAnnualLoanRateBps(
 	regionCode string,
 	termMonths int,
 ) (int64, error) {
-
 	// 1. Kiểm tra thu nhập.
 	if monthlyIncome <= 0 {
 		return 0, fmt.Errorf(

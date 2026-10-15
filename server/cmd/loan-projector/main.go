@@ -41,7 +41,11 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("loan Mongo connection")
 	}
-	defer client.Disconnect(context.Background())
+	defer func() {
+		if err := client.Disconnect(context.Background()); err != nil {
+			log.Error().Err(err).Msg("disconnect MongoDB failed")
+		}
+	}()
 
 	read := mongo.NewLoanReadModel(
 		client,
@@ -402,7 +406,6 @@ func reconcileCreditsOnce(
 				CreditedAt: credit.CreditedAt,
 			},
 		)
-
 		if err != nil {
 			failures = append(
 				failures,
