@@ -4,14 +4,22 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
+	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 
 	accountqueries "github.com/dont-wait/anomaly/internal/application/account/queries"
 	commands "github.com/dont-wait/anomaly/internal/application/loan/commands"
@@ -24,6 +32,29 @@ import (
 )
 
 const maxLoanDocSize int64 = 10 << 20
+
+type loanListCursor struct {
+	CreatedAt time.Time `json:"createdAt"`
+	ID        string    `json:"id"`
+	Scope     string    `json:"scope"`
+}
+
+type loanPageReader interface {
+	ListByCustomerPage(
+		context.Context,
+		string,
+		int,
+		time.Time,
+		string,
+	) ([]*domain.Application, bool, error)
+
+	ListAllPage(
+		context.Context,
+		int,
+		time.Time,
+		string,
+	) ([]*domain.Application, bool, error)
+}
 
 type Reader interface {
 	FindByID(
@@ -76,6 +107,14 @@ type Media interface {
 	) error
 }
 
+type loanQuoteResponse struct {
+	AnnualRateBps       int64                          `json:"annualRateBps"`
+	MonthlyIncome       int64                          `json:"monthlyIncome"`
+	Affordability       *domain.LoanAffordability      `json:"affordability"`
+	ProvisionalSchedule []domain.RepaymentScheduleItem `json:"provisionalSchedule"`
+	Official            bool                           `json:"official"`
+}
+
 type Handler struct {
 	Create   *commands.CreateLoanApplicationCommandHandler
 	Add      *commands.AddLoanDocumentCommandHandler
@@ -90,6 +129,27 @@ type Handler struct {
 	Evidence Evidence
 	Media    Media
 	Reviewer commands.LoanReviewAuthorizer
+}
+
+func isLoanDocumentNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var noSuchKey *types.NoSuchKey
+	if errors.As(err, &noSuchKey) {
+		return true
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "NoSuchKey", "NotFound":
+			return true
+		}
+	}
+
+	return false
 }
 
 func RegisterRoutes(
@@ -161,6 +221,7 @@ func RegisterRoutes(
 
 		case "quotePersonalLoan":
 			op.Description = "Provisional loan repayment schedule"
+			op.Response = loanQuoteResponse{}
 
 		case "disbursePersonalLoan":
 			op.Description = "Admin-only loan disbursement"
@@ -428,6 +489,7 @@ func (h *Handler) get(
 }
 
 // GET /api/loans
+
 func (h *Handler) list(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -438,22 +500,81 @@ func (h *Handler) list(
 		return
 	}
 
-	var items []*domain.Application
-	var err error
+	query := r.URL.Query()
 
-	if role == "admin" &&
-		r.URL.Query().Get("all") == "true" {
-		if err = h.admin(r); err == nil {
-			items, err = h.List.ListAll(
-				r.Context(),
-				50,
-			)
+	limit := 50
+	if raw := query.Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 100 {
+			fail(w, 400, "limit must be between 1 and 100")
+			return
 		}
+		limit = value
+	}
+
+	adminAll := role == "admin" && query.Get("all") == "true"
+
+	if adminAll {
+		if err := h.admin(r); err != nil {
+			serviceError(w, err)
+			return
+		}
+	}
+
+	scope := "owner:" + actor
+	if adminAll {
+		scope = "all"
+	}
+
+	var after loanListCursor
+
+	if token := query.Get("cursor"); token != "" {
+		if len(token) > 2048 {
+			fail(w, 400, "invalid pagination cursor")
+			return
+		}
+
+		data, err := base64.RawURLEncoding.DecodeString(token)
+		if err != nil {
+			fail(w, 400, "invalid pagination cursor")
+			return
+		}
+
+		if err := json.Unmarshal(data, &after); err != nil ||
+			after.CreatedAt.IsZero() ||
+			after.ID == "" ||
+			after.Scope != scope {
+			fail(w, 400, "invalid pagination cursor")
+			return
+		}
+	}
+
+	pager, ok := any(h.List).(loanPageReader)
+	if !ok {
+		fail(w, 500, "loan pagination service unavailable")
+		return
+	}
+
+	var (
+		items   []*domain.Application
+		hasMore bool
+		err     error
+	)
+
+	if adminAll {
+		items, hasMore, err = pager.ListAllPage(
+			r.Context(),
+			limit,
+			after.CreatedAt,
+			after.ID,
+		)
 	} else {
-		items, err = h.List.ListByCustomer(
+		items, hasMore, err = pager.ListByCustomerPage(
 			r.Context(),
 			actor,
-			50,
+			limit,
+			after.CreatedAt,
+			after.ID,
 		)
 	}
 
@@ -466,11 +587,30 @@ func (h *Handler) list(
 		items = []*domain.Application{}
 	}
 
+	var nextCursor any
+
+	if hasMore && len(items) > 0 {
+		last := items[len(items)-1]
+
+		tokenData, err := json.Marshal(loanListCursor{
+			CreatedAt: last.CreatedAt.UTC().Truncate(time.Millisecond),
+			ID:        last.Id,
+			Scope:     scope,
+		})
+		if err != nil {
+			serviceError(w, err)
+			return
+		}
+
+		nextCursor = base64.RawURLEncoding.EncodeToString(tokenData)
+	}
+
 	httpx.WriteJSON(
 		w,
 		200,
 		map[string]any{
 			"items":               items,
+			"nextCursor":          nextCursor,
 			"eventualConsistency": true,
 		},
 	)
@@ -644,14 +784,18 @@ func (h *Handler) download(
 		document.StorageKey,
 	)
 	if err != nil {
-		fail(w, 404, "document not found")
+		if isLoanDocumentNotFound(err) {
+			fail(w, 404, "document not found")
+		} else {
+			fail(w, 503, "document storage temporarily unavailable")
+		}
 		return
 	}
 	defer res.Body.Close()
 
 	w.Header().Set(
 		"Content-Type",
-		document.MIMEType,
+		"application/octet-stream",
 	)
 	w.Header().Set(
 		"X-Content-Type-Options",
@@ -866,13 +1010,22 @@ func (h *Handler) decide(
 	}
 
 	if req.Decision == domain.ApplicationStatusApproved {
+
 		e, err := h.Evidence.Find(
 			r.Context(),
 			a.Id,
 		)
 
-		if err != nil ||
-			!e.FinancialDataVerified ||
+		if err != nil {
+			if errors.Is(err, mongodrv.ErrNoDocuments) {
+				fail(w, 404, "loan evidence not found")
+			} else {
+				fail(w, 503, "loan evidence service unavailable")
+			}
+			return
+		}
+
+		if !e.FinancialDataVerified ||
 			!e.DocumentsVerified ||
 			!e.InsuranceVerified ||
 			!e.HistoryVerified {
@@ -883,6 +1036,7 @@ func (h *Handler) decide(
 			)
 			return
 		}
+
 	}
 
 	actor, _, _ := claims(r)
@@ -920,7 +1074,11 @@ func (h *Handler) quote(
 		a.Id,
 	)
 	if err != nil {
-		fail(w, 404, "loan evidence not available")
+		if errors.Is(err, mongodrv.ErrNoDocuments) {
+			fail(w, 404, "loan evidence not available")
+		} else {
+			fail(w, 503, "loan evidence service unavailable")
+		}
 		return
 	}
 
@@ -946,15 +1104,16 @@ func (h *Handler) quote(
 
 	httpx.WriteJSON(
 		w,
-		200,
-		map[string]any{
-			"annualRateBps":       rate,
-			"monthlyIncome":       input.MonthlyIncome,
-			"affordability":       input.Affordability,
-			"provisionalSchedule": schedule,
-			"official":            false,
+		http.StatusOK,
+		loanQuoteResponse{
+			AnnualRateBps:       rate,
+			MonthlyIncome:       input.MonthlyIncome,
+			Affordability:       input.Affordability,
+			ProvisionalSchedule: schedule,
+			Official:            false,
 		},
 	)
+
 }
 
 // POST /api/loans/{applicationId}/disburse

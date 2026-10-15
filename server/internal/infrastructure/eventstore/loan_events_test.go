@@ -474,12 +474,20 @@ func TestApplyLoanEvent_InvalidEvents(t *testing.T) {
 
 	t.Run("invalid assessment decision", func(t *testing.T) {
 		app, _ := prepareLoanReviewReplay(t)
-
+		assessedAt := time.Now().UTC()
 		err := applyLoanEvent(
 			app,
 			EventLoanApplicationAssessed,
 			loanReplayJSON(t, loanApplicationAssessedPayload{
-				Decision: "invalid",
+				DTIScore:       30,
+				InsuranceScore: 25,
+				HistoryScore:   35,
+				TotalScore:     90,
+				Decision:       "invalid",
+				Reasons:        []string{},
+				PolicyVersion:  "loan-policy-v1",
+				AssessedAt:     assessedAt,
+				UpdatedAt:      assessedAt,
 			}),
 		)
 
@@ -872,5 +880,115 @@ func TestApplyLoanEvent_RejectRepeatedAssessment(t *testing.T) {
 
 	if app.AssessmentScore != 90 {
 		t.Fatal("original assessment score was modified")
+	}
+}
+
+func TestApplyLoanEvent_ReplayPreparedDisbursement(t *testing.T) {
+	app, baseTime := prepareLoanReviewReplay(t)
+
+	assessedAt := baseTime.Add(12 * time.Minute)
+
+	mustReplayLoanEvent(
+		t,
+		app,
+		EventLoanApplicationAssessed,
+		loanApplicationAssessedPayload{
+			DTIScore:       30,
+			InsuranceScore: 25,
+			HistoryScore:   35,
+			TotalScore:     90,
+			Decision:       loandomain.AssessmentAutoEligible,
+			Reasons:        []string{},
+			PolicyVersion:  "loan-policy-v1",
+			AssessedAt:     assessedAt,
+			UpdatedAt:      assessedAt,
+		},
+	)
+
+	approvedAt := baseTime.Add(13 * time.Minute)
+
+	mustReplayLoanEvent(
+		t,
+		app,
+		EventLoanApplicationApproved,
+		loanDecisionPayload{
+			DecidedAt: approvedAt,
+			UpdatedAt: approvedAt,
+		},
+	)
+
+	const fixedRate int64 = 1540
+	preparedAt := approvedAt.Add(time.Minute)
+
+	// Replay event chốt điều khoản trước giải ngân.
+	mustReplayLoanEvent(
+		t,
+		app,
+		EventLoanDisbursementPrepared,
+		loanDisbursementPreparedPayload{
+			PreparedAt:    preparedAt,
+			AnnualRateBps: fixedRate,
+			UpdatedAt:     preparedAt,
+		},
+	)
+
+	if app.DisbursementPreparedAt == nil ||
+		!app.DisbursementPreparedAt.Equal(preparedAt) {
+		t.Fatal("prepared timestamp was not restored")
+	}
+
+	if app.PreparedAnnualRateBps != fixedRate {
+		t.Fatal("prepared interest rate was not restored")
+	}
+
+	if app.Status != loandomain.ApplicationStatusApproved {
+		t.Fatal("preparation must not disburse the loan")
+	}
+
+	// Tiền được cộng sau khi điều khoản đã được chốt.
+	creditedAt := preparedAt.Add(time.Second)
+
+	schedule, err := loandomain.CalculateRepaymentSchedule(
+		app.RequestedAmount,
+		fixedRate,
+		app.TermMonths,
+		creditedAt,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mustReplayLoanEvent(
+		t,
+		app,
+		EventLoanDisbursed,
+		loanDisbursedPayload{
+			DisbursedAt:       creditedAt,
+			AnnualRateBps:     fixedRate,
+			RepaymentSchedule: schedule,
+			UpdatedAt:         creditedAt,
+		},
+	)
+
+	if app.Status != loandomain.ApplicationStatusDisbursed {
+		t.Fatal("loan was not disbursed")
+	}
+
+	if app.AnnualRateBps != fixedRate {
+		t.Fatal("disbursement interest rate mismatch")
+	}
+
+	if app.DisbursedAt == nil ||
+		!app.DisbursedAt.Equal(creditedAt) {
+		t.Fatal("incorrect disbursement timestamp")
+	}
+
+	if len(app.RepaymentSchedule) != app.TermMonths {
+		t.Fatal("incorrect number of repayment installments")
+	}
+
+	last := app.RepaymentSchedule[len(app.RepaymentSchedule)-1]
+	if last.RemainingBalance != 0 {
+		t.Fatal("remaining balance must be zero after final installment")
 	}
 }

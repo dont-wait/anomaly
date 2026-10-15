@@ -10,10 +10,11 @@ import (
 
 	eventstoredb "github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 
+	loanports "github.com/dont-wait/anomaly/internal/application/loan/ports"
 	loandomain "github.com/dont-wait/anomaly/internal/domain/loan"
-
-	loancommands "github.com/dont-wait/anomaly/internal/application/loan/commands"
 )
+
+var ErrLoanInvalidReplay = errors.New("invalid loan replay")
 
 // LoanRepository lưu hồ sơ vay bằng Event Sourcing.
 // EventStoreDB là nguồn dữ liệu chính.
@@ -189,7 +190,8 @@ func (r *LoanRepository) FindByIDWithRevision(
 				stream.Close()
 
 				return nil, 0, fmt.Errorf(
-					"replay loan event %s failed: %w",
+					"%w: replay loan event %s failed: %w",
+					ErrLoanInvalidReplay,
 					recorded.Event.EventType,
 					err,
 				)
@@ -219,7 +221,8 @@ func (r *LoanRepository) FindByIDWithRevision(
 
 	if app.Id != applicationID {
 		return nil, 0, fmt.Errorf(
-			"loan stream ID does not match application ID",
+			"%w: loan stream ID does not match application ID",
+			ErrLoanInvalidReplay,
 		)
 	}
 
@@ -227,7 +230,7 @@ func (r *LoanRepository) FindByIDWithRevision(
 }
 
 // Dùng chung kiểu Event với Application Layer.
-type LoanAppendEvent = loancommands.LoanAppendEvent
+type LoanAppendEvent = loanports.LoanAppendEvent
 
 // Append giữ nguyên API ghi một sự kiện.
 //
@@ -320,6 +323,7 @@ func (r *LoanRepository) AppendBatch(
 			EventLoanApplicationAssessed,
 			EventLoanApplicationApproved,
 			EventLoanApplicationRejected,
+			EventLoanDisbursementPrepared,
 			EventLoanDisbursed:
 		default:
 			return fmt.Errorf(

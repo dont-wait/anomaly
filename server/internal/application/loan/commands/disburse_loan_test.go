@@ -2,7 +2,7 @@ package commands
 
 import (
 	"context"
-	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -141,26 +141,77 @@ func TestDisburseLoan_SuccessAndIdempotency(t *testing.T) {
 func TestDisburseLoan_InvalidEvidenceDoesNotAppend(t *testing.T) {
 	app := newLoanForAssessmentTest(t)
 
-	input := validAssessmentCommandInput()
-	_, _ = app.ApplyAssessment(input)
+	// Evidence hợp lệ về dữ liệu thẩm định.
+	e := domain.VerifiedEvidence{
+		ApplicationID:   app.Id,
+		CustomerID:      app.CustomerId,
+		SalaryAccountID: app.DisbursementAccountId,
+		MonthlySalaries: [3]int64{
+			100_000_000,
+			100_000_000,
+			100_000_000,
+		},
+		RegionCode:            "KV01",
+		ExistingMonthlyDebt:   0,
+		InsuranceMonths:       24,
+		InsuranceVerified:     true,
+		RepaymentHistory:      domain.HistoryOnTime,
+		HistoryVerified:       true,
+		FinancialDataVerified: true,
+		DocumentsVerified:     true,
+		Sources: []string{
+			"bank-ref",
+			"insurance-ref",
+			"credit-ref",
+		},
+		VerifiedBy: "STAFF001",
+		VerifiedAt: time.Now().UTC(),
+	}
+
+	// Thẩm định hồ sơ bằng Evidence hợp lệ.
+	input, _, err := e.BuildAssessment(
+		app,
+		time.Now().UTC(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assessment, err := app.ApplyAssessment(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if assessment.Decision != domain.AssessmentAutoEligible {
+		t.Fatalf(
+			"expected auto approval, got %s",
+			assessment.Decision,
+		)
+	}
+
+	// Giả lập chứng từ chưa được xác minh đầy đủ.
+	// Các dữ liệu thẩm định khác vẫn giữ nguyên.
+	e.DocumentsVerified = false
 
 	repo := &addLoanDocumentRepoStub{
 		app:      app,
 		revision: 10,
 	}
 
+	// Bank có thể giải ngân thành công.
+	// Không dùng lỗi "bank offline" để che lỗi nghiệp vụ.
+	bank := &disburseBankStub{
+		at: time.Now().UTC().Add(time.Second),
+	}
+
 	handler := &DisburseLoanCommandHandler{
 		Repo:       repo,
 		Authorizer: &manualLoanAuthorizerStub{},
-		Evidence: disburseEvidenceStub{
-			e: domain.VerifiedEvidence{},
-		},
-		Bank: &disburseBankStub{
-			err: errors.New("bank offline"),
-		},
+		Evidence:   disburseEvidenceStub{e: e},
+		Bank:       bank,
 	}
 
-	_, err := handler.Handle(
+	_, err = handler.Handle(
 		context.Background(),
 		DisburseLoanCommand{
 			ApplicationID: app.Id,
@@ -168,7 +219,33 @@ func TestDisburseLoan_InvalidEvidenceDoesNotAppend(t *testing.T) {
 		},
 	)
 
-	if err == nil || repo.appendCalls != 0 {
-		t.Fatal("invalid disbursement must not append")
+	// Phải từ chối vì Evidence chưa xác minh.
+	if err == nil {
+		t.Fatal("expected invalid evidence to be rejected")
+	}
+
+	if !strings.Contains(err.Error(), "not fully verified") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Tuyệt đối không được gọi Banking.
+	if bank.calls != 0 {
+		t.Fatalf(
+			"bank was called %d times for invalid evidence",
+			bank.calls,
+		)
+	}
+
+	// Không được ghi bất kỳ Loan Event nào.
+	if repo.appendCalls != 0 {
+		t.Fatalf(
+			"unexpected loan event append: %d",
+			repo.appendCalls,
+		)
+	}
+
+	// Hồ sơ vẫn phải giữ trạng thái approved.
+	if app.Status != domain.ApplicationStatusApproved {
+		t.Fatal("loan status changed after invalid evidence")
 	}
 }

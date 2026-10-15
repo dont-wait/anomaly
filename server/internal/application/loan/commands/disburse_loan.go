@@ -87,40 +87,89 @@ func (h *DisburseLoanCommandHandler) Handle(
 	}
 
 	// Đọc dữ liệu thẩm định được lưu trước đó.
-	evidence, err := h.Evidence.Find(ctx, a.Id)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"required loan evidence is unavailable: %w",
-			err,
+
+	// Nếu đã chuẩn bị giải ngân, sử dụng lãi suất đã chốt.
+	rate := a.PreparedAnnualRateBps
+
+	if a.DisbursementPreparedAt == nil {
+		// Chưa chuẩn bị: kiểm tra chứng cứ và tính lãi suất.
+		evidence, err := h.Evidence.Find(ctx, a.Id)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"required loan evidence is unavailable: %w",
+				err,
+			)
+		}
+
+		if !evidence.FinancialDataVerified ||
+			!evidence.DocumentsVerified ||
+			!evidence.InsuranceVerified ||
+			!evidence.HistoryVerified {
+			return nil, fmt.Errorf(
+				"loan evidence is not fully verified for disbursement",
+			)
+		}
+
+		input, calculatedRate, err := evidence.BuildAssessment(
+			a,
+			time.Now().UTC(),
 		)
-	}
+		if err != nil {
+			return nil, err
+		}
 
-	if !evidence.FinancialDataVerified ||
-		!evidence.DocumentsVerified ||
-		!evidence.InsuranceVerified ||
-		!evidence.HistoryVerified {
+		assessment, err := domain.AssessLoanApplication(input)
+		if err != nil {
+			return nil, err
+		}
+
+		if assessment.Decision != a.AssessmentDecision ||
+			assessment.TotalScore != a.AssessmentScore {
+			return nil, fmt.Errorf(
+				"disbursement evidence does not match approved assessment",
+			)
+		}
+
+		rate = calculatedRate
+		preparedAt := time.Now().UTC()
+
+		prepared := *a
+		if err := prepared.PrepareDisbursement(
+			preparedAt,
+			rate,
+		); err != nil {
+			return nil, err
+		}
+
+		payload := struct {
+			PreparedAt    time.Time `json:"preparedAt"`
+			AnnualRateBps int64     `json:"annualRateBps"`
+			UpdatedAt     time.Time `json:"updatedAt"`
+		}{
+			PreparedAt:    preparedAt,
+			AnnualRateBps: rate,
+			UpdatedAt:     preparedAt,
+		}
+
+		// Phải ghi thành công trước khi cộng tiền.
+		if err := h.Repo.Append(
+			ctx,
+			a.Id,
+			revision,
+			"LoanDisbursementPrepared",
+			payload,
+		); err != nil {
+			return nil, fmt.Errorf(
+				"prepare loan disbursement: %w",
+				err,
+			)
+		}
+
+		a = &prepared
+		revision++
+	} else if rate <= 0 {
 		return nil, fmt.Errorf(
-			"loan evidence is not fully verified for disbursement",
-		)
-	}
-
-	input, rate, err := evidence.BuildAssessment(
-		a,
-		time.Now().UTC(),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	assessment, err := domain.AssessLoanApplication(input)
-	if err != nil {
-		return nil, err
-	}
-
-	if assessment.Decision != a.AssessmentDecision ||
-		assessment.TotalScore != a.AssessmentScore {
-		return nil, fmt.Errorf(
-			"disbursement evidence does not match approved assessment",
+			"invalid prepared loan interest rate",
 		)
 	}
 

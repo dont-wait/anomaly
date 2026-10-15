@@ -20,6 +20,15 @@ func (a *Application) MarkDisbursed(
 		annualRateBps <= 0 {
 		return fmt.Errorf("invalid loan disbursement terms")
 	}
+	// Không cho phép thay đổi lãi suất đã chốt.
+	if a.DisbursementPreparedAt != nil {
+		if a.PreparedAnnualRateBps <= 0 ||
+			annualRateBps != a.PreparedAnnualRateBps {
+			return fmt.Errorf(
+				"disbursement interest rate differs from prepared terms",
+			)
+		}
+	}
 
 	schedule, err := CalculateRepaymentSchedule(
 		a.RequestedAmount,

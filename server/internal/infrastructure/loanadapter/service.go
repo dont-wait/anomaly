@@ -13,6 +13,7 @@ import (
 	account "github.com/dont-wait/anomaly/internal/domain/account"
 	loandomain "github.com/dont-wait/anomaly/internal/domain/loan"
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
@@ -141,22 +142,23 @@ func (s *EvidenceStore) Save(
 	ctx context.Context,
 	e loandomain.VerifiedEvidence,
 ) error {
-	_, err := s.col.InsertOne(
+	_, err := s.col.ReplaceOne(
 		ctx,
+		bson.M{
+			"_id": e.ApplicationID,
+		},
 		bson.M{
 			"_id":      e.ApplicationID,
 			"evidence": e,
 		},
+		options.Replace().SetUpsert(true),
 	)
 
-	if mongodrv.IsDuplicateKeyError(err) {
-		return fmt.Errorf(
-			"evidence already recorded: %w",
-			err,
-		)
+	if err != nil {
+		return fmt.Errorf("save loan evidence: %w", err)
 	}
 
-	return err
+	return nil
 }
 
 func (s *EvidenceStore) Find(

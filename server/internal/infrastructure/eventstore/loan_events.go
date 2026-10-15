@@ -18,6 +18,7 @@ const (
 	EventLoanApplicationAssessed  = "LoanApplicationAssessed"
 	EventLoanApplicationApproved  = "LoanApplicationApproved"
 	EventLoanApplicationRejected  = "LoanApplicationRejected"
+	EventLoanDisbursementPrepared = "LoanDisbursementPrepared"
 	EventLoanDisbursed            = "LoanDisbursed"
 )
 
@@ -60,6 +61,11 @@ type loanDecisionPayload struct {
 	ManualReviewerId     string     `json:"manualReviewerId,omitempty"`
 	ManualDecisionReason string     `json:"manualDecisionReason,omitempty"`
 	ManualDecidedAt      *time.Time `json:"manualDecidedAt,omitempty"`
+}
+type loanDisbursementPreparedPayload struct {
+	PreparedAt    time.Time `json:"preparedAt"`
+	AnnualRateBps int64     `json:"annualRateBps"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type loanDisbursedPayload struct {
@@ -274,6 +280,34 @@ func applyLoanEvent(
 		); err != nil {
 			return err
 		}
+
+	case EventLoanDisbursementPrepared:
+		var p loanDisbursementPreparedPayload
+
+		if err := json.Unmarshal(data, &p); err != nil {
+			return err
+		}
+
+		if p.UpdatedAt.IsZero() ||
+			!p.UpdatedAt.Equal(p.PreparedAt) {
+			return fmt.Errorf(
+				"invalid disbursement preparation timestamps",
+			)
+		}
+
+		preview := *app
+
+		if err := preview.PrepareDisbursement(
+			p.PreparedAt,
+			p.AnnualRateBps,
+		); err != nil {
+			return fmt.Errorf(
+				"cannot prepare loan disbursement: %w",
+				err,
+			)
+		}
+
+		*app = preview
 
 	case EventLoanDisbursed:
 		var p loanDisbursedPayload

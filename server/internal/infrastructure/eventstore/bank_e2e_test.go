@@ -424,9 +424,21 @@ func applyMigrations(t *testing.T, ctx context.Context, db *mongodrv.Database) {
 	}
 }
 
-func restoreFeedValidator(t *testing.T, ctx context.Context, db *mongodrv.Database) {
+func restoreFeedValidator(
+	t *testing.T,
+	ctx context.Context,
+	db *mongodrv.Database,
+) {
 	t.Helper()
-	runMigration(t, ctx, db, "../../../migrations/000005_create_transaction_collections.up.json", "account_transaction_feed")
+
+	// Khôi phục validator mới nhất, có hỗ trợ loan_disbursement.
+	runMigration(
+		t,
+		ctx,
+		db,
+		"../../../migrations/000007_allow_loan_disbursement_feed.up.json",
+		"account_transaction_feed",
+	)
 }
 
 func runMigration(t *testing.T, ctx context.Context, db *mongodrv.Database, file, onlyCollection string) {

@@ -39,11 +39,13 @@ func (m *LoanReadModel) EnsureIndexes(
 				Keys: bson.D{
 					{Key: "owner_id", Value: 1},
 					{Key: "created_at", Value: -1},
+					{Key: "_id", Value: -1},
 				},
 			},
 			{
 				Keys: bson.D{
 					{Key: "created_at", Value: -1},
+					{Key: "_id", Value: -1},
 				},
 			},
 		},
@@ -54,26 +56,50 @@ func (m *LoanReadModel) EnsureIndexes(
 
 // Lưu aggregate Loan đã replay
 // sang MongoDB Read Model.
+
 func (m *LoanReadModel) Save(
 	ctx context.Context,
 	app *loan.Application,
 	revision uint64,
 ) error {
-	_, err := m.db.Collection(
-		"loan_applications_read",
-	).UpdateOne(
+	collection := m.db.Collection("loan_applications_read")
+
+	data := bson.M{
+		"owner_id":    app.CustomerId,
+		"created_at":  app.CreatedAt,
+		"status":      app.Status,
+		"revision":    revision,
+		"application": app,
+	}
+
+	// Chỉ tạo document khi chưa tồn tại.
+	// Nếu đã tồn tại, không thay đổi dữ liệu.
+	_, err := collection.UpdateOne(
 		ctx,
 		bson.M{"_id": app.Id},
+		bson.M{"$setOnInsert": data},
+		options.UpdateOne().SetUpsert(true),
+	)
+	if err != nil && !mongodrv.IsDuplicateKeyError(err) {
+		return err
+	}
+
+	// MongoDB chỉ cập nhật khi revision hiện tại
+	// nhỏ hơn revision cần ghi.
+	_, err = collection.UpdateOne(
+		ctx,
 		bson.M{
-			"$set": bson.M{
-				"owner_id":    app.CustomerId,
-				"created_at":  app.CreatedAt,
-				"status":      app.Status,
-				"revision":    revision,
-				"application": app,
+			"_id": app.Id,
+			"$or": bson.A{
+				bson.M{
+					"revision": bson.M{"$lt": revision},
+				},
+				bson.M{
+					"revision": bson.M{"$exists": false},
+				},
 			},
 		},
-		options.UpdateOne().SetUpsert(true),
+		bson.M{"$set": data},
 	)
 
 	return err
@@ -178,6 +204,7 @@ func (m *LoanReadModel) list(
 type LoanCheckpoint struct {
 	Commit  uint64    `bson:"commit"`
 	Prepare uint64    `bson:"prepare"`
+	EventID string    `bson:"event_id,omitempty"`
 	SavedAt time.Time `bson:"saved_at"`
 }
 
@@ -206,14 +233,185 @@ func (m *LoanReadModel) SaveCheckpoint(
 ) error {
 	position.SavedAt = time.Now().UTC()
 
-	_, err := m.db.Collection(
-		"checkpoints",
-	).UpdateOne(
+	collection := m.db.Collection("checkpoints")
+
+	// Chỉ tạo checkpoint khi chưa tồn tại.
+	_, err := collection.UpdateOne(
 		ctx,
 		bson.M{"_id": loanCheckpointID},
-		bson.M{"$set": position},
+		bson.M{
+			"$setOnInsert": position,
+		},
 		options.UpdateOne().SetUpsert(true),
+	)
+	if err != nil && !mongodrv.IsDuplicateKeyError(err) {
+		return err
+	}
+
+	// Chỉ cho phép checkpoint tiến về phía trước.
+	_, err = collection.UpdateOne(
+		ctx,
+		bson.M{
+			"_id": loanCheckpointID,
+			"$or": bson.A{
+				bson.M{
+					"commit": bson.M{
+						"$lt": position.Commit,
+					},
+				},
+				bson.M{
+					"commit": position.Commit,
+					"prepare": bson.M{
+						"$lt": position.Prepare,
+					},
+				},
+			},
+		},
+		bson.M{
+			"$set": position,
+		},
 	)
 
 	return err
+}
+
+func (m *LoanReadModel) ResetAfterInvalidCheckpoint(
+	ctx context.Context,
+) error {
+	// Xóa dữ liệu đọc cũ để xây dựng lại từ EventStoreDB.
+	_, err := m.db.Collection(
+		"loan_applications_read",
+	).DeleteMany(ctx, bson.M{})
+	if err != nil {
+		return err
+	}
+
+	// Giữ lịch sử lỗi RV04 nhưng không để lỗi cũ
+	// chặn quá trình replay lại.
+	_, err = m.db.Collection(
+		"loan_projection_failures",
+	).UpdateMany(
+		ctx,
+		bson.M{"status": "open"},
+		bson.M{
+			"$set": bson.M{
+				"status":      "superseded",
+				"resolved_at": time.Now().UTC(),
+			},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	// Xóa checkpoint cuối cùng để lần chạy tiếp theo
+	// SubscribeToAll bắt đầu từ Start.
+	_, err = m.db.Collection("checkpoints").DeleteOne(
+		ctx,
+		bson.M{"_id": loanCheckpointID},
+	)
+
+	return err
+}
+
+func (m *LoanReadModel) ListByCustomerPage(
+	ctx context.Context,
+	customerID string,
+	limit int,
+	afterTime time.Time,
+	afterID string,
+) ([]*loan.Application, bool, error) {
+	return m.listPage(
+		ctx,
+		bson.M{"owner_id": customerID},
+		limit,
+		afterTime,
+		afterID,
+	)
+}
+
+func (m *LoanReadModel) ListAllPage(
+	ctx context.Context,
+	limit int,
+	afterTime time.Time,
+	afterID string,
+) ([]*loan.Application, bool, error) {
+	return m.listPage(
+		ctx,
+		bson.M{},
+		limit,
+		afterTime,
+		afterID,
+	)
+}
+
+func (m *LoanReadModel) listPage(
+	ctx context.Context,
+	filter bson.M,
+	limit int,
+	afterTime time.Time,
+	afterID string,
+) ([]*loan.Application, bool, error) {
+	if limit <= 0 || limit > 100 {
+		return nil, false, errors.New("invalid loan page limit")
+	}
+
+	if afterID != "" {
+		if afterTime.IsZero() {
+			return nil, false, errors.New("invalid loan page cursor")
+		}
+
+		filter["$or"] = bson.A{
+			bson.M{
+				"created_at": bson.M{"$lt": afterTime},
+			},
+			bson.M{
+				"created_at": afterTime,
+				"_id":        bson.M{"$lt": afterID},
+			},
+		}
+	}
+
+	cursor, err := m.db.Collection(
+		"loan_applications_read",
+	).Find(
+		ctx,
+		filter,
+		options.Find().
+			SetSort(bson.D{
+				{Key: "created_at", Value: -1},
+				{Key: "_id", Value: -1},
+			}).
+			SetLimit(int64(limit+1)),
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	defer cursor.Close(ctx)
+
+	items := make([]*loan.Application, 0, limit)
+	hasMore := false
+
+	for cursor.Next(ctx) {
+		if len(items) == limit {
+			hasMore = true
+			break
+		}
+
+		var row struct {
+			Application loan.Application `bson:"application"`
+		}
+
+		if err := cursor.Decode(&row); err != nil {
+			return nil, false, err
+		}
+
+		items = append(items, &row.Application)
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, false, err
+	}
+
+	return items, hasMore, nil
 }

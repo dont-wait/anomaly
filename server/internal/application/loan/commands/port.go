@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 
+	"github.com/dont-wait/anomaly/internal/application/loan/ports"
 	loandomain "github.com/dont-wait/anomaly/internal/domain/loan"
 )
 
@@ -84,10 +85,7 @@ type LoanReviewAuthorizer interface {
 
 // LoanAppendEvent biểu diễn một sự kiện cần ghi
 // vào EventStoreDB thông qua Repository.
-type LoanAppendEvent struct {
-	EventType string
-	Payload   any
-}
+type LoanAppendEvent = ports.LoanAppendEvent
 
 // LoanAssessmentRepository cung cấp thao tác đọc hồ sơ
 // và ghi nhiều sự kiện trong một lần AppendBatch.

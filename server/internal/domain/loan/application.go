@@ -7,14 +7,14 @@ import (
 )
 
 type ApplicationDocument struct {
-	DocumentId         string
-	Type               string
-	StorageKey         string
-	MIMEType           string
-	SizeBytes          int64
-	SHA256             string
-	VerificationStatus string
-	UploadedAt         time.Time
+	DocumentId         string    `json:"documentId"`
+	Type               string    `json:"type"`
+	StorageKey         string    `json:"storageKey"`
+	MIMEType           string    `json:"mimeType"`
+	SizeBytes          int64     `json:"sizeBytes"`
+	SHA256             string    `json:"sha256"`
+	VerificationStatus string    `json:"verificationStatus"`
+	UploadedAt         time.Time `json:"uploadedAt"`
 }
 
 // ApplicationStatus là trạng thái của hồ sơ vay.
@@ -30,34 +30,37 @@ const (
 )
 
 // Application đại diện cho một hồ sơ đăng ký vay vốn cá nhân.
+
 type Application struct {
-	Id                    string
-	ApplicationNo         string
-	CustomerId            string
-	LoanPackageId         string
-	DisbursementAccountId string
-	RequestedAmount       int64
-	TermMonths            int
-	Documents             []ApplicationDocument
-	Status                ApplicationStatus
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
-	SubmittedAt           *time.Time
-	ReviewStartedAt       *time.Time
-	AssessmentScore       int
-	AssessmentDecision    LoanAssessmentDecision
-	AssessmentReasons     []string
-	AssessedAt            *time.Time
-	ApprovedAt            *time.Time
-	RejectedAt            *time.Time
-	ManualReviewerId      string
-	ManualDecisionReason  string
-	ManualDecidedAt       *time.Time
-	ReviewStartedBy       string
-	AssessedBy            string
-	DisbursedAt           *time.Time
-	AnnualRateBps         int64
-	RepaymentSchedule     []RepaymentScheduleItem
+	Id                     string                  `json:"id"`
+	ApplicationNo          string                  `json:"applicationNo"`
+	CustomerId             string                  `json:"customerId"`
+	LoanPackageId          string                  `json:"loanPackageId"`
+	DisbursementAccountId  string                  `json:"disbursementAccountId"`
+	RequestedAmount        int64                   `json:"requestedAmount"`
+	TermMonths             int                     `json:"termMonths"`
+	Documents              []ApplicationDocument   `json:"documents"`
+	Status                 ApplicationStatus       `json:"status"`
+	CreatedAt              time.Time               `json:"createdAt"`
+	UpdatedAt              time.Time               `json:"updatedAt"`
+	SubmittedAt            *time.Time              `json:"submittedAt"`
+	ReviewStartedAt        *time.Time              `json:"reviewStartedAt"`
+	AssessmentScore        int                     `json:"assessmentScore"`
+	AssessmentDecision     LoanAssessmentDecision  `json:"assessmentDecision"`
+	AssessmentReasons      []string                `json:"assessmentReasons"`
+	AssessedAt             *time.Time              `json:"assessedAt"`
+	ApprovedAt             *time.Time              `json:"approvedAt"`
+	RejectedAt             *time.Time              `json:"rejectedAt"`
+	ManualReviewerId       string                  `json:"manualReviewerId"`
+	ManualDecisionReason   string                  `json:"manualDecisionReason"`
+	ManualDecidedAt        *time.Time              `json:"manualDecidedAt"`
+	ReviewStartedBy        string                  `json:"reviewStartedBy"`
+	AssessedBy             string                  `json:"assessedBy"`
+	DisbursedAt            *time.Time              `json:"disbursedAt"`
+	AnnualRateBps          int64                   `json:"annualRateBps"`
+	DisbursementPreparedAt *time.Time              `json:"disbursementPreparedAt"`
+	PreparedAnnualRateBps  int64                   `json:"preparedAnnualRateBps"`
+	RepaymentSchedule      []RepaymentScheduleItem `json:"repaymentSchedule"`
 }
 
 func NewDraftApplication(
@@ -364,6 +367,46 @@ func (a *Application) ApplyManualDecision(
 	case ApplicationStatusRejected:
 		a.RejectedAt = &now
 	}
+
+	return nil
+}
+
+func (a *Application) PrepareDisbursement(
+	at time.Time,
+	annualRateBps int64,
+) error {
+	if a == nil ||
+		a.Status != ApplicationStatusApproved ||
+		a.ApprovedAt == nil {
+		return ErrInvalidApplicationStatus
+	}
+
+	if at.IsZero() ||
+		at.Before(*a.ApprovedAt) ||
+		annualRateBps <= 0 {
+		return fmt.Errorf("invalid loan disbursement preparation")
+	}
+
+	// Không cho phép chốt lại điều khoản đã chuẩn bị.
+	if a.DisbursementPreparedAt != nil {
+		return fmt.Errorf("loan disbursement already prepared")
+	}
+
+	// Kiểm tra có thể tạo lịch trả nợ với điều khoản này.
+	// Lịch chính thức vẫn tính từ thời điểm tiền được cộng.
+	_, err := CalculateRepaymentSchedule(
+		a.RequestedAmount,
+		annualRateBps,
+		a.TermMonths,
+		at,
+	)
+	if err != nil {
+		return err
+	}
+
+	a.DisbursementPreparedAt = &at
+	a.PreparedAnnualRateBps = annualRateBps
+	a.UpdatedAt = at
 
 	return nil
 }
