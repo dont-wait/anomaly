@@ -18,12 +18,6 @@ import {
 import { getInfo, type AuthUser } from "./api/profile";
 import { ApiError } from "@/shared/lib/http";
 import { defaultAuthTokenStore, type AuthTokenStore } from "./lib/token-store";
-import { contactStore } from "@/features/transfer/api/transfer";
-
-/** Purge cache mock theo user khỏi RAM khi đổi/kết thúc session (chống leak + rác). */
-const purgeUserScopedMocks = () => {
-  contactStore.clear();
-};
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -49,7 +43,6 @@ export const AuthProvider = ({
 
   const logout = useCallback(() => {
     tokenStore.clearToken();
-    purgeUserScopedMocks();
     if (!mountedRef.current) return;
     setToken(null);
     setUser(null);
@@ -86,7 +79,6 @@ export const AuthProvider = ({
             requestError.status === HTTP_STATUS.NOT_FOUND)
         ) {
           tokenStore.clearToken();
-          purgeUserScopedMocks();
           if (!mountedRef.current) return null;
           setToken(null);
           setUser(null);
@@ -131,7 +123,6 @@ export const AuthProvider = ({
             requestError.status === HTTP_STATUS.NOT_FOUND)
         ) {
           tokenStore.clearToken();
-          purgeUserScopedMocks();
           setToken(null);
           setUser(null);
           setStatus(AUTH_STATUS.UNAUTHENTICATED);
@@ -159,7 +150,6 @@ export const AuthProvider = ({
           signal: options.signal,
         });
         tokenStore.setToken(response.token);
-        purgeUserScopedMocks();
         if (!mountedRef.current) return response.user;
         setToken(response.token);
         setUser(response.user);

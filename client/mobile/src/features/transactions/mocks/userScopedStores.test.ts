@@ -1,7 +1,5 @@
 import { beforeEach, expect, it } from "vitest";
 import { transactionStore } from "@/features/transactions/mocks/transactions";
-import { contactStore } from "@/features/transfer/api/transfer";
-import { ANOMALY_BANK } from "@/features/transfer/model";
 import type { TransactionRecord } from "@/features/transactions/model";
 
 const OWNER_A = "99999180105";
@@ -24,7 +22,6 @@ const makeRecord = (id: string, ownerAccountNo: string): TransactionRecord => ({
 
 beforeEach(() => {
   transactionStore.clear();
-  contactStore.clear();
 });
 
 it("cô lập giao dịch theo STK và purge khi logout", () => {
@@ -53,41 +50,4 @@ it("cô lập giao dịch theo STK và purge khi logout", () => {
   transactionStore.add(makeRecord("tx_owner_b", OWNER_B));
   transactionStore.clear();
   expect(transactionStore.list().length).toBe(seedCount);
-});
-
-it("cô lập danh bạ theo STK và purge khi logout", () => {
-  const ownContact = {
-    accountNo: "99999180999",
-    name: "VO THI LAN",
-    bank: ANOMALY_BANK,
-  };
-  contactStore.add(ownContact, OWNER_A);
-  expect(contactStore.list(OWNER_A).some((c) => c.name === "VO THI LAN")).toBe(
-    true,
-  );
-  expect(contactStore.list(OWNER_B).some((c) => c.name === "VO THI LAN")).toBe(
-    false,
-  );
-
-  // Purge một owner không tạo lại dữ liệu demo và không ảnh hưởng owner khác.
-  const otherContact = {
-    accountNo: "99999180412",
-    name: "PHAM THU HA",
-    bank: ANOMALY_BANK,
-  };
-  contactStore.add(otherContact, OWNER_B);
-  contactStore.clear(OWNER_A);
-  expect(contactStore.list(OWNER_A).some((c) => c.name === "VO THI LAN")).toBe(
-    false,
-  );
-  expect(contactStore.list(OWNER_B).some((c) => c.name === "PHAM THU HA")).toBe(
-    true,
-  );
-  contactStore.clear();
-  expect(contactStore.list(OWNER_A).some((c) => c.name === "PHAM THU HA")).toBe(
-    false,
-  );
-  expect(contactStore.list(OWNER_B).some((c) => c.name === "PHAM THU HA")).toBe(
-    false,
-  );
 });

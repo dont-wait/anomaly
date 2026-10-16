@@ -1,4 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { BookmarkPlusIcon, ContactsIcon } from "@/shared/icons";
 import { PageHeader } from "@/shared/layout";
 import { BottomSheet, Button } from "@/shared/ui";
@@ -8,7 +14,11 @@ import {
   type Recipient,
   type SourceAccount,
 } from "@/features/transfer/model";
-import { contactStore } from "@/features/transfer/api/transfer";
+import {
+  addRecipientContact,
+  deleteRecipientContact,
+  listRecipientContacts,
+} from "@/features/transfer/api/transfer";
 import { useTransferFlow } from "@/features/transfer/useTransferFlow";
 import { suggestAmounts } from "@/features/transfer/utils/amountSuggestions";
 import { BankLogo } from "./components/BankLogo";
@@ -17,6 +27,7 @@ import { ContactsSheetContent } from "./components/ContactsSheetContent";
 import { FailureSheetContent } from "./components/FailureSheetContent";
 import { RecentRecipients } from "./components/RecentRecipients";
 import { SuccessScreen } from "./components/SuccessScreen";
+import { ApiError } from "@/shared/lib/http";
 const MAX_AMOUNT_DIGITS = 12;
 const numberFormat = new Intl.NumberFormat("vi-VN");
 
@@ -57,9 +68,34 @@ export function TransferFlow({
   const { lookup, amountError } = flow;
   const accountError = lookup.status === "error" ? lookup.message : "";
   const [contactsOpen, setContactsOpen] = useState(false);
-  const [contacts, setContacts] = useState(() =>
-    contactStore.list(source.accountNo),
-  );
+  const contactsSessionKey = `${token}:${source.accountNo}`;
+  const [contactsState, setContactsState] = useState<{
+    sessionKey: string;
+    items: Recipient[];
+    loading: boolean;
+    loaded: boolean;
+    error: string;
+  }>({
+    sessionKey: contactsSessionKey,
+    items: [],
+    loading: false,
+    loaded: false,
+    error: "",
+  });
+  const latestContactsSessionKey = useRef(contactsSessionKey);
+  useLayoutEffect(() => {
+    latestContactsSessionKey.current = contactsSessionKey;
+  }, [contactsSessionKey]);
+  const contactsRequestId = useRef(0);
+  const contactsRequestSessionKey = useRef<string | null>(null);
+  const contactsMutationVersion = useRef(0);
+  const [contactSaving, setContactSaving] = useState(false);
+  const contacts =
+    contactsState.sessionKey === contactsSessionKey ? contactsState.items : [];
+  const contactsLoading =
+    contactsState.sessionKey === contactsSessionKey && contactsState.loading;
+  const contactsError =
+    contactsState.sessionKey === contactsSessionKey ? contactsState.error : "";
   const isSaved =
     flow.recipient !== null &&
     contacts.some(
@@ -69,16 +105,178 @@ export function TransferFlow({
     );
   const amountSuggestions = suggestAmounts(flow.amount, flow.source.balance);
 
+  const loadContacts = (force = false) => {
+    if (
+      !force &&
+      contactsState.sessionKey === contactsSessionKey &&
+      (contactsState.loaded ||
+        contactsRequestSessionKey.current === contactsSessionKey)
+    ) {
+      return;
+    }
+    const requestSessionKey = contactsSessionKey;
+    const requestId = ++contactsRequestId.current;
+    const requestMutationVersion = contactsMutationVersion.current;
+    contactsRequestSessionKey.current = requestSessionKey;
+    setContactsState((current) => ({
+      sessionKey: requestSessionKey,
+      items: current.sessionKey === requestSessionKey ? current.items : [],
+      loading: true,
+      loaded: false,
+      error: "",
+    }));
+    void listRecipientContacts(token)
+      .then((items) => {
+        if (
+          latestContactsSessionKey.current !== requestSessionKey ||
+          contactsRequestId.current !== requestId ||
+          contactsMutationVersion.current !== requestMutationVersion
+        ) {
+          return;
+        }
+        contactsRequestSessionKey.current = null;
+        setContactsState({
+          sessionKey: requestSessionKey,
+          items,
+          loading: false,
+          loaded: true,
+          error: "",
+        });
+      })
+      .catch((error: unknown) => {
+        if (
+          latestContactsSessionKey.current !== requestSessionKey ||
+          contactsRequestId.current !== requestId ||
+          contactsMutationVersion.current !== requestMutationVersion
+        ) {
+          return;
+        }
+        contactsRequestSessionKey.current = null;
+        if (error instanceof ApiError && error.status === 401) {
+          setContactsState((current) =>
+            current.sessionKey === requestSessionKey
+              ? { ...current, loading: false }
+              : current,
+          );
+          onUnauthorized?.();
+          return;
+        }
+        setContactsState((current) => ({
+          ...(current.sessionKey === requestSessionKey
+            ? current
+            : {
+                sessionKey: requestSessionKey,
+                items: [],
+                loading: false,
+                loaded: false,
+              }),
+          loading: false,
+          error: "Không tải được danh bạ người nhận.",
+        }));
+      });
+  };
+
+  const retryContacts = () => {
+    loadContacts(true);
+  };
+
+  const openContacts = () => {
+    setContactsOpen(true);
+    loadContacts();
+  };
+
   const chooseContact = (contact: Recipient) => {
     flow.chooseRecipient(contact);
     setContactsOpen(false);
-    setContacts(contactStore.list(source.accountNo));
   };
 
-  const saveContact = () => {
+  const saveContact = async () => {
     if (!flow.recipient) return;
-    contactStore.add(flow.recipient, source.accountNo);
-    setContacts(contactStore.list(source.accountNo));
+    const requestSessionKey = contactsSessionKey;
+    const mutationVersion = ++contactsMutationVersion.current;
+    ++contactsRequestId.current;
+    contactsRequestSessionKey.current = null;
+    setContactSaving(true);
+    setContactsState((current) =>
+      current.sessionKey === requestSessionKey
+        ? { ...current, error: "" }
+        : current,
+    );
+    try {
+      await addRecipientContact(token, flow.recipient);
+      if (
+        latestContactsSessionKey.current === requestSessionKey &&
+        contactsMutationVersion.current === mutationVersion
+      ) {
+        loadContacts(true);
+      }
+    } catch (error: unknown) {
+      const isCurrent =
+        latestContactsSessionKey.current === requestSessionKey &&
+        contactsMutationVersion.current === mutationVersion;
+      if (!isCurrent) return;
+      if (error instanceof ApiError && error.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
+      setContactsState((current) => ({
+        ...(current.sessionKey === requestSessionKey
+          ? current
+          : {
+              sessionKey: requestSessionKey,
+              items: [],
+              loading: false,
+              loaded: false,
+            }),
+        error: "Không thể lưu người nhận. Vui lòng thử lại.",
+      }));
+    } finally {
+      if (
+        latestContactsSessionKey.current === requestSessionKey &&
+        contactsMutationVersion.current === mutationVersion
+      ) {
+        setContactSaving(false);
+      }
+    }
+  };
+
+  const removeContact = async (recipient: Recipient): Promise<boolean> => {
+    const requestSessionKey = contactsSessionKey;
+    const mutationVersion = ++contactsMutationVersion.current;
+    ++contactsRequestId.current;
+    contactsRequestSessionKey.current = null;
+    try {
+      await deleteRecipientContact(token, recipient);
+      if (
+        latestContactsSessionKey.current !== requestSessionKey ||
+        contactsMutationVersion.current !== mutationVersion
+      ) {
+        return false;
+      }
+      loadContacts(true);
+      return true;
+    } catch (error: unknown) {
+      const isCurrent =
+        latestContactsSessionKey.current === requestSessionKey &&
+        contactsMutationVersion.current === mutationVersion;
+      if (!isCurrent) return false;
+      if (error instanceof ApiError && error.status === 401) {
+        onUnauthorized?.();
+        return false;
+      }
+      setContactsState((current) => ({
+        ...(current.sessionKey === requestSessionKey
+          ? current
+          : {
+              sessionKey: requestSessionKey,
+              items: [],
+              loading: false,
+              loaded: false,
+            }),
+        error: "Không thể xoá người nhận. Vui lòng thử lại.",
+      }));
+      return false;
+    }
   };
 
   const onSubmit = (e: FormEvent) => {
@@ -177,7 +375,7 @@ export function TransferFlow({
                 />
                 <button
                   type="button"
-                  onClick={() => setContactsOpen(true)}
+                  onClick={openContacts}
                   aria-label="Mở danh bạ người nhận"
                   className="absolute top-1/2 right-1.5 mt-0.5 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
                 >
@@ -235,12 +433,18 @@ export function TransferFlow({
                   <button
                     type="button"
                     onClick={saveContact}
-                    className="mt-2 -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-semibold text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
+                    disabled={contactSaving}
+                    className="mt-2 -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-semibold text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none disabled:opacity-50"
                   >
                     <BookmarkPlusIcon aria-hidden="true" className="h-4 w-4" />
-                    Lưu vào danh bạ
+                    {contactSaving ? "Đang lưu..." : "Lưu vào danh bạ"}
                   </button>
                 ))}
+              {contactsError && (
+                <p role="alert" className="mt-2 text-sm font-medium text-error">
+                  {contactsError}
+                </p>
+              )}
             </div>
           </Card>
 
@@ -366,12 +570,15 @@ export function TransferFlow({
         title="Danh bạ người nhận"
         onClose={() => {
           setContactsOpen(false);
-          setContacts(contactStore.list(source.accountNo));
         }}
       >
         <ContactsSheetContent
-          ownerAccountNo={source.accountNo}
+          contacts={contacts}
+          loading={contactsLoading}
+          error={contactsError}
           onSelect={chooseContact}
+          onRemove={removeContact}
+          onRetry={retryContacts}
         />
       </BottomSheet>
     </>

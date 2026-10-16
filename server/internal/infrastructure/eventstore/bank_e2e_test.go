@@ -436,7 +436,7 @@ func restoreFeedValidator(
 		t,
 		ctx,
 		db,
-		"../../../migrations/000007_allow_loan_disbursement_feed.up.json",
+		"../../../migrations/000009_allow_loan_disbursement_feed.up.json",
 		"account_transaction_feed",
 	)
 }

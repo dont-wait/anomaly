@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"html/template"
+	"time"
 
 	otpdomain "github.com/dont-wait/anomaly/internal/domain/otp"
 )
@@ -19,12 +20,82 @@ const otpEmailSubject = "[AnomalyBank] Mã xác thực OTP / Your OTP code"
 type otpEmailData struct {
 	Code          string
 	ExpirySeconds int
+	HeaderVI      string
+	HeaderEN      string
+	TitleVI       string
+	IntroVI       string
+	TitleEN       string
+	IntroEN       string
+}
+
+// OTPEmailPurpose controls the copy rendered around the shared OTP email
+// layout. The visual design remains the same for every OTP use case.
+type OTPEmailPurpose string
+
+const (
+	OTPEmailAccount  OTPEmailPurpose = "account"
+	OTPEmailTransfer OTPEmailPurpose = "transfer"
+)
+
+type otpEmailCopy struct {
+	headerVI string
+	headerEN string
+	titleVI  string
+	introVI  string
+	titleEN  string
+	introEN  string
+}
+
+func otpEmailCopyFor(purpose OTPEmailPurpose) (otpEmailCopy, error) {
+	switch purpose {
+	case OTPEmailAccount:
+		return otpEmailCopy{
+			headerVI: "Xác thực tài khoản",
+			headerEN: "Account verification",
+			titleVI:  "Xác nhận tài khoản của bạn",
+			introVI:  "Đây là mã xác thực (OTP) của bạn:",
+			titleEN:  "Confirm your account",
+			introEN:  "Your one-time password (OTP) is:",
+		}, nil
+	case OTPEmailTransfer:
+		return otpEmailCopy{
+			headerVI: "Xác thực giao dịch",
+			headerEN: "Transaction verification",
+			titleVI:  "Xác nhận giao dịch chuyển tiền",
+			introVI:  "Đây là mã OTP để xác nhận giao dịch chuyển tiền của bạn:",
+			titleEN:  "Confirm your transfer",
+			introEN:  "Your one-time password (OTP) to confirm this transfer is:",
+		}, nil
+	default:
+		return otpEmailCopy{}, fmt.Errorf("unsupported OTP email purpose %q", purpose)
+	}
 }
 
 // renderOTPEmail render nội dung mail OTP song ngữ (VI + EN) từ code.
 // ExpirySeconds lấy từ TTL của domain để không lệch với Redis.
 func renderOTPEmail(code string) (subject, text, html string, err error) {
-	data := otpEmailData{Code: code, ExpirySeconds: int(otpdomain.TTL.Seconds())}
+	return RenderOTPEmail(code, otpdomain.TTL, OTPEmailAccount)
+}
+
+// RenderOTPEmail renders the shared bilingual OTP email layout with the
+// expiry and copy appropriate for the requested use case.
+func RenderOTPEmail(code string, expiry time.Duration, purpose OTPEmailPurpose) (subject, text, html string, err error) {
+	copy, err := otpEmailCopyFor(purpose)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	expirySeconds := int(expiry.Seconds())
+	data := otpEmailData{
+		Code:          code,
+		ExpirySeconds: expirySeconds,
+		HeaderVI:      copy.headerVI,
+		HeaderEN:      copy.headerEN,
+		TitleVI:       copy.titleVI,
+		IntroVI:       copy.introVI,
+		TitleEN:       copy.titleEN,
+		IntroEN:       copy.introEN,
+	}
 
 	var buf bytes.Buffer
 	if err := otpEmailTmpl.Execute(&buf, data); err != nil {
@@ -32,17 +103,17 @@ func renderOTPEmail(code string) (subject, text, html string, err error) {
 	}
 
 	text = fmt.Sprintf(`Xin chào,
-Đây là mã xác thực (OTP) AnomalyBank của bạn: %s
+%s %s
 Mã có hiệu lực trong %d giây. Vì lý do bảo mật, vui lòng không chia sẻ mã này với bất kỳ ai.
 
 ---
 Hello,
-Your AnomalyBank one-time password (OTP) is: %s
+%s %s
 This code expires in %d seconds. For your security, never share this code with anyone.
 
 Email tự động từ AnomalyBank, vui lòng không trả lời.
 This is an automated message from AnomalyBank. Please do not reply.`,
-		code, int(otpdomain.TTL.Seconds()), code, int(otpdomain.TTL.Seconds()))
+		data.IntroVI, code, expirySeconds, data.IntroEN, code, expirySeconds)
 
 	return otpEmailSubject, text, buf.String(), nil
 }

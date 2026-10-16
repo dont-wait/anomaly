@@ -33,7 +33,7 @@ readers remain active outside this Compose deployment.
 docker compose --profile app build anomaly-server anomaly-worker anomaly-loan-projector
 ```
 Before starting the updated services, run the database
-migrations and verify that migration 000007
+migrations and verify that migration 000009
 (allow_loan_disbursement_feed) has been applied.
 
 Do not enable loan disbursement until the migration

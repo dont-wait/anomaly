@@ -1,0 +1,37 @@
+[
+  {
+    "create": "receipt_outbox",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["_id", "to", "subject", "text", "html", "status", "attempts", "next_attempt_at", "created_at"],
+        "properties": {
+          "_id": { "bsonType": "string" },
+          "to": { "bsonType": "string", "minLength": 3 },
+          "subject": { "bsonType": "string", "minLength": 1 },
+          "text": { "bsonType": "string" },
+          "html": { "bsonType": "string" },
+          "status": { "enum": ["pending", "sending", "failed", "sent"] },
+          "attempts": { "bsonType": "int", "minimum": 0 },
+          "next_attempt_at": { "bsonType": "date" },
+          "locked_at": { "bsonType": "date" },
+          "lock_id": { "bsonType": "string" },
+          "last_error": { "bsonType": "string" },
+          "created_at": { "bsonType": "date" },
+          "sent_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "createIndexes": "receipt_outbox",
+    "indexes": [
+      {
+        "key": { "status": 1, "next_attempt_at": 1 },
+        "name": "idx_receipt_outbox_pending_retry"
+      }
+    ]
+  }
+]

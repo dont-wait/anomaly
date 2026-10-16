@@ -13,11 +13,15 @@ export const API_ENDPOINTS = {
   },
   TRANSFERS: {
     CREATE: "/api/transfers",
-    CONFIRM: (id: string) =>
-      `/api/transfers/${encodeURIComponent(id)}/confirm`,
+    CONFIRM: (id: string) => `/api/transfers/${encodeURIComponent(id)}/confirm`,
     RESEND_OTP: (id: string) =>
       `/api/transfers/${encodeURIComponent(id)}/otp/resend`,
     RECENT_RECIPIENTS: "/api/transfers/recent-recipients",
+  },
+  CONTACTS: {
+    RECIPIENTS: "/api/contacts/recipients",
+    DELETE_RECIPIENT: (bankCode: string, accountNo: string) =>
+      `/api/contacts/recipients/${encodeURIComponent(bankCode)}/${encodeURIComponent(accountNo)}`,
   },
   TRANSACTIONS: {
     LIST: "/api/transactions",

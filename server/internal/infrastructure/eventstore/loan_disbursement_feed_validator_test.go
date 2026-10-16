@@ -38,11 +38,11 @@ func TestLoanDisbursementFeedValidatorMigration(t *testing.T) {
 	)
 
 	up := read(
-		"000007_allow_loan_disbursement_feed.up.json",
+		"000009_allow_loan_disbursement_feed.up.json",
 	)
 
 	down := read(
-		"000007_allow_loan_disbursement_feed.down.json",
+		"000009_allow_loan_disbursement_feed.down.json",
 	)
 
 	// DOWN phải khôi phục đúng validator cũ.
