@@ -45,6 +45,8 @@ func TestNewRouterSwaggerRoutesAreConditional(t *testing.T) {
 			"/api/transfers/{transferId}/confirm",
 			"/api/transfers/{transferId}/otp/resend",
 			"/api/transfers/recent-recipients",
+			"/api/contacts/recipients",
+			"/api/contacts/recipients/{bankCode}/{accountNo}",
 			"/api/transactions",
 			"/api/transactions/summary",
 			"/api/transactions/{id}",
