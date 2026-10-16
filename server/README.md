@@ -183,6 +183,47 @@ Dashboard lấy profile bằng `GET /api/auth/me` sau khi login.
 go run ./cmd/projector
 ```
 
+### 5. Chạy Kafka producer và consumer
+
+Relay trong server đọc EventStoreDB và publish event vào Kafka. Chạy relay local:
+
+```bash
+make start-relay
+```
+
+Hoặc chạy relay cùng Docker Compose:
+
+```bash
+docker compose up -d kafka eventstore anomaly-relay
+docker compose logs -f anomaly-relay
+```
+
+Consumer mock của model pipeline nằm ngoài `server/` tại thư mục `../consumer-mock` và chạy
+riêng bằng:
+
+```bash
+cd ../consumer-mock
+go run .
+```
+
+Để gửi thử một message từ Kafka CLI:
+
+```bash
+docker compose exec kafka \
+  /opt/kafka/bin/kafka-console-producer.sh \
+  --bootstrap-server kafka:29092 \
+  --topic anomaly.bank.events.v1
+```
+
+Sau đó nhập một JSON bất kỳ, ví dụ:
+
+```json
+{"event_id":"test-1","event_type":"TestEvent","payload":{"message":"hello"}}
+```
+
+Consumer commit offset sau khi log thành công. Relay ACK EventStoreDB chỉ sau
+khi Kafka publish thành công.
+
 ### MongoDB migrations
 
 Runner đọc `migrations/` từ thư mục làm việc hiện tại; chạy các lệnh dưới đây

@@ -8,14 +8,15 @@
 - `cmd/projector`: dựng account, KYC, balance, ledger và feed từ stream banking
 - `cmd/worker`: legacy account projector, không thuộc write path hiện tại
 - `cmd/import-bank`: cutover offline vào banking stream trống
+- `cmd/relay`: persistent subscription từ EventStoreDB và Kafka producer
 
-`cmd/relay` hiện chưa có implementation hoàn chỉnh.
+`consumer-mock/` là Kafka consumer giả lập độc lập cho model pipeline, chạy ngoài `server/`.
 
 ## Layers
 
 - `internal/domain`: cấu hình dùng chung và domain model
 - `internal/application`: use case cho account, tách command và query
-- `internal/infrastructure`: adapter cho MongoDB, KurrentDB, RustFS
+- `internal/infrastructure`: adapter cho MongoDB, KurrentDB, Kafka và RustFS
 - `internal/presentation/http`: router, handler, middleware, helper trả response HTTP
 - `internal/composition`: wiring dependency để tạo handler
 
@@ -38,13 +39,21 @@
 4. Ghi projection cùng checkpoint trong một Mongo transaction
 5. Retry/replay không ghi nhận debit hai lần
 
+### Kafka relay
+
+1. `cmd/relay` tạo persistent subscription `kafka-publisher` trên stream `banking`
+2. Đọc event từ EventStoreDB và tạo envelope versioned
+3. Publish envelope vào Kafka topic `anomaly.bank.events.v1`
+4. ACK EventStoreDB sau khi Kafka xác nhận thành công
+5. NACK retry khi Kafka lỗi; payload loại bỏ các field nhạy cảm như password
+
 ## Storage Responsibilities
 
 - EventStoreDB: source of truth cho account, KYC, số dư và transaction
 - MongoDB: projection có thể rebuild cho account, KYC, ledger, feed và checkpoint
 - RustFS: binary/media object storage
 - Redis: OTP cho auth và transfer
-- Kafka: có trong local infra, chưa tham gia luồng transfer này
+- Kafka: event bus cho model pipeline và các consumer downstream
 
 ## HTTP Surface
 
