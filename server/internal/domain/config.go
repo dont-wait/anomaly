@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,6 +63,7 @@ func (l *Loader) logger() *zerolog.Logger {
 type Config struct {
 	MongoConfig      *MongoConfig
 	EventStoreConfig *EventStoreConfig
+	KafkaConfig      *KafkaConfig
 	AuthConfig       *AuthConfig
 	RustFSConfig     *RustFSConfig
 	RedisConfig      *RedisConfig
@@ -74,6 +76,7 @@ func (l *Loader) LoadAllConfig() *Config {
 	return &Config{
 		MongoConfig:      l.LoadMongoConfig(),
 		EventStoreConfig: l.LoadEventStoreConfig(),
+		KafkaConfig:      l.LoadKafkaConfig(),
 		AuthConfig:       l.LoadAuthConfig(),
 		RustFSConfig:     l.LoadRustFSConfig(),
 		RedisConfig:      l.LoadRedisConfig(),
@@ -125,6 +128,34 @@ func (l *Loader) LoadEventStoreConfig() *EventStoreConfig {
 	return &EventStoreConfig{
 		EventStoreConnString: l.LoadEnvOr("EVENT_STORE_CONN_STRING", "esdb://localhost:2113?tls=false"),
 	}
+}
+
+type KafkaConfig struct {
+	Brokers                []string
+	Topic                  string
+	ProducerID             string
+	EventStoreSubscription string
+}
+
+func (l *Loader) LoadKafkaConfig() *KafkaConfig {
+	l.logger().Info().Msg("Load kafka config")
+	return &KafkaConfig{
+		Brokers:                splitCSV(l.LoadEnvOr("KAFKA_BROKERS", "localhost:9092")),
+		Topic:                  l.LoadEnvOr("KAFKA_TOPIC", "anomaly.bank.events.v1"),
+		ProducerID:             l.LoadEnvOr("KAFKA_PRODUCER_ID", "anomaly-server"),
+		EventStoreSubscription: l.LoadEnvOr("KAFKA_EVENTSTORE_SUBSCRIPTION", "kafka-publisher"),
+	}
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
 }
 
 // gom dữ liệu

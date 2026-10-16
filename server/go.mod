@@ -12,11 +12,12 @@ require (
 	github.com/kurrent-io/KurrentDB-Client-Go v1.4.1
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/rs/zerolog v1.35.1
+	github.com/segmentio/kafka-go v0.4.49
 	github.com/swaggest/swgui v1.8.9
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.43.0
-	golang.org/x/text v0.37.0
 	go.mongodb.org/mongo-driver/v2 v2.8.0
+	golang.org/x/text v0.37.0
 )
 
 require (
@@ -63,6 +64,7 @@ require (
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
+	github.com/pierrec/lz4/v4 v4.1.16 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.5 // indirect

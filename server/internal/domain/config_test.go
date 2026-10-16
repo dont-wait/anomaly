@@ -147,6 +147,42 @@ func TestLoaderLoadMongoConfigUsesEnvOverrides(t *testing.T) {
 	}
 }
 
+func TestLoaderLoadKafkaConfigUsesDefaults(t *testing.T) {
+	t.Setenv("KAFKA_BROKERS", "")
+	t.Setenv("KAFKA_TOPIC", "")
+	t.Setenv("KAFKA_PRODUCER_ID", "")
+	t.Setenv("KAFKA_EVENTSTORE_SUBSCRIPTION", "")
+
+	got := (&Loader{log: testLogger()}).LoadKafkaConfig()
+	if len(got.Brokers) != 1 || got.Brokers[0] != "localhost:9092" {
+		t.Fatalf("Brokers = %#v, want localhost:9092", got.Brokers)
+	}
+	if got.Topic != "anomaly.bank.events.v1" {
+		t.Fatalf("Topic = %q, want anomaly.bank.events.v1", got.Topic)
+	}
+	if got.ProducerID != "anomaly-server" {
+		t.Fatalf("ProducerID = %q, want anomaly-server", got.ProducerID)
+	}
+	if got.EventStoreSubscription != "kafka-publisher" {
+		t.Fatalf("EventStoreSubscription = %q, want kafka-publisher", got.EventStoreSubscription)
+	}
+}
+
+func TestLoaderLoadKafkaConfigUsesEnvironment(t *testing.T) {
+	t.Setenv("KAFKA_BROKERS", "kafka-a:9092, kafka-b:9092")
+	t.Setenv("KAFKA_TOPIC", "events.v1")
+	t.Setenv("KAFKA_PRODUCER_ID", "server-producer")
+	t.Setenv("KAFKA_EVENTSTORE_SUBSCRIPTION", "publisher-group")
+
+	got := (&Loader{log: testLogger()}).LoadKafkaConfig()
+	if len(got.Brokers) != 2 || got.Brokers[0] != "kafka-a:9092" || got.Brokers[1] != "kafka-b:9092" {
+		t.Fatalf("Brokers = %#v, want two trimmed brokers", got.Brokers)
+	}
+	if got.Topic != "events.v1" || got.ProducerID != "server-producer" || got.EventStoreSubscription != "publisher-group" {
+		t.Fatalf("Kafka config = %#v, want environment values", got)
+	}
+}
+
 func TestLoaderLoadEnvReturnsValue(t *testing.T) {
 	t.Setenv("APP_ENV", "dev")
 
