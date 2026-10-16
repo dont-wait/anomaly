@@ -71,6 +71,28 @@ services:
     networks:
       - anomaly-network
 
+  anomaly-relay:
+    container_name: anomaly-relay
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/relay"]
+    environment:
+      EVENT_STORE_CONN_STRING: esdb://eventstore:2113?tls=false
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-anomaly.bank.events.v1}
+      KAFKA_PRODUCER_ID: ${KAFKA_PRODUCER_ID:-anomaly-server}
+      KAFKA_EVENTSTORE_SUBSCRIPTION: ${KAFKA_EVENTSTORE_SUBSCRIPTION:-kafka-publisher}
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
+      eventstore:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - anomaly-network
+
   anomaly-migrate:
     build:
       context: .
@@ -260,7 +282,7 @@ services:
       - app
     depends_on:
       rustfs:
-        condition: service_started
+        condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
