@@ -3,6 +3,7 @@ package otp
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRenderOTPEmailBilingualAndBranded(t *testing.T) {
@@ -45,5 +46,33 @@ func TestRenderOTPEmailBilingualAndBranded(t *testing.T) {
 		if !strings.Contains(text, s) {
 			t.Fatalf("text missing %q", s)
 		}
+	}
+}
+
+func TestRenderTransferOTPEmailUsesSharedLayoutAndTransferCopy(t *testing.T) {
+	subject, text, html, err := RenderOTPEmail("731204", 5*time.Minute, OTPEmailTransfer)
+	if err != nil {
+		t.Fatalf("RenderOTPEmail() error = %v", err)
+	}
+
+	if subject != otpEmailSubject {
+		t.Fatalf("subject = %q, want %q", subject, otpEmailSubject)
+	}
+	for _, s := range []string{
+		"Xác nhận giao dịch chuyển tiền",
+		"Confirm your transfer",
+		"300 giây",
+		"300 seconds",
+		"731204",
+	} {
+		if !strings.Contains(html, s) && !strings.Contains(text, s) {
+			t.Fatalf("rendered email missing %q", s)
+		}
+	}
+	if strings.Contains(html, "Xác nhận tài khoản của bạn") || strings.Contains(html, "Confirm your account") {
+		t.Fatal("transfer email contains account verification copy")
+	}
+	if strings.Contains(html, "{{") {
+		t.Fatal("HTML contains unrendered template action")
 	}
 }

@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "@/shared/constants";
 
-export type HttpMethod = "GET" | "POST";
+export type HttpMethod = "DELETE" | "GET" | "POST";
 
 export interface RequestJsonOptions {
   method?: HttpMethod;

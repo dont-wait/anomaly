@@ -65,7 +65,7 @@ func TestListMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 6 || entries[0].name != "create_customers" || entries[3].name != "add_account_role" || entries[4].name != "create_transaction_collections" || entries[5].version != 6 || entries[5].name != "transaction_event_pipeline" {
+	if len(entries) != 8 || entries[0].name != "create_customers" || entries[3].name != "add_account_role" || entries[4].name != "create_transaction_collections" || entries[5].version != 6 || entries[5].name != "transaction_event_pipeline" || entries[6].version != 7 || entries[6].name != "create_recipient_contacts" || entries[7].version != 8 || entries[7].name != "create_receipt_outbox" {
 		t.Fatalf("unexpected migrations: %+v", entries)
 	}
 }

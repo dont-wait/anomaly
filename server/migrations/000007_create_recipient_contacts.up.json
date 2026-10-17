@@ -1,0 +1,35 @@
+[
+  {
+    "create": "recipient_contacts",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["owner_account_id", "recipient_account_no", "recipient_name", "bank_code", "created_at", "updated_at"],
+        "properties": {
+          "owner_account_id": { "bsonType": "objectId" },
+          "recipient_account_no": { "bsonType": "string", "pattern": "^[0-9]{6,19}$" },
+          "recipient_name": { "bsonType": "string", "minLength": 1 },
+          "bank_code": { "bsonType": "string", "minLength": 1 },
+          "created_at": { "bsonType": "date" },
+          "updated_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "createIndexes": "recipient_contacts",
+    "indexes": [
+      {
+        "key": { "owner_account_id": 1, "bank_code": 1, "recipient_account_no": 1 },
+        "name": "uniq_recipient_contact_owner_target",
+        "unique": true
+      },
+      {
+        "key": { "owner_account_id": 1, "recipient_name": 1 },
+        "name": "idx_recipient_contact_owner_name"
+      }
+    ]
+  }
+]
