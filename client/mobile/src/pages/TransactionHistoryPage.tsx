@@ -8,9 +8,14 @@ import {
   type TransactionSummary,
 } from "@/features/transactions/api";
 import type {
+  TransactionDateRange,
   TransactionFilter,
   TransactionRecord,
 } from "@/features/transactions/model";
+import {
+  allowedTransactionDateRange,
+  currentMonthRange,
+} from "@/features/transactions/utils/dateRange";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
 import { PageHeader } from "@/shared/layout";
 import { ApiError } from "@/shared/lib/http";
@@ -23,6 +28,9 @@ const TransactionHistoryPage = () => {
   const [records, setRecords] = useState<TransactionRecord[]>([]);
   const [summary, setSummary] = useState<TransactionSummary | null>(null);
   const [filter, setFilter] = useState<TransactionFilter>("all");
+  const [dateRange, setDateRange] = useState<TransactionDateRange>(() =>
+    currentMonthRange(),
+  );
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -31,6 +39,8 @@ const TransactionHistoryPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const loadMoreController = useRef<AbortController | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const dateBounds = allowedTransactionDateRange();
 
   useEffect(() => {
     const timer = setTimeout(
@@ -48,16 +58,17 @@ const TransactionHistoryPage = () => {
     void Promise.resolve().then(() => {
       if (controller.signal.aborted) return;
       setLoadingMore(false);
-      setNextCursor(null);
       setLoading(true);
       setError(null);
     });
     void listTransactions(token, {
       direction: filter,
       query: debouncedQuery,
+      dateRange,
       signal: controller.signal,
     })
       .then((page) => {
+        setHasLoaded(true);
         setRecords(page.items);
         setNextCursor(page.nextCursor);
       })
@@ -84,13 +95,13 @@ const TransactionHistoryPage = () => {
       controller.abort();
       loadMoreController.current?.abort();
     };
-  }, [token, filter, debouncedQuery, reloadKey, logout]);
+  }, [token, filter, debouncedQuery, dateRange, reloadKey, logout]);
 
   useEffect(() => {
     if (!token) return;
     const controller = new AbortController();
 
-    void getTransactionSummary(token, new Date(), { signal: controller.signal })
+    void getTransactionSummary(token, dateRange, { signal: controller.signal })
       .then(setSummary)
       .catch((requestError: unknown) => {
         if (controller.signal.aborted) return;
@@ -104,12 +115,12 @@ const TransactionHistoryPage = () => {
         setError(
           requestError instanceof Error
             ? requestError.message
-            : "Không thể tải tổng quan tháng.",
+            : "Không thể tải tổng quan khoảng ngày.",
         );
       });
 
     return () => controller.abort();
-  }, [token, reloadKey, logout]);
+  }, [token, dateRange, reloadKey, logout]);
 
   const loadMore = async () => {
     if (!token || !nextCursor || loadingMore) return;
@@ -121,6 +132,7 @@ const TransactionHistoryPage = () => {
       const page = await listTransactions(token, {
         direction: filter,
         query: debouncedQuery,
+        dateRange,
         cursor: nextCursor,
         signal: controller.signal,
       });
@@ -146,7 +158,7 @@ const TransactionHistoryPage = () => {
   };
 
   const retry = () => setReloadKey((key) => key + 1);
-  const initialLoading = loading && records.length === 0;
+  const initialLoading = loading && !hasLoaded;
 
   return (
     <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-linear-to-b from-secondary-container/40 to-surface-container-lowest">
@@ -197,18 +209,22 @@ const TransactionHistoryPage = () => {
             )}
             <TransactionHistory
               records={records}
-              monthlySummary={summary}
+              summary={summary}
               filter={filter}
               onFilterChange={setFilter}
               query={query}
               onQueryChange={setQuery}
+              dateRange={dateRange}
+              minDate={dateBounds.from}
+              maxDate={dateBounds.to}
+              onDateRangeChange={setDateRange}
               onSelect={(record) => navigate(transactionDetailRoute(record.id))}
             />
             {nextCursor && (
               <Button
                 variant="secondary"
                 className="w-full"
-                disabled={loadingMore}
+                disabled={loadingMore || loading}
                 onClick={() => void loadMore()}
               >
                 {loadingMore ? "Đang tải thêm..." : "Tải thêm giao dịch"}

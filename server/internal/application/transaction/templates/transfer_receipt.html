@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <title>Biên lai giao dịch · AnomalyBank</title>
+</head>
+<body style="margin:0;padding:0;background-color:#faf8ff;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Giao dịch AnomalyBank đã thành công · Your AnomalyBank transfer was completed</div>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#faf8ff;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background-color:#ffffff;border:1px solid #c5c5d3;border-radius:16px;overflow:hidden;">
+          <tr>
+            <td align="center" style="background-color:#8b5cf6;background-image:linear-gradient(135deg,#b582b5 0%,#8b5cf6 100%);padding:32px 24px;">
+              <div style="font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:26px;font-weight:800;letter-spacing:0.5px;color:#ffffff;">AnomalyBank</div>
+              <div style="font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;color:#ffffff;opacity:0.85;margin-top:6px;">Biên lai giao dịch · Transfer receipt</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 32px 8px 32px;font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+              <div style="display:inline-block;background-color:#d7f8df;border-radius:999px;padding:7px 14px;color:#14652c;font-size:13px;font-weight:700;">✓ Giao dịch thành công · Transfer successful</div>
+              <h1 style="margin:18px 0 8px 0;font-size:22px;font-weight:700;color:#00236f;">Biên lai chuyển tiền</h1>
+              <p style="margin:0 0 20px 0;font-size:15px;line-height:1.6;color:#444651;">Xin chào {{.SenderName}},<br />Giao dịch chuyển tiền của bạn đã được thực hiện thành công.</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f2f3ff;border-radius:12px;padding:4px 16px;">
+                <tr><td style="padding:10px 0;font-size:13px;color:#757682;">Mã tham chiếu · Reference</td><td align="right" style="padding:10px 0;font-size:13px;font-weight:700;color:#00236f;word-break:break-all;">{{.Reference}}</td></tr>
+                <tr><td style="padding:10px 0;border-top:1px solid #dfe0ed;font-size:13px;color:#757682;">Thời gian · Time</td><td align="right" style="padding:10px 0;border-top:1px solid #dfe0ed;font-size:13px;color:#444651;">{{.PostedAt}}</td></tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 32px 8px 32px;font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+              <h2 style="margin:0 0 12px 0;font-size:17px;font-weight:700;color:#00236f;">Chi tiết giao dịch · Transfer details</h2>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size:14px;line-height:1.5;color:#444651;">
+                <tr><td style="padding:7px 0;color:#757682;">Tài khoản chuyển · Sender account</td><td align="right" style="padding:7px 0;">{{.SenderAccount}}</td></tr>
+                <tr><td style="padding:7px 0;color:#757682;">Người nhận · Recipient</td><td align="right" style="padding:7px 0;font-weight:600;">{{.RecipientName}}</td></tr>
+                <tr><td style="padding:7px 0;color:#757682;">Tài khoản · Account</td><td align="right" style="padding:7px 0;">{{.RecipientAccount}}</td></tr>
+                <tr><td style="padding:7px 0;color:#757682;">Ngân hàng · Bank</td><td align="right" style="padding:7px 0;">{{.RecipientBank}}</td></tr>
+                <tr><td style="padding:7px 0;color:#757682;">Số tiền · Amount</td><td align="right" style="padding:7px 0;font-weight:700;color:#00236f;">{{.Amount}}</td></tr>
+                <tr><td style="padding:7px 0;color:#757682;">Phí · Fee</td><td align="right" style="padding:7px 0;">{{.Fee}}</td></tr>
+                <tr><td style="padding:10px 0;border-top:1px solid #c5c5d3;color:#00236f;font-weight:700;">Tổng cộng · Total</td><td align="right" style="padding:10px 0;border-top:1px solid #c5c5d3;color:#00236f;font-weight:700;">{{.Total}}</td></tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 32px;font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f7f7fb;border-radius:10px;padding:4px 14px;font-size:13px;line-height:1.5;color:#444651;">
+                <tr><td style="padding:8px 0;color:#757682;">Nội dung · Note</td><td align="right" style="padding:8px 0;">{{if .Note}}{{.Note}}{{else}}—{{end}}</td></tr>
+                <tr><td style="padding:8px 0;color:#757682;">Xác thực · Authentication</td><td align="right" style="padding:8px 0;">{{.AuthMethod}}</td></tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 32px 32px 32px;font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;line-height:1.6;color:#757682;text-align:center;">
+              Vui lòng lưu lại email này để đối chiếu khi cần.<br />Please keep this email for your records.<br /><br />
+              Email này được gửi tự động từ AnomalyBank, vui lòng không trả lời.<br />
+              This is an automated message from AnomalyBank. Please do not reply.<br />
+              © 2026 AnomalyBank
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

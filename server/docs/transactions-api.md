@@ -6,7 +6,7 @@ nhập JWT từ login. Base URL local mặc định: `http://localhost:8080`.
 
 ## Auth và cách đọc response
 
-Tất cả 8 endpoint dưới đây cần `Authorization: Bearer <accessToken>`.
+Tất cả 11 endpoint dưới đây cần `Authorization: Bearer <accessToken>`.
 `POST /api/transfers` còn yêu cầu JWT có `isVerify=true`; sau KYC cần lấy token
 được cập nhật theo luồng auth của ứng dụng. Source account luôn lấy từ JWT, không
 truyền account người gửi trong body.
@@ -45,8 +45,11 @@ nguyên VND, không gửi chuỗi, số thập phân hoặc giá trị đã form
 | `POST /api/transfers/{transferId}/confirm` | Body `{"otp":"123456"}` | 200: `TransactionRecord` |
 | `POST /api/transfers/{transferId}/otp/resend` | Không cần body | 200: `OTPInfo` |
 | `GET /api/transfers/recent-recipients` | `limit`: mặc định 4, tối đa 10 | 200: `{items:[{accountNo,name,bankCode,lastTransferredAt}]}` |
+| `GET /api/contacts/recipients` | Query `q` và `limit` tùy chọn; `limit` mặc định 50, tối đa 100 | 200: `{items:[{accountNo,name,bankCode}]}` |
+| `POST /api/contacts/recipients` | Body `{"accountNo":"12345678901234","bankCode":"ANOMALY"}` | 201/200: `{accountNo,name,bankCode}` |
+| `DELETE /api/contacts/recipients/{bankCode}/{accountNo}` | Không cần body | 204 |
 | `GET /api/transactions` | Filters/cursor bên dưới | 200: `{items:TransactionRecord[],nextCursor:string\|null}` |
-| `GET /api/transactions/summary` | `month=YYYY-MM` bắt buộc | 200: `{month,totalIn,totalOut}` |
+| `GET /api/transactions/summary` | `from` + `to` RFC3339, hoặc `month=YYYY-MM` legacy | 200: `{from,to,totalIn,totalOut}` hoặc `{month,totalIn,totalOut}` |
 | `GET /api/transactions/{id}` | `id` là UUID giao dịch (`transferId`) | 200: `TransactionRecord` |
 
 Hiện chỉ chuyển nội bộ `ANOMALY`. Số tài khoản gồm 6–19 chữ số, không cho chuyển
@@ -147,7 +150,7 @@ lần tạo trước đó đủ tiền.
 ### History, phân trang và summary
 
 ```http
-GET /api/transactions?direction=out&limit=20&q=chuyen&from=2026-10-01T00%3A00%3A00%2B07%3A00&to=2026-10-31T23%3A59%3A59%2B07%3A00
+GET /api/transactions?direction=out&limit=20&q=chuyen&from=2026-10-01T00%3A00%3A00%2B07%3A00&to=2026-10-31T23%3A59%3A59.999999999%2B07%3A00
 ```
 
 Dùng `URLSearchParams` để encode query, nhất là dấu `+` của timezone.
@@ -156,22 +159,51 @@ Dùng `URLSearchParams` để encode query, nhất là dấu `+` của timezone.
 |---|---|
 | `direction` | `all` (mặc định), `in`, `out` |
 | `q` | Tìm tên/STK đối tác, note, reference, amount; không phân biệt hoa/thường/dấu |
-| `from`, `to` | RFC3339, biên bao gồm cả hai đầu; tùy chọn |
+| `from`, `to` | RFC3339, biên bao gồm cả hai đầu; tùy chọn cùng nhau; nếu gửi thì chỉ trong ba tháng gần nhất |
 | `limit` | Mặc định 20, tối đa 50; giá trị không hợp lệ dùng mặc định |
 | `cursor` | Chuỗi opaque từ `nextCursor`, không tự decode hoặc dựng |
 
 Danh sách sắp mới nhất trước. Giữ nguyên filters khi lấy trang kế tiếp; đổi
 filters thì bỏ cursor và tải từ đầu. `nextCursor=null` là hết trang.
 
-Summary bắt buộc `month=2026-10`, tính tháng theo UTC+07:00, chỉ cộng amount của
-giao dịch thành công; `totalOut` chưa bao gồm fee. Đây là tổng tháng, không phải
-tổng của trang hoặc filters history hiện tại. Recent recipients khử trùng người
-nhận từ tối đa 100 dòng outgoing thành công gần nhất.
+Summary nhận cùng `from`/`to` với history và tính biên theo UTC+07:00. Có thể
+dùng `month=2026-10` cho client cũ. Chỉ cộng amount của giao dịch thành công;
+`totalOut` chưa bao gồm fee. Đây là tổng của toàn bộ khoảng ngày, không phải tổng
+của trang hiện tại. Recent recipients khử trùng người nhận từ tối đa 100 dòng
+outgoing thành công gần nhất.
 
 History, summary và recent recipients đọc Mongo projection nên có thể cập nhật
 chậm hơn confirm. Confirm/detail đọc canonical state: FE giữ record confirm để
 hiển thị ngay và refresh history sau đó; không coi việc record chưa có trong
-history là confirm thất bại.
+history là confirm thất bại. Sau khi confirm thành công, biên lai được ghi vào
+outbox `receipt_outbox` theo `transferId`; worker gửi email bất đồng bộ và retry
+theo exponential backoff khi SMTP tạm thời lỗi.
+
+### Danh bạ người nhận
+
+Danh bạ được lưu theo tài khoản nguồn của người dùng trên MongoDB, đồng bộ giữa
+các thiết bị. Backend tự lookup tên người nhận từ số tài khoản; frontend không
+được tự gửi tên. Chỉ tài khoản AnomalyBank đang hoạt động mới được lưu, không
+cho lưu chính tài khoản nguồn. Lưu trùng là idempotent.
+
+```http
+GET /api/contacts/recipients?q=nguyen&limit=50
+Authorization: Bearer <accessToken>
+```
+
+```http
+POST /api/contacts/recipients
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{"accountNo":"12345678901234","bankCode":"ANOMALY"}
+```
+
+Danh bạ được cô lập theo tài khoản đăng nhập; không truyền `ownerAccountNo` từ
+client. `limit` mặc định là 50 và bị giới hạn tối đa 100 để tránh tải toàn bộ
+danh bạ không giới hạn về mobile. Migration `000007_create_recipient_contacts` tạo collection, validator
+và unique index chống trùng người nhận. Migration `000008_create_receipt_outbox`
+tạo outbox biên lai và index phục vụ retry.
 
 ## Mã lỗi cần đồng bộ UI
 
@@ -197,8 +229,8 @@ history là confirm thất bại.
 ## Trạng thái tích hợp FE
 
 `client/mobile/src/features/transactions/api.ts` có adapter cho list/detail/summary.
-`client/mobile/src/features/transfer/api/transfer.ts` hiện vẫn mock lookup và
-submitTransfer; cần nối lookup/create/confirm/resend/recent-recipients theo contract
-này. Dùng `requestJson` cho direct JSON; `requestSuccess` dành cho API có wrapper.
+`client/mobile/src/features/transfer/api/transfer.ts` có adapter cho
+lookup/create/confirm/resend/recent-recipients và contacts theo contract này.
+Dùng `requestJson` cho direct JSON; `requestSuccess` dành cho API có wrapper.
 Lỗi transfer nằm ở `ApiError.body.code`, không nằm trong `ApiError.errors`;
 adapter giữ tên field API, chuyển date và ánh xạ `bank ?? bankCode` sang tên ngân hàng hiển thị.

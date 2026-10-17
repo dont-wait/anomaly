@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -141,6 +142,42 @@ func TestTransferOTPIssueAndConsumeResetAllState(t *testing.T) {
 type transferOTPTestMailSender struct{}
 
 func (transferOTPTestMailSender) Send(context.Context, maildomain.MailMessage) error { return nil }
+
+type capturingTransferOTPTestMailSender struct {
+	message maildomain.MailMessage
+}
+
+func (s *capturingTransferOTPTestMailSender) Send(_ context.Context, message maildomain.MailMessage) error {
+	s.message = message
+	return nil
+}
+
+func TestTransferOTPIssueUsesSharedOTPEmailTemplate(t *testing.T) {
+	store, _ := newTransferOTPTestStore(t)
+	sender := &capturingTransferOTPTestMailSender{}
+	store.mail = sender
+
+	if _, err := store.Issue(context.Background(), "email-template", "person@example.com"); err != nil {
+		t.Fatal(err)
+	}
+
+	if sender.message.Subject != "[AnomalyBank] Mã xác thực OTP / Your OTP code" {
+		t.Fatalf("subject = %q, want shared OTP subject", sender.message.Subject)
+	}
+	for _, value := range []string{
+		"Xác nhận giao dịch chuyển tiền",
+		"Confirm your transfer",
+		"300 giây",
+		"300 seconds",
+	} {
+		if !strings.Contains(sender.message.HTML, value) && !strings.Contains(sender.message.Text, value) {
+			t.Fatalf("transfer email missing %q", value)
+		}
+	}
+	if strings.Contains(sender.message.HTML, "<p>Mã OTP xác nhận chuyển tiền") {
+		t.Fatal("transfer email still uses the old inline HTML")
+	}
+}
 
 func TestTransferOTPVerifyMissingChallengeIsExpired(t *testing.T) {
 	store, _ := newTransferOTPTestStore(t)

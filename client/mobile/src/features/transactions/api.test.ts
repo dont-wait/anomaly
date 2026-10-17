@@ -33,6 +33,7 @@ it("requests server-side filters and maps transaction dates", async () => {
     query: "  tiền ăn  ",
     cursor: "opaque-cursor",
     limit: 10,
+    dateRange: { from: "2026-08-01", to: "2026-08-31" },
   });
 
   const requestUrl = new URL(String(fetchMock.mock.calls[0][0]));
@@ -42,6 +43,8 @@ it("requests server-side filters and maps transaction dates", async () => {
     limit: "10",
     q: "tiền ăn",
     cursor: "opaque-cursor",
+    from: "2026-08-01T00:00:00+07:00",
+    to: "2026-08-31T23:59:59.999999999+07:00",
   });
   expect(fetchMock.mock.calls[0][1]).toMatchObject({
     headers: { Authorization: "Bearer access-token" },
@@ -51,13 +54,14 @@ it("requests server-side filters and maps transaction dates", async () => {
   expect(page.items[0].counterparty.bank).toBe("ANOMALY");
 });
 
-it("requests a complete monthly summary independently of the transaction page", async () => {
+it("requests a complete date-range summary independently of the transaction page", async () => {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
     status: 200,
     text: async () =>
       JSON.stringify({
-        month: "2026-09",
+        from: "2026-08-01T00:00:00+07:00",
+        to: "2026-08-31T23:59:59.999999999+07:00",
         totalIn: 5_000_000,
         totalOut: 700_000,
       }),
@@ -66,11 +70,16 @@ it("requests a complete monthly summary independently of the transaction page", 
 
   const summary = await getTransactionSummary(
     "access-token",
-    new Date("2026-08-31T18:00:00Z"),
+    { from: "2026-08-01", to: "2026-08-31" },
   );
 
   const requestUrl = new URL(String(fetchMock.mock.calls[0][0]));
   expect(requestUrl.pathname).toBe("/api/transactions/summary");
-  expect(requestUrl.searchParams.get("month")).toBe("2026-09");
+  expect(requestUrl.searchParams.get("from")).toBe(
+    "2026-08-01T00:00:00+07:00",
+  );
+  expect(requestUrl.searchParams.get("to")).toBe(
+    "2026-08-31T23:59:59.999999999+07:00",
+  );
   expect(summary.totalIn).toBe(5_000_000);
 });

@@ -14,7 +14,7 @@ import type { TransactionRecord } from "@/features/transactions/model";
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
   <div className="flex items-start justify-between gap-4 py-3">
     <dt className="shrink-0 text-sm text-on-surface-variant">{label}</dt>
-    <dd className="min-w-0 text-right text-sm font-medium break-words text-on-surface">
+    <dd className="min-w-0 max-w-full text-right text-sm font-medium break-words text-on-surface">
       {children}
     </dd>
   </div>
@@ -74,10 +74,10 @@ export const TransactionReceipt = ({
             type="button"
             onClick={copyReference}
             aria-label={`Sao chép mã giao dịch ${record.reference}`}
-            className="-my-1 inline-flex min-h-8 items-center gap-1.5 rounded-full px-2 font-mono text-secondary-strong hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
+            className="-my-1 flex min-h-8 w-full max-w-full min-w-0 items-start justify-end gap-1.5 rounded-full px-2 text-right font-mono break-all whitespace-normal text-secondary-strong hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
           >
-            {record.reference}
-            <CopyIcon className="h-4 w-4" />
+            <span className="min-w-0 break-all">{record.reference}</span>
+            <CopyIcon className="mt-0.5 h-4 w-4 shrink-0" />
           </button>
         </Row>
         <Row label="Loại giao dịch">{KIND_LABEL[record.kind]}</Row>

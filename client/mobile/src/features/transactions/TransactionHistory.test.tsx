@@ -58,10 +58,10 @@ const records = [
 
 afterEach(cleanup);
 
-it("summarises successful in/out totals for the current month only", () => {
+it("summarises successful in/out totals for the selected range", () => {
   render(<TransactionHistory records={records} onSelect={vi.fn()} now={now} />);
   const summary = screen.getByRole("region", {
-    name: "Tổng quan tháng 9/2026",
+    name: "Tổng quan từ 01/09/2026 đến 22/09/2026",
   });
   expect(within(summary).getByText("+2.000.000₫")).toBeTruthy();
   expect(within(summary).getByText("-55.000₫")).toBeTruthy();
@@ -93,7 +93,7 @@ it("groups by day, filters by direction and searches without diacritics", () => 
   expect(screen.getByText("Không có giao dịch phù hợp")).toBeTruthy();
 });
 
-it("supports controlled filters, query and a server-provided monthly summary", () => {
+it("supports controlled filters, query and a server-provided summary", () => {
   const onFilterChange = vi.fn();
   const onQueryChange = vi.fn();
   const { rerender } = render(
@@ -105,7 +105,7 @@ it("supports controlled filters, query and a server-provided monthly summary", (
       onFilterChange={onFilterChange}
       query=""
       onQueryChange={onQueryChange}
-      monthlySummary={{ totalIn: 5_000_000, totalOut: 1_500_000 }}
+      summary={{ totalIn: 5_000_000, totalOut: 1_500_000 }}
     />,
   );
 
@@ -127,7 +127,7 @@ it("supports controlled filters, query and a server-provided monthly summary", (
       onFilterChange={onFilterChange}
       query=""
       onQueryChange={onQueryChange}
-      monthlySummary={{ totalIn: 5_000_000, totalOut: 1_500_000 }}
+      summary={{ totalIn: 5_000_000, totalOut: 1_500_000 }}
     />,
   );
   expect(

@@ -60,6 +60,12 @@ const transaction = {
 
 function defaultFetch(input: RequestInfo | URL, init?: RequestInit) {
   const url = String(input);
+  if (url.includes("/api/contacts/recipients")) {
+    if (init?.method === "POST") return Promise.resolve(json(recipient, 201));
+    if (init?.method === "DELETE")
+      return Promise.resolve(new Response(null, { status: 204 }));
+    return Promise.resolve(json({ items: [] }));
+  }
   if (url.includes("/api/transfers/recent-recipients")) {
     return Promise.resolve(json({ items: [] }));
   }
@@ -138,6 +144,109 @@ it("loads recent recipients and looks up only ANOMALY accounts with auth", async
   expect(String(lookupCall?.[0])).toContain(`accountNo=${recipient.accountNo}`);
   expect(screen.getByText("AnomalyBank")).toBeTruthy();
   expect(screen.queryByRole("button", { name: /Ngân hàng/ })).toBeNull();
+});
+
+it("loads contacts only when opened and reuses the cached list", async () => {
+  const fetchMock = renderFlow((input, init) => {
+    if (
+      String(input).endsWith("/api/contacts/recipients") &&
+      (!init?.method || init.method === "GET")
+    ) {
+      return Promise.resolve(json({ items: [recipient] }));
+    }
+    return defaultFetch(input, init);
+  });
+  const contactGets = () =>
+    fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        String(url).endsWith("/api/contacts/recipients") &&
+        (!init?.method || init.method === "GET"),
+    );
+
+  expect(contactGets()).toHaveLength(0);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
+  );
+  await screen.findByRole("dialog", { name: "Danh bạ người nhận" });
+  expect(
+    await screen.findByRole("button", {
+      name: `${recipient.name}, ${recipient.accountNo}, AnomalyBank`,
+    }),
+  ).toBeTruthy();
+  expect(contactGets()).toHaveLength(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "Đóng" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
+  );
+  await screen.findByRole("dialog", { name: "Danh bạ người nhận" });
+  expect(
+    await screen.findByRole("button", {
+      name: `${recipient.name}, ${recipient.accountNo}, AnomalyBank`,
+    }),
+  ).toBeTruthy();
+  expect(contactGets()).toHaveLength(1);
+});
+
+it("does not present a failed contacts load as an empty address book", async () => {
+  const fetchMock = renderFlow((input, init) => {
+    if (
+      String(input).endsWith("/api/contacts/recipients") &&
+      (!init?.method || init.method === "GET")
+    ) {
+      return Promise.reject(new Error("contacts unavailable"));
+    }
+    return defaultFetch(input, init);
+  });
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Mở danh bạ người nhận" }),
+  );
+  expect(
+    (await screen.findAllByText("Không tải được danh bạ người nhận.")).length,
+  ).toBeGreaterThan(0);
+  expect(
+    screen.queryByText(
+      "Danh bạ trống. Lưu người nhận sau khi nhập số tài khoản.",
+    ),
+  ).toBeNull();
+  expect(fetchMock).toHaveBeenCalled();
+});
+
+it("persists a recipient contact through the contacts API", async () => {
+  let saved = false;
+  const fetchMock = renderFlow((input, init) => {
+    const url = String(input);
+    if (
+      url.endsWith("/api/contacts/recipients") &&
+      (!init?.method || init.method === "GET")
+    ) {
+      return Promise.resolve(json({ items: saved ? [recipient] : [] }));
+    }
+    if (url.endsWith("/api/contacts/recipients") && init?.method === "POST") {
+      saved = true;
+    }
+    return defaultFetch(input, init);
+  });
+  await enterRecipient();
+
+  fireEvent.click(screen.getByRole("button", { name: "Lưu vào danh bạ" }));
+  await waitFor(() =>
+    expect(screen.getByText("Đã có trong danh bạ")).toBeTruthy(),
+  );
+
+  const saveCall = fetchMock.mock.calls.find(
+    ([url, init]) =>
+      String(url).endsWith("/api/contacts/recipients") &&
+      init?.method === "POST",
+  );
+  expect(saveCall?.[1]).toMatchObject({
+    headers: expect.objectContaining({ Authorization: `Bearer ${token}` }),
+    body: JSON.stringify({
+      accountNo: recipient.accountNo,
+      bankCode: "ANOMALY",
+    }),
+  });
 });
 
 it("creates the intent before opening OTP and confirms into a local transaction record", async () => {
