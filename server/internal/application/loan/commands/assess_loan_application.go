@@ -123,6 +123,17 @@ func (h *AssessLoanApplicationCommandHandler) Handle(
 		)
 	}
 
+	// Assessment đã ghi sẽ khóa cập nhật evidence và không được chạy lại.
+	// Giữ hồ sơ chưa assessed khi còn thiếu xác minh để nhân viên bổ sung
+	// evidence rồi thử lại; manual_review vẫn dành cho dữ liệu đã xác minh
+	// nhưng cần quyết định thủ công theo chính sách (DTI, lịch sử trả chậm...).
+	if !input.FinancialDataVerified ||
+		!input.DocumentsVerified ||
+		!input.InsuranceVerified ||
+		!input.HistoryVerified {
+		return nil, fmt.Errorf("loan assessment requires complete verified evidence")
+	}
+
 	// 7. Gọi Domain để chấm điểm.
 	preview := *app
 

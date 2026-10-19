@@ -136,6 +136,11 @@ func isLoanDocumentNotFound(err error) bool {
 		return false
 	}
 
+	// MediaRepository thay lỗi S3 bằng sentinel; lỗi gốc không còn trong chain.
+	if errors.Is(err, rustfs.ErrObjectNotFound) {
+		return true
+	}
+
 	var noSuchKey *types.NoSuchKey
 	if errors.As(err, &noSuchKey) {
 		return true
@@ -208,6 +213,9 @@ func RegisterRoutes(
 			op.SuccessStatus = 201
 			op.Response = domain.VerifiedEvidence{}
 			op.Description = "Admin verifies evidence in simulation"
+
+		case "assessPersonalLoan":
+			op.Description = "Requires all evidence verification flags to be true. Incomplete evidence returns 422 without recording an assessment; complete evidence via the evidence endpoint before retrying."
 
 		case "listPersonalLoans":
 			op.Response = struct {

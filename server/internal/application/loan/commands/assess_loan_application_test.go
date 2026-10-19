@@ -136,6 +136,45 @@ func validAssessLoanCommand() AssessLoanApplicationCommand {
 	}
 }
 
+func TestAssessLoanApplication_IncompleteEvidenceCanBeCompleted(t *testing.T) {
+	tests := []struct {
+		name     string
+		unverify func(*loandomain.LoanAssessmentInput)
+	}{
+		{"financial data", func(i *loandomain.LoanAssessmentInput) { i.FinancialDataVerified = false }},
+		{"documents", func(i *loandomain.LoanAssessmentInput) { i.DocumentsVerified = false }},
+		{"insurance", func(i *loandomain.LoanAssessmentInput) { i.InsuranceVerified = false }},
+		{"history", func(i *loandomain.LoanAssessmentInput) { i.HistoryVerified = false }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := newLoanForAssessmentTest(t)
+			repo := &assessLoanRepoStub{app: app, revision: 9}
+			provider := &assessLoanDataProviderStub{input: validAssessmentCommandInput()}
+			tt.unverify(&provider.input)
+			handler := NewAssessLoanApplicationCommandHandler(repo, &assessLoanAuthorizerStub{}, provider)
+
+			result, err := handler.Handle(context.Background(), validAssessLoanCommand())
+			if err == nil || result != nil {
+				t.Fatalf("incomplete evidence must fail assessment: result=%v err=%v", result, err)
+			}
+			if repo.appendCalls != 0 || app.AssessedAt != nil || app.Status != loandomain.ApplicationStatusUnderReview {
+				t.Fatal("incomplete evidence must leave application unassessed and writable")
+			}
+
+			// Mô phỏng nhân viên hoàn thành xác minh rồi thẩm định lại cùng hồ sơ.
+			provider.input = validAssessmentCommandInput()
+			result, err = handler.Handle(context.Background(), validAssessLoanCommand())
+			if err != nil {
+				t.Fatalf("assessment after completing evidence: %v", err)
+			}
+			if result.Status != loandomain.ApplicationStatusApproved || repo.appendCalls != 1 {
+				t.Fatal("completed evidence must allow approval in a single batch")
+			}
+		})
+	}
+}
+
 // 1. Kiểm tra cả ba nhánh quyết định.
 func TestAssessLoanApplication_Decisions(t *testing.T) {
 	tests := []struct {
@@ -167,7 +206,7 @@ func TestAssessLoanApplication_Decisions(t *testing.T) {
 		{
 			name: "manual review",
 			modify: func(input *loandomain.LoanAssessmentInput) {
-				input.DocumentsVerified = false
+				input.RepaymentHistory = loandomain.HistoryLate
 			},
 			wantDecision:  loandomain.AssessmentManualReview,
 			wantStatus:    loandomain.ApplicationStatusUnderReview,
