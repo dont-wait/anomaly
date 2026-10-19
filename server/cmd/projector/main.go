@@ -8,6 +8,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
+	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
+
 	"github.com/dont-wait/anomaly/internal/domain"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
@@ -31,6 +35,26 @@ func main() {
 	}
 	defer func() { _ = client.Disconnect(context.Background()) }()
 	projection := mongo.NewBankProjection(client, conf.MongoDBName)
+
+	// Redis dung de xoa cache sau khi
+	// Bank Projection cap nhat thanh cong.
+	redisConfig := loader.LoadRedisConfig()
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     redisConfig.Addr,
+		Password: redisConfig.Password,
+	})
+
+	defer func() {
+		_ = rdb.Close()
+	}()
+
+	if err := projection.EnsureLoanRepaymentIndexes(ctx); err != nil {
+		log.Fatal().
+			Err(err).
+			Msg("ensure loan repayment indexes")
+	}
+
 	if *replay {
 		if err := projection.Reset(ctx); err != nil {
 			log.Fatal().Err(err).Msg("reset banking checkpoint")
@@ -54,7 +78,7 @@ func main() {
 		}
 		sub, err := es.SubscribeToStream(ctx, journal.BankStream, esdb.SubscribeToStreamOptions{From: from})
 		if err == nil {
-			err = consume(ctx, sub, projection)
+			err = consume(ctx, sub, projection, rdb, log)
 			_ = sub.Close()
 		}
 		if ctx.Err() != nil {
@@ -91,23 +115,80 @@ func waitForRetry(ctx context.Context, delay time.Duration) bool {
 	}
 }
 
-func consume(ctx context.Context, sub *esdb.Subscription, projection *mongo.BankProjection) error {
+func consume(
+	ctx context.Context,
+	sub *esdb.Subscription,
+	projection *mongo.BankProjection,
+	rdb *redis.Client,
+	log *zerolog.Logger,
+) error {
 	for ctx.Err() == nil {
 		message := sub.Recv()
+
 		if message.SubscriptionDropped != nil {
 			return message.SubscriptionDropped.Error
 		}
+
 		if message.EventAppeared == nil {
 			continue
 		}
+
 		recorded := message.EventAppeared.Event
-		record, err := journal.DecodeRecord(recorded.Data, recorded.EventID.String(), recorded.EventType)
+
+		record, err := journal.DecodeRecord(
+			recorded.Data,
+			recorded.EventID.String(),
+			recorded.EventType,
+		)
 		if err != nil {
 			return err
 		}
-		if err := projection.Apply(ctx, record, recorded.EventNumber); err != nil {
+
+		// MongoDB Projection + checkpoint
+		// phai thanh cong truoc.
+		if err := projection.Apply(
+			ctx,
+			record,
+			recorded.EventNumber,
+		); err != nil {
 			return err
 		}
+
+		// Sau khi LoanInstallmentPaid da duoc
+		// ghi vao MongoDB moi xoa cache cu.
+		if record.Type == journal.LoanInstallmentPaid &&
+			record.LoanPayment != nil {
+
+			p := record.LoanPayment
+
+			keys := []string{
+				loanqueries.RepaymentCacheKey(
+					p.CustomerID,
+					p.LoanID,
+					"schedule",
+				),
+				loanqueries.RepaymentCacheKey(
+					p.CustomerID,
+					p.LoanID,
+					"payments",
+				),
+			}
+
+			if err := rdb.Del(
+				ctx, keys...,
+			).Err(); err != nil {
+				// Redis cache chi la Read Cache.
+				// Khong rollback Banking Event
+				// neu Redis tam thoi bi loi.
+				//
+				// Cache cu se tu het han qua TTL.
+				log.Warn().
+					Err(err).
+					Str("loan_id", p.LoanID).
+					Msg("invalidate loan repayment cache failed")
+			}
+		}
 	}
+
 	return ctx.Err()
 }

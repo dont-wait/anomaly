@@ -153,6 +153,16 @@ func (p *BankProjection) Apply(ctx context.Context, record journal.Record, revis
 			if err := p.balance(sc, journal.FinancialAccountID(record.AccountID), *record.Balance, sequence, record.At); err != nil {
 				return nil, err
 			}
+
+		case journal.LoanInstallmentPaid:
+			if err := p.applyLoanInstallmentPaid(
+				sc,
+				record,
+				sequence,
+			); err != nil {
+				return nil, err
+			}
+
 		default:
 			if !journal.IsTransferEvent(record.Type) {
 				return nil, fmt.Errorf("unsupported banking event")
