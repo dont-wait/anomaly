@@ -16,6 +16,7 @@ import (
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/domain"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 )
 
@@ -57,8 +58,8 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read migration version: %v", err)
 	}
-	if version != 4 || dirty {
-		t.Fatalf("migration state = version %d dirty %t, want version 4 dirty false", version, dirty)
+	if version != 9 || dirty {
+		t.Fatalf("migration state = version %d dirty %t, want version 9 dirty false", version, dirty)
 	}
 
 	mongoConfig := &domain.MongoConfig{MongoURI: mongoURI, MongoDBName: databaseName}
@@ -100,11 +101,13 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 		IdCardFrontUrl: "kyc/" + account.Id + "/id-card-front/migration-front",
 		IdCardBackUrl:  "kyc/" + account.Id + "/id-card-back/migration-back",
 		LiveVideoUrl:   "kyc/" + account.Id + "/live-video/migration-live",
+		// Persistence fixture; biometric inference is tested separately with actual weights.
+		Evidence: &accountdomain.KYCEvidence{MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true}, MatchScore: 0.9, LivenessScore: 1,
 	}); err != nil {
 		t.Fatalf("verify account against migrated schema: %v", err)
 	}
 
-	if err := runner.Steps(-4); err != nil {
+	if err := runner.Steps(-int(version)); err != nil {
 		t.Fatalf("migrate down: %v", err)
 	}
 	if _, _, err := runner.Version(); !errors.Is(err, migrate.ErrNilVersion) {

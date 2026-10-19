@@ -104,6 +104,8 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 		IdCardFrontUrl: "kyc/" + accountID + "/id-card-front/e2e-front",
 		IdCardBackUrl:  "kyc/" + accountID + "/id-card-back/e2e-back",
 		LiveVideoUrl:   "kyc/" + accountID + "/live-video/e2e-live",
+		// Persistence fixture; this is not a biometric accuracy assertion.
+		Evidence: &accountdomain.KYCEvidence{MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true}, MatchScore: 0.9, LivenessScore: 1,
 	}); err != nil {
 		t.Fatalf("verify MongoDB account: %v", err)
 	}

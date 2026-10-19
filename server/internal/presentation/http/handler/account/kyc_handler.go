@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -41,6 +43,9 @@ type kycUpload struct {
 }
 
 func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
+	defer cancel()
+	r = r.WithContext(ctx)
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims == nil {
 		httpx.WriteError(w, h.logger, middleware.ErrInvalidToken, func(error) int { return http.StatusUnauthorized })
@@ -74,7 +79,7 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	challengeType := strings.TrimSpace(r.FormValue("challengeType"))
-	if challengeType == "" {
+	if challengeType != "TURN_HEAD_LEFT_RIGHT_BLINK" {
 		httpx.WriteError(w, h.logger, errors.New("challengeType is required"), func(error) int { return http.StatusBadRequest })
 		return
 	}
@@ -99,6 +104,35 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 		writeKYCSystemError(w, "KYC verification is temporarily unavailable")
 		return
 	}
+	var attempt *kycinfra.Attempt
+	if h.realtime != nil {
+		attempt, err = h.realtime.Get(r.Context(), r.FormValue("realtimeAttemptId"))
+		if err != nil || attempt.AccountID != claims.UserID || attempt.Key != r.Header.Get("Idempotency-Key") ||
+			attempt.FrontHash != kycinfra.Digest(front.data) || attempt.BackHash != kycinfra.Digest(back.data) ||
+			attempt.StreamHash == "" || attempt.StreamHash != kycinfra.Digest(video.data) || attempt.Challenge != challengeType {
+			httpx.WriteError(w, h.logger, errors.New("KYC stream and completion do not match"), func(error) int { return 409 })
+			return
+		}
+		if len(attempt.Result) > 0 {
+			var result KYCCompleteResponse
+			if json.Unmarshal(attempt.Result, &result) != nil {
+				writeKYCSystemError(w, "Invalid stored verification")
+				return
+			}
+			httpx.WriteSuccess(w, 200, "KYC verification completed", result)
+			return
+		}
+		if time.Now().After(attempt.ExpiresAt) {
+			httpx.WriteError(w, h.logger, errors.New("KYC attempt expired"), func(error) int { return 410 })
+			return
+		}
+		locked, e := h.realtime.Lock(r.Context(), attempt.ID)
+		if e != nil || locked == "" {
+			httpx.WriteError(w, h.logger, errors.New("KYC attempt is processing"), func(error) int { return 409 })
+			return
+		}
+		defer h.realtime.Unlock(context.WithoutCancel(r.Context()), attempt.ID, locked)
+	}
 	result, err := h.kyc.VerifyFace(r.Context(),
 		kycinfra.Media{Filename: front.filename, ContentType: front.contentType, Data: front.data},
 		kycinfra.Media{Filename: video.filename, ContentType: video.contentType, Data: video.data},
@@ -109,15 +143,36 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 		writeKYCSystemError(w, "KYC verification is temporarily unavailable")
 		return
 	}
-	if result.Decision == "VERIFIED" && !result.Success {
+	if result == nil || (result.Decision == "VERIFIED" && !result.ValidVerified()) {
 		h.logger.Error().Msg("KYC verifier returned an inconsistent VERIFIED result")
 		writeKYCSystemError(w, "KYC verification is temporarily unavailable")
 		return
 	}
 	if result.Decision != "VERIFIED" {
-		httpx.WriteSuccess(w, http.StatusOK, "KYC verification completed", KYCCompleteResponse{
+		response := KYCCompleteResponse{
 			Decision: result.Decision, ReasonCode: result.ReasonCode, ReasonMessage: result.ReasonMessage,
-		})
+		}
+		if result.Decision == "SYSTEM_ERROR" {
+			writeKYCSystemError(w, "KYC verification is temporarily unavailable")
+			return
+		}
+		if attempt != nil {
+			_, ttl, e := h.realtime.Count(r.Context(), attempt.AccountID)
+			if e != nil {
+				writeKYCSystemError(w, "KYC policy is unavailable")
+				return
+			}
+			if ttl < 0 {
+				ttl = h.realtime.Limits().Window
+			}
+			payload, _ := json.Marshal(response)
+			saved, e := h.realtime.CompleteFailure(r.Context(), attempt, payload, time.Now().Add(ttl).UTC().Format(time.RFC3339Nano))
+			if e != nil || json.Unmarshal(saved, &response) != nil {
+				writeKYCSystemError(w, "KYC result could not be saved")
+				return
+			}
+		}
+		httpx.WriteSuccess(w, http.StatusOK, "KYC verification completed", response)
 		return
 	}
 
@@ -138,6 +193,12 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 		fmt.Sprintf("kyc/%s/live-video/%s%s", claims.UserID, uuid.NewString(), video.extension),
 	}
 	uploads := []kycUpload{front, back, video}
+	if h.realtime != nil {
+		if err := h.realtime.QueueCleanup(r.Context(), claims.UserID, keys); err != nil {
+			writeKYCSystemError(w, "KYC media reconciliation is unavailable")
+			return
+		}
+	}
 	uploaded := 0
 	for i := range uploads {
 		if err := h.media.Upload(r.Context(), keys[i], bytes.NewReader(uploads[i].data), uploads[i].contentType); err != nil {
@@ -151,11 +212,35 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 
 	account, err = h.verify.Handle(r.Context(), commands.VerifyAccountCommand{
 		AccountID: claims.UserID, IdCardFrontUrl: keys[0], IdCardBackUrl: keys[1], LiveVideoUrl: keys[2],
+		Evidence: result.Analysis, MatchScore: result.MatchScore, LivenessScore: result.LivenessScore,
+		Media: &accountdomain.KYCMedia{
+			IdentityFront: accountdomain.MediaObject{StorageKey: keys[0], MIMEType: front.contentType, SizeBytes: int64(len(front.data)), SHA256: kycinfra.Digest(front.data)},
+			IdentityBack:  accountdomain.MediaObject{StorageKey: keys[1], MIMEType: back.contentType, SizeBytes: int64(len(back.data)), SHA256: kycinfra.Digest(back.data)},
+			LivenessVideo: accountdomain.LivenessVideo{MediaObject: accountdomain.MediaObject{StorageKey: keys[2], MIMEType: video.contentType, SizeBytes: int64(len(video.data)), SHA256: kycinfra.Digest(video.data)}, DurationSeconds: int(result.Analysis.VideoDurationSeconds)},
+		},
 	})
 	if err != nil {
-		deleteMedia(r.Context(), h.media, keys, h.logger)
+		// Save timeouts can occur after a commit. Preserve objects until ownership is known.
+		check, readErr := h.getByID.Handle(context.WithoutCancel(r.Context()), queries.GetAccountByIDQuery{ID: claims.UserID})
+		if readErr == nil && check.IsVerified() {
+			writeVerifiedKYC(w, check)
+			return
+		}
+		if readErr == nil {
+			deleteMedia(context.WithoutCancel(r.Context()), h.media, keys, h.logger)
+		}
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return
+	}
+	if attempt != nil {
+		user := toAccountResponsePrivate(account)
+		attempt.Result, _ = json.Marshal(KYCCompleteResponse{Decision: "VERIFIED", User: &user})
+		attempt.Front.Data = nil
+		attempt.Back.Data = nil
+		if err := h.realtime.Save(context.WithoutCancel(r.Context()), attempt); err != nil {
+			h.logger.Error().Err(err).Msg("cache committed KYC result failed")
+		}
+		h.realtime.Release(context.WithoutCancel(r.Context()), attempt)
 	}
 	writeVerifiedKYC(w, account)
 }

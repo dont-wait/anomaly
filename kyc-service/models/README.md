@@ -1,0 +1,1 @@
+Place your private ONNX weights, MediaPipe task, manifest.json and calibrated vision.toml here. See ../README.md. This directory intentionally excludes model assets and deployment configuration from Git.

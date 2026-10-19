@@ -1,8 +1,6 @@
 AGENTS.md
 .direnv
 .env
-specs/
-!specs/transaction-api.md
 .codex
 .yarn
 # Created by https://www.toptal.com/developers/gitignore/api/go,python
