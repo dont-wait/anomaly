@@ -435,7 +435,7 @@ Các thư viện trên là phương án tích hợp, không ấn định model e
 
 Đã có code cho adapter ONNX/MediaPipe, pipeline thật, decoder streaming WebM/VP8, API realtime qua Go, ticket một lần, kiểm tra hash khi complete, retry/idempotency/giới hạn lượt qua Redis, lưu evidence và khung camera lớn. Bước xác minh file hoàn chỉnh dùng file tạm seekable để đọc cả MP4 có chỉ mục cuối file; file tạm được xóa sau xử lý. Go có worker reconciliation cho media chưa được hồ sơ canonical tham chiếu.
 
-Cấu hình và hướng dẫn chạy: `kyc-service/README.md`, `kyc-service/config/manifest.example.json`, `kyc-service/config/vision.example.toml`, `server/.env.example`. Migration tương ứng là `000009_real_kyc_evidence`; chưa tự chạy migration trên cơ sở dữ liệu người dùng.
+Cấu hình và hướng dẫn chạy: `kyc-service/README.md`, `kyc-service/config/manifest.example.json`, `kyc-service/config/vision.example.toml`, `server/.env.example`. Migration tương ứng là `000010_real_kyc_evidence`; chưa tự chạy migration trên cơ sở dữ liệu người dùng.
 
 Các phần cần nghiệm thu trước khi coi mục tiêu hoàn tất:
 

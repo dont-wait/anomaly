@@ -76,7 +76,7 @@ Trước khi upload, Go ghi kế hoạch reconciliation vào Redis. Worker chạ
 
 Go mặc định giới hạn 3 lần không đạt/24 giờ theo tài khoản. Lỗi hệ thống không trừ lượt. Policy, idempotency và ticket lưu Redis dùng chung giữa replica. Các biến phía Go: `KYC_MAX_ATTEMPTS`, `KYC_ATTEMPT_WINDOW`, `KYC_ATTEMPT_TTL`, `KYC_MAX_CONCURRENT_ATTEMPTS`, `KYC_STARTS_PER_MINUTE`. Attempt đang hoạt động có lease, giới hạn số ảnh tạm toàn cục; Redis phải được bảo vệ như dữ liệu sinh trắc học. TTL là thời hạn đọc logic; retention của Redis AOF/backup cần quản lý ở hạ tầng.
 
-Chạy migration Mongo `000009_real_kyc_evidence` trước phiên bản Go mới để cho phép `passed/failed`, score và evidence. Hồ sơ cũ giữ nguyên `not_run`. Rollback migration gỡ validator để không làm mất evidence đã ghi; cần xét lại validator trước khi đưa bản cũ vào vận hành.
+Chạy migration Mongo `000010_real_kyc_evidence` trước phiên bản Go mới để cho phép `passed/failed`, score và evidence. Hồ sơ cũ giữ nguyên `not_run`. Rollback migration gỡ validator để không làm mất evidence đã ghi; cần xét lại validator trước khi đưa bản cũ vào vận hành.
 
 ## Docker Compose
 

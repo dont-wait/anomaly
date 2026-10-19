@@ -58,8 +58,8 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read migration version: %v", err)
 	}
-	if version != 9 || dirty {
-		t.Fatalf("migration state = version %d dirty %t, want version 9 dirty false", version, dirty)
+	if version != 10 || dirty {
+		t.Fatalf("migration state = version %d dirty %t, want version 10 dirty false", version, dirty)
 	}
 
 	mongoConfig := &domain.MongoConfig{MongoURI: mongoURI, MongoDBName: databaseName}
