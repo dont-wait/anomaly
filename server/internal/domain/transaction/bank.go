@@ -3,32 +3,38 @@ package transaction
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
 
 const (
-	BankStream     = "banking"
-	AccountCreated = "BankAccountCreated"
-	AccountUpdated = "BankAccountUpdated"
-	BalanceSeeded  = "BankBalanceSeeded"
-	BankImported   = "BankImported"
+	BankStream               = "banking"
+	AccountCreated           = "BankAccountCreated"
+	AccountUpdated           = "BankAccountUpdated"
+	BalanceSeeded            = "BankBalanceSeeded"
+	BankImported             = "BankImported"
+	LoanDisbursementCredited = "LoanDisbursementCredited"
 )
 
 // Record is the canonical banking journal. Transfer snapshots retain the HTTP
 // contract; downstream consumers can extract Event without profile credentials.
 type Record struct {
-	ID         string                       `json:"id"`
-	Type       string                       `json:"type"`
-	At         time.Time                    `json:"at"`
-	Account    *accountdomain.UserAccount   `json:"account,omitempty"`
-	Accounts   []*accountdomain.UserAccount `json:"accounts,omitempty"`
-	AccountID  string                       `json:"accountId,omitempty"`
-	Balance    *int64                       `json:"balance,omitempty"`
-	Event      *Event                       `json:"event,omitempty"`
-	Transfer   json.RawMessage              `json:"transfer,omitempty"`
-	Historical bool                         `json:"historical,omitempty"`
+	ID            string                       `json:"id"`
+	Type          string                       `json:"type"`
+	At            time.Time                    `json:"at"`
+	Account       *accountdomain.UserAccount   `json:"account,omitempty"`
+	Accounts      []*accountdomain.UserAccount `json:"accounts,omitempty"`
+	AccountID     string                       `json:"accountId,omitempty"`
+	Balance       *int64                       `json:"balance,omitempty"`
+	Event         *Event                       `json:"event,omitempty"`
+	Transfer      json.RawMessage              `json:"transfer,omitempty"`
+	Historical    bool                         `json:"historical,omitempty"`
+	LoanID        string                       `json:"loanId,omitempty"`
+	LoanAmount    int64                        `json:"loanAmount,omitempty"`
+	BalanceBefore *int64                       `json:"balanceBefore,omitempty"`
+	BalanceAfter  *int64                       `json:"balanceAfter,omitempty"`
 }
 
 func DecodeRecord(data []byte, eventID, eventType string) (Record, error) {
@@ -62,6 +68,23 @@ func DecodeRecord(data []byte, eventID, eventType string) (Record, error) {
 			if a == nil || a.Customer == nil || a.Balance.Current < 0 {
 				return r, fmt.Errorf("invalid imported account")
 			}
+		}
+	case LoanDisbursementCredited:
+		if r.LoanID == "" ||
+			r.AccountID == "" ||
+			r.LoanAmount <= 0 ||
+			r.BalanceBefore == nil ||
+			r.BalanceAfter == nil ||
+			*r.BalanceBefore < 0 ||
+			r.LoanAmount > math.MaxInt64-*r.BalanceBefore ||
+			*r.BalanceAfter != *r.BalanceBefore+r.LoanAmount ||
+			r.ID != EventID(
+				r.LoanID,
+				LoanDisbursementCredited,
+			) {
+			return r, fmt.Errorf(
+				"invalid loan credit journal",
+			)
 		}
 	default:
 		return r, fmt.Errorf("unsupported banking record %q", r.Type)

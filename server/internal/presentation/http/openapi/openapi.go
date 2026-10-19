@@ -66,6 +66,27 @@ func NewRegistry(mux *http.ServeMux, enabled bool) *Registry {
 	}
 }
 
+// func isLoanDocumentNotFound(err error) bool {
+// 	if err == nil {
+// 		return false
+// 	}
+
+// 	var noSuchKey *types.NoSuchKey
+// 	if errors.As(err, &noSuchKey) {
+// 		return true
+// 	}
+
+// 	var apiErr smithy.APIError
+// 	if errors.As(err, &apiErr) {
+// 		switch apiErr.ErrorCode() {
+// 		case "NoSuchKey", "NotFound":
+// 			return true
+// 		}
+// 	}
+
+// 	return false
+// }
+
 func (r *Registry) Handle(pattern string, handler http.Handler, operation Operation) {
 	r.mux.Handle(pattern, handler)
 	r.addOperation(pattern, operation)
