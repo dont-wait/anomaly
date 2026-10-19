@@ -79,6 +79,8 @@ services:
       dockerfile: Dockerfile
     command: ["/app/relay"]
     environment:
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=rs0
+      MONGO_DB: anomaly
       EVENT_STORE_CONN_STRING: esdb://eventstore:2113?tls=false
       KAFKA_BROKERS: kafka:29092
       KAFKA_TOPIC: ${KAFKA_TOPIC:-anomaly.bank.events.v1}
@@ -89,6 +91,8 @@ services:
       eventstore:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      mongo:
         condition: service_healthy
     networks:
       - anomaly-network

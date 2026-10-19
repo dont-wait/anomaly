@@ -199,8 +199,10 @@ docker compose logs -f anomaly-relay
 ```
 
 Consumer mock của model pipeline nằm ngoài `server/` tại thư mục `../consumer-mock`.
-Relay publish event envelope vào topic `anomaly.bank.events.v1`; model pipeline
-tự chọn các field cần thiết từ envelope. Chạy consumer riêng bằng:
+Relay publish event envelope đã enrich `model_features` vào topic
+`anomaly.bank.events.v1`; model pipeline chỉ chọn các field cần thiết từ
+envelope. Feature state được duy trì tăng dần trong MongoDB. Chạy consumer riêng
+bằng:
 
 ```bash
 cd ../consumer-mock

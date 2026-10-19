@@ -9,17 +9,19 @@ import (
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain"
+	"github.com/dont-wait/anomaly/internal/domain/modelfeature"
 	kafkago "github.com/segmentio/kafka-go"
 )
 
 type EventEnvelope struct {
-	EventID        string          `json:"event_id"`
-	EventType      string          `json:"event_type"`
-	Stream         string          `json:"stream"`
-	StreamRevision uint64          `json:"stream_revision"`
-	OccurredAt     time.Time       `json:"occurred_at"`
-	SchemaVersion  int             `json:"schema_version"`
-	Payload        json.RawMessage `json:"payload"`
+	EventID        string                 `json:"event_id"`
+	EventType      string                 `json:"event_type"`
+	Stream         string                 `json:"stream"`
+	StreamRevision uint64                 `json:"stream_revision"`
+	OccurredAt     time.Time              `json:"occurred_at"`
+	SchemaVersion  int                    `json:"schema_version"`
+	Payload        json.RawMessage        `json:"payload"`
+	ModelFeatures  *modelfeature.Features `json:"model_features,omitempty"`
 }
 
 type Producer struct {

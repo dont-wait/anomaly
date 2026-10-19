@@ -14,6 +14,7 @@ import (
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	kafkainfra "github.com/dont-wait/anomaly/internal/infrastructure/kafka"
+	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/logger"
 	esdb "github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 	"github.com/rs/zerolog"
@@ -29,12 +30,26 @@ func main() {
 	loader := domain.GetEnvLoader().Load(log)
 	eventStoreConfig := loader.LoadEventStoreConfig()
 	kafkaConfig := loader.LoadKafkaConfig()
+	mongoConfig := loader.LoadMongoConfig()
 
 	es, err := eventstore.NewEventStoreClient(eventStoreConfig)
 	if err != nil {
 		log.Fatal().Err(err).Msg("connect eventstore for kafka relay failed")
 	}
 	defer eventstore.Disconnect(es)
+
+	mongoClient, err := mongorepo.NewMongoClient(ctx, mongoConfig)
+	if err != nil {
+		log.Fatal().Err(err).Msg("connect mongo for model feature state failed")
+	}
+	defer func() {
+		disconnectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		mongorepo.Disconnect(mongoClient, disconnectCtx, cancel)
+	}()
+	featureStore := mongorepo.NewModelFeatureRepository(mongoClient, mongoConfig.MongoDBName)
+	if err := featureStore.EnsureIndexes(ctx); err != nil {
+		log.Fatal().Err(err).Msg("ensure model feature indexes failed")
+	}
 
 	producer, err := kafkainfra.NewProducer(kafkaConfig)
 	if err != nil {
@@ -92,7 +107,7 @@ func main() {
 			continue
 		}
 
-		err = consume(ctx, subscription, producer, log)
+		err = consume(ctx, subscription, producer, featureStore, log)
 		_ = subscription.Close()
 		if ctx.Err() != nil {
 			break
@@ -127,7 +142,7 @@ func ensurePersistentSubscription(ctx context.Context, client *esdb.Client, grou
 	return err
 }
 
-func consume(ctx context.Context, subscription *esdb.PersistentSubscription, producer *kafkainfra.Producer, log *zerolog.Logger) error {
+func consume(ctx context.Context, subscription *esdb.PersistentSubscription, producer *kafkainfra.Producer, featureStore modelFeatureStore, log *zerolog.Logger) error {
 	for ctx.Err() == nil {
 		message := subscription.Recv()
 		if message.SubscriptionDropped != nil {
@@ -139,10 +154,20 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 
 		resolved := message.EventAppeared.Event
 		recorded := resolved.OriginalEvent()
-		envelope, err := buildEnvelope(recorded)
+		envelope, pendingFeatureUpdate, err := buildEnrichedEnvelope(ctx, recorded, featureStore)
 		if err != nil {
-			if nackErr := subscription.Nack("invalid event payload: "+err.Error(), esdb.NackActionPark, resolved); nackErr != nil {
+			action := esdb.NackActionPark
+			reason := "invalid event payload: " + err.Error()
+			var retryableErr *retryableFeatureError
+			if errors.As(err, &retryableErr) {
+				action = esdb.NackActionRetry
+				reason = "model feature preparation failed: " + err.Error()
+			}
+			if nackErr := subscription.Nack(reason, action, resolved); nackErr != nil {
 				return nackErr
+			}
+			if action == esdb.NackActionRetry {
+				return err
 			}
 			log.Error().Err(err).Str("event_id", recorded.EventID.String()).Msg("park invalid event")
 			continue
@@ -153,6 +178,14 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 				return nackErr
 			}
 			return err
+		}
+		if pendingFeatureUpdate != nil {
+			if err := featureStore.ApplyState(ctx, pendingFeatureUpdate.Transaction, pendingFeatureUpdate.NextState); err != nil {
+				if nackErr := subscription.Nack("model feature state update failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
+					return nackErr
+				}
+				return err
+			}
 		}
 		if err := subscription.Ack(resolved); err != nil {
 			return err
@@ -178,7 +211,7 @@ func buildEnvelope(recorded *esdb.RecordedEvent) (kafkainfra.EventEnvelope, erro
 		Stream:         recorded.StreamID,
 		StreamRevision: recorded.EventNumber,
 		OccurredAt:     recorded.CreatedDate,
-		SchemaVersion:  1,
+		SchemaVersion:  2,
 		Payload:        payload,
 	}, nil
 }

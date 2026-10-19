@@ -1,9 +1,9 @@
 # Kafka Consumer Mock
 
 Consumer độc lập tối giản cho Kafka. Service này đọc event envelope từ topic,
-tự chọn các field transaction cần cho model và log JSON ra stdout, không phụ
-thuộc vào `server/`. Thư mục này chỉ là mock consumer để kiểm thử luồng Kafka;
-model pipeline thật sẽ được triển khai riêng sau này.
+chọn các field transaction và `model_features` do relay enrich rồi log JSON ra
+stdout, không phụ thuộc vào `server/`. Thư mục này chỉ là mock consumer để
+kiểm thử luồng Kafka; model pipeline thật sẽ được triển khai riêng sau này.
 
 ## Configuration
 

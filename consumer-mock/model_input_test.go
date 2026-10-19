@@ -7,6 +7,14 @@ import (
 func TestSelectModelInputFromBankEvent(t *testing.T) {
 	input, ok, err := selectModelInput([]byte(`{
       "event_type":"TransferCompleted",
+      "model_features": {
+        "avg_amount_7d": 12500000,
+        "tx_count_1h": 3,
+        "tx_count_24h": 12,
+        "last_tx_at": "2026-10-16T00:50:00Z",
+        "new_receiver": true,
+        "new_device": false
+      },
       "payload": {
         "transfer": {
           "ID":"TX001",
@@ -25,7 +33,7 @@ func TestSelectModelInputFromBankEvent(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("selectModelInput() = %#v/%v/%v, want selected input", input, ok, err)
 	}
-	if input.TransactionID != "TX001" || input.SourceAccount != "ACC001" || input.DestinationAccount != "ACC002" || input.Amount != 50000000 || input.TransactionType != "TRANSFER" || input.Channel != "MOBILE" || input.AuthenticationMethod != "OTP" || !input.AuthenticationVerified || input.DeviceID != "DEVICE01" || input.Platform != "ANDROID" {
+	if input.TransactionID != "TX001" || input.SourceAccount != "ACC001" || input.DestinationAccount != "ACC002" || input.Amount != 50000000 || input.TransactionType != "TRANSFER" || input.Channel != "MOBILE" || input.AuthenticationMethod != "OTP" || !input.AuthenticationVerified || input.DeviceID != "DEVICE01" || input.Platform != "ANDROID" || input.AvgAmount7d != 12500000 || input.TxCount1h != 3 || input.TxCount24h != 12 || !input.NewReceiver || input.NewDevice {
 		t.Fatalf("selected model input = %#v", input)
 	}
 }
@@ -37,8 +45,15 @@ func TestSelectModelInputIgnoresOtherEvents(t *testing.T) {
 	}
 }
 
+func TestSelectModelInputRequiresProducerFeatures(t *testing.T) {
+	_, ok, err := selectModelInput([]byte(`{"event_type":"TransferCompleted","payload":{}}`))
+	if err == nil || !ok {
+		t.Fatalf("selectModelInput() = selected=%v error=%v, want missing feature error", ok, err)
+	}
+}
+
 func TestSelectModelInputUsesUnknownMetadata(t *testing.T) {
-	input, ok, err := selectModelInput([]byte(`{"event_type":"TransferCompleted","payload":{"transfer":{"ID":"TX001","Type":"transfer","Source":{"AccountNo":"ACC001"},"Destination":{"AccountNo":"ACC002"},"Amount":1,"CreatedAt":"2026-10-17T00:50:00Z","Authentication":{"Verified":true}}}}`))
+	input, ok, err := selectModelInput([]byte(`{"event_type":"TransferCompleted","model_features":{"avg_amount_7d":0,"tx_count_1h":0,"tx_count_24h":0,"last_tx_at":null,"new_receiver":false,"new_device":false},"payload":{"transfer":{"ID":"TX001","Type":"transfer","Source":{"AccountNo":"ACC001"},"Destination":{"AccountNo":"ACC002"},"Amount":1,"CreatedAt":"2026-10-17T00:50:00Z","Authentication":{"Verified":true}}}}`))
 	if err != nil || !ok {
 		t.Fatalf("selectModelInput() = %#v/%v/%v, want selected input", input, ok, err)
 	}

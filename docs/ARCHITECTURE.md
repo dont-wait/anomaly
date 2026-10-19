@@ -43,13 +43,19 @@
 
 1. `cmd/relay` tạo persistent subscription `kafka-publisher` trên stream `banking`
 2. Đọc event từ EventStoreDB và tạo envelope versioned
-3. Publish envelope vào Kafka topic `anomaly.bank.events.v1`
-4. ACK EventStoreDB sau khi Kafka xác nhận thành công
-5. NACK retry khi Kafka lỗi; payload loại bỏ các field nhạy cảm như password
+3. Với `TransferCompleted`, đọc feature state theo source account và enrich
+   envelope bằng các feature model
+4. Publish envelope vào Kafka topic `anomaly.bank.events.v1`
+5. Cập nhật feature state sau khi Kafka xác nhận thành công rồi ACK EventStoreDB
+6. NACK retry khi Kafka hoặc feature state lỗi; payload loại bỏ các field nhạy
+   cảm như password
 
-Model pipeline đọc envelope và tự chọn account number, authentication cùng
-metadata thiết bị từ transfer snapshot. Client gửi `X-Device-ID` và
-`X-Platform`; giá trị thiếu được chuyển thành `UNKNOWN`.
+Feature state được lưu trong MongoDB bằng materialized view tăng dần, không query
+toàn bộ transaction history cho mỗi event. Model pipeline đọc `model_features`
+cùng account number, authentication và metadata thiết bị từ envelope. Client gửi
+`X-Device-ID` và `X-Platform`; giá trị thiếu được chuyển thành `UNKNOWN`.
+
+Chi tiết contract và state lifecycle: [Model feature enrichment](MODEL_FEATURES.md).
 
 ## Storage Responsibilities
 

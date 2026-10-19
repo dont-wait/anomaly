@@ -10,8 +10,18 @@ import (
 const completedEventType = "TransferCompleted"
 
 type bankEventEnvelope struct {
-	EventType string          `json:"event_type"`
-	Payload   json.RawMessage `json:"payload"`
+	EventType     string          `json:"event_type"`
+	Payload       json.RawMessage `json:"payload"`
+	ModelFeatures *modelFeatures  `json:"model_features"`
+}
+
+type modelFeatures struct {
+	AvgAmount7d int64      `json:"avg_amount_7d"`
+	TxCount1h   int64      `json:"tx_count_1h"`
+	TxCount24h  int64      `json:"tx_count_24h"`
+	LastTxAt    *time.Time `json:"last_tx_at"`
+	NewReceiver bool       `json:"new_receiver"`
+	NewDevice   bool       `json:"new_device"`
 }
 
 type bankRecord struct {
@@ -39,17 +49,23 @@ type transferSnapshot struct {
 }
 
 type modelInput struct {
-	TransactionID          string    `json:"transaction_id"`
-	SourceAccount          string    `json:"source_account"`
-	DestinationAccount     string    `json:"destination_account"`
-	Amount                 int64     `json:"amount"`
-	TransactionType        string    `json:"transaction_type"`
-	Channel                string    `json:"channel"`
-	AuthenticationMethod   string    `json:"authentication_method"`
-	AuthenticationVerified bool      `json:"authentication_verified"`
-	DeviceID               string    `json:"device_id"`
-	Platform               string    `json:"platform"`
-	CreatedAt              time.Time `json:"created_at"`
+	TransactionID          string     `json:"transaction_id"`
+	SourceAccount          string     `json:"source_account"`
+	DestinationAccount     string     `json:"destination_account"`
+	Amount                 int64      `json:"amount"`
+	TransactionType        string     `json:"transaction_type"`
+	Channel                string     `json:"channel"`
+	AuthenticationMethod   string     `json:"authentication_method"`
+	AuthenticationVerified bool       `json:"authentication_verified"`
+	DeviceID               string     `json:"device_id"`
+	Platform               string     `json:"platform"`
+	CreatedAt              time.Time  `json:"created_at"`
+	AvgAmount7d            int64      `json:"avg_amount_7d"`
+	TxCount1h              int64      `json:"tx_count_1h"`
+	TxCount24h             int64      `json:"tx_count_24h"`
+	LastTxAt               *time.Time `json:"last_tx_at"`
+	NewReceiver            bool       `json:"new_receiver"`
+	NewDevice              bool       `json:"new_device"`
 }
 
 func selectModelInput(data []byte) (modelInput, bool, error) {
@@ -59,6 +75,9 @@ func selectModelInput(data []byte) (modelInput, bool, error) {
 	}
 	if envelope.EventType != completedEventType {
 		return modelInput{}, false, nil
+	}
+	if envelope.ModelFeatures == nil {
+		return modelInput{}, true, fmt.Errorf("completed event model features are missing")
 	}
 	if len(envelope.Payload) == 0 {
 		return modelInput{}, true, fmt.Errorf("completed event payload is missing")
@@ -95,6 +114,12 @@ func selectModelInput(data []byte) (modelInput, bool, error) {
 		DeviceID:               normalizeValue(transfer.DeviceID),
 		Platform:               normalizeEnum(transfer.Platform, "UNKNOWN"),
 		CreatedAt:              transfer.CreatedAt,
+		AvgAmount7d:            envelope.ModelFeatures.AvgAmount7d,
+		TxCount1h:              envelope.ModelFeatures.TxCount1h,
+		TxCount24h:             envelope.ModelFeatures.TxCount24h,
+		LastTxAt:               envelope.ModelFeatures.LastTxAt,
+		NewReceiver:            envelope.ModelFeatures.NewReceiver,
+		NewDevice:              envelope.ModelFeatures.NewDevice,
 	}, true, nil
 }
 
