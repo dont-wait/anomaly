@@ -54,6 +54,8 @@ type TransferDocument struct {
 	Fee            int64     `bson:"fee"`
 	Currency       string    `bson:"currency"`
 	Channel        string    `bson:"channel"`
+	DeviceID       string    `bson:"device_id,omitempty"`
+	Platform       string    `bson:"platform,omitempty"`
 	Status         string    `bson:"status"`
 	Note           string    `bson:"note"`
 	IdempotencyKey string    `bson:"idempotency_key"`

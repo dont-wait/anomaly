@@ -264,7 +264,8 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := uuid.NewString()
-	tx := mongorepo.TransferDocument{ID: id, Reference: transferReference(id), Type: "transfer", Amount: req.Amount, Fee: 0, Currency: "VND", Channel: "web", Status: "awaiting_otp", Note: req.Note, IdempotencyKey: key, CreatedAt: time.Now().UTC(), OTPExpiresAt: time.Now().UTC().Add(5 * time.Minute), OTPResendAt: time.Now().UTC().Add(30 * time.Second)}
+	platform := normalizePlatform(r.Header.Get("X-Platform"))
+	tx := mongorepo.TransferDocument{ID: id, Reference: transferReference(id), Type: "transfer", Amount: req.Amount, Fee: 0, Currency: "VND", Channel: channelForPlatform(platform), DeviceID: normalizeDeviceID(r.Header.Get("X-Device-ID")), Platform: platform, Status: "awaiting_otp", Note: req.Note, IdempotencyKey: key, CreatedAt: time.Now().UTC(), OTPExpiresAt: time.Now().UTC().Add(5 * time.Minute), OTPResendAt: time.Now().UTC().Add(30 * time.Second)}
 	tx.Source.AccountID, tx.Source.AccountNo, tx.Source.Name = source.ID, source.AccountNo, source.Name
 	tx.Destination.Type, tx.Destination.AccountID, tx.Destination.AccountNo = "internal", recipient.ID, recipient.AccountNo
 	tx.Destination.BankCode, tx.Destination.Name = "ANOMALY", recipient.Name
@@ -303,6 +304,40 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 		response.OTP = info
 	}
 	httpx.WriteJSON(w, http.StatusCreated, response)
+}
+
+func normalizeDeviceID(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) > 128 {
+		return value[:128]
+	}
+	return value
+}
+
+func normalizePlatform(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "ANDROID":
+		return "ANDROID"
+	case "IOS", "IPHONE", "IPAD":
+		return "IOS"
+	case "DESKTOP", "WINDOWS", "MACOS", "LINUX":
+		return "DESKTOP"
+	case "WEB":
+		return "WEB"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+func channelForPlatform(platform string) string {
+	switch platform {
+	case "ANDROID", "IOS", "MOBILE":
+		return "mobile"
+	case "DESKTOP":
+		return "desktop"
+	default:
+		return "web"
+	}
 }
 
 type confirmRequest struct {

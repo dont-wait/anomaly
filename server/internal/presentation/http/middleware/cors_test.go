@@ -27,7 +27,7 @@ func TestNewCORSAllowsIdempotencyKeyPreflight(t *testing.T) {
 	if recorder.Header().Get("Access-Control-Allow-Origin") != "http://localhost:1420" {
 		t.Fatalf("allow origin = %q", recorder.Header().Get("Access-Control-Allow-Origin"))
 	}
-	if headers := strings.ToLower(recorder.Header().Get("Access-Control-Allow-Headers")); !strings.Contains(headers, "idempotency-key") {
-		t.Fatalf("allow headers = %q, want Idempotency-Key", headers)
+	if headers := strings.ToLower(recorder.Header().Get("Access-Control-Allow-Headers")); !strings.Contains(headers, "idempotency-key") || !strings.Contains(headers, "x-device-id") || !strings.Contains(headers, "x-platform") {
+		t.Fatalf("allow headers = %q, want transfer metadata headers", headers)
 	}
 }
