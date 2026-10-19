@@ -1,9 +1,9 @@
-# Kafka Consumer
+# Kafka Consumer Mock
 
-Consumer độc lập tối giản cho Kafka. Service này chỉ đọc topic và log event ra
-stdout, để sau này có thể phát triển thành pipeline model mà không phụ thuộc vào
-`server/`. Thư mục này chỉ là mock consumer để kiểm thử luồng Kafka; model
-pipeline thật sẽ được triển khai riêng sau này.
+Consumer độc lập tối giản cho Kafka. Service này đọc event envelope từ topic,
+tự chọn các field transaction cần cho model và log JSON ra stdout, không phụ
+thuộc vào `server/`. Thư mục này chỉ là mock consumer để kiểm thử luồng Kafka;
+model pipeline thật sẽ được triển khai riêng sau này.
 
 ## Configuration
 
@@ -30,13 +30,13 @@ Kafka phải đang chạy từ `server/`. Từ thư mục `server/`, mở Kafka 
 docker compose exec kafka \
   /opt/kafka/bin/kafka-console-producer.sh \
   --bootstrap-server kafka:29092 \
-  --topic anomaly.bank.events.v1
+   --topic anomaly.bank.events.v1
 ```
 
 Nhập message, ví dụ:
 
 ```json
-{"event_id":"test-1","event_type":"TestEvent","payload":{"message":"hello"}}
+{"event_id":"test-1","event_type":"TestEvent","stream":"banking","stream_revision":1,"schema_version":1,"payload":{"message":"hello"}}
 ```
 
 Consumer commit offset sau khi log thành công. EventStoreDB relay thuộc

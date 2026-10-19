@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -52,12 +54,36 @@ func main() {
 
 func logMessage(log *slog.Logger) messageHandler {
 	return func(_ context.Context, message kafkago.Message) error {
+		if input, ok, err := selectModelInput(message.Value); err != nil {
+			return err
+		} else if ok {
+			formatted, err := json.MarshalIndent(input, "", "  ")
+			if err != nil {
+				return fmt.Errorf("marshal selected model input: %w", err)
+			}
+			log.Info("model fields selected",
+				"topic", message.Topic,
+				"partition", message.Partition,
+				"offset", message.Offset,
+				"transaction_id", input.TransactionID,
+				"value", string(formatted),
+			)
+			return nil
+		}
+
+		value := message.Value
+		var decoded any
+		if err := json.Unmarshal(message.Value, &decoded); err == nil {
+			if formatted, err := json.MarshalIndent(decoded, "", "  "); err == nil {
+				value = formatted
+			}
+		}
 		log.Info("kafka event received",
 			"topic", message.Topic,
 			"partition", message.Partition,
 			"offset", message.Offset,
 			"key", string(message.Key),
-			"value", string(message.Value),
+			"value", string(value),
 		)
 		return nil
 	}

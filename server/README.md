@@ -198,8 +198,9 @@ docker compose up -d kafka eventstore anomaly-relay
 docker compose logs -f anomaly-relay
 ```
 
-Consumer mock của model pipeline nằm ngoài `server/` tại thư mục `../consumer-mock` và chạy
-riêng bằng:
+Consumer mock của model pipeline nằm ngoài `server/` tại thư mục `../consumer-mock`.
+Relay publish event envelope vào topic `anomaly.bank.events.v1`; model pipeline
+tự chọn các field cần thiết từ envelope. Chạy consumer riêng bằng:
 
 ```bash
 cd ../consumer-mock
@@ -212,13 +213,13 @@ go run .
 docker compose exec kafka \
   /opt/kafka/bin/kafka-console-producer.sh \
   --bootstrap-server kafka:29092 \
-  --topic anomaly.bank.events.v1
+   --topic anomaly.bank.events.v1
 ```
 
 Sau đó nhập một JSON bất kỳ, ví dụ:
 
 ```json
-{"event_id":"test-1","event_type":"TestEvent","payload":{"message":"hello"}}
+{"event_id":"test-1","event_type":"TestEvent","stream":"banking","stream_revision":1,"schema_version":1,"payload":{"message":"hello"}}
 ```
 
 Consumer commit offset sau khi log thành công. Relay ACK EventStoreDB chỉ sau

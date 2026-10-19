@@ -47,6 +47,10 @@
 4. ACK EventStoreDB sau khi Kafka xác nhận thành công
 5. NACK retry khi Kafka lỗi; payload loại bỏ các field nhạy cảm như password
 
+Model pipeline đọc envelope và tự chọn account number, authentication cùng
+metadata thiết bị từ transfer snapshot. Client gửi `X-Device-ID` và
+`X-Platform`; giá trị thiếu được chuyển thành `UNKNOWN`.
+
 ## Storage Responsibilities
 
 - EventStoreDB: source of truth cho account, KYC, số dư và transaction

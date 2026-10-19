@@ -7,9 +7,9 @@ import (
 )
 
 type config struct {
-	brokers        []string
-	topic          string
-	consumerGroup  string
+	brokers       []string
+	topic         string
+	consumerGroup string
 }
 
 func loadConfig() (config, error) {
