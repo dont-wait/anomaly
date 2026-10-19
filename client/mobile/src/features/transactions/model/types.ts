@@ -5,7 +5,14 @@ export interface TransactionDateRange {
   to: string;
 }
 export type TransactionKind =
-  "transfer" | "payment" | "bill" | "topup" | "savings" | "salary";
+  | "transfer"
+  | "payment"
+  | "bill"
+  | "topup"
+  | "savings"
+  | "salary"
+  // Banking projection emits this kind directly; keep icon and label maps in sync.
+  | "loan_disbursement";
 
 export interface Counterparty {
   name: string;

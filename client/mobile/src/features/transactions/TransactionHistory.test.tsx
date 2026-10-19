@@ -8,6 +8,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import type { TransactionRecord } from "@/features/transactions/model";
 import { TransactionHistory } from "./TransactionHistory";
+import { TransactionReceipt } from "./components/TransactionReceipt";
 
 const now = new Date(2026, 8, 22, 12, 0);
 const make = (overrides: Partial<TransactionRecord>): TransactionRecord => ({
@@ -57,6 +58,28 @@ const records = [
 ];
 
 afterEach(cleanup);
+
+it("renders a loan disbursement in history and its receipt", () => {
+  const record = make({
+    id: "loan-1",
+    reference: "LDloan-1",
+    kind: "loan_disbursement",
+    direction: "in",
+    counterparty: { name: "ANOMALY LOAN", bank: "ANOMALY" },
+  });
+  const onSelect = vi.fn();
+  const { unmount } = render(
+    <TransactionHistory records={[record]} onSelect={onSelect} now={now} />,
+  );
+  expect(screen.getByText(/Giải ngân khoản vay/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /ANOMALY LOAN/ }));
+  expect(onSelect).toHaveBeenCalledWith(record);
+
+  unmount();
+  render(<TransactionReceipt record={record} />);
+  expect(screen.getByText("Giải ngân khoản vay")).toBeTruthy();
+  expect(screen.getByText("+100.000₫")).toBeTruthy();
+});
 
 it("summarises successful in/out totals for the selected range", () => {
   render(<TransactionHistory records={records} onSelect={vi.fn()} now={now} />);

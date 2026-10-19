@@ -1,6 +1,8 @@
 BASE_URL ?= http://localhost:8080
 ADMIN_CCCD ?= 001234567890
 ADMIN_PASSWORD ?= admin123
+LOAN_CUSTOMER_CCCD ?= 079123456789
+LOAN_CUSTOMER_PASSWORD ?= DemoLocal@123
 
 ifeq ($(OS),Windows_NT)
 MIGRATE_CMD := powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/windows/migrate.ps1
@@ -23,6 +25,9 @@ help:
 	@echo "  import-bank       Offline import of legacy EventStore account streams"
 	@echo "  import-mongo-bank  Offline adoption of audited direct-Mongo MVP data"
 	@echo "  test-transaction-e2e  Run isolated MongoDB/EventStoreDB E2E"
+	@echo "  test-loan-e2e     Run loan HTTP lifecycle E2E with isolated MongoDB/EventStoreDB/RustFS"
+	@echo "  test-loan-api     Run loan Hurl tests against BASE_URL (verified customer/admin required)"
+	@echo "  test-loan-hurl-e2e  Run loan E2E plus Hurl against isolated containers"
 	@echo "  start-api         Run API development"
 	@echo "  seed              Run all registered development seeders"
 	@echo "  add-money         Add AMOUNT to an account: make add-money ACCOUNT_NO=<no_account> AMOUNT=<amount>"
@@ -88,3 +93,17 @@ import-mongo-bank:
 
 test-transaction-e2e:
 	go test -tags=e2e -count=1 -timeout=6m -run '^TestBankEventSourcing$$' ./internal/infrastructure/eventstore
+
+.PHONY: test-loan-e2e
+
+test-loan-e2e:
+	go test -tags=e2e -count=1 -timeout=7m -run '^TestPersonalLoanHTTPE2E$$' -v ./internal/infrastructure/eventstore
+
+.PHONY: test-loan-api test-loan-hurl-e2e
+
+# Quotes inside the Hurl value preserve leading zeroes in CCCD identifiers.
+test-loan-api:
+	@hurl --test --variable base_url="$(BASE_URL)" --variable 'customer_cccd="$(LOAN_CUSTOMER_CCCD)"' --secret customer_password="$(LOAN_CUSTOMER_PASSWORD)" --variable 'admin_cccd="$(ADMIN_CCCD)"' --secret admin_password="$(ADMIN_PASSWORD)" tests/api/loans/*.hurl
+
+test-loan-hurl-e2e:
+	LOAN_HURL_E2E=1 go test -tags=e2e -count=1 -timeout=7m -run '^TestPersonalLoanHTTPE2E$$' -v ./internal/infrastructure/eventstore
