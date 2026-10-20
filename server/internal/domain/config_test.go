@@ -152,6 +152,7 @@ func TestLoaderLoadKafkaConfigUsesDefaults(t *testing.T) {
 	t.Setenv("KAFKA_TOPIC", "")
 	t.Setenv("KAFKA_PRODUCER_ID", "")
 	t.Setenv("KAFKA_EVENTSTORE_SUBSCRIPTION", "")
+	t.Setenv("KAFKA_PAYLOAD_REDACTION_KEY", "")
 
 	got := (&Loader{log: testLogger()}).LoadKafkaConfig()
 	if len(got.Brokers) != 1 || got.Brokers[0] != "localhost:9092" {
@@ -173,12 +174,13 @@ func TestLoaderLoadKafkaConfigUsesEnvironment(t *testing.T) {
 	t.Setenv("KAFKA_TOPIC", "events.v1")
 	t.Setenv("KAFKA_PRODUCER_ID", "server-producer")
 	t.Setenv("KAFKA_EVENTSTORE_SUBSCRIPTION", "publisher-group")
+	t.Setenv("KAFKA_PAYLOAD_REDACTION_KEY", "redaction-key")
 
 	got := (&Loader{log: testLogger()}).LoadKafkaConfig()
 	if len(got.Brokers) != 2 || got.Brokers[0] != "kafka-a:9092" || got.Brokers[1] != "kafka-b:9092" {
 		t.Fatalf("Brokers = %#v, want two trimmed brokers", got.Brokers)
 	}
-	if got.Topic != "events.v1" || got.ProducerID != "server-producer" || got.EventStoreSubscription != "publisher-group" {
+	if got.Topic != "events.v1" || got.ProducerID != "server-producer" || got.EventStoreSubscription != "publisher-group" || got.PayloadRedactionKey != "redaction-key" {
 		t.Fatalf("Kafka config = %#v, want environment values", got)
 	}
 }

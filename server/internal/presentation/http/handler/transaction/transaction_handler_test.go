@@ -123,14 +123,23 @@ func TestCreateTransferStoresModelMetadataFromHeaders(t *testing.T) {
 		recipient: mongorepo.TransferAccount{ID: bson.NewObjectID(), AccountNo: "99999180147", Name: "TRAN THI BICH"},
 	}
 	recorder := createTransferRequestWithHeaders(t, repo, "34297a72-9433-4adf-8958-868d5e50d197", `{"toBankCode":"ANOMALY","toAccountNo":"99999180147","amount":50000000,"note":"test"}`, map[string]string{
-		"X-Device-ID": "DEVICE01",
+		"X-Device-ID": "550e8400-e29b-41d4-a716-446655440000",
 		"X-Platform":  "android",
 	})
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body = %s", recorder.Code, recorder.Body.String())
 	}
-	if repo.created.DeviceID != "DEVICE01" || repo.created.Platform != "ANDROID" || repo.created.Channel != "mobile" {
+	if repo.created.DeviceID != "550e8400-e29b-41d4-a716-446655440000" || repo.created.Platform != "ANDROID" || repo.created.Channel != "mobile" {
 		t.Fatalf("created metadata = device=%q platform=%q channel=%q", repo.created.DeviceID, repo.created.Platform, repo.created.Channel)
+	}
+}
+
+func TestNormalizeDeviceIDRejectsCallerSuppliedNonUUID(t *testing.T) {
+	if got := normalizeDeviceID("DEVICE01"); got != "" {
+		t.Fatalf("normalizeDeviceID() = %q, want empty for untrusted arbitrary ID", got)
+	}
+	if got := normalizeDeviceID("550e8400-e29b-41d4-a716-446655440000"); got == "" {
+		t.Fatal("normalizeDeviceID() rejected a valid device UUID")
 	}
 }
 

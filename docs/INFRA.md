@@ -54,6 +54,16 @@ KAFKA_BROKERS=localhost:9092
 KAFKA_TOPIC=anomaly.bank.events.v1
 KAFKA_PRODUCER_ID=anomaly-server
 KAFKA_EVENTSTORE_SUBSCRIPTION=kafka-publisher
+KAFKA_PAYLOAD_REDACTION_KEY=replace-with-a-secret-key
+```
+
+`KAFKA_PAYLOAD_REDACTION_KEY` được dùng để pseudonymize account/device
+identifiers trước khi publish vào Kafka. Nếu không khai báo, relay dùng
+`JWT_SECRET` làm key dự phòng. Không log raw banking payload ở consumer. Khi
+feature state cần rebuild, dừng relay rồi chạy:
+
+```bash
+docker compose run --rm anomaly-relay /app/relay --bootstrap-model-features
 ```
 
 ## Common Workflows

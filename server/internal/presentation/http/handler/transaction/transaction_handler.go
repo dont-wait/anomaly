@@ -309,9 +309,13 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 func normalizeDeviceID(value string) string {
 	value = strings.TrimSpace(value)
 	if len(value) > 128 {
-		return value[:128]
+		return ""
 	}
-	return value
+	parsed, err := uuid.Parse(value)
+	if err != nil {
+		return ""
+	}
+	return parsed.String()
 }
 
 func normalizePlatform(value string) string {

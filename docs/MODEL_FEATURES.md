@@ -83,8 +83,10 @@ Mỗi tài khoản nguồn có một document summary:
 ```
 
 `rolling_buckets` dùng để loại bỏ dữ liệu đã quá 7 ngày mà không cần quét
-transaction history. Có thể dùng bucket theo phút cho cửa sổ gần và bucket
-theo giờ cho phần lịch sử xa hơn để giới hạn kích thước document.
+transaction history. Mỗi bucket giữ thêm các sample timestamp trong rolling
+window để xử lý chính xác cutoff theo giây và bỏ qua hoạt động xảy ra sau một
+event historical đang được replay. State vẫn bị giới hạn theo rolling window,
+không phải toàn bộ transaction history.
 
 ### Receiver và device history
 
@@ -96,7 +98,7 @@ model_known_receivers(account_id, receiver_account_id)
 model_known_devices(account_id, device_id)
 ```
 
-Producer kiểm tra sự tồn tại trước khi cập nhật:
+Producer kiểm tra sự tồn tại tại thời điểm `occurred_at` trước khi cập nhật:
 
 - Không tồn tại receiver → `new_receiver: true`
 - Không tồn tại device → `new_device: true`
@@ -106,7 +108,11 @@ Producer kiểm tra sự tồn tại trước khi cập nhật:
 
 ## Kafka event contract
 
-Giữ nguyên `payload` banking gốc và thêm `model_features` ở cấp envelope:
+Giữ cấu trúc payload banking cần thiết và thêm `model_features` ở cấp envelope.
+Payload trước khi publish được redact các profile/KYC/contact/media/credential
+fields; account number, account ID và device ID được pseudonymize bằng
+`KAFKA_PAYLOAD_REDACTION_KEY` (hoặc SHA-256 khi chạy local không cấu hình key).
+Consumer mock không log raw payload.
 
 ```json
 {
@@ -223,15 +229,27 @@ Không còn query và aggregate toàn bộ transaction history cho từng giao d
    lại lịch sử.
 9. Bổ sung unit test cho rolling window, receiver/device mới và retry.
 
-## Bootstrap khi triển khai lần đầu
+## Bootstrap và recovery state
 
 Feature state phải được xây dựng theo đúng thứ tự event trước khi dùng cho dữ
-liệu lịch sử. Với một persistent subscription đã tồn tại từ trước khi có
-feature state, checkpoint của subscription có thể đã vượt qua các event cũ.
-Khi đó cần một lần replay/bootstrap từ đầu banking stream (không publish lại
-Kafka) hoặc reset subscription theo quy trình vận hành trước khi bật feature
-enrichment. Sau khi bootstrap, MongoDB giữ state để relay restart không phải
-query lại toàn bộ lịch sử.
+liệu lịch sử. Relay lưu tiến độ đã xử lý trong collection
+`model_feature_progress`. Khi persistent-subscription checkpoint vượt quá tiến
+độ MongoDB, relay tự reset và replay state-only đến đúng checkpoint; các event
+được replay không publish lại Kafka.
+
+Có thể chạy recovery thủ công khi cần:
+
+```bash
+./relay --bootstrap-model-features
+```
+
+Phải dừng relay chính trước khi chạy lệnh này. Lệnh sẽ xóa và dựng lại state,
+decision, receiver/device history từ banking stream mà không ghi message mới
+vào Kafka.
+
+`model_feature_decisions` có cleanup định kỳ cho các decision đã applied quá 90
+ngày. Không xóa sớm hơn thời gian mà hệ thống còn cần replay EventStoreDB;
+nếu cần replay xa hơn phải dùng state-only bootstrap.
 
 Thiết kế này vẫn giữ nguyên một Kafka topic, giữ nguyên event payload gốc và
 đưa phần tính feature về đúng phía producer như yêu cầu.

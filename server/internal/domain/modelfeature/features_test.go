@@ -1,6 +1,7 @@
 package modelfeature
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -81,5 +82,84 @@ func TestCalculateUnknownDeviceDoesNotLookNew(t *testing.T) {
 	}
 	if features.NewDevice {
 		t.Fatal("NewDevice = true for unknown device")
+	}
+}
+
+func TestCalculateExcludesFutureSamplesFromHistoricalEvent(t *testing.T) {
+	base := time.Date(2026, 10, 19, 10, 0, 0, 0, time.UTC)
+	future := base.Add(2 * time.Hour)
+	state := State{
+		LastTxAt: &future,
+		Buckets: []Bucket{{
+			StartAt:   future.Truncate(FeatureBucketSize),
+			AmountSum: 900,
+			TxCount:   1,
+			Samples:   []TransactionSample{{OccurredAt: future, Amount: 900}},
+		}},
+	}
+
+	features, _, err := Calculate(state, Transaction{
+		EventID:         "historical-event",
+		SourceAccountID: "source-1",
+		DestinationID:   "receiver-1",
+		Amount:          100,
+		OccurredAt:      base,
+	}, false, false)
+	if err != nil {
+		t.Fatalf("Calculate() error = %v", err)
+	}
+	if features.TxCount1h != 0 || features.AvgAmount7d != 0 || features.LastTxAt != nil {
+		t.Fatalf("future activity leaked into historical features: %#v", features)
+	}
+}
+
+func TestCalculateUsesExactSampleWindowBoundaries(t *testing.T) {
+	base := time.Date(2026, 10, 19, 10, 0, 30, 0, time.UTC)
+	state := State{Buckets: []Bucket{{
+		StartAt:   base.Truncate(FeatureBucketSize),
+		AmountSum: 300,
+		TxCount:   2,
+		Samples: []TransactionSample{
+			{OccurredAt: base.Add(-time.Hour - time.Second), Amount: 100},
+			{OccurredAt: base.Add(-time.Hour + time.Second), Amount: 200},
+		},
+	}}}
+
+	features, _, err := Calculate(state, Transaction{
+		EventID:         "boundary-event",
+		SourceAccountID: "source-1",
+		DestinationID:   "receiver-1",
+		Amount:          50,
+		OccurredAt:      base,
+	}, true, true)
+	if err != nil {
+		t.Fatalf("Calculate() error = %v", err)
+	}
+	if features.TxCount1h != 1 || features.AvgAmount7d != 150 {
+		t.Fatalf("boundary features = %#v, want one exact in-window sample", features)
+	}
+}
+
+func TestCalculateDoesNotFailWhenBucketAmountExceedsInt64(t *testing.T) {
+	base := time.Date(2026, 10, 19, 10, 0, 0, 0, time.UTC)
+	state := State{Buckets: []Bucket{{
+		StartAt:   base,
+		AmountSum: math.MaxInt64,
+		TxCount:   1,
+		Samples:   []TransactionSample{{OccurredAt: base, Amount: math.MaxInt64}},
+	}}}
+
+	features, next, err := Calculate(state, Transaction{
+		EventID:         "large-event",
+		SourceAccountID: "source-1",
+		DestinationID:   "receiver-1",
+		Amount:          math.MaxInt64,
+		OccurredAt:      base,
+	}, true, true)
+	if err != nil {
+		t.Fatalf("Calculate() error = %v", err)
+	}
+	if features.AvgAmount7d != math.MaxInt64 || next.Buckets[0].AmountSumExact == "" {
+		t.Fatalf("large amount state = %#v, features = %#v", next.Buckets[0], features)
 	}
 }

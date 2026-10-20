@@ -46,7 +46,7 @@ func TestSelectModelInputIgnoresOtherEvents(t *testing.T) {
 }
 
 func TestSelectModelInputRequiresProducerFeatures(t *testing.T) {
-	_, ok, err := selectModelInput([]byte(`{"event_type":"TransferCompleted","payload":{}}`))
+	_, ok, err := selectModelInput([]byte(`{"event_type":"TransferCompleted","payload":{"transfer":{"ID":"TX001","Source":{"AccountNo":"ACC001"},"Destination":{"AccountNo":"ACC002"},"Amount":1,"CreatedAt":"2026-10-17T00:50:00Z"}}}`))
 	if err == nil || !ok {
 		t.Fatalf("selectModelInput() = selected=%v error=%v, want missing feature error", ok, err)
 	}

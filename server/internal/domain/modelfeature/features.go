@@ -3,6 +3,7 @@ package modelfeature
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ type Features struct {
 
 type Transaction struct {
 	EventID         string
+	StreamRevision  uint64
 	SourceAccountID string
 	DestinationID   string
 	DeviceID        string
@@ -36,9 +38,19 @@ type Transaction struct {
 }
 
 type Bucket struct {
-	StartAt   time.Time `json:"start_at" bson:"start_at"`
-	AmountSum int64     `json:"amount_sum" bson:"amount_sum"`
-	TxCount   int64     `json:"tx_count" bson:"tx_count"`
+	StartAt        time.Time           `json:"start_at" bson:"start_at"`
+	AmountSum      int64               `json:"amount_sum" bson:"amount_sum"`
+	AmountSumExact string              `json:"amount_sum_exact,omitempty" bson:"amount_sum_exact,omitempty"`
+	TxCount        int64               `json:"tx_count" bson:"tx_count"`
+	Samples        []TransactionSample `json:"samples,omitempty" bson:"samples,omitempty"`
+}
+
+// TransactionSample keeps enough detail inside the bounded rolling state to
+// calculate windows exactly at minute boundaries and to ignore future events
+// when historical events arrive out of order.
+type TransactionSample struct {
+	OccurredAt time.Time `json:"occurred_at" bson:"occurred_at"`
+	Amount     int64     `json:"amount" bson:"amount"`
 }
 
 type State struct {
@@ -82,7 +94,7 @@ func Calculate(state State, tx Transaction, receiverKnown, deviceKnown bool) (Fe
 		AvgAmount7d: averageAmount(state.Buckets, tx.OccurredAt, FeatureWindow7Days),
 		TxCount1h:   countTransactions(state.Buckets, tx.OccurredAt, FeatureWindow1Hour),
 		TxCount24h:  countTransactions(state.Buckets, tx.OccurredAt, FeatureWindow24Hour),
-		LastTxAt:    cloneTime(state.LastTxAt),
+		LastTxAt:    lastTransactionAt(state.Buckets, state.LastTxAt, tx.OccurredAt),
 		NewReceiver: !receiverKnown,
 		NewDevice:   strings.TrimSpace(tx.DeviceID) != "" && !strings.EqualFold(strings.TrimSpace(tx.DeviceID), "unknown") && !deviceKnown,
 	}
@@ -92,17 +104,28 @@ func Calculate(state State, tx Transaction, receiverKnown, deviceKnown bool) (Fe
 	found := false
 	for i := range updatedBuckets {
 		if updatedBuckets[i].StartAt.Equal(bucketStart) {
-			if updatedBuckets[i].AmountSum > math.MaxInt64-tx.Amount {
-				return Features{}, State{}, fmt.Errorf("feature amount sum overflow")
-			}
-			updatedBuckets[i].AmountSum += tx.Amount
-			updatedBuckets[i].TxCount++
+			amount := bucketAmount(updatedBuckets[i])
+			amount.Add(amount, big.NewInt(tx.Amount))
+			setBucketAmount(&updatedBuckets[i], amount)
+			updatedBuckets[i].TxCount = saturatingAdd(updatedBuckets[i].TxCount, 1)
+			updatedBuckets[i].Samples = append(updatedBuckets[i].Samples, TransactionSample{
+				OccurredAt: tx.OccurredAt.UTC(),
+				Amount:     tx.Amount,
+			})
 			found = true
 			break
 		}
 	}
 	if !found {
-		updatedBuckets = append(updatedBuckets, Bucket{StartAt: bucketStart, AmountSum: tx.Amount, TxCount: 1})
+		updatedBuckets = append(updatedBuckets, Bucket{
+			StartAt:   bucketStart,
+			AmountSum: tx.Amount,
+			TxCount:   1,
+			Samples: []TransactionSample{{
+				OccurredAt: tx.OccurredAt.UTC(),
+				Amount:     tx.Amount,
+			}},
+		})
 	}
 	sort.Slice(updatedBuckets, func(i, j int) bool { return updatedBuckets[i].StartAt.Before(updatedBuckets[j].StartAt) })
 
@@ -121,10 +144,31 @@ func Calculate(state State, tx Transaction, receiverKnown, deviceKnown bool) (Fe
 }
 
 func pruneBuckets(buckets []Bucket, at time.Time) []Bucket {
-	cutoff := at.UTC().Add(-FeatureWindow7Days).Truncate(FeatureBucketSize)
+	cutoff := at.UTC().Add(-FeatureWindow7Days)
 	result := make([]Bucket, 0, len(buckets))
 	for _, bucket := range buckets {
-		if !bucket.StartAt.Before(cutoff) {
+		if int64(len(bucket.Samples)) == bucket.TxCount && len(bucket.Samples) > 0 {
+			filtered := bucket
+			filtered.Samples = filtered.Samples[:0]
+			filtered.AmountSum = 0
+			filtered.AmountSumExact = ""
+			filtered.TxCount = 0
+			for _, sample := range bucket.Samples {
+				if sample.OccurredAt.Before(cutoff) {
+					continue
+				}
+				amount := bucketAmount(filtered)
+				amount.Add(amount, big.NewInt(sample.Amount))
+				setBucketAmount(&filtered, amount)
+				filtered.TxCount = saturatingAdd(filtered.TxCount, 1)
+				filtered.Samples = append(filtered.Samples, sample)
+			}
+			if filtered.TxCount > 0 {
+				result = append(result, filtered)
+			}
+			continue
+		}
+		if !bucket.StartAt.Before(cutoff.Truncate(FeatureBucketSize)) {
 			result = append(result, bucket)
 		}
 	}
@@ -135,8 +179,16 @@ func countTransactions(buckets []Bucket, at time.Time, window time.Duration) int
 	cutoff := at.UTC().Add(-window)
 	var count int64
 	for _, bucket := range buckets {
-		if !bucket.StartAt.Before(cutoff) {
-			count += bucket.TxCount
+		if int64(len(bucket.Samples)) == bucket.TxCount && len(bucket.Samples) > 0 {
+			for _, sample := range bucket.Samples {
+				if !sample.OccurredAt.Before(cutoff) && !sample.OccurredAt.After(at) {
+					count = saturatingAdd(count, 1)
+				}
+			}
+			continue
+		}
+		if !bucket.StartAt.Before(cutoff) && !bucket.StartAt.After(at) {
+			count = saturatingAdd(count, bucket.TxCount)
 		}
 	}
 	return count
@@ -144,21 +196,75 @@ func countTransactions(buckets []Bucket, at time.Time, window time.Duration) int
 
 func averageAmount(buckets []Bucket, at time.Time, window time.Duration) int64 {
 	cutoff := at.UTC().Add(-window)
-	var sum, count int64
+	sum := new(big.Int)
+	var count int64
 	for _, bucket := range buckets {
-		if bucket.StartAt.Before(cutoff) {
+		if int64(len(bucket.Samples)) == bucket.TxCount && len(bucket.Samples) > 0 {
+			for _, sample := range bucket.Samples {
+				if !sample.OccurredAt.Before(cutoff) && !sample.OccurredAt.After(at) {
+					sum.Add(sum, big.NewInt(sample.Amount))
+					count = saturatingAdd(count, 1)
+				}
+			}
 			continue
 		}
-		if sum > math.MaxInt64-bucket.AmountSum || count > math.MaxInt64-bucket.TxCount {
-			return 0
+		if !bucket.StartAt.Before(cutoff) && !bucket.StartAt.After(at) {
+			sum.Add(sum, bucketAmount(bucket))
+			count = saturatingAdd(count, bucket.TxCount)
 		}
-		sum += bucket.AmountSum
-		count += bucket.TxCount
 	}
 	if count == 0 {
 		return 0
 	}
-	return sum / count
+	return new(big.Int).Div(sum, big.NewInt(count)).Int64()
+}
+
+func lastTransactionAt(buckets []Bucket, fallback *time.Time, at time.Time) *time.Time {
+	var latest *time.Time
+	for _, bucket := range buckets {
+		for _, sample := range bucket.Samples {
+			if sample.OccurredAt.After(at) {
+				continue
+			}
+			candidate := sample.OccurredAt.UTC()
+			if latest == nil || candidate.After(*latest) {
+				latest = &candidate
+			}
+		}
+	}
+	if latest != nil {
+		return latest
+	}
+	if fallback != nil && !fallback.After(at) {
+		return cloneTime(fallback)
+	}
+	return nil
+}
+
+func bucketAmount(bucket Bucket) *big.Int {
+	if bucket.AmountSumExact != "" {
+		if amount, ok := new(big.Int).SetString(bucket.AmountSumExact, 10); ok {
+			return amount
+		}
+	}
+	return big.NewInt(bucket.AmountSum)
+}
+
+func setBucketAmount(bucket *Bucket, amount *big.Int) {
+	if amount.IsInt64() {
+		bucket.AmountSum = amount.Int64()
+		bucket.AmountSumExact = ""
+		return
+	}
+	bucket.AmountSum = math.MaxInt64
+	bucket.AmountSumExact = amount.String()
+}
+
+func saturatingAdd(left, right int64) int64 {
+	if right > 0 && left > math.MaxInt64-right {
+		return math.MaxInt64
+	}
+	return left + right
 }
 
 func cloneTime(value *time.Time) *time.Time {

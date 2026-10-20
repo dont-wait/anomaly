@@ -135,6 +135,7 @@ type KafkaConfig struct {
 	Topic                  string
 	ProducerID             string
 	EventStoreSubscription string
+	PayloadRedactionKey    string
 }
 
 func (l *Loader) LoadKafkaConfig() *KafkaConfig {
@@ -144,6 +145,7 @@ func (l *Loader) LoadKafkaConfig() *KafkaConfig {
 		Topic:                  l.LoadEnvOr("KAFKA_TOPIC", "anomaly.bank.events.v1"),
 		ProducerID:             l.LoadEnvOr("KAFKA_PRODUCER_ID", "anomaly-server"),
 		EventStoreSubscription: l.LoadEnvOr("KAFKA_EVENTSTORE_SUBSCRIPTION", "kafka-publisher"),
+		PayloadRedactionKey:    l.LoadEnvOr("KAFKA_PAYLOAD_REDACTION_KEY", ""),
 	}
 }
 

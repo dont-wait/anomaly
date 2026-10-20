@@ -25,9 +25,14 @@ type EventEnvelope struct {
 }
 
 type Producer struct {
-	writer  *kafkago.Writer
+	writer  kafkaWriter
 	brokers []string
 	topic   string
+}
+
+type kafkaWriter interface {
+	WriteMessages(context.Context, ...kafkago.Message) error
+	Close() error
 }
 
 func NewProducer(config *domain.KafkaConfig) (*Producer, error) {

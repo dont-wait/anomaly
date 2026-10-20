@@ -57,33 +57,38 @@ func logMessage(log *slog.Logger) messageHandler {
 		if input, ok, err := selectModelInput(message.Value); err != nil {
 			return err
 		} else if ok {
-			formatted, err := json.MarshalIndent(input, "", "  ")
-			if err != nil {
-				return fmt.Errorf("marshal selected model input: %w", err)
-			}
 			log.Info("model fields selected",
 				"topic", message.Topic,
 				"partition", message.Partition,
 				"offset", message.Offset,
 				"transaction_id", input.TransactionID,
-				"value", string(formatted),
+				"amount", input.Amount,
+				"channel", input.Channel,
+				"avg_amount_7d", input.AvgAmount7d,
+				"tx_count_1h", input.TxCount1h,
+				"tx_count_24h", input.TxCount24h,
+				"last_tx_at", input.LastTxAt,
+				"new_receiver", input.NewReceiver,
+				"new_device", input.NewDevice,
 			)
 			return nil
 		}
 
-		value := message.Value
-		var decoded any
-		if err := json.Unmarshal(message.Value, &decoded); err == nil {
-			if formatted, err := json.MarshalIndent(decoded, "", "  "); err == nil {
-				value = formatted
-			}
+		var metadata struct {
+			EventID       string `json:"event_id"`
+			EventType     string `json:"event_type"`
+			SchemaVersion int    `json:"schema_version"`
+		}
+		if err := json.Unmarshal(message.Value, &metadata); err != nil {
+			return fmt.Errorf("decode kafka event metadata: %w", err)
 		}
 		log.Info("kafka event received",
 			"topic", message.Topic,
 			"partition", message.Partition,
 			"offset", message.Offset,
-			"key", string(message.Key),
-			"value", string(value),
+			"event_id", metadata.EventID,
+			"event_type", metadata.EventType,
+			"schema_version", metadata.SchemaVersion,
 		)
 		return nil
 	}

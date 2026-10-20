@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain/modelfeature"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -17,6 +18,8 @@ const (
 	modelFeatureDecisionsCollection = "model_feature_decisions"
 	modelKnownReceiversCollection   = "model_known_receivers"
 	modelKnownDevicesCollection     = "model_known_devices"
+	modelFeatureProgressCollection  = "model_feature_progress"
+	modelFeatureProgressID          = "relay"
 )
 
 type ModelFeatureRepository struct {
@@ -25,6 +28,7 @@ type ModelFeatureRepository struct {
 	decisions *mongodrv.Collection
 	receivers *mongodrv.Collection
 	devices   *mongodrv.Collection
+	progress  *mongodrv.Collection
 }
 
 func NewModelFeatureRepository(client *mongodrv.Client, dbName string) *ModelFeatureRepository {
@@ -35,6 +39,7 @@ func NewModelFeatureRepository(client *mongodrv.Client, dbName string) *ModelFea
 		decisions: db.Collection(modelFeatureDecisionsCollection),
 		receivers: db.Collection(modelKnownReceiversCollection),
 		devices:   db.Collection(modelKnownDevicesCollection),
+		progress:  db.Collection(modelFeatureProgressCollection),
 	}
 }
 
@@ -61,7 +66,7 @@ func (r *ModelFeatureRepository) EnsureIndexes(ctx context.Context) error {
 		return fmt.Errorf("create model device index: %w", err)
 	}
 	_, err = r.decisions.Indexes().CreateOne(ctx, mongodrv.IndexModel{
-		Keys:    bson.D{{Key: "state_applied", Value: 1}},
+		Keys:    bson.D{{Key: "state_applied", Value: 1}, {Key: "applied_at", Value: 1}},
 		Options: options.Index().SetName("idx_model_decision_state"),
 	})
 	if err != nil {
@@ -108,15 +113,19 @@ func (r *ModelFeatureRepository) LoadState(ctx context.Context, accountID string
 	return state, true, nil
 }
 
-func (r *ModelFeatureRepository) IsKnownReceiver(ctx context.Context, accountID, receiverID string) (bool, error) {
-	return r.exists(ctx, r.receivers, bson.M{"account_id": accountID, "receiver_id": receiverID})
+func (r *ModelFeatureRepository) IsKnownReceiver(ctx context.Context, accountID, receiverID string, at time.Time) (bool, error) {
+	return r.existsAt(ctx, r.receivers, bson.M{"account_id": accountID, "receiver_id": receiverID}, at)
 }
 
-func (r *ModelFeatureRepository) IsKnownDevice(ctx context.Context, accountID, deviceID string) (bool, error) {
-	return r.exists(ctx, r.devices, bson.M{"account_id": accountID, "device_id": deviceID})
+func (r *ModelFeatureRepository) IsKnownDevice(ctx context.Context, accountID, deviceID string, at time.Time) (bool, error) {
+	return r.existsAt(ctx, r.devices, bson.M{"account_id": accountID, "device_id": deviceID}, at)
 }
 
-func (r *ModelFeatureRepository) exists(ctx context.Context, collection *mongodrv.Collection, filter bson.M) (bool, error) {
+func (r *ModelFeatureRepository) existsAt(ctx context.Context, collection *mongodrv.Collection, filter bson.M, at time.Time) (bool, error) {
+	filter["$or"] = bson.A{
+		bson.M{"first_seen_at": bson.M{"$lte": at}},
+		bson.M{"first_seen_at": bson.M{"$exists": false}},
+	}
 	err := collection.FindOne(ctx, filter).Err()
 	if errors.Is(err, mongodrv.ErrNoDocuments) {
 		return false, nil
@@ -125,6 +134,51 @@ func (r *ModelFeatureRepository) exists(ctx context.Context, collection *mongodr
 		return false, err
 	}
 	return true, nil
+}
+
+type featureProgress struct {
+	ID             string    `bson:"_id"`
+	StreamRevision uint64    `bson:"stream_revision"`
+	LastEventID    string    `bson:"last_event_id"`
+	UpdatedAt      time.Time `bson:"updated_at"`
+}
+
+func (r *ModelFeatureRepository) LoadProgress(ctx context.Context) (uint64, bool, error) {
+	var progress featureProgress
+	err := r.progress.FindOne(ctx, bson.M{"_id": modelFeatureProgressID}).Decode(&progress)
+	if errors.Is(err, mongodrv.ErrNoDocuments) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return progress.StreamRevision, true, nil
+}
+
+func (r *ModelFeatureRepository) SaveProgress(ctx context.Context, eventID string, revision uint64) error {
+	_, err := r.progress.UpdateOne(ctx, bson.M{"_id": modelFeatureProgressID}, bson.M{
+		"$max":         bson.M{"stream_revision": revision},
+		"$set":         bson.M{"last_event_id": eventID, "updated_at": time.Now().UTC()},
+		"$setOnInsert": bson.M{"_id": modelFeatureProgressID},
+	}, options.UpdateOne().SetUpsert(true))
+	return err
+}
+
+func (r *ModelFeatureRepository) ResetForBootstrap(ctx context.Context) error {
+	for _, collection := range []*mongodrv.Collection{r.states, r.decisions, r.receivers, r.devices, r.progress} {
+		if _, err := collection.DeleteMany(ctx, bson.M{}); err != nil {
+			return fmt.Errorf("reset model feature collection: %w", err)
+		}
+	}
+	return nil
+}
+
+func (r *ModelFeatureRepository) CleanupAppliedDecisions(ctx context.Context, before time.Time) error {
+	_, err := r.decisions.DeleteMany(ctx, bson.M{
+		"state_applied": true,
+		"applied_at":    bson.M{"$lt": before},
+	})
+	return err
 }
 
 // ApplyState atomically commits the rolling state, known receiver/device and
@@ -151,6 +205,7 @@ func (r *ModelFeatureRepository) ApplyState(ctx context.Context, tx modelfeature
 		if tx.DestinationID != "" {
 			if _, err := r.receivers.UpdateOne(sc, bson.M{"account_id": tx.SourceAccountID, "receiver_id": tx.DestinationID}, bson.M{
 				"$setOnInsert": bson.M{"account_id": tx.SourceAccountID, "receiver_id": tx.DestinationID},
+				"$min":         bson.M{"first_seen_at": tx.OccurredAt},
 			}, options.UpdateOne().SetUpsert(true)); err != nil {
 				return nil, fmt.Errorf("save known receiver: %w", err)
 			}
@@ -158,11 +213,12 @@ func (r *ModelFeatureRepository) ApplyState(ctx context.Context, tx modelfeature
 		if tx.DeviceID != "" && !strings.EqualFold(tx.DeviceID, "unknown") {
 			if _, err := r.devices.UpdateOne(sc, bson.M{"account_id": tx.SourceAccountID, "device_id": tx.DeviceID}, bson.M{
 				"$setOnInsert": bson.M{"account_id": tx.SourceAccountID, "device_id": tx.DeviceID},
+				"$min":         bson.M{"first_seen_at": tx.OccurredAt},
 			}, options.UpdateOne().SetUpsert(true)); err != nil {
 				return nil, fmt.Errorf("save known device: %w", err)
 			}
 		}
-		_, err := r.decisions.UpdateOne(sc, bson.M{"_id": tx.EventID, "state_applied": false}, bson.M{"$set": bson.M{"state_applied": true}})
+		_, err := r.decisions.UpdateOne(sc, bson.M{"_id": tx.EventID, "state_applied": false}, bson.M{"$set": bson.M{"state_applied": true, "applied_at": time.Now().UTC()}})
 		return nil, err
 	})
 	return err

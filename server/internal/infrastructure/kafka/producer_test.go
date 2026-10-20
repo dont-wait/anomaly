@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dont-wait/anomaly/internal/domain"
+	kafkago "github.com/segmentio/kafka-go"
 )
 
 func TestNewProducerRequiresConfiguration(t *testing.T) {
@@ -22,14 +23,7 @@ func TestNewProducerRequiresConfiguration(t *testing.T) {
 }
 
 func TestProducerPublishValidatesEvent(t *testing.T) {
-	producer, err := NewProducer(&domain.KafkaConfig{
-		Brokers: []string{"localhost:9092"},
-		Topic:   "events",
-	})
-	if err != nil {
-		t.Fatalf("NewProducer() error = %v", err)
-	}
-	defer func() { _ = producer.Close() }()
+	producer := &Producer{writer: validationWriter{t: t}}
 
 	for _, event := range []EventEnvelope{
 		{EventType: "TestEvent", Payload: []byte(`{}`)},
@@ -41,3 +35,14 @@ func TestProducerPublishValidatesEvent(t *testing.T) {
 		}
 	}
 }
+
+type validationWriter struct {
+	t *testing.T
+}
+
+func (w validationWriter) WriteMessages(context.Context, ...kafkago.Message) error {
+	w.t.Fatal("WriteMessages must not be called for invalid events")
+	return nil
+}
+
+func (validationWriter) Close() error { return nil }

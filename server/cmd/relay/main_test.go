@@ -13,17 +13,26 @@ import (
 )
 
 func TestSanitizePayloadRemovesSensitiveFields(t *testing.T) {
-	got, err := sanitizePayload([]byte(`{"account":{"PasswordHash":"secret","username":"demo"},"nested":{"access_token":"token"}}`))
+	got, err := sanitizePayload([]byte(`{"account":{"PasswordHash":"secret","username":"demo"},"nested":{"access_token":"token"},"transfer":{"Source":{"AccountNo":"ACC001","Name":"Alice"}}}`), "test-key")
 	if err != nil {
 		t.Fatalf("sanitizePayload() error = %v", err)
 	}
-	if string(got) != `{"account":{"username":"demo"},"nested":{}}` {
-		t.Fatalf("sanitizePayload() = %s, want sensitive fields removed", got)
+	var payload map[string]any
+	if err := json.Unmarshal(got, &payload); err != nil {
+		t.Fatalf("sanitized payload is invalid JSON: %v", err)
+	}
+	if _, ok := payload["account"]; ok {
+		t.Fatal("account aggregate should be removed")
+	}
+	transfer := payload["transfer"].(map[string]any)
+	source := transfer["Source"].(map[string]any)
+	if source["AccountNo"] == "ACC001" || source["Name"] != nil {
+		t.Fatalf("sensitive transfer fields were not protected: %#v", source)
 	}
 }
 
 func TestSanitizePayloadRejectsInvalidJSON(t *testing.T) {
-	if _, err := sanitizePayload([]byte(`not-json`)); err == nil {
+	if _, err := sanitizePayload([]byte(`not-json`), ""); err == nil {
 		t.Fatal("sanitizePayload() error = nil, want error")
 	}
 }
@@ -49,17 +58,33 @@ func (f *relayFeatureStoreFake) LoadState(context.Context, string) (modelfeature
 	return f.state, f.state.AccountID != "", nil
 }
 
-func (f *relayFeatureStoreFake) IsKnownReceiver(context.Context, string, string) (bool, error) {
+func (f *relayFeatureStoreFake) IsKnownReceiver(context.Context, string, string, time.Time) (bool, error) {
 	return false, nil
 }
 
-func (f *relayFeatureStoreFake) IsKnownDevice(context.Context, string, string) (bool, error) {
+func (f *relayFeatureStoreFake) IsKnownDevice(context.Context, string, string, time.Time) (bool, error) {
 	return false, nil
 }
 
 func (f *relayFeatureStoreFake) ApplyState(_ context.Context, _ modelfeature.Transaction, state modelfeature.State) error {
 	f.state = state
 	f.saved = true
+	return nil
+}
+
+func (f *relayFeatureStoreFake) LoadProgress(context.Context) (uint64, bool, error) {
+	return 0, false, nil
+}
+
+func (f *relayFeatureStoreFake) SaveProgress(context.Context, string, uint64) error {
+	return nil
+}
+
+func (f *relayFeatureStoreFake) ResetForBootstrap(context.Context) error {
+	return nil
+}
+
+func (f *relayFeatureStoreFake) CleanupAppliedDecisions(context.Context, time.Time) error {
 	return nil
 }
 
@@ -106,7 +131,7 @@ func TestBuildEnrichedEnvelopeAddsModelFeatures(t *testing.T) {
 	envelope, pending, err := buildEnrichedEnvelope(context.Background(), &esdb.RecordedEvent{
 		EventID: eventID, EventType: journal.Completed, StreamID: journal.BankStream,
 		EventNumber: 1, CreatedDate: at, Data: data,
-	}, store)
+	}, store, "test-redaction-key")
 	if err != nil {
 		t.Fatalf("buildEnrichedEnvelope() error = %v", err)
 	}

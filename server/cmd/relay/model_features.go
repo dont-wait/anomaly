@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain/modelfeature"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
@@ -17,9 +18,13 @@ type modelFeatureStore interface {
 	FindDecision(context.Context, string) (modelfeature.Decision, bool, error)
 	SaveDecision(context.Context, modelfeature.Decision) error
 	LoadState(context.Context, string) (modelfeature.State, bool, error)
-	IsKnownReceiver(context.Context, string, string) (bool, error)
-	IsKnownDevice(context.Context, string, string) (bool, error)
+	IsKnownReceiver(context.Context, string, string, time.Time) (bool, error)
+	IsKnownDevice(context.Context, string, string, time.Time) (bool, error)
 	ApplyState(context.Context, modelfeature.Transaction, modelfeature.State) error
+	LoadProgress(context.Context) (uint64, bool, error)
+	SaveProgress(context.Context, string, uint64) error
+	ResetForBootstrap(context.Context) error
+	CleanupAppliedDecisions(context.Context, time.Time) error
 }
 
 type pendingFeatureUpdate struct {
@@ -50,8 +55,8 @@ type transferFeatureSnapshot struct {
 	DeviceID string `json:"DeviceID"`
 }
 
-func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, store modelFeatureStore) (kafkainfra.EventEnvelope, *pendingFeatureUpdate, error) {
-	envelope, err := buildEnvelope(recorded)
+func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, store modelFeatureStore, redactionKey string) (kafkainfra.EventEnvelope, *pendingFeatureUpdate, error) {
+	envelope, err := buildEnvelope(recorded, redactionKey)
 	if err != nil {
 		return kafkainfra.EventEnvelope{}, nil, err
 	}
@@ -76,6 +81,7 @@ func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, st
 	}
 	transaction := modelfeature.Transaction{
 		EventID:         record.Event.ID,
+		StreamRevision:  recorded.EventNumber,
 		SourceAccountID: record.Event.Payload.SourceAccountID,
 		DestinationID:   record.Event.Payload.DestinationAccountID,
 		DeviceID:        strings.TrimSpace(snapshot.DeviceID),
@@ -98,13 +104,13 @@ func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, st
 		features = decision.Features
 		_, nextState, err = modelfeature.Calculate(state, transaction, true, true)
 	} else {
-		receiverKnown, lookupErr := store.IsKnownReceiver(ctx, transaction.SourceAccountID, transaction.DestinationID)
+		receiverKnown, lookupErr := store.IsKnownReceiver(ctx, transaction.SourceAccountID, transaction.DestinationID, transaction.OccurredAt)
 		if lookupErr != nil {
 			return kafkainfra.EventEnvelope{}, nil, retryableFeatureStoreError(fmt.Errorf("check known receiver: %w", lookupErr))
 		}
 		deviceKnown := false
 		if transaction.DeviceID != "" && !strings.EqualFold(transaction.DeviceID, "unknown") {
-			deviceKnown, lookupErr = store.IsKnownDevice(ctx, transaction.SourceAccountID, transaction.DeviceID)
+			deviceKnown, lookupErr = store.IsKnownDevice(ctx, transaction.SourceAccountID, transaction.DeviceID, transaction.OccurredAt)
 			if lookupErr != nil {
 				return kafkainfra.EventEnvelope{}, nil, retryableFeatureStoreError(fmt.Errorf("check known device: %w", lookupErr))
 			}
