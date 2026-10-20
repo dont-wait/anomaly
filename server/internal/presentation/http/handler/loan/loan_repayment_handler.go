@@ -266,6 +266,14 @@ func (h *RepaymentHTTP) RegisterRoutes(
 			FailureStatuses: []int{400, 401, 404, 409, 410, 422, 503},
 		}
 
+		if id == "listLoanPayments" {
+			op.Description = "Descending by installment number. cursor is the last installmentNo returned (exclusive), not a numeric offset; keep limit unchanged between pages."
+			op.Parameters = []openapi.Parameter{
+				{Name: "limit", In: "query", Type: "integer", Example: "20"},
+				{Name: "cursor", In: "query", Type: "string", Example: "4"},
+			}
+		}
+
 		if id == "payLoanInstallment" {
 			op.Parameters = []openapi.Parameter{
 				{
@@ -302,6 +310,8 @@ func (h *RepaymentHTTP) RegisterRoutes(
 		repaymentConfirmRequest{},
 		repaymentResponse{},
 	)
+	// Cursor is the last installmentNo returned, not a numeric offset.
+	// Expose query params through the common authenticated route registration.
 	auth(
 		"GET /api/loans/{id}/payments",
 		h.payments,
@@ -626,7 +636,7 @@ func (h *RepaymentHTTP) payments(
 	}
 
 	limit := 20
-	offset := 0
+	afterInstallment := 0
 
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -640,12 +650,12 @@ func (h *RepaymentHTTP) payments(
 
 	if raw := r.URL.Query().Get("cursor"); raw != "" {
 		n, err := strconv.Atoi(raw)
-		if err != nil || n < 0 {
+		if err != nil || n <= 0 || n > 60 {
 			repaymentWriteError(w, 400, "INVALID_CURSOR",
-				"Invalid payment cursor")
+				"Invalid installment cursor")
 			return
 		}
-		offset = n
+		afterInstallment = n
 	}
 
 	items, err := h.Queries.Payments(
@@ -656,26 +666,9 @@ func (h *RepaymentHTTP) payments(
 		return
 	}
 
-	if offset > len(items) {
-		repaymentWriteError(w, 400, "INVALID_CURSOR",
-			"Invalid payment cursor")
-		return
-	}
-
-	end := offset + limit
-	if end > len(items) {
-		end = len(items)
-	}
-
-	var next *string
-	if end < len(items) {
-		value := strconv.Itoa(end)
-		next = &value
-	}
-
+	page, next := repaymentHistoryPage(items, afterInstallment, limit)
 	httpx.WriteJSON(w, 200, map[string]any{
-		"items":      items[offset:end],
-		"nextCursor": next,
+		"items": page, "nextCursor": next,
 	})
 }
 
@@ -727,4 +720,26 @@ func (h *RepaymentHTTP) payment(
 	}
 
 	httpx.WriteJSON(w, 200, result)
+}
+
+// Keyset pagination: a new installment at the head never shifts older pages.
+// Reader guarantees items ordered by installmentNo DESC.
+func repaymentHistoryPage(items []loanqueries.Payment, afterInstallment, limit int) ([]loanqueries.Payment, *string) {
+	start := 0
+	if afterInstallment != 0 {
+		for start < len(items) && items[start].InstallmentNo >= afterInstallment {
+			start++
+		}
+	}
+	end := start + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	page := items[start:end]
+	var next *string
+	if end < len(items) && len(page) > 0 {
+		value := strconv.Itoa(page[len(page)-1].InstallmentNo)
+		next = &value
+	}
+	return page, next
 }

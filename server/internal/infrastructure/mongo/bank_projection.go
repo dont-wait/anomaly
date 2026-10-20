@@ -238,14 +238,34 @@ func (p *BankProjection) balance(ctx context.Context, id string, balance, versio
 	if err != nil {
 		return err
 	}
-	result, err := p.db.Collection("accounts").UpdateOne(ctx, bson.M{"financial_id": objectID}, bson.M{"$set": bson.M{"balance.current": balance, "financial_version": version, "updated_at": at}})
+	accounts := p.db.Collection("accounts")
+	result, err := accounts.UpdateOne(ctx, bson.M{
+		"financial_id": objectID,
+		"$or": bson.A{
+			bson.M{"financial_version": bson.M{"$lt": version}},
+			bson.M{"financial_version": bson.M{"$exists": false}},
+		},
+	}, bson.M{"$set": bson.M{
+		"balance.current": balance, "financial_version": version, "updated_at": at,
+	}})
 	if err != nil {
 		return err
 	}
-	if result.MatchedCount != 1 {
-		return fmt.Errorf("missing account projection for %s", id)
+	if result.MatchedCount == 1 {
+		return nil
 	}
-	return nil
+	// Replay after checkpoint reset: never overwrite a newer balance.
+	var existing struct {
+		FinancialVersion int64 `bson:"financial_version"`
+	}
+	err = accounts.FindOne(ctx, bson.M{"financial_id": objectID}).Decode(&existing)
+	if err != nil {
+		return fmt.Errorf("missing account projection for %s: %w", id, err)
+	}
+	if existing.FinancialVersion >= version {
+		return nil
+	}
+	return fmt.Errorf("account financial version conflict for %s", id)
 }
 
 func bankImportBalanceAt(account *accountdomain.UserAccount, fallback time.Time) time.Time {

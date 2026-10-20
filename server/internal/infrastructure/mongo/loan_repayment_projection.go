@@ -85,7 +85,6 @@ func ensureLoanRepaymentIndexes(
 					SetUnique(true),
 			},
 		)
-
 		if err != nil {
 			return fmt.Errorf(
 				"create %s index: %w",
@@ -139,8 +138,7 @@ func (m *LoanReadModel) SaveLoanContract(
 		return nil
 	}
 
-	repayment, err :=
-		loandomain.NewLoanRepaymentFromDisbursed(a)
+	repayment, err := loandomain.NewLoanRepaymentFromDisbursed(a)
 	if err != nil {
 		return err
 	}
@@ -163,7 +161,6 @@ func (m *LoanReadModel) SaveLoanContract(
 		ctx,
 		bson.M{"_id": accountID},
 	).Decode(&account)
-
 	if err != nil {
 		return fmt.Errorf(
 			"loan account projection missing: %w",
@@ -346,10 +343,17 @@ func (p *BankProjection) applyLoanInstallmentPaid(
 		)
 	}
 
+	// Source account may differ from the disbursement account but must
+	// belong to the same customer profile. EventStoreDB checks this on write.
 	if loanRow.DisbursementAccountID != accountID {
-		return fmt.Errorf(
-			"repayment account does not match loan",
-		)
+		var disbursement struct {
+			CustomerID bson.ObjectID `bson:"customer_id"`
+		}
+		if err := p.db.Collection("accounts").FindOne(
+			ctx, bson.M{"_id": loanRow.DisbursementAccountID},
+		).Decode(&disbursement); err != nil || disbursement.CustomerID != account.CustomerID {
+			return fmt.Errorf("repayment source is not owned by loan customer")
+		}
 	}
 
 	newStatus := "active"
@@ -385,7 +389,6 @@ func (p *BankProjection) applyLoanInstallmentPaid(
 			"updated_at":                  payment.PaidAt,
 		}},
 	)
-
 	if err != nil {
 		return err
 	}

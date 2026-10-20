@@ -77,11 +77,6 @@ func (h *RepayLoanCommandHandler) Handle(
 		return nil, fmt.Errorf("invalid repayment request")
 	}
 
-	// Theo source hien tai, CustomerID la UserID tu JWT.
-	if cmd.SourceAccountID != cmd.CustomerID {
-		return nil, fmt.Errorf("invalid payment account")
-	}
-
 	// 1. Doc ho so vay tu Loan Stream.
 	app, err := h.Repo.FindByID(ctx, cmd.LoanID)
 	if err != nil {

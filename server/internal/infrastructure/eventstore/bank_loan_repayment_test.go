@@ -98,3 +98,18 @@ func TestBankLoanRepaymentReplayAndDuplicate(t *testing.T) {
 		t.Fatal("duplicate loan payment changed balance")
 	}
 }
+
+func TestBankStateRepaymentRequiresMatchingCustomerProfile(t *testing.T) {
+	actor := &accountdomain.UserAccount{Id: "actor", CustomerId: "customer-1"}
+	otherOwned := &accountdomain.UserAccount{Id: "other-owned", CustomerId: "customer-1"}
+	stranger := &accountdomain.UserAccount{Id: "stranger", CustomerId: "customer-2"}
+	accounts := map[string]*accountdomain.UserAccount{
+		actor.Id: actor, otherOwned.Id: otherOwned, stranger.Id: stranger,
+	}
+	if !ownedByCustomer(accounts, actor.Id, otherOwned.Id) {
+		t.Fatal("second owned account rejected")
+	}
+	if ownedByCustomer(accounts, actor.Id, stranger.Id) || ownedByCustomer(accounts, "missing", actor.Id) {
+		t.Fatal("unowned account accepted")
+	}
+}

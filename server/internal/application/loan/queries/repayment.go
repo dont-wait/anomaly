@@ -140,9 +140,11 @@ type RepaymentCache interface {
 		context.Context, string, []byte, time.Duration,
 	) error
 
-	Delete(
-		context.Context, ...string,
-	) error
+	Delete(context.Context, ...string) error
+	// Generation and conditional SET prevent stale reads from racing DEL.
+	Version(context.Context, string) (int64, error)
+	SetIfVersion(context.Context, string, []byte, time.Duration, int64) (bool, error)
+	InvalidateReadKeys(context.Context, ...string) error
 }
 
 type RepaymentQueryService struct {
@@ -207,17 +209,24 @@ func (s *RepaymentQueryService) cached(
 		}
 	}
 
-	// Cache MISS -> MongoDB.
+	// Capture generation BEFORE reading MongoDB. A projector can invalidate
+	// during load; its bump and our conditional SET are atomic in Redis.
+	var generation int64
+	var canCache bool
+	if s.Cache != nil {
+		var err error
+		generation, err = s.Cache.Version(ctx, key)
+		canCache = err == nil
+	}
+
 	if err := load(); err != nil {
 		return err
 	}
 
-	if s.Cache != nil {
+	if canCache {
 		data, err := json.Marshal(dest)
 		if err == nil {
-			_ = s.Cache.Set(
-				ctx, key, data, readTTL,
-			)
+			_, _ = s.Cache.SetIfVersion(ctx, key, data, readTTL, generation)
 		}
 	}
 
@@ -357,13 +366,6 @@ func (s *RepaymentQueryService) Quote(
 			ErrInvalidRepaymentQuery
 	}
 
-	// Phu hop voi rang buoc Source Account
-	// trong Banking Write cua Giai doan 2.
-	if sourceAccountID != customerID {
-		return Quote{},
-			ErrInvalidRepaymentQuery
-	}
-
 	schedule, err := s.Reader.ReadSchedule(
 		ctx, loanID, customerID,
 	)
@@ -396,13 +398,12 @@ func (s *RepaymentQueryService) Quote(
 			ErrInstallmentNotDue
 	}
 
-	balance, err :=
-		s.Reader.ReadAvailableBalance(
-			ctx,
-			loanID,
-			customerID,
-			sourceAccountID,
-		)
+	balance, err := s.Reader.ReadAvailableBalance(
+		ctx,
+		loanID,
+		customerID,
+		sourceAccountID,
+	)
 	if err != nil {
 		return Quote{}, err
 	}
@@ -503,7 +504,7 @@ func (s *RepaymentQueryService) Invalidate(
 		return nil
 	}
 
-	return s.Cache.Delete(
+	return s.Cache.InvalidateReadKeys(
 		ctx,
 		RepaymentCacheKey(
 			customerID, loanID, "schedule",

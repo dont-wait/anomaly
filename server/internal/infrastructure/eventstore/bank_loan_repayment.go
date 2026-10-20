@@ -72,11 +72,6 @@ func (r *BankRepository) DebitLoanInstallment(
 			fmt.Errorf("invalid repayment request")
 	}
 
-	if p.CustomerID != p.AccountID {
-		return journal.LoanInstallmentPayment{},
-			fmt.Errorf("payment account does not belong to customer")
-	}
-
 	txID := journal.LoanInstallmentTransactionID(
 		p.LoanID,
 		p.InstallmentNo,
@@ -113,9 +108,11 @@ func (r *BankRepository) DebitLoanInstallment(
 			}
 
 			credit, exists := s.LoanCredits[p.LoanID]
-			if !exists || credit.AccountID != p.AccountID {
+			if !exists ||
+				!ownedByCustomer(s.Accounts, p.CustomerID, credit.AccountID) ||
+				!ownedByCustomer(s.Accounts, p.CustomerID, p.AccountID) {
 				return nil, nil, fmt.Errorf(
-					"loan disbursement not recorded",
+					"loan disbursement or payment account ownership mismatch",
 				)
 			}
 
@@ -136,8 +133,7 @@ func (r *BankRepository) DebitLoanInstallment(
 					)
 				}
 
-				openingPrincipal =
-					previous.OutstandingPrincipalAfter
+				openingPrincipal = previous.OutstandingPrincipalAfter
 			}
 
 			if openingPrincipal !=
@@ -150,7 +146,7 @@ func (r *BankRepository) DebitLoanInstallment(
 			owner := s.Accounts[p.AccountID]
 
 			if owner == nil ||
-				owner.Id != p.CustomerID ||
+				!ownedByCustomer(s.Accounts, p.CustomerID, p.AccountID) ||
 				owner.Status != accountdomain.AccountStatusActive ||
 				owner.Type != accountdomain.AccountTypePayment ||
 				owner.Currency != accountdomain.CurrencyVND ||
@@ -195,7 +191,6 @@ func (r *BankRepository) DebitLoanInstallment(
 			return record, p, nil
 		},
 	)
-
 	if err != nil {
 		return journal.LoanInstallmentPayment{}, err
 	}

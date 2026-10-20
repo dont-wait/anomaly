@@ -333,3 +333,16 @@ func TestRepayLoanReplayNextInstallment(t *testing.T) {
 		t.Fatal("repayment replay failed")
 	}
 }
+
+func TestRepayLoanDifferentOwnedSourceDelegatesToBank(t *testing.T) {
+	app, bank := newLoanRepaymentCommandFixture(t)
+	handler := &RepayLoanCommandHandler{
+		Repo: &repaymentLoanRepoStub{app: app}, Bank: bank, Clock: func() time.Time { return bank.now },
+	}
+	cmd := repaymentCommand()
+	cmd.SourceAccountID = "another-owned-account"
+	result, err := handler.Handle(context.Background(), cmd)
+	if err != nil || result.Payment.AccountID != cmd.SourceAccountID {
+		t.Fatalf("Bank must validate source ownership, command must not reject by ID equality: %v", err)
+	}
+}

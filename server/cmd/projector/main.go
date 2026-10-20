@@ -10,7 +10,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
+	repaycache "github.com/dont-wait/anomaly/internal/infrastructure/cache"
 
 	"github.com/dont-wait/anomaly/internal/domain"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
@@ -161,22 +161,9 @@ func consume(
 
 			p := record.LoanPayment
 
-			keys := []string{
-				loanqueries.RepaymentCacheKey(
-					p.CustomerID,
-					p.LoanID,
-					"schedule",
-				),
-				loanqueries.RepaymentCacheKey(
-					p.CustomerID,
-					p.LoanID,
-					"payments",
-				),
-			}
-
-			if err := rdb.Del(
-				ctx, keys...,
-			).Err(); err != nil {
+			if err := repaycache.NewLoanRepaymentRedis(rdb).Invalidate(
+				ctx, p.CustomerID, p.LoanID,
+			); err != nil {
 				// Redis cache chi la Read Cache.
 				// Khong rollback Banking Event
 				// neu Redis tam thoi bi loi.

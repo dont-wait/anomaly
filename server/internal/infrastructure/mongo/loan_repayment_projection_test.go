@@ -16,8 +16,7 @@ func TestRepaymentObjectIDIsStableAndNamespaced(
 
 	loanID, applicationID := loanProjectionIDs(sourceID)
 
-	nextLoanID, nextApplicationID :=
-		loanProjectionIDs(sourceID)
+	nextLoanID, nextApplicationID := loanProjectionIDs(sourceID)
 
 	if loanID != nextLoanID ||
 		applicationID != nextApplicationID {
@@ -97,7 +96,6 @@ func TestLoanRateDecimalDoesNotUseFloat(
 	t *testing.T,
 ) {
 	got, err := loanRateDecimal(1630)
-
 	if err != nil {
 		t.Fatal(err)
 	}

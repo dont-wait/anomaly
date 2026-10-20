@@ -241,6 +241,26 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 		)
 	}
 
+	// The same customer may use another owned payment account for a quote.
+	otherAccountID := bson.NewObjectID()
+	otherAccount := bson.M{}
+	for k, v := range account {
+		otherAccount[k] = v
+	}
+	otherAccount["_id"] = otherAccountID
+	otherAccount["account_no"] = "1001001002"
+	otherAccount["username"] = "repayment-e2e-second"
+	otherAccount["email"] = "repayment-e2e-second@example.test"
+	otherAccount["financial_id"] = financialRecordID(otherAccountID.Hex())
+	if _, err := db.Collection("accounts").InsertOne(ctx, otherAccount); err != nil {
+		t.Fatalf("seed second owned account: %v", err)
+	}
+	reader := NewLoanRepaymentQuery(client, dbName)
+	balance, err := reader.ReadAvailableBalance(ctx, loanID, accountID.Hex(), otherAccountID.Hex())
+	if err != nil || balance != initialBalance {
+		t.Fatalf("other owned account rejected: balance=%d err=%v", balance, err)
+	}
+
 	// Bank Projector retry va xu ly du 6 ky.
 	before := initialBalance
 
@@ -358,6 +378,26 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 			"checkpoint=%d found=%v err=%v",
 			pos, found, err,
 		)
+	}
+
+	// Interrupted checkpoint-only replay must never roll the account balance
+	// backward to the first installment's historical BalanceAfter.
+	if err := projection.Reset(ctx); err != nil {
+		t.Fatalf("reset checkpoint for replay: %v", err)
+	}
+	if err := projection.Apply(ctx, first, 0); err != nil {
+		t.Fatalf("replay old payment: %v", err)
+	}
+	var replayBalance struct {
+		Balance struct {
+			Current int64 `bson:"current"`
+		} `bson:"balance"`
+	}
+	if err := db.Collection("accounts").FindOne(ctx, bson.M{"_id": accountID}).Decode(&replayBalance); err != nil {
+		t.Fatal(err)
+	}
+	if replayBalance.Balance.Current != before {
+		t.Fatalf("interrupted replay rolled balance backward: %d want %d", replayBalance.Balance.Current, before)
 	}
 
 	// Xac minh Query doc duoc du lieu that.

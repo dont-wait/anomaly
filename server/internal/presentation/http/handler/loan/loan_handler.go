@@ -315,7 +315,6 @@ func RegisterRoutes(
 	if h.Repayment != nil {
 		h.Repayment.RegisterRoutes(router, tokens)
 	}
-
 }
 
 func claims(r *http.Request) (string, string, bool) {

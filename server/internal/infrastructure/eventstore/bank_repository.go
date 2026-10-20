@@ -55,6 +55,20 @@ type bankState struct {
 	LoanPayments map[string]journal.LoanInstallmentPayment
 }
 
+// The JWT actor is a UserAccount ID. CustomerId is the stable profile owner ID.
+// Any active payment account of that same customer may pay the loan.
+func ownedByCustomer(accounts map[string]*accountdomain.UserAccount, actorID, accountID string) bool {
+	actor := accounts[actorID]
+	source := accounts[accountID]
+	if actor == nil || source == nil {
+		return false
+	}
+	if actorID == accountID {
+		return true
+	}
+	return actor.CustomerId != "" && actor.CustomerId == source.CustomerId
+}
+
 func financialID(id string) bson.ObjectID {
 	result, _ := bson.ObjectIDFromHex(journal.FinancialAccountID(id))
 	return result
@@ -184,8 +198,10 @@ func (s *bankState) apply(record journal.Record) error {
 		}
 
 		credit, exists := s.LoanCredits[p.LoanID]
-		if !exists || credit.AccountID != p.AccountID {
-			return fmt.Errorf("loan disbursement not found")
+		if !exists ||
+			!ownedByCustomer(s.Accounts, p.CustomerID, credit.AccountID) ||
+			!ownedByCustomer(s.Accounts, p.CustomerID, p.AccountID) {
+			return fmt.Errorf("loan disbursement or repayment ownership mismatch")
 		}
 
 		openingPrincipal := credit.Amount

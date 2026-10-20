@@ -338,8 +338,8 @@ func (r *LoanRepaymentQuery) ReadAvailableBalance(
 		return 0, err
 	}
 
-	// Theo MVP Write cua Giai doan 2.
-	if accountID != customerID {
+	actorID, err := accountRecordID(customerID)
+	if err != nil {
 		return 0, loanqueries.ErrLoanNotFound
 	}
 
@@ -354,17 +354,38 @@ func (r *LoanRepaymentQuery) ReadAvailableBalance(
 		ctx,
 		bson.M{"_id": oid},
 	).Decode(&loanRow)
-
 	if err != nil {
 		return 0, err
 	}
 
-	if loanRow.DisbursementAccountID != recordID {
-		return 0, loanqueries.ErrLoanNotFound
+	// Disbursement must belong to the same customer profile as the actor.
+	owner := struct {
+		CustomerID bson.ObjectID `bson:"customer_id"`
+	}{}
+	if err := r.db.Collection("accounts").FindOne(
+		ctx, bson.M{"_id": actorID, "status": "active"},
+	).Decode(&owner); err != nil {
+		if errors.Is(err, mongodrv.ErrNoDocuments) {
+			return 0, loanqueries.ErrLoanNotFound
+		}
+		return 0, err
+	}
+
+	if loanRow.DisbursementAccountID != actorID {
+		var disbursement struct {
+			CustomerID bson.ObjectID `bson:"customer_id"`
+		}
+		err = r.db.Collection("accounts").FindOne(
+			ctx, bson.M{"_id": loanRow.DisbursementAccountID},
+		).Decode(&disbursement)
+		if err != nil || disbursement.CustomerID != owner.CustomerID {
+			return 0, loanqueries.ErrLoanNotFound
+		}
 	}
 
 	var account struct {
-		Balance struct {
+		CustomerID bson.ObjectID `bson:"customer_id"`
+		Balance    struct {
 			Current int64 `bson:"current"`
 		} `bson:"balance"`
 	}
@@ -372,8 +393,11 @@ func (r *LoanRepaymentQuery) ReadAvailableBalance(
 	err = r.db.Collection("accounts").FindOne(
 		ctx,
 		bson.M{
-			"_id":    recordID,
-			"status": "active",
+			"_id":         recordID,
+			"customer_id": owner.CustomerID,
+			"status":      "active",
+			"type":        "payment",
+			"currency":    "VND",
 		},
 	).Decode(&account)
 

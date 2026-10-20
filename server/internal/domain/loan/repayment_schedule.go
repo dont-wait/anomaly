@@ -175,7 +175,6 @@ func calculateDueDate(
 	disbursementDate time.Time,
 	installmentNo int,
 ) time.Time {
-
 	vn := time.FixedZone("ICT", 7*60*60)
 
 	year, month, originalDay := disbursementDate.In(vn).Date()

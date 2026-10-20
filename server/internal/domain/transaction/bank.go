@@ -76,11 +76,6 @@ func (p LoanInstallmentPayment) Validate() error {
 		return fmt.Errorf("invalid loan payment identifiers")
 	}
 
-	// Source hien tai su dung UserID == AccountID.
-	if p.CustomerID != p.AccountID {
-		return fmt.Errorf("loan payment account ownership mismatch")
-	}
-
 	// DueDate duoc luu theo ngay UTC trong lich EMI.
 	// PaidAt duoc so sanh theo ngay Viet Nam.
 	vn := time.FixedZone("ICT", 7*3600)

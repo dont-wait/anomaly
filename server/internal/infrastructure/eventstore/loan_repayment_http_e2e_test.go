@@ -224,6 +224,10 @@ func TestLoanRepaymentHTTPE2E(t *testing.T) {
 	if !ok || quoteID == "" {
 		t.Fatalf("quote: %+v", quote)
 	}
+	actualTTL, err := rdb.TTL(ctx, "loan-repayment:quote:"+quoteID).Result()
+	if err != nil || actualTTL <= 0 || actualTTL > 5*time.Minute {
+		t.Fatalf("Redis quote TTL: %v err=%v", actualTTL, err)
+	}
 	idem := uuid.NewString()
 	payRequest := map[string]any{"quoteId": quoteID, "sourceAccountId": owner.Id}
 	call("POST", base+"/repayments", jwt, payRequest, "", 400)

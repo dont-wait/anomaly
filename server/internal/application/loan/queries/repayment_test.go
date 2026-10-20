@@ -4,16 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 )
 
 // MongoDB Reader gia lap.
 type repaymentReaderStub struct {
-	calls    int
-	balance  int64
-	schedule Schedule
-	payments []Payment
+	calls          int
+	balance        int64
+	schedule       Schedule
+	payments       []Payment
+	onScheduleRead func()
+	rejectAccount  string
 }
 
 func (s *repaymentReaderStub) ReadSchedule(
@@ -21,7 +24,11 @@ func (s *repaymentReaderStub) ReadSchedule(
 	_, _ string,
 ) (Schedule, error) {
 	s.calls++
-	return s.schedule, nil
+	snapshot := s.schedule
+	if s.onScheduleRead != nil {
+		s.onScheduleRead()
+	}
+	return snapshot, nil
 }
 
 func (s *repaymentReaderStub) ReadPayments(
@@ -47,35 +54,48 @@ func (s *repaymentReaderStub) ReadPayment(
 
 func (s *repaymentReaderStub) ReadAvailableBalance(
 	_ context.Context,
-	_, _, _ string,
+	_, _, accountID string,
 ) (int64, error) {
+	if accountID == s.rejectAccount {
+		return 0, ErrLoanNotFound
+	}
 	return s.balance, nil
 }
 
 // Redis Cache gia lap.
 type repaymentCacheStub struct {
-	items   map[string][]byte
-	failSet bool
+	mu       sync.Mutex
+	items    map[string][]byte
+	ttls     map[string]time.Duration
+	versions map[string]int64
+	failSet  bool
 }
 
 func (s *repaymentCacheStub) Get(
 	_ context.Context,
 	key string,
 ) ([]byte, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	data, exists := s.items[key]
-	return data, exists, nil
+	return append([]byte(nil), data...), exists, nil
 }
 
 func (s *repaymentCacheStub) Set(
 	_ context.Context,
 	key string,
 	data []byte,
-	_ time.Duration,
+	ttl time.Duration,
 ) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.failSet {
 		return errors.New("redis unavailable")
 	}
-
+	if s.ttls == nil {
+		s.ttls = map[string]time.Duration{}
+	}
+	s.ttls[key] = ttl
 	s.items[key] = append([]byte(nil), data...)
 	return nil
 }
@@ -84,7 +104,45 @@ func (s *repaymentCacheStub) Delete(
 	_ context.Context,
 	keys ...string,
 ) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, key := range keys {
+		delete(s.items, key)
+	}
+	return nil
+}
+
+func (s *repaymentCacheStub) Version(_ context.Context, key string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.versions[key], nil
+}
+
+func (s *repaymentCacheStub) SetIfVersion(_ context.Context, key string, data []byte, ttl time.Duration, version int64) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failSet {
+		return false, errors.New("redis unavailable")
+	}
+	if s.versions[key] != version {
+		return false, nil
+	}
+	if s.ttls == nil {
+		s.ttls = map[string]time.Duration{}
+	}
+	s.ttls[key] = ttl
+	s.items[key] = append([]byte(nil), data...)
+	return true, nil
+}
+
+func (s *repaymentCacheStub) InvalidateReadKeys(_ context.Context, keys ...string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.versions == nil {
+		s.versions = map[string]int64{}
+	}
+	for _, key := range keys {
+		s.versions[key]++
 		delete(s.items, key)
 	}
 	return nil
@@ -156,8 +214,7 @@ func repaymentFixture() (
 func TestRepaymentReadCacheHitMiss(t *testing.T) {
 	ctx := context.Background()
 
-	service, reader, cache, _ :=
-		repaymentFixture()
+	service, reader, cache, _ := repaymentFixture()
 
 	first, err := service.Schedule(
 		ctx, "loan-001", "owner-001",
@@ -205,6 +262,9 @@ func TestRepaymentReadCacheHitMiss(t *testing.T) {
 
 	if _, exists := cache.items[key]; !exists {
 		t.Fatal("cache not refreshed")
+	}
+	if got := cache.ttls[key]; got != readTTL {
+		t.Fatalf("read Redis TTL = %v, expected %v", got, readTTL)
 	}
 }
 
@@ -288,13 +348,17 @@ func TestRepaymentQuoteCorrectInstallmentAndTTL(
 		decoded.Quote.TotalAmount != 4_400_000 {
 		t.Fatal("invalid Redis quote")
 	}
+	if got := cache.ttls["loan-repayment:quote:"+q.QuoteID]; got != quoteTTL {
+		t.Fatalf("quote Redis TTL = %v, expected %v", got, quoteTTL)
+	}
 }
 
 // Khong tao Quote sai ky hoac sai ngay.
 func TestRepaymentQuoteRejectsWrongDayAndInstallment(
 	t *testing.T,
 ) {
-	service, _, _, now := repaymentFixture()
+	service, reader, _, now := repaymentFixture()
+	reader.rejectAccount = "other-account"
 	ctx := context.Background()
 
 	_, err := service.Quote(
@@ -342,7 +406,7 @@ func TestRepaymentQuoteRejectsWrongDayAndInstallment(
 
 	if !errors.Is(
 		err,
-		ErrInvalidRepaymentQuery,
+		ErrLoanNotFound,
 	) {
 		t.Fatalf("wrong account: %v", err)
 	}
@@ -352,8 +416,7 @@ func TestRepaymentQuoteRejectsWrongDayAndInstallment(
 func TestRepaymentQuoteInsufficientBalanceAndRedisFailure(
 	t *testing.T,
 ) {
-	service, reader, cache, _ :=
-		repaymentFixture()
+	service, reader, cache, _ := repaymentFixture()
 
 	ctx := context.Background()
 
@@ -417,5 +480,38 @@ func TestRepaymentQuoteExpires(t *testing.T) {
 
 	if !errors.Is(err, ErrQuoteNotFound) {
 		t.Fatalf("expired quote accepted: %v", err)
+	}
+}
+
+// Cache MISS in flight must not re-populate a key invalidated by projector.
+func TestRepaymentReadRaceWithInvalidation(t *testing.T) {
+	service, reader, cache, _ := repaymentFixture()
+	ctx := context.Background()
+	key := RepaymentCacheKey("owner-001", "loan-001", "schedule")
+	reader.onScheduleRead = func() {
+		reader.schedule.Principal = 2
+		if err := service.Invalidate(ctx, "owner-001", "loan-001"); err != nil {
+			t.Fatal(err)
+		}
+		reader.onScheduleRead = nil
+	}
+	old, err := service.Schedule(ctx, "loan-001", "owner-001")
+	if err != nil || old.Principal != 50_000_000 {
+		t.Fatalf("expected pre-invalidation snapshot: %+v %v", old, err)
+	}
+	if _, present := cache.items[key]; present {
+		t.Fatal("pre-invalidation schedule was cached after invalidation")
+	}
+	fresh, err := service.Schedule(ctx, "loan-001", "owner-001")
+	if err != nil || fresh.Principal != 2 {
+		t.Fatalf("expected fresh schedule: %+v %v", fresh, err)
+	}
+}
+
+func TestRepaymentQuoteAllowsDifferentSourceAccountWhenReaderAuthorizes(t *testing.T) {
+	service, _, _, _ := repaymentFixture()
+	q, err := service.Quote(context.Background(), "loan-001", "owner-001", "other-owned-account", 1)
+	if err != nil || q.SourceAccount.AccountID != "other-owned-account" {
+		t.Fatalf("valid other-owned account should be accepted by the Reader: %+v %v", q, err)
 	}
 }
