@@ -316,6 +316,7 @@ func (p *BankProjection) applyLoanInstallmentPaid(
 	var account struct {
 		CustomerID bson.ObjectID `bson:"customer_id"`
 		AccountNo  string        `bson:"account_no"`
+		Username   string        `bson:"username"`
 	}
 
 	err = p.db.Collection("accounts").FindOne(
@@ -458,25 +459,41 @@ func (p *BankProjection) applyLoanInstallmentPaid(
 		return err
 	}
 
-	// Luu transaction de truy vet dong tien.
+	// Giao dich tra no duoc lay tu Banking Event.
+	// accountID la _id goc cua accounts:
+	// ObjectId (24 hex) hoac string (32 hex).
 	txRow := bson.M{
 		"transaction_id": payment.TransactionID,
+		"reference":      "LR" + payment.TransactionID,
 		"type":           "loan_repayment",
+
 		"source": bson.M{
 			"account_id": accountID,
 			"account_no": account.AccountNo,
+			"name":       account.Username,
 		},
+
 		"destination": bson.M{
 			"type":       "loan",
 			"account_no": loanRow.LoanNo,
 		},
-		"amount":          payment.Amount,
-		"currency":        "VND",
-		"channel":         "bank_account",
-		"status":          "success",
+
+		"amount":   payment.Amount,
+		"fee":      int64(0),
+		"currency": "VND",
+		"channel":  "bank_account",
+		"status":   "success",
+		"note":     "Loan repayment",
+
 		"idempotency_key": payment.TransactionID,
-		"created_at":      payment.PaidAt,
-		"posted_at":       payment.PaidAt,
+
+		"metadata": bson.M{
+			"loan_id":        payment.LoanID,
+			"installment_no": payment.InstallmentNo,
+		},
+
+		"created_at": payment.PaidAt,
+		"posted_at":  payment.PaidAt,
 	}
 
 	_, err = p.db.Collection("transactions").UpdateOne(
@@ -491,10 +508,13 @@ func (p *BankProjection) applyLoanInstallmentPaid(
 		return err
 	}
 
-	// Ghi ledger debit.
+	// Ledger dung financial_id co kieu ObjectId,
+	// khong dung truc tiep _id string cua account cu.
 	ledger := bson.M{
 		"transaction_id": payment.TransactionID,
-		"account_id":     accountID,
+		"account_id": financialRecordID(
+			payment.AccountID,
+		),
 		"sequence":       sequence,
 		"direction":      "DEBIT",
 		"amount":         payment.Amount,
@@ -516,18 +536,38 @@ func (p *BankProjection) applyLoanInstallmentPaid(
 		return err
 	}
 
-	// Du lieu lich su giao dich cua tai khoan.
+	// Feed su dung cung financial_id voi cac
+	// giao dich Banking hien tai.
 	feed := bson.M{
-		"account_id":     accountID,
+		"account_id": financialRecordID(
+			payment.AccountID,
+		),
 		"transaction_id": payment.TransactionID,
 		"direction":      "OUT",
 		"type":           "loan_repayment",
+
 		"counterparty": bson.M{
 			"account_no": "",
 			"name":       "ANOMALY LOAN",
 			"bank_code":  "ANOMALY",
 		},
-		"amount":        payment.Amount,
+
+		"amount":    payment.Amount,
+		"fee":       int64(0),
+		"status":    "success",
+		"note":      "Loan repayment",
+		"reference": "LR" + payment.TransactionID,
+		"search_text": normalizeFeedSearch(
+			"loan repayment " +
+				loanRow.LoanNo + " " +
+				payment.TransactionID,
+		),
+
+		"metadata": bson.M{
+			"loan_id":        payment.LoanID,
+			"installment_no": payment.InstallmentNo,
+		},
+
 		"balance_after": *record.BalanceAfter,
 		"occurred_at":   payment.PaidAt,
 	}
@@ -536,10 +576,14 @@ func (p *BankProjection) applyLoanInstallmentPaid(
 		"account_transaction_feed",
 	).UpdateOne(
 		ctx,
+
 		bson.M{
-			"account_id":     accountID,
+			"account_id": financialRecordID(
+				payment.AccountID,
+			),
 			"transaction_id": payment.TransactionID,
 		},
+
 		bson.M{"$setOnInsert": feed},
 		options.UpdateOne().SetUpsert(true),
 	)
