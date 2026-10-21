@@ -4,10 +4,13 @@ import (
 	"net/http"
 
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
+
 	account "github.com/dont-wait/anomaly/internal/presentation/http/handler/account"
+	loan "github.com/dont-wait/anomaly/internal/presentation/http/handler/loan"
 	media "github.com/dont-wait/anomaly/internal/presentation/http/handler/media"
 	otp "github.com/dont-wait/anomaly/internal/presentation/http/handler/otp"
 	transaction "github.com/dont-wait/anomaly/internal/presentation/http/handler/transaction"
+
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 )
 
@@ -16,12 +19,21 @@ import (
 // chứ không phải concrete *auth.TokenService — tránh presentation phụ
 // thuộc trực tiếp vào infrastructure, đúng dependency rule của Clean
 // Architecture.
-func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool) *http.ServeMux {
+func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, loanHandlers ...*loan.Handler) *http.ServeMux {
 	router := openapi.NewRegistry(mux, swaggerEnabled)
 	account.RegisterRoutes(router, accountHandler, tokenSvc)
 	media.RegisterRoutes(router, mediaHandler, tokenSvc)
 	otp.RegisterRoutes(router, otpHandler)
 	transaction.RegisterRoutes(router, transactionHandler, tokenSvc)
+	if len(loanHandlers) > 0 &&
+		loanHandlers[0] != nil {
+
+		loan.RegisterRoutes(
+			router,
+			loanHandlers[0],
+			tokenSvc,
+		)
+	}
 	router.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))

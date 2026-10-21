@@ -13,6 +13,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/kyc"
+	"github.com/dont-wait/anomaly/internal/infrastructure/loanadapter"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	rustfs "github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	"github.com/dont-wait/anomaly/internal/logger"
@@ -95,8 +96,47 @@ func main() {
 	transactionHandler := composition.NewTransactionHandler(bank, recipientContacts, rdb, config.SMTPConfig, *logger, receiptOutbox)
 	go composition.NewReceiptWorker(receiptOutbox, config.SMTPConfig, *logger).Run(ctx)
 
+	// Loan Application Repository - EventStoreDB.
+	loanRepo := eventstore.NewLoanRepository(esClient)
+
+	// Loan Query Read Model - MongoDB.
+	loanRead := mongo.NewLoanReadModel(
+		mongoClient,
+		config.MongoConfig.MongoDBName,
+	)
+
+	if err := loanRead.EnsureIndexes(ctx); err != nil {
+		logger.Fatal().
+			Err(err).
+			Msg("ensure loan projection indexes")
+	}
+
+	// Evidence do nhân viên xác nhận.
+	loanEvidence := loanadapter.NewEvidenceStore(
+		mongoClient,
+		config.MongoConfig.MongoDBName,
+	)
+
+	// Dependency Injection.
+	loanHandler := composition.NewLoanHandler(
+		bank,
+		loanRepo,
+		loanRead,
+		loanEvidence,
+		mediaRepo,
+	)
+
+	composition.AttachLoanRepayment(
+		loanHandler,
+		bank,
+		loanRepo,
+		mongoClient,
+		config.MongoConfig.MongoDBName,
+		rdb,
+	)
+
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled)
+	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled, loanHandler)
 
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
 	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(

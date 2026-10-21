@@ -74,10 +74,95 @@ func (p *BankProjection) Apply(ctx context.Context, record journal.Record, revis
 					return nil, err
 				}
 			}
+		case journal.LoanDisbursementCredited:
+			if err := p.balance(
+				sc,
+				journal.FinancialAccountID(record.AccountID),
+				*record.BalanceAfter,
+				sequence,
+				record.At,
+			); err != nil {
+				return nil, err
+			}
+
+			accountID, err := bson.ObjectIDFromHex(
+				journal.FinancialAccountID(record.AccountID),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			entry := bson.M{
+				"transaction_id": record.LoanID,
+				"account_id":     accountID,
+				"sequence":       sequence,
+				"direction":      "CREDIT",
+				"type":           "loan_disbursement",
+				"amount":         record.LoanAmount,
+				"balance_before": *record.BalanceBefore,
+				"balance_after":  *record.BalanceAfter,
+				"created_at":     record.At,
+			}
+
+			_, err = p.db.Collection("ledger_entries").UpdateOne(
+				sc,
+				bson.M{
+					"transaction_id": record.LoanID,
+					"direction":      "CREDIT",
+				},
+				bson.M{"$set": entry},
+				options.UpdateOne().SetUpsert(true),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			feed := bson.M{
+				"account_id":     accountID,
+				"transaction_id": record.LoanID,
+				"direction":      "IN",
+				"type":           "loan_disbursement",
+				"amount":         record.LoanAmount,
+				"fee":            int64(0),
+				"status":         "success",
+				"note":           "Disbursement for loan " + record.LoanID,
+				"reference":      "LD" + record.LoanID,
+				"counterparty": bson.M{
+					"account_no": "",
+					"name":       "ANOMALY LOAN",
+					"bank_code":  "ANOMALY",
+				},
+				"balance_after": *record.BalanceAfter,
+				"occurred_at":   record.At,
+				"search_text":   "loan disbursement " + record.LoanID,
+			}
+
+			_, err = p.db.Collection("account_transaction_feed").UpdateOne(
+				sc,
+				bson.M{
+					"account_id":     accountID,
+					"transaction_id": record.LoanID,
+				},
+				bson.M{"$set": feed},
+				options.UpdateOne().SetUpsert(true),
+			)
+			if err != nil {
+				return nil, err
+			}
 		case journal.BalanceSeeded:
 			if err := p.balance(sc, journal.FinancialAccountID(record.AccountID), *record.Balance, sequence, record.At); err != nil {
 				return nil, err
 			}
+
+		case journal.LoanInstallmentPaid:
+			if err := p.applyLoanInstallmentPaid(
+				sc,
+				record,
+				sequence,
+			); err != nil {
+				return nil, err
+			}
+
 		default:
 			if !journal.IsTransferEvent(record.Type) {
 				return nil, fmt.Errorf("unsupported banking event")
@@ -153,14 +238,34 @@ func (p *BankProjection) balance(ctx context.Context, id string, balance, versio
 	if err != nil {
 		return err
 	}
-	result, err := p.db.Collection("accounts").UpdateOne(ctx, bson.M{"financial_id": objectID}, bson.M{"$set": bson.M{"balance.current": balance, "financial_version": version, "updated_at": at}})
+	accounts := p.db.Collection("accounts")
+	result, err := accounts.UpdateOne(ctx, bson.M{
+		"financial_id": objectID,
+		"$or": bson.A{
+			bson.M{"financial_version": bson.M{"$lt": version}},
+			bson.M{"financial_version": bson.M{"$exists": false}},
+		},
+	}, bson.M{"$set": bson.M{
+		"balance.current": balance, "financial_version": version, "updated_at": at,
+	}})
 	if err != nil {
 		return err
 	}
-	if result.MatchedCount != 1 {
-		return fmt.Errorf("missing account projection for %s", id)
+	if result.MatchedCount == 1 {
+		return nil
 	}
-	return nil
+	// Replay after checkpoint reset: never overwrite a newer balance.
+	var existing struct {
+		FinancialVersion int64 `bson:"financial_version"`
+	}
+	err = accounts.FindOne(ctx, bson.M{"financial_id": objectID}).Decode(&existing)
+	if err != nil {
+		return fmt.Errorf("missing account projection for %s: %w", id, err)
+	}
+	if existing.FinancialVersion >= version {
+		return nil
+	}
+	return fmt.Errorf("account financial version conflict for %s", id)
 }
 
 func bankImportBalanceAt(account *accountdomain.UserAccount, fallback time.Time) time.Time {
