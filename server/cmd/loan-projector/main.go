@@ -94,6 +94,26 @@ func main() {
 		return
 	}
 
+	// Backfill Read Model tra no cho cac khoan vay
+	// da duoc projection tu truoc.
+	// Khong xoa checkpoint hoac du lieu thanh toan.
+	if len(os.Args) == 2 &&
+		os.Args[1] == "--backfill-loan-repayment" {
+
+		count, err := backfillLoanContracts(ctx, read)
+		if err != nil {
+			log.Fatal().
+				Err(err).
+				Msg("loan repayment backfill failed")
+		}
+
+		log.Info().
+			Int("loans", count).
+			Msg("loan repayment backfill completed")
+
+		return
+	}
+
 	// Chế độ quản trị: thử replay lại một hồ sơ đã bị cách ly.
 	if len(os.Args) > 1 {
 		if len(os.Args) != 3 || os.Args[1] != "--retry-loan" {
@@ -471,4 +491,66 @@ func checkpointAheadOfStore(
 		recorded.EventID.String() != checkpoint.EventID
 
 	return invalid, nil
+}
+
+func backfillLoanContracts(
+	ctx context.Context,
+	read *mongo.LoanReadModel,
+) (int, error) {
+	const pageSize = 100
+
+	var afterTime time.Time
+	var afterID string
+	count := 0
+
+	for {
+		items, hasMore, err := read.ListAllPage(
+			ctx,
+			pageSize,
+			afterTime,
+			afterID,
+		)
+		if err != nil {
+			return count, err
+		}
+
+		for _, app := range items {
+			if app == nil {
+				return count, fmt.Errorf(
+					"invalid loan application read model",
+				)
+			}
+
+			if err := read.SaveLoanContract(
+				ctx,
+				app,
+			); err != nil {
+				return count, fmt.Errorf(
+					"backfill application %s: %w",
+					app.Id,
+					err,
+				)
+			}
+
+			if app.Status == "disbursed" {
+				count++
+			}
+		}
+
+		if !hasMore {
+			break
+		}
+
+		if len(items) == 0 {
+			return count, fmt.Errorf(
+				"loan backfill pagination did not advance",
+			)
+		}
+
+		last := items[len(items)-1]
+		afterTime = last.CreatedAt
+		afterID = last.Id
+	}
+
+	return count, nil
 }

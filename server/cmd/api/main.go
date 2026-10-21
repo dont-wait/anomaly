@@ -120,6 +120,15 @@ func main() {
 		mediaRepo,
 	)
 
+	composition.AttachLoanRepayment(
+		loanHandler,
+		bank,
+		loanRepo,
+		mongoClient,
+		config.MongoConfig.MongoDBName,
+		rdb,
+	)
+
 	mux := netHTTP.NewServeMux()
 	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled, loanHandler)
 

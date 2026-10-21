@@ -50,8 +50,11 @@ func (m *LoanReadModel) EnsureIndexes(
 			},
 		},
 	)
+	if err != nil {
+		return err
+	}
 
-	return err
+	return ensureLoanRepaymentIndexes(ctx, m.db)
 }
 
 // Lưu aggregate Loan đã replay
@@ -101,8 +104,11 @@ func (m *LoanReadModel) Save(
 		},
 		bson.M{"$set": data},
 	)
+	if err != nil {
+		return err
+	}
 
-	return err
+	return m.SaveLoanContract(ctx, app)
 }
 
 func (m *LoanReadModel) FindByID(

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math/big"
 	"time"
+
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 const monthlyRateDenominator int64 = 120000
@@ -175,7 +177,9 @@ func calculateDueDate(
 	disbursementDate time.Time,
 	installmentNo int,
 ) time.Time {
-	year, month, originalDay := disbursementDate.Date()
+	vn := timeutil.VietnamLocation
+
+	year, month, originalDay := disbursementDate.In(vn).Date()
 
 	firstDay := time.Date(
 		year,
