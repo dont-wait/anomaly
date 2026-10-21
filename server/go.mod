@@ -12,6 +12,7 @@ require (
 	github.com/kurrent-io/KurrentDB-Client-Go v1.4.1
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/rs/zerolog v1.35.1
+	github.com/segmentio/kafka-go v0.4.49
 	github.com/swaggest/swgui v1.8.9
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/mongodb v0.43.0
