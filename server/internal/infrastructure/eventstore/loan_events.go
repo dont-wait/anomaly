@@ -19,6 +19,10 @@ const (
 	EventLoanApplicationApproved  = "LoanApplicationApproved"
 	EventLoanApplicationRejected  = "LoanApplicationRejected"
 	EventLoanDisbursementPrepared = "LoanDisbursementPrepared"
+	EventLoanOfferIssued          = "LoanOfferIssued"
+	EventLoanOfferAccepted        = "LoanOfferAccepted"
+	EventLoanOfferRejected        = "LoanOfferRejected"
+	EventLoanContractConfirmed    = "LoanContractConfirmed"
 	EventLoanDisbursed            = "LoanDisbursed"
 )
 
@@ -73,6 +77,17 @@ type loanDisbursedPayload struct {
 	AnnualRateBps     int64                              `json:"annualRateBps"`
 	RepaymentSchedule []loandomain.RepaymentScheduleItem `json:"repaymentSchedule"`
 	UpdatedAt         time.Time                          `json:"updatedAt"`
+}
+
+type loanOfferIssuedPayload struct {
+	IssuedAt      time.Time `json:"issuedAt"`
+	AnnualRateBps int64     `json:"annualRateBps"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+type loanOfferTransitionPayload struct {
+	At        time.Time `json:"at"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	Method    string    `json:"method,omitempty"`
 }
 
 func loanStreamName(applicationID string) string {
@@ -280,6 +295,53 @@ func applyLoanEvent(
 		); err != nil {
 			return err
 		}
+
+	case EventLoanOfferIssued:
+		var p loanOfferIssuedPayload
+		if err := json.Unmarshal(data, &p); err != nil {
+			return err
+		}
+		if p.UpdatedAt.IsZero() || !p.UpdatedAt.Equal(p.IssuedAt) {
+			return fmt.Errorf("invalid offer timestamps")
+		}
+		preview := *app
+		if err := preview.IssueOffer(p.IssuedAt, p.AnnualRateBps); err != nil {
+			return err
+		}
+		*app = preview
+
+	case EventLoanOfferAccepted, EventLoanOfferRejected, EventLoanContractConfirmed:
+		var p loanOfferTransitionPayload
+		if err := json.Unmarshal(data, &p); err != nil {
+			return err
+		}
+		if p.UpdatedAt.IsZero() || !p.UpdatedAt.Equal(p.At) {
+			return fmt.Errorf("invalid offer transition timestamps")
+		}
+		preview := *app
+		if app.Offer != nil {
+			offer := *app.Offer
+			preview.Offer = &offer
+		}
+		var err error
+		switch eventType {
+		case EventLoanOfferAccepted:
+			if p.Method != "" {
+				return fmt.Errorf("unexpected offer acceptance method")
+			}
+			err = preview.AcceptOffer(p.At)
+		case EventLoanOfferRejected:
+			if p.Method != "" {
+				return fmt.Errorf("unexpected offer rejection method")
+			}
+			err = preview.RejectOffer(p.At)
+		case EventLoanContractConfirmed:
+			err = preview.ConfirmContract(p.At, p.Method)
+		}
+		if err != nil {
+			return err
+		}
+		*app = preview
 
 	case EventLoanDisbursementPrepared:
 		var p loanDisbursementPreparedPayload

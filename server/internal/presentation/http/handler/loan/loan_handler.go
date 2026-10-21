@@ -116,13 +116,16 @@ type loanQuoteResponse struct {
 }
 
 type Handler struct {
-	Create   *commands.CreateLoanApplicationCommandHandler
-	Add      *commands.AddLoanDocumentCommandHandler
-	Submit   *commands.SubmitLoanApplicationCommandHandler
-	Review   *commands.StartLoanReviewCommandHandler
-	Assess   *commands.AssessLoanApplicationCommandHandler
-	Decide   *commands.ManualLoanDecisionCommandHandler
-	Disburse *commands.DisburseLoanCommandHandler
+	Create        *commands.CreateLoanApplicationCommandHandler
+	Add           *commands.AddLoanDocumentCommandHandler
+	Submit        *commands.SubmitLoanApplicationCommandHandler
+	Review        *commands.StartLoanReviewCommandHandler
+	Assess        *commands.AssessLoanApplicationCommandHandler
+	Decide        *commands.ManualLoanDecisionCommandHandler
+	Disburse      *commands.DisburseLoanCommandHandler
+	Offer         *commands.LoanOfferCommandHandler
+	ContractOTP   ContractOTPService
+	ContractEmail ContractEmailReader
 
 	Repayment *RepaymentHTTP
 
@@ -233,8 +236,22 @@ func RegisterRoutes(
 			op.Description = "Provisional loan repayment schedule"
 			op.Response = loanQuoteResponse{}
 
+		case "issuePersonalLoanOffer":
+			op.Description = "Admin issues an immutable offer from verified, approved loan evidence"
+			op.Response = domain.LoanOffer{}
+		case "getPersonalLoanOffer", "acceptPersonalLoanOffer", "rejectPersonalLoanOffer":
+			op.Response = domain.LoanOffer{}
+		case "requestPersonalLoanContractOTP":
+			op.Description = "Owner-only email OTP for an accepted loan offer"
+		case "confirmPersonalLoanContract":
+			op.Description = "Owner-only contract confirmation with OTP; demo contract acceptance, not a qualified digital signature"
+			op.Request = struct {
+				OTP         string `json:"otp"`
+				AcceptTerms bool   `json:"acceptTerms"`
+			}{}
+			op.Response = domain.LoanOffer{}
 		case "disbursePersonalLoan":
-			op.Description = "Admin-only loan disbursement"
+			op.Description = "Admin-only loan disbursement, requires confirmed loan contract"
 		}
 
 		protected := middleware.RequireAuth(tokens)(
@@ -310,6 +327,13 @@ func RegisterRoutes(
 		h.disburse,
 		"disbursePersonalLoan",
 	)
+
+	auth("POST /api/loans/{applicationId}/offer/issue", h.issueOffer, "issuePersonalLoanOffer")
+	auth("GET /api/loans/{applicationId}/offer", h.getOffer, "getPersonalLoanOffer")
+	auth("POST /api/loans/{applicationId}/offer/accept", h.acceptOffer, "acceptPersonalLoanOffer")
+	auth("POST /api/loans/{applicationId}/offer/reject", h.rejectOffer, "rejectPersonalLoanOffer")
+	auth("POST /api/loans/{applicationId}/contract/otp", h.issueContractOTP, "requestPersonalLoanContractOTP")
+	auth("POST /api/loans/{applicationId}/contract/confirm", h.confirmContract, "confirmPersonalLoanContract")
 
 	// Dang ky rieng 5 API tra no vay.
 	if h.Repayment != nil {

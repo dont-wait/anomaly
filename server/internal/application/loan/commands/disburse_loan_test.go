@@ -84,6 +84,16 @@ func TestDisburseLoan_SuccessAndIdempotency(t *testing.T) {
 			assessment.Decision,
 		)
 	}
+	issuedAt := time.Now().UTC()
+	if err := app.IssueOffer(issuedAt, 1600); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.AcceptOffer(issuedAt.Add(time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ConfirmContract(issuedAt.Add(2*time.Millisecond), "email_otp"); err != nil {
+		t.Fatal(err)
+	}
 
 	repo := &addLoanDocumentRepoStub{
 		app:      app,
@@ -189,6 +199,17 @@ func TestDisburseLoan_InvalidEvidenceDoesNotAppend(t *testing.T) {
 		)
 	}
 
+	issuedAt := time.Now().UTC()
+	if err := app.IssueOffer(issuedAt, 1600); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.AcceptOffer(issuedAt.Add(time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ConfirmContract(issuedAt.Add(2*time.Millisecond), "email_otp"); err != nil {
+		t.Fatal(err)
+	}
+
 	// Giả lập chứng từ chưa được xác minh đầy đủ.
 	// Các dữ liệu thẩm định khác vẫn giữ nguyên.
 	e.DocumentsVerified = false
@@ -247,5 +268,19 @@ func TestDisburseLoan_InvalidEvidenceDoesNotAppend(t *testing.T) {
 	// Hồ sơ vẫn phải giữ trạng thái approved.
 	if app.Status != domain.ApplicationStatusApproved {
 		t.Fatal("loan status changed after invalid evidence")
+	}
+}
+
+func TestDisburseLoan_RequiresContractConfirmation(t *testing.T) {
+	a := newLoanForAssessmentTest(t)
+	at := time.Now().UTC().Add(-time.Minute)
+	a.Status = domain.ApplicationStatusApproved
+	a.ApprovedAt = &at
+	repo := &addLoanDocumentRepoStub{app: a, revision: 10}
+	bank := &disburseBankStub{at: time.Now().UTC()}
+	h := &DisburseLoanCommandHandler{Repo: repo, Authorizer: &manualLoanAuthorizerStub{}, Evidence: disburseEvidenceStub{}, Bank: bank}
+	_, err := h.Handle(context.Background(), DisburseLoanCommand{ApplicationID: a.Id, ActorID: "STAFF001"})
+	if err != domain.ErrLoanContractNotConfirmed || bank.calls != 0 || repo.appendCalls != 0 {
+		t.Fatalf("expected fail-closed before banking: %v", err)
 	}
 }

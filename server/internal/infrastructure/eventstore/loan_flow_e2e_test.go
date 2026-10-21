@@ -28,6 +28,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/loanadapter"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
+	"github.com/dont-wait/anomaly/internal/infrastructure/otp"
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	presentation "github.com/dont-wait/anomaly/internal/presentation/http"
 	loanhttp "github.com/dont-wait/anomaly/internal/presentation/http/handler/loan"
@@ -124,6 +125,7 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 	// Dựng lại handler/repository khi retry để không dựa vào cache của request cũ.
 	serve := func() (*httptest.Server, *loanhttp.Handler) {
 		h := composition.NewLoanHandler(eventstore.NewBankRepository(es, reads), eventstore.NewLoanRepository(es), read, evidence, media)
+		h.ContractOTP = demoLoanContractOTP{}
 		tx := transactionhttp.NewHandler(zerolog.Nop(), bank, nil, nil, nil)
 		accounts := composition.NewAccountHandler(bank, tokens, zerolog.Nop())
 		srv := httptest.NewServer(presentation.NewRouter(http.NewServeMux(), accounts, nil, nil, tx, tokens, false, h))
@@ -239,6 +241,24 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 					}
 				}
 				return
+			}
+
+			// New credit must fail closed until owner confirms offer via OTP.
+			api.json(t, "POST", base+"/disburse", admin, nil, nil, 422)
+			api.json(t, "POST", base+"/offer/issue", owner, nil, nil, 403)
+			issued := decodeLoanE2E[loan.LoanOffer](t, api.json(t, "POST", base+"/offer/issue", admin, nil, nil, 200))
+			if issued.Status != loan.LoanOfferIssued || issued.AnnualRateBps <= 0 {
+				t.Fatal("offer not issued")
+			}
+			api.json(t, "GET", base+"/offer", outsider, nil, nil, 404)
+			api.json(t, "POST", base+"/offer/accept", outsider, nil, nil, 404)
+			api.json(t, "POST", base+"/offer/accept", owner, nil, nil, 200)
+			api.json(t, "POST", base+"/disburse", admin, nil, nil, 422)
+			api.json(t, "POST", base+"/contract/otp", owner, nil, nil, 200)
+			api.json(t, "POST", base+"/contract/confirm", owner, map[string]any{"otp": "bad", "acceptTerms": true}, nil, 400)
+			confirmed := decodeLoanE2E[loan.LoanOffer](t, api.json(t, "POST", base+"/contract/confirm", owner, map[string]any{"otp": "123456", "acceptTerms": true}, nil, 200))
+			if confirmed.Status != loan.LoanOfferConfirmed || confirmed.ConfirmedAt == nil {
+				t.Fatal("offer not confirmed")
 			}
 
 			if tt.reconcile {
@@ -496,3 +516,18 @@ func decodeLoanE2E[T any](t *testing.T, body []byte) T {
 	}
 	return value
 }
+
+// Challenge used only by the isolated E2E HTTP server; production uses Redis+SMTP.
+type demoLoanContractOTP struct{}
+
+func (demoLoanContractOTP) Issue(_ context.Context, _, _ string) (otp.TransferOTPInfo, error) {
+	return otp.TransferOTPInfo{Channel: "email", ExpiresAt: time.Now().Add(time.Minute)}, nil
+}
+
+func (demoLoanContractOTP) Verify(_ context.Context, _, code string) (int, error) {
+	if code != "123456" {
+		return 2, otp.ErrTransferOTPInvalid
+	}
+	return 3, nil
+}
+func (demoLoanContractOTP) Consume(_ context.Context, _ string) error { return nil }

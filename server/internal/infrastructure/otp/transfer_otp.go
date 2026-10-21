@@ -83,12 +83,26 @@ type TransferOTPInfo struct {
 }
 
 type TransferOTPStore struct {
-	rdb  *redis.Client
-	mail TransferMailSender
+	rdb     *redis.Client
+	mail    TransferMailSender
+	prefix  string
+	purpose appotp.OTPEmailPurpose
 }
 
 func NewTransferOTPStore(rdb *redis.Client, sender TransferMailSender) *TransferOTPStore {
-	return &TransferOTPStore{rdb: rdb, mail: sender}
+	return &TransferOTPStore{rdb: rdb, mail: sender, prefix: "transfer", purpose: appotp.OTPEmailTransfer}
+}
+
+// Contract OTP has separate Redis keys and email copy; transfer OTP remains unchanged.
+func NewLoanContractOTPStore(rdb *redis.Client, sender TransferMailSender) *TransferOTPStore {
+	return &TransferOTPStore{rdb: rdb, mail: sender, prefix: "loan-contract", purpose: appotp.OTPEmailLoanContract}
+}
+func (s *TransferOTPStore) otpKey(id string) string      { return s.prefix + ":otp:" + id }
+func (s *TransferOTPStore) attemptsKey(id string) string { return s.prefix + ":otp:attempts:" + id }
+func (s *TransferOTPStore) verifiedKey(id string) string { return s.prefix + ":otp:verified:" + id }
+func (s *TransferOTPStore) cooldownKey(email string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
+	return s.prefix + ":otp:cooldown:" + hex.EncodeToString(sum[:])
 }
 
 func (s *TransferOTPStore) Issue(ctx context.Context, transferID, email string) (TransferOTPInfo, error) {
@@ -100,13 +114,16 @@ func (s *TransferOTPStore) Resend(ctx context.Context, transferID, email string)
 }
 
 func (s *TransferOTPStore) issue(ctx context.Context, transferID, email string) (TransferOTPInfo, error) {
+	if s == nil || s.rdb == nil || s.mail == nil || strings.TrimSpace(email) == "" {
+		return TransferOTPInfo{}, fmt.Errorf("otp delivery service unavailable")
+	}
 	email = strings.TrimSpace(strings.ToLower(email))
 	code, err := otpdomain.GenerateCode()
 	if err != nil {
 		return TransferOTPInfo{}, err
 	}
-	key := transferOTPKey(transferID)
-	cooldownKey := transferOTPCooldownKey(email)
+	key := s.otpKey(transferID)
+	cooldownKey := s.cooldownKey(email)
 	ok, err := s.rdb.SetNX(ctx, cooldownKey, "1", transferOTPCooldown).Result()
 	if err != nil {
 		return TransferOTPInfo{}, err
@@ -116,13 +133,13 @@ func (s *TransferOTPStore) issue(ctx context.Context, transferID, email string) 
 	}
 	if err := transferOTPIssueScript.Run(ctx, s.rdb, []string{
 		key,
-		transferOTPAttemptsKey(transferID),
-		transferOTPVerifiedKey(transferID),
+		s.attemptsKey(transferID),
+		s.verifiedKey(transferID),
 	}, code, transferOTPTTL.Milliseconds()).Err(); err != nil {
 		_ = s.rdb.Del(ctx, cooldownKey).Err()
 		return TransferOTPInfo{}, err
 	}
-	subject, text, html, err := appotp.RenderOTPEmail(code, transferOTPTTL, appotp.OTPEmailTransfer)
+	subject, text, html, err := appotp.RenderOTPEmail(code, transferOTPTTL, s.purpose)
 	if err != nil {
 		_ = s.Consume(ctx, transferID)
 		_ = s.rdb.Del(ctx, cooldownKey).Err()
@@ -146,9 +163,9 @@ func (s *TransferOTPStore) Verify(ctx context.Context, transferID, code string) 
 		code = ""
 	}
 	result, err := transferOTPVerifyScript.Run(ctx, s.rdb, []string{
-		transferOTPKey(transferID),
-		transferOTPAttemptsKey(transferID),
-		transferOTPVerifiedKey(transferID),
+		s.otpKey(transferID),
+		s.attemptsKey(transferID),
+		s.verifiedKey(transferID),
 	}, code, transferOTPAttempts).Int64Slice()
 	if err != nil {
 		return 0, err
@@ -173,9 +190,9 @@ func (s *TransferOTPStore) Verify(ctx context.Context, transferID, code string) 
 
 func (s *TransferOTPStore) Consume(ctx context.Context, transferID string) error {
 	return s.rdb.Del(ctx,
-		transferOTPKey(transferID),
-		transferOTPAttemptsKey(transferID),
-		transferOTPVerifiedKey(transferID),
+		s.otpKey(transferID),
+		s.attemptsKey(transferID),
+		s.verifiedKey(transferID),
 	).Err()
 }
 

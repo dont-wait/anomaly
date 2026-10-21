@@ -61,6 +61,7 @@ type Application struct {
 	DisbursementPreparedAt *time.Time              `json:"disbursementPreparedAt"`
 	PreparedAnnualRateBps  int64                   `json:"preparedAnnualRateBps"`
 	RepaymentSchedule      []RepaymentScheduleItem `json:"repaymentSchedule"`
+	Offer                  *LoanOffer              `json:"offer,omitempty"`
 }
 
 func NewDraftApplication(
@@ -381,6 +382,12 @@ func (a *Application) PrepareDisbursement(
 		at.Before(*a.ApprovedAt) ||
 		annualRateBps <= 0 {
 		return fmt.Errorf("invalid loan disbursement preparation")
+	}
+
+	// New loan contracts freeze terms after confirmation. Pre-existing
+	// loan streams without an Offer remain replayable.
+	if a.Offer != nil && (a.Offer.Status != LoanOfferConfirmed || a.Offer.ConfirmedAt == nil || a.Offer.Amount != a.RequestedAmount || a.Offer.TermMonths != a.TermMonths || a.Offer.AnnualRateBps != annualRateBps) {
+		return ErrLoanContractNotConfirmed
 	}
 
 	// Không cho phép chốt lại điều khoản đã chuẩn bị.

@@ -120,6 +120,8 @@ func main() {
 		mediaRepo,
 	)
 
+	composition.AttachLoanContractOTP(loanHandler, rdb, config.SMTPConfig, *logger)
+
 	composition.AttachLoanRepayment(
 		loanHandler,
 		bank,

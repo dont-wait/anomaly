@@ -20,6 +20,9 @@ func (a *Application) MarkDisbursed(
 		annualRateBps <= 0 {
 		return fmt.Errorf("invalid loan disbursement terms")
 	}
+	if a.Offer != nil && (a.Offer.Status != LoanOfferConfirmed || a.Offer.ConfirmedAt == nil || a.Offer.Amount != a.RequestedAmount || a.Offer.TermMonths != a.TermMonths || a.Offer.AnnualRateBps != annualRateBps) {
+		return ErrLoanContractNotConfirmed
+	}
 	// Không cho phép thay đổi lãi suất đã chốt.
 	if a.DisbursementPreparedAt != nil {
 		if a.PreparedAnnualRateBps <= 0 ||

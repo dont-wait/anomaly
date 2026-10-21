@@ -85,6 +85,11 @@ func (h *DisburseLoanCommandHandler) Handle(
 	if a.Status != domain.ApplicationStatusApproved {
 		return nil, domain.ErrInvalidApplicationStatus
 	}
+	// Backward compatibility: an already-prepared legacy credit must still be finalized.
+	// New credits always require a confirmed offer before calling Banking.
+	if a.DisbursementPreparedAt == nil && (a.Offer == nil || a.Offer.Status != domain.LoanOfferConfirmed || a.Offer.ConfirmedAt == nil) {
+		return nil, domain.ErrLoanContractNotConfirmed
+	}
 
 	// Đọc dữ liệu thẩm định được lưu trước đó.
 
@@ -130,7 +135,15 @@ func (h *DisburseLoanCommandHandler) Handle(
 			)
 		}
 
-		rate = calculatedRate
+		// Freeze the rate the customer confirmed. Do not silently recalculate it.
+		if a.Offer != nil && a.Offer.Status == domain.LoanOfferConfirmed {
+			rate = a.Offer.AnnualRateBps
+			if rate <= 0 || a.Offer.Amount != a.RequestedAmount || a.Offer.TermMonths != a.TermMonths {
+				return nil, fmt.Errorf("invalid confirmed loan offer terms")
+			}
+		} else {
+			rate = calculatedRate // legacy prepared flow is handled above
+		}
 		preparedAt := time.Now().UTC()
 
 		prepared := *a
