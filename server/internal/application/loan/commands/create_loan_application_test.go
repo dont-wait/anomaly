@@ -353,6 +353,7 @@ func (p *createLoanPackagePolicyStub) ValidateLoanPackage(_ context.Context, _ s
 	p.calls++
 	return p.err
 }
+
 func newCreateTestHandler(repo LoanApplicationRepository, validator LoanApplicantValidator) *CreateLoanApplicationCommandHandler {
 	h := NewCreateLoanApplicationCommandHandler(repo, validator)
 	h.PackagePolicy = &createLoanPackagePolicyStub{}
@@ -370,6 +371,7 @@ func TestCreateLoanApplicationRejectsInactiveOrOutOfRangePackageBeforeWrite(t *t
 		t.Fatal("must not write event for ineligible package")
 	}
 }
+
 func TestCreateLoanApplicationRequiresPackagePolicy(t *testing.T) {
 	repo := &createLoanRepoStub{}
 	h := newCreateTestHandler(repo, &createLoanValidatorStub{})
@@ -381,6 +383,7 @@ func TestCreateLoanApplicationRequiresPackagePolicy(t *testing.T) {
 		t.Fatal("must not create without catalog")
 	}
 }
+
 func TestCreateLoanApplicationIdempotentRetrySurvivesPackageDeactivation(t *testing.T) {
 	repo := &createLoanRepoStub{}
 	h := newCreateTestHandler(repo, &createLoanValidatorStub{})

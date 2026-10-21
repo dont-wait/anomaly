@@ -163,6 +163,7 @@ func TestPreApplicationQuoteJSONUsesLowerCamelCase(t *testing.T) {
 		t.Fatalf("PascalCase leaked: %s", raw)
 	}
 }
+
 func TestPreApplicationQuoteRejectsDuplicateActivePackage(t *testing.T) {
 	dup := append(loanPackageFixture(), loanPackageFixture()...)
 	svc := NewPreApplicationQuoteQueryService(&testLoanCatalogReader{items: dup})
