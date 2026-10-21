@@ -71,6 +71,34 @@ services:
     networks:
       - anomaly-network
 
+  anomaly-relay:
+    container_name: anomaly-relay
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/relay"]
+    environment:
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=rs0
+      MONGO_DB: anomaly
+      EVENT_STORE_CONN_STRING: esdb://eventstore:2113?tls=false
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-anomaly.bank.events.v1}
+      KAFKA_PRODUCER_ID: ${KAFKA_PRODUCER_ID:-anomaly-server}
+      KAFKA_EVENTSTORE_SUBSCRIPTION: ${KAFKA_EVENTSTORE_SUBSCRIPTION:-kafka-publisher}
+      KAFKA_PAYLOAD_REDACTION_KEY: ${KAFKA_PAYLOAD_REDACTION_KEY:-}
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
+      eventstore:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    networks:
+      - anomaly-network
+
   anomaly-loan-projector:
     container_name: anomaly-loan-projector
     restart: unless-stopped
@@ -284,7 +312,7 @@ services:
       - app
     depends_on:
       rustfs:
-        condition: service_started
+        condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
