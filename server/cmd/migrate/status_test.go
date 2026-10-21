@@ -56,17 +56,19 @@ func TestListMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() {
 		if err := src.Close(); err != nil {
 			t.Errorf("close migration source: %v", err)
 		}
 	})
+
 	entries, err := listMigrations(src)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(entries) != 9 ||
+	if len(entries) != 10 ||
 		entries[0].name != "create_customers" ||
 		entries[3].name != "add_account_role" ||
 		entries[4].name != "create_transaction_collections" ||
@@ -77,7 +79,9 @@ func TestListMigrations(t *testing.T) {
 		entries[7].version != 8 ||
 		entries[7].name != "create_receipt_outbox" ||
 		entries[8].version != 9 ||
-		entries[8].name != "allow_loan_disbursement_feed" {
+		entries[8].name != "allow_loan_disbursement_feed" ||
+		entries[9].version != 10 ||
+		entries[9].name != "allow_loan_repayment" {
 		t.Fatalf("unexpected migrations: %+v", entries)
 	}
 }

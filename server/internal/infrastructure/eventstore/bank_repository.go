@@ -45,13 +45,28 @@ type loanCreditState struct {
 }
 
 type bankState struct {
-	Accounts    map[string]*accountdomain.UserAccount
-	Balances    map[string]int64
-	Transfers   map[string]transferState
-	Keys        map[string]string
-	Exists      bool
-	Revision    uint64
-	LoanCredits map[string]loanCreditState
+	Accounts     map[string]*accountdomain.UserAccount
+	Balances     map[string]int64
+	Transfers    map[string]transferState
+	Keys         map[string]string
+	Exists       bool
+	Revision     uint64
+	LoanCredits  map[string]loanCreditState
+	LoanPayments map[string]journal.LoanInstallmentPayment
+}
+
+// The JWT actor is a UserAccount ID. CustomerId is the stable profile owner ID.
+// Any active payment account of that same customer may pay the loan.
+func ownedByCustomer(accounts map[string]*accountdomain.UserAccount, actorID, accountID string) bool {
+	actor := accounts[actorID]
+	source := accounts[accountID]
+	if actor == nil || source == nil {
+		return false
+	}
+	if actorID == accountID {
+		return true
+	}
+	return actor.CustomerId != "" && actor.CustomerId == source.CustomerId
 }
 
 func financialID(id string) bson.ObjectID {
@@ -60,7 +75,7 @@ func financialID(id string) bson.ObjectID {
 }
 
 func (r *BankRepository) load(ctx context.Context) (*bankState, error) {
-	s := &bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}, Transfers: map[string]transferState{}, Keys: map[string]string{}, LoanCredits: map[string]loanCreditState{}}
+	s := &bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}, Transfers: map[string]transferState{}, Keys: map[string]string{}, LoanCredits: map[string]loanCreditState{}, LoanPayments: map[string]journal.LoanInstallmentPayment{}}
 	var from esdb.StreamPosition = esdb.Start{}
 	for {
 		stream, err := r.client.ReadStream(ctx, journal.BankStream, esdb.ReadStreamOptions{From: from, RequiresLeader: true}, PAGESIZE)
@@ -160,6 +175,74 @@ func (s *bankState) apply(record journal.Record) error {
 			Amount:    record.LoanAmount,
 			At:        record.At,
 		}
+
+	case journal.LoanInstallmentPaid:
+		if record.LoanPayment == nil {
+			return fmt.Errorf("missing loan installment payment")
+		}
+
+		p := *record.LoanPayment
+
+		if err := p.Validate(); err != nil {
+			return err
+		}
+
+		key := fmt.Sprintf(
+			"%s:%d",
+			p.LoanID,
+			p.InstallmentNo,
+		)
+
+		if _, exists := s.LoanPayments[key]; exists {
+			return fmt.Errorf("duplicate loan installment payment")
+		}
+
+		credit, exists := s.LoanCredits[p.LoanID]
+		if !exists ||
+			!ownedByCustomer(s.Accounts, p.CustomerID, credit.AccountID) ||
+			!ownedByCustomer(s.Accounts, p.CustomerID, p.AccountID) {
+			return fmt.Errorf("loan disbursement or repayment ownership mismatch")
+		}
+
+		openingPrincipal := credit.Amount
+
+		if p.InstallmentNo > 1 {
+			previousKey := fmt.Sprintf(
+				"%s:%d",
+				p.LoanID,
+				p.InstallmentNo-1,
+			)
+
+			previous, ok := s.LoanPayments[previousKey]
+			if !ok {
+				return fmt.Errorf("previous loan installment missing")
+			}
+
+			openingPrincipal = previous.OutstandingPrincipalAfter
+		}
+
+		if openingPrincipal !=
+			p.OutstandingPrincipalAfter+p.PrincipalAmount {
+			return fmt.Errorf("inconsistent outstanding principal")
+		}
+
+		if s.Accounts[p.AccountID] == nil {
+			return fmt.Errorf("loan payment account not found")
+		}
+
+		accountKey := financialID(p.AccountID).Hex()
+
+		if s.Balances[accountKey] != *record.BalanceBefore {
+			return fmt.Errorf("loan payment balance mismatch")
+		}
+
+		s.Balances[accountKey] = *record.BalanceAfter
+
+		if s.LoanPayments == nil {
+			s.LoanPayments = map[string]journal.LoanInstallmentPayment{}
+		}
+
+		s.LoanPayments[key] = p
 	default:
 		var tx mongorepo.TransferDocument
 		if err := json.Unmarshal(record.Transfer, &tx); err != nil {

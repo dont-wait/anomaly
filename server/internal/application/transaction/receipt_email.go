@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 //go:embed templates/transfer_receipt.html
@@ -16,8 +18,6 @@ var transferReceiptHTML string
 var transferReceiptTmpl = template.Must(template.New("transfer_receipt").Parse(transferReceiptHTML))
 
 const transferReceiptSubject = "[AnomalyBank] Biên lai giao dịch / Transfer receipt"
-
-var receiptLocation = time.FixedZone("ICT", 7*60*60)
 
 // TransferReceiptData contains the canonical values needed to render a
 // successful outgoing transfer receipt. Account numbers are masked in the
@@ -80,7 +80,7 @@ func RenderTransferReceipt(data TransferReceiptData) (subject, text, html string
 		Fee:              formatMoney(data.Fee, currency),
 		Total:            formatMoney(data.Amount+data.Fee, currency),
 		Note:             strings.TrimSpace(data.Note),
-		PostedAt:         postedAt.In(receiptLocation).Format("02/01/2006 15:04:05") + " (UTC+07:00)",
+		PostedAt:         postedAt.In(timeutil.VietnamLocation).Format("02/01/2006 15:04:05") + " (UTC+07:00)",
 		AuthMethod:       authMethod,
 	}
 

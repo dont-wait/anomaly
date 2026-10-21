@@ -22,6 +22,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/infrastructure/otp"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 type Repository interface {
@@ -72,11 +73,9 @@ func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOT
 
 var accountNumberPattern = regexp.MustCompile(`^\d{6,19}$`)
 
-var transactionLocation = time.FixedZone("ICT", 7*60*60)
-
 func transactionDateBounds(now time.Time) (time.Time, time.Time) {
-	now = now.In(transactionLocation)
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, transactionLocation)
+	now = now.In(timeutil.VietnamLocation)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, timeutil.VietnamLocation)
 	return today.AddDate(0, -2, 0), today.AddDate(0, 0, 1).Add(-time.Nanosecond)
 }
 
@@ -738,7 +737,7 @@ func (h *Handler) TransactionSummary(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, http.StatusBadRequest, "INVALID_MONTH", "month must use YYYY-MM")
 			return
 		}
-		from = time.Date(parsed.Year(), parsed.Month(), 1, 0, 0, 0, 0, transactionLocation)
+		from = time.Date(parsed.Year(), parsed.Month(), 1, 0, 0, 0, 0, timeutil.VietnamLocation)
 		to = from.AddDate(0, 1, 0)
 	}
 	claims, ok := middleware.ClaimsFromContext(r.Context())

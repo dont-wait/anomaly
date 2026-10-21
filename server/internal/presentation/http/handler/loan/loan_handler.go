@@ -124,6 +124,8 @@ type Handler struct {
 	Decide   *commands.ManualLoanDecisionCommandHandler
 	Disburse *commands.DisburseLoanCommandHandler
 
+	Repayment *RepaymentHTTP
+
 	Read     Reader
 	List     ListReader
 	Evidence Evidence
@@ -308,6 +310,11 @@ func RegisterRoutes(
 		h.disburse,
 		"disbursePersonalLoan",
 	)
+
+	// Dang ky rieng 5 API tra no vay.
+	if h.Repayment != nil {
+		h.Repayment.RegisterRoutes(router, tokens)
+	}
 }
 
 func claims(r *http.Request) (string, string, bool) {
