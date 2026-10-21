@@ -13,6 +13,7 @@ import (
 
 	"github.com/dont-wait/anomaly/internal/domain/loan"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
+	"github.com/dont-wait/anomaly/internal/timeutil"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/mongodb"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -169,7 +170,7 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 
 		paidAt := time.Date(
 			y, m, d, 10, 0, 0, 0,
-			time.FixedZone("ICT", 7*3600),
+			timeutil.VietnamLocation,
 		)
 
 		txID := journal.LoanInstallmentTransactionID(

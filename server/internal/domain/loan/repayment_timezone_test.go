@@ -3,10 +3,12 @@ package loan
 import (
 	"testing"
 	"time"
+
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 func TestCalculateDueDateVietnamBusinessDay(t *testing.T) {
-	vn := time.FixedZone("ICT", 7*3600)
+	vn := timeutil.VietnamLocation
 
 	tests := []struct {
 		name  string
@@ -68,7 +70,7 @@ func TestCalculateDueDateVietnamBusinessDay(t *testing.T) {
 }
 
 func TestBusinessDayStableAcrossTimeZones(t *testing.T) {
-	vn := time.FixedZone("ICT", 7*3600)
+	vn := timeutil.VietnamLocation
 
 	disbursed := time.Date(
 		2026, 10, 15, 0, 30, 0, 0, vn,

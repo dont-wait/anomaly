@@ -8,6 +8,7 @@ import (
 	"time"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 const (
@@ -78,7 +79,7 @@ func (p LoanInstallmentPayment) Validate() error {
 
 	// DueDate duoc luu theo ngay UTC trong lich EMI.
 	// PaidAt duoc so sanh theo ngay Viet Nam.
-	vn := time.FixedZone("ICT", 7*3600)
+	vn := timeutil.VietnamLocation
 
 	y, m, d := p.PaidAt.In(vn).Date()
 	dy, dm, dd := p.DueDate.UTC().Date()

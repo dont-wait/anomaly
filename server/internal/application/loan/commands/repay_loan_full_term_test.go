@@ -7,6 +7,7 @@ import (
 	"time"
 
 	loandomain "github.com/dont-wait/anomaly/internal/domain/loan"
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 func TestRepayLoanFullTermAndNoExtraPayment(
@@ -31,7 +32,7 @@ func TestRepayLoanFullTermAndNoExtraPayment(
 		bank.now = time.Date(
 			y, m, d,
 			10, 0, 0, 0,
-			time.FixedZone("ICT", 7*3600),
+			timeutil.VietnamLocation,
 		)
 
 		cmd := repaymentCommand()

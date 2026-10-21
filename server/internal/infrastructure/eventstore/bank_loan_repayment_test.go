@@ -6,11 +6,12 @@ import (
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 func TestBankLoanRepaymentReplayAndDuplicate(t *testing.T) {
 	now := time.Now().UTC()
-	vn := time.FixedZone("ICT", 7*3600)
+	vn := timeutil.VietnamLocation
 	y, m, d := now.In(vn).Date()
 
 	const (

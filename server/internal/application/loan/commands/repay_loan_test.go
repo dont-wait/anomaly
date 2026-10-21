@@ -8,6 +8,7 @@ import (
 
 	loandomain "github.com/dont-wait/anomaly/internal/domain/loan"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 type repaymentLoanRepoStub struct {
@@ -114,7 +115,7 @@ func newLoanRepaymentCommandFixture(
 	bank := &repaymentBankStub{
 		now: time.Date(
 			y, m, d, 9, 0, 0, 0,
-			time.FixedZone("ICT", 7*3600),
+			timeutil.VietnamLocation,
 		),
 	}
 
@@ -256,7 +257,7 @@ func TestRepayLoanRejectsOtherCustomer(t *testing.T) {
 
 	_, err := handler.Handle(context.Background(), cmd)
 
-	if err == nil || bank.calls != 0 {
+	if !errors.Is(err, loandomain.ErrLoanNotFound) || bank.calls != 0 {
 		t.Fatal("unauthorized loan repayment accepted")
 	}
 }
@@ -311,7 +312,7 @@ func TestRepayLoanReplayNextInstallment(t *testing.T) {
 
 	bank.now = time.Date(
 		y, m, d, 9, 0, 0, 0,
-		time.FixedZone("ICT", 7*3600),
+		timeutil.VietnamLocation,
 	)
 
 	cmd := repaymentCommand()

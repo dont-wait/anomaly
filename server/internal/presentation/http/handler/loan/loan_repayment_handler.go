@@ -93,6 +93,7 @@ func repaymentHandleError(
 ) {
 	switch {
 	case errors.Is(err, loanqueries.ErrLoanNotFound),
+		errors.Is(err, loandomain.ErrLoanNotFound),
 		errors.Is(err, loanqueries.ErrPaymentNotFound):
 		repaymentWriteError(w, 404, "LOAN_NOT_FOUND",
 			"Loan or payment not found")
@@ -439,8 +440,7 @@ func (h *RepaymentHTTP) repay(
 	}
 
 	if req.QuoteID == "" ||
-		req.SourceAccountID == "" ||
-		req.SourceAccountID != customerID {
+		req.SourceAccountID == "" {
 		repaymentWriteError(w, 422, "INVALID_PAYMENT_ACCOUNT",
 			"Invalid repayment account or quote")
 		return

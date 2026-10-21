@@ -6,6 +6,7 @@ import (
 	"time"
 
 	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
+	"github.com/dont-wait/anomaly/internal/timeutil"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
@@ -125,7 +126,7 @@ func mapSchedule(
 	next := 0
 
 	today := time.Now().In(
-		time.FixedZone("ICT", 7*3600),
+		timeutil.VietnamLocation,
 	).Format("2006-01-02")
 
 	for _, item := range row.Schedule {

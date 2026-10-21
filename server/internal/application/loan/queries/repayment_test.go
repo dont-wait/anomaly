@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 // MongoDB Reader gia lap.
@@ -155,7 +157,7 @@ func repaymentFixture() (
 	*repaymentCacheStub,
 	time.Time,
 ) {
-	vn := time.FixedZone("ICT", 7*3600)
+	vn := timeutil.VietnamLocation
 
 	now := time.Date(
 		2026, 11, 14,

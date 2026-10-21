@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dont-wait/anomaly/internal/timeutil"
 	"github.com/google/uuid"
 )
 
@@ -339,7 +340,7 @@ func dueOnDate(
 	dueDate string,
 	at time.Time,
 ) bool {
-	vn := time.FixedZone("ICT", 7*3600)
+	vn := timeutil.VietnamLocation
 
 	return at.In(vn).Format("2006-01-02") ==
 		dueDate

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 // Tao mot khoan vay da giai ngan de kiem thu.
@@ -58,7 +60,7 @@ func onDueDay(
 	return time.Date(
 		y, m, d,
 		9, 0, 0, 0,
-		time.FixedZone("ICT", 7*3600),
+		timeutil.VietnamLocation,
 	)
 }
 

@@ -83,12 +83,10 @@ func (h *RepayLoanCommandHandler) Handle(
 		return nil, err
 	}
 
-	if app == nil || app.Id != cmd.LoanID {
-		return nil, fmt.Errorf("loan not found")
-	}
-
-	if app.CustomerId != cmd.CustomerID {
-		return nil, fmt.Errorf("loan not found")
+	if app == nil ||
+		app.Id != cmd.LoanID ||
+		app.CustomerId != cmd.CustomerID {
+		return nil, loandomain.ErrLoanNotFound
 	}
 
 	// 2. Khoan vay phai da giai ngan.

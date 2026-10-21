@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 // Trang thai cua khoan vay da giai ngan.
@@ -25,6 +27,9 @@ const (
 
 // Cac loi nghiep vu tra no.
 var (
+	ErrLoanNotFound = errors.New(
+		"loan not found",
+	)
 	ErrLoanNotDisbursed = errors.New(
 		"loan has not been disbursed",
 	)
@@ -182,12 +187,14 @@ func (r *LoanRepayment) DueInstallment(
 			ErrInvalidRepaymentState
 	}
 
-	vn := time.FixedZone("ICT", 7*60*60)
+	vn := timeutil.VietnamLocation
 
 	year, month, day := at.In(vn).Date()
 	dueYear, dueMonth, dueDay := item.DueDate.UTC().Date()
 
 	// Chi cho phep thanh toan dung ngay den han.
+	// Product se nhac truoc 5 ngay va nhac lai trong ngay den han;
+	// MVP khong ho tro tra truoc/tra tre.
 	if year != dueYear ||
 		month != dueMonth ||
 		day != dueDay {

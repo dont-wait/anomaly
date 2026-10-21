@@ -26,6 +26,7 @@ import (
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	loanhttp "github.com/dont-wait/anomaly/internal/presentation/http/handler/loan"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
+	"github.com/dont-wait/anomaly/internal/timeutil"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
@@ -114,7 +115,7 @@ func TestLoanRepaymentHTTPE2E(t *testing.T) {
 	}
 
 	// Billing is strictly due-date-only. Use a real due date: today in VN.
-	vn := time.FixedZone("ICT", 7*3600)
+	vn := timeutil.VietnamLocation
 	today := time.Now().In(vn)
 	if today.Day() > 28 {
 		t.Skip("fixture needs an unambiguous previous-month anniversary (day <= 28)")

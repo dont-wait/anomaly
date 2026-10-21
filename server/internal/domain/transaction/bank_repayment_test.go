@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/dont-wait/anomaly/internal/timeutil"
 )
 
 func TestLoanInstallmentPaymentJournal(t *testing.T) {
 	now := time.Now().UTC()
-	vn := time.FixedZone("ICT", 7*3600)
+	vn := timeutil.VietnamLocation
 	y, m, d := now.In(vn).Date()
 
 	due := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
