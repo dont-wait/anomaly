@@ -2,6 +2,7 @@ package composition
 
 import (
 	"github.com/dont-wait/anomaly/internal/application/loan/commands"
+	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/loanadapter"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
@@ -57,6 +58,9 @@ func NewLoanHandler(
 			Evidence:   evidence,
 			Bank:       bank,
 		},
+		Contracts: loanqueries.NewLoanContractQueryService(
+			mongorepo.NewLoanContractQuery(read),
+		),
 		Read:     repo,
 		List:     read,
 		Evidence: evidence,

@@ -23,6 +23,7 @@ import (
 
 	accountqueries "github.com/dont-wait/anomaly/internal/application/account/queries"
 	commands "github.com/dont-wait/anomaly/internal/application/loan/commands"
+	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
 	domain "github.com/dont-wait/anomaly/internal/domain/loan"
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
@@ -125,6 +126,7 @@ type Handler struct {
 	Disburse *commands.DisburseLoanCommandHandler
 
 	Repayment *RepaymentHTTP
+	Contracts *loanqueries.LoanContractQueryService
 
 	Read     Reader
 	List     ListReader
@@ -233,6 +235,20 @@ func RegisterRoutes(
 			op.Description = "Provisional loan repayment schedule"
 			op.Response = loanQuoteResponse{}
 
+		case "listLoanContracts":
+			op.Tags = []string{"Loan Contracts"}
+			op.Description = "Customer-owned disbursed loans, newest application first; cursor is opaque. Read Model is eventually consistent."
+			op.Response = loanqueries.ContractListPage{}
+			op.Parameters = []openapi.Parameter{
+				{Name: "limit", In: "query", Type: "integer", Example: "20"},
+				{Name: "cursor", In: "query", Type: "string"},
+			}
+
+		case "getLoanContract":
+			op.Tags = []string{"Loan Contracts"}
+			op.Description = "Customer-owned disbursed contract with outstanding balance and repayment schedule."
+			op.Response = loanqueries.ContractDetail{}
+
 		case "disbursePersonalLoan":
 			op.Description = "Admin-only loan disbursement"
 		}
@@ -309,6 +325,18 @@ func RegisterRoutes(
 		"POST /api/loans/{applicationId}/disburse",
 		h.disburse,
 		"disbursePersonalLoan",
+	)
+
+	// Doc hop dong da giai ngan, tach biet voi ho so dang ky vay.
+	auth(
+		"GET /api/loans/contracts",
+		h.listContracts,
+		"listLoanContracts",
+	)
+	auth(
+		"GET /api/loans/contracts/detail/{loanId}",
+		h.getContract,
+		"getLoanContract",
 	)
 
 	// Dang ky rieng 5 API tra no vay.

@@ -46,6 +46,8 @@ func TestLoanRoutesRegisteredAndProtected(t *testing.T) {
 	paths := []string{
 		"/api/loans",
 		"/api/loans/{applicationId}",
+		"/api/loans/contracts",
+		"/api/loans/contracts/detail/{loanId}",
 		"/api/loans/{applicationId}/documents",
 		"/api/loans/{applicationId}/submit",
 		"/api/loans/{applicationId}/review",

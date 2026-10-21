@@ -98,7 +98,10 @@ type repaymentInstallmentRow struct {
 }
 
 type repaymentLoanRow struct {
-	ID bson.ObjectID `bson:"_id"`
+	ID            bson.ObjectID `bson:"_id"`
+	ApplicationID bson.ObjectID `bson:"application_id"`
+	StartDate     time.Time     `bson:"start_date"`
+	MaturityDate  time.Time     `bson:"maturity_date"`
 
 	LoanNo               string          `bson:"loan_no"`
 	Principal            int64           `bson:"principal"`

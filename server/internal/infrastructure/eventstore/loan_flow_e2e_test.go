@@ -364,6 +364,35 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 			if !found {
 				t.Fatal("disbursed application missing from loan read model API")
 			}
+			// Loan Contract API must read the projected agreement and never
+			// expose contracts owned by another authenticated customer.
+			contracts := decodeLoanE2E[struct {
+				Items []struct {
+					LoanID    string `json:"loanId"`
+					Principal int64  `json:"principal"`
+				} `json:"items"`
+			}](t, api.json(t, "GET", "/api/loans/contracts", owner, nil, nil, 200))
+			contractFound := false
+			for _, item := range contracts.Items {
+				if item.LoanID == a.Id && item.Principal == paid.RequestedAmount {
+					contractFound = true
+				}
+			}
+			if !contractFound {
+				t.Fatal("projected contract missing from customer list")
+			}
+			contract := decodeLoanE2E[struct {
+				LoanID            string `json:"loanId"`
+				Status            string `json:"status"`
+				RepaymentSchedule []struct {
+					InstallmentNo int `json:"installmentNo"`
+				} `json:"repaymentSchedule"`
+			}](t, api.json(t, "GET", "/api/loans/contracts/detail/"+a.Id, owner, nil, nil, 200))
+			if contract.LoanID != a.Id || contract.Status != "active" || len(contract.RepaymentSchedule) != 12 {
+				t.Fatalf("invalid contract detail: %+v", contract)
+			}
+			api.json(t, "GET", "/api/loans/contracts/detail/"+a.Id, outsider, nil, nil, 404)
+			api.json(t, "GET", "/api/loans/contracts/detail/"+a.Id, "", nil, nil, 401)
 			// Xóa object thật để kiểm tra sentinel RustFS qua HTTP (404, không 503).
 			if err := media.Delete(ctx, documents[0].StorageKey); err != nil {
 				t.Fatal(err)

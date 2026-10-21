@@ -44,6 +44,14 @@ func (m *LoanReadModel) EnsureIndexes(
 			},
 			{
 				Keys: bson.D{
+					{Key: "owner_id", Value: 1},
+					{Key: "status", Value: 1},
+					{Key: "created_at", Value: -1},
+					{Key: "_id", Value: -1},
+				},
+			},
+			{
+				Keys: bson.D{
 					{Key: "created_at", Value: -1},
 					{Key: "_id", Value: -1},
 				},
