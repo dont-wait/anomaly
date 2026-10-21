@@ -24,19 +24,39 @@ type PreApplicationQuoteInput struct {
 	ExistingMonthlyDebt int64  `json:"existingMonthlyDebt"`
 }
 
+// API DTOs prevent changes in Domain serialization from breaking HTTP contracts.
+type QuoteAffordability struct {
+	IncomeLimit             int64                      `json:"incomeLimit"`
+	WithinIncomeLimit       bool                       `json:"withinIncomeLimit"`
+	EstimatedMonthlyPayment int64                      `json:"estimatedMonthlyPayment"`
+	ExistingMonthlyDebt     int64                      `json:"existingMonthlyDebt"`
+	TotalMonthlyDebt        int64                      `json:"totalMonthlyDebt"`
+	DTIBps                  int64                      `json:"dtiBps"`
+	DTIStatus               domain.DTIAssessmentStatus `json:"dtiStatus"`
+}
+type QuoteScheduleItem struct {
+	InstallmentNo    int       `json:"installmentNo"`
+	DueDate          time.Time `json:"dueDate"`
+	OpeningBalance   int64     `json:"openingBalance"`
+	PrincipalAmount  int64     `json:"principalAmount"`
+	InterestAmount   int64     `json:"interestAmount"`
+	TotalPayment     int64     `json:"totalPayment"`
+	RemainingBalance int64     `json:"remainingBalance"`
+}
+
 type PreApplicationQuoteResult struct {
-	LoanPackageID           string                         `json:"loanPackageId"`
-	RequestedAmount         int64                          `json:"requestedAmount"`
-	TermMonths              int                            `json:"termMonths"`
-	AnnualRateBps           int64                          `json:"annualRateBps"`
-	MonthlyIncome           int64                          `json:"monthlyIncome"`
-	AssumedDisbursementDate time.Time                      `json:"assumedDisbursementDate"`
-	EstimatedMonthlyPayment int64                          `json:"estimatedMonthlyPayment"`
-	TotalInterest           int64                          `json:"totalInterest"`
-	TotalRepayment          int64                          `json:"totalRepayment"`
-	Affordability           *domain.LoanAffordability      `json:"affordability"`
-	ProvisionalSchedule     []domain.RepaymentScheduleItem `json:"provisionalSchedule"`
-	Official                bool                           `json:"official"`
+	LoanPackageID           string              `json:"loanPackageId"`
+	RequestedAmount         int64               `json:"requestedAmount"`
+	TermMonths              int                 `json:"termMonths"`
+	AnnualRateBps           int64               `json:"annualRateBps"`
+	MonthlyIncome           int64               `json:"monthlyIncome"`
+	AssumedDisbursementDate time.Time           `json:"assumedDisbursementDate"`
+	EstimatedMonthlyPayment int64               `json:"estimatedMonthlyPayment"`
+	TotalInterest           int64               `json:"totalInterest"`
+	TotalRepayment          int64               `json:"totalRepayment"`
+	Affordability           *QuoteAffordability `json:"affordability"`
+	ProvisionalSchedule     []QuoteScheduleItem `json:"provisionalSchedule"`
+	Official                bool                `json:"official"`
 }
 
 type PreApplicationQuoteQueryService struct {
@@ -66,8 +86,10 @@ func (s *PreApplicationQuoteQueryService) Quote(ctx context.Context, in PreAppli
 	var selected *LoanPackage
 	for i := range packages {
 		if packages[i].PackageCode == in.LoanPackageID {
+			if selected != nil {
+				return nil, fmt.Errorf("duplicate active loan package code %s", in.LoanPackageID)
+			}
 			selected = &packages[i]
-			break
 		}
 	}
 	if selected == nil {
@@ -121,6 +143,22 @@ func (s *PreApplicationQuoteQueryService) Quote(ctx context.Context, in PreAppli
 		total += installment.TotalPayment
 	}
 
+	projected := make([]QuoteScheduleItem, len(schedule))
+	for i, item := range schedule {
+		projected[i] = QuoteScheduleItem{
+			InstallmentNo: item.InstallmentNo, DueDate: item.DueDate,
+			OpeningBalance: item.OpeningBalance, PrincipalAmount: item.PrincipalAmount,
+			InterestAmount: item.InterestAmount, TotalPayment: item.TotalPayment,
+			RemainingBalance: item.RemainingBalance,
+		}
+	}
+	responseAffordability := &QuoteAffordability{
+		IncomeLimit: affordability.IncomeLimit, WithinIncomeLimit: affordability.WithinIncomeLimit,
+		EstimatedMonthlyPayment: affordability.EstimatedMonthlyPayment,
+		ExistingMonthlyDebt:     affordability.ExistingMonthlyDebt,
+		TotalMonthlyDebt:        affordability.TotalMonthlyDebt,
+		DTIBps:                  affordability.DTIBps, DTIStatus: affordability.DTIStatus,
+	}
 	return &PreApplicationQuoteResult{
 		LoanPackageID:           in.LoanPackageID,
 		RequestedAmount:         in.RequestedAmount,
@@ -131,8 +169,8 @@ func (s *PreApplicationQuoteQueryService) Quote(ctx context.Context, in PreAppli
 		EstimatedMonthlyPayment: affordability.EstimatedMonthlyPayment,
 		TotalInterest:           interest,
 		TotalRepayment:          total,
-		Affordability:           affordability,
-		ProvisionalSchedule:     schedule,
+		Affordability:           responseAffordability,
+		ProvisionalSchedule:     projected,
 		Official:                false,
 	}, nil
 }

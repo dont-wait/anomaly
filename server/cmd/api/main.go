@@ -120,10 +120,13 @@ func main() {
 		mediaRepo,
 	)
 
-	composition.AttachLoanProducts(
-		loanHandler,
-		mongo.NewLoanPackageCatalog(mongoClient, config.MongoConfig.MongoDBName),
-	)
+	packageCatalog := mongo.NewLoanPackageCatalog(mongoClient, config.MongoConfig.MongoDBName)
+	// Fail startup loudly if existing package codes are duplicated.
+	// Existing duplicates must be reconciled manually before creating this index.
+	if err := packageCatalog.EnsureIndexes(ctx); err != nil {
+		logger.Fatal().Err(err).Msg("ensure unique loan product index")
+	}
+	composition.AttachLoanProducts(loanHandler, packageCatalog)
 
 	composition.AttachLoanRepayment(
 		loanHandler,

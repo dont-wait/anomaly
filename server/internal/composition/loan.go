@@ -11,6 +11,7 @@ import (
 )
 
 func AttachLoanProducts(h *loanhttp.Handler, catalog *mongorepo.LoanPackageCatalog) {
+	h.Create.PackagePolicy = catalog
 	h.Products = loanqueries.NewLoanProductCatalogQueryService(catalog)
 	h.PreApplicationQuote = loanqueries.NewPreApplicationQuoteQueryService(catalog)
 }

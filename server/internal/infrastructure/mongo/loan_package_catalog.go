@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"strings"
+	"time"
 
 	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -20,6 +22,8 @@ func NewLoanPackageCatalog(client *mongodrv.Client, dbName string) *LoanPackageC
 }
 
 type loanPackageRecord struct {
+	ID          bson.ObjectID `bson:"_id"`
+	Status      string        `bson:"status"`
 	PackageCode string        `bson:"package_code"`
 	Name        string        `bson:"name"`
 	MinAmount   bson.RawValue `bson:"min_amount"`
@@ -47,58 +51,114 @@ func packageMoneyToInt64(v bson.RawValue) (int64, error) {
 	}
 }
 
-func (c *LoanPackageCatalog) ListActiveLoanPackages(ctx context.Context) ([]loanqueries.LoanPackage, error) {
-	if c == nil || c.db == nil {
-		return nil, fmt.Errorf("loan package MongoDB reader is not configured")
-	}
+// Package records are written with a single canonical package_code.  Read-side
+// normalization tolerates legacy casing in status without accepting unknown values.
+const catalogReadTimeout = 5 * time.Second
 
-	// MVP chỉ công bố sản phẩm mà Create Loan Application thực sự hỗ trợ.
-	cursor, err := c.db.Collection("loan_packages").Find(ctx, bson.M{
-		"package_code": "PERSONAL_UNSECURED_SALARY",
-		"status":       bson.M{"$in": bson.A{"active", "ACTIVE"}},
-	}, options.Find().SetSort(bson.D{{Key: "package_code", Value: 1}}))
+func (c *LoanPackageCatalog) EnsureIndexes(ctx context.Context) error {
+	if c == nil || c.db == nil {
+		return fmt.Errorf("loan package catalog is not configured")
+	}
+	ctx, cancel := context.WithTimeout(ctx, catalogReadTimeout)
+	defer cancel()
+	_, err := c.db.Collection("loan_packages").Indexes().CreateOne(ctx,
+		mongodrv.IndexModel{Keys: bson.D{{Key: "package_code", Value: 1}}, Options: options.Index().SetUnique(true)},
+	)
+	if err != nil {
+		return fmt.Errorf("loan_packages contains duplicate package_code or unique index failed: %w", err)
+	}
+	return nil
+}
+
+// uniquePackageByCode detects conflicting active/inactive versions instead of
+// relying on FindOne or a nondeterministic cursor ordering.
+func (c *LoanPackageCatalog) uniquePackageByCode(ctx context.Context, code string) (*loanPackageRecord, error) {
+	if c == nil || c.db == nil {
+		return nil, fmt.Errorf("loan package catalog is not configured")
+	}
+	ctx, cancel := context.WithTimeout(ctx, catalogReadTimeout)
+	defer cancel()
+	cur, err := c.db.Collection("loan_packages").Find(ctx, bson.M{"package_code": code})
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
-
-	items := make([]loanqueries.LoanPackage, 0)
-	for cursor.Next(ctx) {
-		var doc loanPackageRecord
-		if err := cursor.Decode(&doc); err != nil {
+	defer cur.Close(ctx)
+	var one *loanPackageRecord
+	for cur.Next(ctx) {
+		if one != nil {
+			return nil, fmt.Errorf("duplicate loan package code %q; reconcile data before accepting loans", code)
+		}
+		var item loanPackageRecord
+		if err := cur.Decode(&item); err != nil {
 			return nil, err
 		}
-		minAmount, err := packageMoneyToInt64(doc.MinAmount)
-		if err != nil {
-			return nil, fmt.Errorf("loan package %s min_amount: %w", doc.PackageCode, err)
-		}
-		maxAmount, err := packageMoneyToInt64(doc.MaxAmount)
-		if err != nil {
-			return nil, fmt.Errorf("loan package %s max_amount: %w", doc.PackageCode, err)
-		}
-		if minAmount <= 0 || maxAmount < minAmount || doc.Name == "" || len(doc.TermOptions) == 0 {
-			return nil, fmt.Errorf("loan package %s contains invalid catalog data", doc.PackageCode)
-		}
-		terms := make([]int, 0, len(doc.TermOptions))
-		seen := map[int]bool{}
-		for _, term := range doc.TermOptions {
-			// Đồng bộ kỳ hạn hợp lệ với Domain, không công bố kỳ hạn không được hỗ trợ.
-			switch term.Months {
-			case 6, 12, 24, 36, 48, 60:
-			default:
-				return nil, fmt.Errorf("loan package %s has unsupported term %d", doc.PackageCode, term.Months)
-			}
-			if !seen[term.Months] {
-				terms = append(terms, term.Months)
-				seen[term.Months] = true
-			}
-		}
-		items = append(items, loanqueries.LoanPackage{
-			PackageCode: doc.PackageCode, Name: doc.Name, MinAmount: minAmount, MaxAmount: maxAmount, TermMonths: terms,
-		})
+		one = &item
 	}
-	if err := cursor.Err(); err != nil {
+	if err := cur.Err(); err != nil {
 		return nil, err
 	}
-	return items, nil
+	return one, nil
+}
+
+func normalizePackageStatus(s string) string { return strings.ToUpper(strings.TrimSpace(s)) }
+
+func (c *LoanPackageCatalog) ListActiveLoanPackages(ctx context.Context) ([]loanqueries.LoanPackage, error) {
+	// MVP exposes only the product accepted by the create application API.
+	const code = "PERSONAL_UNSECURED_SALARY"
+	record, err := c.uniquePackageByCode(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+	if record == nil || normalizePackageStatus(record.Status) != "ACTIVE" {
+		return []loanqueries.LoanPackage{}, nil
+	}
+	minAmount, err := packageMoneyToInt64(record.MinAmount)
+	if err != nil {
+		return nil, fmt.Errorf("loan package %s min_amount: %w", code, err)
+	}
+	maxAmount, err := packageMoneyToInt64(record.MaxAmount)
+	if err != nil {
+		return nil, fmt.Errorf("loan package %s max_amount: %w", code, err)
+	}
+	if minAmount <= 0 || maxAmount < minAmount || strings.TrimSpace(record.Name) == "" || len(record.TermOptions) == 0 {
+		return nil, fmt.Errorf("loan package %s contains invalid catalog data", code)
+	}
+	terms := make([]int, 0, len(record.TermOptions))
+	seen := map[int]bool{}
+	for _, term := range record.TermOptions {
+		switch term.Months {
+		case 6, 12, 24, 36, 48, 60:
+		default:
+			return nil, fmt.Errorf("loan package %s has unsupported term %d", code, term.Months)
+		}
+		if !seen[term.Months] {
+			terms = append(terms, term.Months)
+			seen[term.Months] = true
+		}
+	}
+	return []loanqueries.LoanPackage{{PackageCode: record.PackageCode, Name: record.Name, MinAmount: minAmount, MaxAmount: maxAmount, TermMonths: terms}}, nil
+}
+
+// ValidateLoanPackage is called by the CreateLoanApplication COMMAND before
+// the initial EventStoreDB append, not just by the HTTP handler or Quote.
+func (c *LoanPackageCatalog) ValidateLoanPackage(ctx context.Context, code string, amount int64, months int) error {
+	items, err := c.ListActiveLoanPackages(ctx)
+	if err != nil {
+		return fmt.Errorf("loan package catalog unavailable: %w", err)
+	}
+	for _, item := range items {
+		if item.PackageCode != code {
+			continue
+		}
+		if amount < item.MinAmount || amount > item.MaxAmount {
+			return fmt.Errorf("loan amount outside active package limits")
+		}
+		for _, term := range item.TermMonths {
+			if term == months {
+				return nil
+			}
+		}
+		return fmt.Errorf("loan term not supported by active package")
+	}
+	return fmt.Errorf("loan package not active or not found")
 }

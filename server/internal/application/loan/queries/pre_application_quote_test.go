@@ -2,7 +2,9 @@ package queries
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -54,8 +56,14 @@ func TestPreApplicationQuoteUsesExistingDomainPolicy(t *testing.T) {
 	if quote.Affordability == nil || quote.Affordability.IncomeLimit != 150_000_000 || !quote.Affordability.WithinIncomeLimit {
 		t.Fatalf("wrong affordability: %+v", quote.Affordability)
 	}
-	if quote.EstimatedMonthlyPayment < quote.ProvisionalSchedule[0].TotalPayment {
-		t.Fatal("monthly payment underestimates first installment")
+	var maxPayment int64
+	for _, installment := range quote.ProvisionalSchedule {
+		if installment.TotalPayment > maxPayment {
+			maxPayment = installment.TotalPayment
+		}
+	}
+	if quote.EstimatedMonthlyPayment != maxPayment {
+		t.Fatalf("estimated monthly payment=%d, schedule max=%d", quote.EstimatedMonthlyPayment, maxPayment)
 	}
 	var total, interest int64
 	for _, installment := range quote.ProvisionalSchedule {
@@ -118,5 +126,47 @@ func TestLoanProductCatalogReturnsEmptyArray(t *testing.T) {
 	result, err := s.List(context.Background())
 	if err != nil || result == nil || len(result) != 0 {
 		t.Fatalf("items=%v err=%v", result, err)
+	}
+}
+
+func TestPreApplicationQuoteJSONUsesLowerCamelCase(t *testing.T) {
+	q, err := NewPreApplicationQuoteQueryService(&testLoanCatalogReader{items: loanPackageFixture()}).Quote(context.Background(), quoteInputFixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outer map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &outer); err != nil {
+		t.Fatal(err)
+	}
+	var affordability map[string]any
+	if err := json.Unmarshal(outer["affordability"], &affordability); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := affordability["estimatedMonthlyPayment"]; !ok {
+		t.Fatalf("wrong affordability serialization: %s", raw)
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal(outer["provisionalSchedule"], &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("empty provisional schedule")
+	}
+	if _, ok := rows[0]["totalPayment"]; !ok {
+		t.Fatalf("wrong installment serialization: %s", raw)
+	}
+	if strings.Contains(string(raw), "\"TotalPayment\"") || strings.Contains(string(raw), "\"IncomeLimit\"") {
+		t.Fatalf("PascalCase leaked: %s", raw)
+	}
+}
+func TestPreApplicationQuoteRejectsDuplicateActivePackage(t *testing.T) {
+	dup := append(loanPackageFixture(), loanPackageFixture()...)
+	svc := NewPreApplicationQuoteQueryService(&testLoanCatalogReader{items: dup})
+	if _, err := svc.Quote(context.Background(), quoteInputFixture()); err == nil {
+		t.Fatal("duplicate package code accepted")
 	}
 }

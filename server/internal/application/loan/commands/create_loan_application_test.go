@@ -77,7 +77,7 @@ func TestCreateLoanApplication_Success(t *testing.T) {
 	repo := &createLoanRepoStub{}
 	validator := &createLoanValidatorStub{}
 
-	handler := NewCreateLoanApplicationCommandHandler(
+	handler := newCreateTestHandler(
 		repo,
 		validator,
 	)
@@ -194,7 +194,7 @@ func TestCreateLoanApplication_InvalidInput(t *testing.T) {
 			repo := &createLoanRepoStub{}
 			validator := &createLoanValidatorStub{}
 
-			handler := NewCreateLoanApplicationCommandHandler(
+			handler := newCreateTestHandler(
 				repo,
 				validator,
 			)
@@ -238,7 +238,7 @@ func TestCreateLoanApplication_InvalidDisbursementAccount(
 		err: accountErr,
 	}
 
-	handler := NewCreateLoanApplicationCommandHandler(
+	handler := newCreateTestHandler(
 		repo,
 		validator,
 	)
@@ -275,7 +275,7 @@ func TestCreateLoanApplication_RepositoryFailure(t *testing.T) {
 
 	validator := &createLoanValidatorStub{}
 
-	handler := NewCreateLoanApplicationCommandHandler(
+	handler := newCreateTestHandler(
 		repo,
 		validator,
 	)
@@ -310,14 +310,14 @@ func TestCreateLoanApplication_MissingDependency(t *testing.T) {
 		},
 		{
 			name: "nil repository",
-			handler: NewCreateLoanApplicationCommandHandler(
+			handler: newCreateTestHandler(
 				nil,
 				&createLoanValidatorStub{},
 			),
 		},
 		{
 			name: "nil validator",
-			handler: NewCreateLoanApplicationCommandHandler(
+			handler: newCreateTestHandler(
 				&createLoanRepoStub{},
 				nil,
 			),
@@ -339,5 +339,61 @@ func TestCreateLoanApplication_MissingDependency(t *testing.T) {
 				t.Fatal("expected nil application")
 			}
 		})
+	}
+}
+
+// Test fixtures explicitly allow the product used by legacy command tests.
+// Production must install the Mongo-backed policy validator instead.
+type createLoanPackagePolicyStub struct {
+	err   error
+	calls int
+}
+
+func (p *createLoanPackagePolicyStub) ValidateLoanPackage(_ context.Context, _ string, _ int64, _ int) error {
+	p.calls++
+	return p.err
+}
+func newCreateTestHandler(repo LoanApplicationRepository, validator LoanApplicantValidator) *CreateLoanApplicationCommandHandler {
+	h := NewCreateLoanApplicationCommandHandler(repo, validator)
+	h.PackagePolicy = &createLoanPackagePolicyStub{}
+	return h
+}
+
+func TestCreateLoanApplicationRejectsInactiveOrOutOfRangePackageBeforeWrite(t *testing.T) {
+	repo := &createLoanRepoStub{}
+	h := newCreateTestHandler(repo, &createLoanValidatorStub{})
+	h.PackagePolicy = &createLoanPackagePolicyStub{err: errors.New("inactive or outside package limits")}
+	if _, err := h.Handle(context.Background(), validCreateLoanCommand()); err == nil {
+		t.Fatal("policy must reject")
+	}
+	if repo.calls != 0 {
+		t.Fatal("must not write event for ineligible package")
+	}
+}
+func TestCreateLoanApplicationRequiresPackagePolicy(t *testing.T) {
+	repo := &createLoanRepoStub{}
+	h := newCreateTestHandler(repo, &createLoanValidatorStub{})
+	h.PackagePolicy = nil
+	if _, err := h.Handle(context.Background(), validCreateLoanCommand()); err == nil {
+		t.Fatal("fail closed on missing policy")
+	}
+	if repo.calls != 0 {
+		t.Fatal("must not create without catalog")
+	}
+}
+func TestCreateLoanApplicationIdempotentRetrySurvivesPackageDeactivation(t *testing.T) {
+	repo := &createLoanRepoStub{}
+	h := newCreateTestHandler(repo, &createLoanValidatorStub{})
+	cmd := validCreateLoanCommand()
+	cmd.IdempotencyKey = "123e4567-e89b-12d3-a456-426614174000"
+	first, err := h.Handle(context.Background(), cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := &createLoanPackagePolicyStub{err: errors.New("deactivated")}
+	h.PackagePolicy = policy
+	second, err := h.Handle(context.Background(), cmd)
+	if err != nil || second.Id != first.Id || repo.calls != 1 || policy.calls != 0 {
+		t.Fatalf("idempotent retry should reuse saved application: err=%v", err)
 	}
 }
