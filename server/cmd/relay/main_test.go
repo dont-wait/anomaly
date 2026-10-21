@@ -84,7 +84,7 @@ func (f *relayFeatureStoreFake) ResetForBootstrap(context.Context) error {
 	return nil
 }
 
-func (f *relayFeatureStoreFake) CleanupAppliedDecisions(context.Context, time.Time) error {
+func (f *relayFeatureStoreFake) CleanupAppliedDecisions(context.Context, uint64, time.Time) error {
 	return nil
 }
 
@@ -143,5 +143,8 @@ func TestBuildEnrichedEnvelopeAddsModelFeatures(t *testing.T) {
 	}
 	if !store.decisionSet {
 		t.Fatal("feature decision was not saved before publish")
+	}
+	if store.decision.StreamRevision != 1 {
+		t.Fatalf("decision stream revision = %d, want 1", store.decision.StreamRevision)
 	}
 }

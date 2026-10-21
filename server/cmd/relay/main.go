@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -127,7 +128,7 @@ func main() {
 	if err := ensureFeatureState(ctx, es, kafkaConfig.EventStoreSubscription, featureStore, redactionKey, log); err != nil {
 		log.Fatal().Err(err).Msg("ensure model feature state failed")
 	}
-	go runDecisionCleanup(ctx, featureStore, log)
+	go runDecisionCleanup(ctx, es, kafkaConfig.EventStoreSubscription, featureStore, log)
 
 	for ctx.Err() == nil {
 
@@ -220,7 +221,7 @@ func bootstrapModelFeatures(ctx context.Context, client *esdb.Client, featureSto
 	}
 	defer stream.Close()
 
-	var processed uint64
+	var events []*esdb.RecordedEvent
 	for {
 		resolved, recvErr := stream.Recv()
 		if errors.Is(recvErr, io.EOF) {
@@ -232,32 +233,71 @@ func bootstrapModelFeatures(ctx context.Context, client *esdb.Client, featureSto
 		if resolved == nil || resolved.Event == nil {
 			continue
 		}
-		recorded := resolved.OriginalEvent()
-		if recorded.EventType == journal.Completed {
-			_, pending, buildErr := buildEnrichedEnvelope(ctx, recorded, featureStore, redactionKey)
-			if buildErr != nil {
-				var retryableErr *retryableFeatureError
-				if errors.As(buildErr, &retryableErr) {
-					return fmt.Errorf("prepare feature state for event %s: %w", recorded.EventID, buildErr)
-				}
-				log.Warn().Err(buildErr).Str("event_id", recorded.EventID.String()).Msg("skip invalid event during model feature bootstrap")
-			}
-			if pending != nil {
-				if applyErr := featureStore.ApplyState(ctx, pending.Transaction, pending.NextState); applyErr != nil {
-					return fmt.Errorf("apply feature state for event %s: %w", recorded.EventID, applyErr)
-				}
-			}
-		}
-		if saveErr := featureStore.SaveProgress(ctx, recorded.EventID.String(), recorded.EventNumber); saveErr != nil {
-			return fmt.Errorf("save bootstrap progress for event %s: %w", recorded.EventID, saveErr)
-		}
-		processed++
+		events = append(events, resolved.OriginalEvent())
 	}
-	log.Info().Uint64("events_processed", processed).Uint64("through_revision", throughRevision).Msg("model feature state rebuilt")
+
+	type bootstrapFeatureEvent struct {
+		recorded   *esdb.RecordedEvent
+		occurredAt time.Time
+	}
+	completed := make([]bootstrapFeatureEvent, 0, len(events))
+	for _, recorded := range events {
+		if recorded.EventType == journal.Completed {
+			record, decodeErr := journal.DecodeRecord(recorded.Data, recorded.EventID.String(), recorded.EventType)
+			if decodeErr != nil || record.Event == nil {
+				log.Warn().Err(decodeErr).Str("event_id", recorded.EventID.String()).Msg("skip invalid completed event during bootstrap ordering")
+				continue
+			}
+			completed = append(completed, bootstrapFeatureEvent{
+				recorded:   recorded,
+				occurredAt: record.Event.OccurredAt,
+			})
+		}
+	}
+	// EventStoreDB order is the delivery order, not necessarily the business
+	// occurrence order. Rebuild feature state chronologically so a later stream
+	// event cannot prune activity needed by an older-dated event.
+	sort.SliceStable(completed, func(i, j int) bool {
+		if completed[i].occurredAt.Equal(completed[j].occurredAt) {
+			return completed[i].recorded.EventNumber < completed[j].recorded.EventNumber
+		}
+		return completed[i].occurredAt.Before(completed[j].occurredAt)
+	})
+
+	for _, item := range completed {
+		recorded := item.recorded
+		_, pending, buildErr := buildEnrichedEnvelope(ctx, recorded, featureStore, redactionKey)
+		if buildErr != nil {
+			var retryableErr *retryableFeatureError
+			if errors.As(buildErr, &retryableErr) {
+				return fmt.Errorf("prepare feature state for event %s: %w", recorded.EventID, buildErr)
+			}
+			log.Warn().Err(buildErr).Str("event_id", recorded.EventID.String()).Msg("skip invalid event during model feature bootstrap")
+			continue
+		}
+		if pending != nil {
+			if applyErr := featureStore.ApplyState(ctx, pending.Transaction, pending.NextState); applyErr != nil {
+				return fmt.Errorf("apply feature state for event %s: %w", recorded.EventID, applyErr)
+			}
+		}
+	}
+
+	var lastEvent *esdb.RecordedEvent
+	for _, recorded := range events {
+		if lastEvent == nil || recorded.EventNumber > lastEvent.EventNumber {
+			lastEvent = recorded
+		}
+	}
+	if lastEvent != nil {
+		if saveErr := featureStore.SaveProgress(ctx, lastEvent.EventID.String(), lastEvent.EventNumber); saveErr != nil {
+			return fmt.Errorf("save bootstrap progress for event %s: %w", lastEvent.EventID, saveErr)
+		}
+	}
+	log.Info().Uint64("events_processed", uint64(len(events))).Uint64("completed_events", uint64(len(completed))).Uint64("through_revision", throughRevision).Msg("model feature state rebuilt")
 	return nil
 }
 
-func runDecisionCleanup(ctx context.Context, featureStore modelFeatureStore, log *zerolog.Logger) {
+func runDecisionCleanup(ctx context.Context, client *esdb.Client, group string, featureStore modelFeatureStore, log *zerolog.Logger) {
 	ticker := time.NewTicker(decisionCleanupInterval)
 	defer ticker.Stop()
 	for {
@@ -265,7 +305,15 @@ func runDecisionCleanup(ctx context.Context, featureStore modelFeatureStore, log
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := featureStore.CleanupAppliedDecisions(ctx, time.Now().UTC().Add(-decisionRetention)); err != nil {
+			checkpoint, found, err := loadSubscriptionCheckpoint(ctx, client, group)
+			if err != nil {
+				log.Warn().Err(err).Msg("load EventStoreDB checkpoint for decision cleanup failed")
+				continue
+			}
+			if !found {
+				continue
+			}
+			if err := featureStore.CleanupAppliedDecisions(ctx, checkpoint, time.Now().UTC().Add(-decisionRetention)); err != nil {
 				log.Warn().Err(err).Msg("cleanup old model feature decisions failed")
 			}
 		}
@@ -313,11 +361,11 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 			return err
 		}
 		if pendingFeatureUpdate != nil {
-			if err := featureStore.ApplyState(ctx, pendingFeatureUpdate.Transaction, pendingFeatureUpdate.NextState); err != nil {
-				if nackErr := subscription.Nack("model feature state update failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
+			if applyErr := featureStore.ApplyState(ctx, pendingFeatureUpdate.Transaction, pendingFeatureUpdate.NextState); applyErr != nil {
+				if nackErr := subscription.Nack("model feature state update failed: "+applyErr.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
 					return nackErr
 				}
-				return err
+				return applyErr
 			}
 		}
 		if err := featureStore.SaveProgress(ctx, recorded.EventID.String(), recorded.EventNumber); err != nil {
@@ -337,6 +385,17 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 			Msg("event published to kafka")
 	}
 	return ctx.Err()
+}
+
+func loadSubscriptionCheckpoint(ctx context.Context, client *esdb.Client, group string) (uint64, bool, error) {
+	info, err := client.GetPersistentSubscriptionInfo(ctx, journal.BankStream, group, esdb.GetPersistentSubscriptionOptions{})
+	if err != nil {
+		return 0, false, err
+	}
+	if info == nil || info.Stats == nil || info.Stats.LastCheckpointedEventRevision == nil {
+		return 0, false, nil
+	}
+	return *info.Stats.LastCheckpointedEventRevision, true, nil
 }
 
 func buildEnvelope(recorded *esdb.RecordedEvent, redactionKey string) (kafkainfra.EventEnvelope, error) {

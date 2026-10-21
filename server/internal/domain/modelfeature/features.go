@@ -24,7 +24,10 @@ type Features struct {
 	TxCount24h  int64      `json:"tx_count_24h" bson:"tx_count_24h"`
 	LastTxAt    *time.Time `json:"last_tx_at" bson:"last_tx_at,omitempty"`
 	NewReceiver bool       `json:"new_receiver" bson:"new_receiver"`
-	NewDevice   bool       `json:"new_device" bson:"new_device"`
+	// NewDevice is an untrusted model signal derived from optional client
+	// metadata. It must never be used as an authentication or authorization
+	// decision by downstream consumers.
+	NewDevice bool `json:"new_device" bson:"new_device"`
 }
 
 type Transaction struct {
@@ -63,9 +66,10 @@ type State struct {
 }
 
 type Decision struct {
-	EventID      string   `json:"event_id" bson:"_id"`
-	Features     Features `json:"features" bson:"features"`
-	StateApplied bool     `json:"state_applied" bson:"state_applied"`
+	EventID        string   `json:"event_id" bson:"_id"`
+	StreamRevision uint64   `json:"stream_revision" bson:"stream_revision"`
+	Features       Features `json:"features" bson:"features"`
+	StateApplied   bool     `json:"state_applied" bson:"state_applied"`
 }
 
 // Calculate derives features from the state before tx and returns the next
@@ -88,7 +92,8 @@ func Calculate(state State, tx Transaction, receiverKnown, deviceKnown bool) (Fe
 	}
 
 	state.AccountID = tx.SourceAccountID
-	state.Buckets = pruneBuckets(state.Buckets, tx.OccurredAt)
+	horizon := stateHorizon(state, tx.OccurredAt)
+	state.Buckets = pruneBuckets(state.Buckets, horizon)
 
 	features := Features{
 		AvgAmount7d: averageAmount(state.Buckets, tx.OccurredAt, FeatureWindow7Days),
@@ -128,6 +133,9 @@ func Calculate(state State, tx Transaction, receiverKnown, deviceKnown bool) (Fe
 		})
 	}
 	sort.Slice(updatedBuckets, func(i, j int) bool { return updatedBuckets[i].StartAt.Before(updatedBuckets[j].StartAt) })
+	// An event can arrive with an older OccurredAt than the current state. Keep
+	// the newer state horizon intact and remove only data outside that horizon.
+	updatedBuckets = pruneBuckets(updatedBuckets, horizon)
 
 	next := State{
 		AccountID:    tx.SourceAccountID,
@@ -149,7 +157,7 @@ func pruneBuckets(buckets []Bucket, at time.Time) []Bucket {
 	for _, bucket := range buckets {
 		if int64(len(bucket.Samples)) == bucket.TxCount && len(bucket.Samples) > 0 {
 			filtered := bucket
-			filtered.Samples = filtered.Samples[:0]
+			filtered.Samples = make([]TransactionSample, 0, len(bucket.Samples))
 			filtered.AmountSum = 0
 			filtered.AmountSumExact = ""
 			filtered.TxCount = 0
@@ -173,6 +181,14 @@ func pruneBuckets(buckets []Bucket, at time.Time) []Bucket {
 		}
 	}
 	return result
+}
+
+func stateHorizon(state State, at time.Time) time.Time {
+	horizon := at.UTC()
+	if state.LastTxAt != nil && state.LastTxAt.After(horizon) {
+		horizon = state.LastTxAt.UTC()
+	}
+	return horizon
 }
 
 func countTransactions(buckets []Bucket, at time.Time, window time.Duration) int64 {

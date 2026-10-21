@@ -24,7 +24,7 @@ type modelFeatureStore interface {
 	LoadProgress(context.Context) (uint64, bool, error)
 	SaveProgress(context.Context, string, uint64) error
 	ResetForBootstrap(context.Context) error
-	CleanupAppliedDecisions(context.Context, time.Time) error
+	CleanupAppliedDecisions(context.Context, uint64, time.Time) error
 }
 
 type pendingFeatureUpdate struct {
@@ -117,7 +117,11 @@ func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, st
 		}
 		features, nextState, err = modelfeature.Calculate(state, transaction, receiverKnown, deviceKnown)
 		if err == nil {
-			err = store.SaveDecision(ctx, modelfeature.Decision{EventID: transaction.EventID, Features: features})
+			err = store.SaveDecision(ctx, modelfeature.Decision{
+				EventID:        transaction.EventID,
+				StreamRevision: transaction.StreamRevision,
+				Features:       features,
+			})
 			if err != nil {
 				err = retryableFeatureStoreError(fmt.Errorf("save model feature decision: %w", err))
 			}

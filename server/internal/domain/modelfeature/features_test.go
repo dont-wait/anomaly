@@ -163,3 +163,38 @@ func TestCalculateDoesNotFailWhenBucketAmountExceedsInt64(t *testing.T) {
 		t.Fatalf("large amount state = %#v, features = %#v", next.Buckets[0], features)
 	}
 }
+
+func TestCalculatePreservesNewerStateWhenHistoricalEventArrives(t *testing.T) {
+	base := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)
+	newer := base.Add(10 * 24 * time.Hour)
+	state := State{
+		AccountID: "source-1",
+		LastTxAt:  &newer,
+		Buckets: []Bucket{{
+			StartAt:   newer.Truncate(FeatureBucketSize),
+			AmountSum: 900,
+			TxCount:   1,
+			Samples:   []TransactionSample{{OccurredAt: newer, Amount: 900}},
+		}},
+	}
+
+	features, next, err := Calculate(state, Transaction{
+		EventID:         "historical-event",
+		SourceAccountID: "source-1",
+		DestinationID:   "receiver-1",
+		Amount:          100,
+		OccurredAt:      base,
+	}, true, true)
+	if err != nil {
+		t.Fatalf("Calculate() error = %v", err)
+	}
+	if features.TxCount24h != 0 || features.AvgAmount7d != 0 || features.LastTxAt != nil {
+		t.Fatalf("newer activity leaked into historical features: %#v", features)
+	}
+	if len(next.Buckets) != 1 || next.Buckets[0].AmountSum != 900 {
+		t.Fatalf("historical event erased newer state: %#v", next.Buckets)
+	}
+	if next.LastTxAt == nil || !next.LastTxAt.Equal(newer) {
+		t.Fatalf("LastTxAt = %v, want %v", next.LastTxAt, newer)
+	}
+}

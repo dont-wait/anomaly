@@ -20,7 +20,10 @@ const (
 	modelKnownDevicesCollection     = "model_known_devices"
 	modelFeatureProgressCollection  = "model_feature_progress"
 	modelFeatureProgressID          = "relay"
+	modelDecisionIndexName          = "idx_model_decision_state"
 )
+
+var ErrFeatureStateConflict = errors.New("model feature state changed concurrently")
 
 type ModelFeatureRepository struct {
 	client    *mongodrv.Client
@@ -65,11 +68,18 @@ func (r *ModelFeatureRepository) EnsureIndexes(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create model device index: %w", err)
 	}
-	_, err = r.decisions.Indexes().CreateOne(ctx, mongodrv.IndexModel{
+	// Older relay versions used the same name with only state_applied. Drop
+	// that definition first so startup performs the index migration itself.
+	if err := r.decisions.Indexes().DropOne(ctx, modelDecisionIndexName); err != nil {
+		var commandErr mongodrv.CommandError
+		if !errors.As(err, &commandErr) || commandErr.Code != 27 {
+			return fmt.Errorf("replace model decision index: %w", err)
+		}
+	}
+	if _, err = r.decisions.Indexes().CreateOne(ctx, mongodrv.IndexModel{
 		Keys:    bson.D{{Key: "state_applied", Value: 1}, {Key: "applied_at", Value: 1}},
-		Options: options.Index().SetName("idx_model_decision_state"),
-	})
-	if err != nil {
+		Options: options.Index().SetName(modelDecisionIndexName),
+	}); err != nil {
 		return fmt.Errorf("create model decision index: %w", err)
 	}
 	return nil
@@ -93,9 +103,10 @@ func (r *ModelFeatureRepository) SaveDecision(ctx context.Context, decision mode
 	}
 	_, err := r.decisions.UpdateOne(ctx, bson.M{"_id": decision.EventID}, bson.M{
 		"$setOnInsert": bson.M{
-			"_id":           decision.EventID,
-			"features":      decision.Features,
-			"state_applied": false,
+			"_id":             decision.EventID,
+			"stream_revision": decision.StreamRevision,
+			"features":        decision.Features,
+			"state_applied":   false,
 		},
 	}, options.UpdateOne().SetUpsert(true))
 	return err
@@ -173,10 +184,14 @@ func (r *ModelFeatureRepository) ResetForBootstrap(ctx context.Context) error {
 	return nil
 }
 
-func (r *ModelFeatureRepository) CleanupAppliedDecisions(ctx context.Context, before time.Time) error {
+func (r *ModelFeatureRepository) CleanupAppliedDecisions(ctx context.Context, checkpoint uint64, before time.Time) error {
+	if checkpoint == 0 {
+		return nil
+	}
 	_, err := r.decisions.DeleteMany(ctx, bson.M{
-		"state_applied": true,
-		"applied_at":    bson.M{"$lt": before},
+		"state_applied":   true,
+		"stream_revision": bson.M{"$exists": true, "$lte": checkpoint},
+		"applied_at":      bson.M{"$lt": before},
 	})
 	return err
 }
@@ -199,8 +214,19 @@ func (r *ModelFeatureRepository) ApplyState(ctx context.Context, tx modelfeature
 			return nil, nil
 		}
 
-		if _, err := r.states.ReplaceOne(sc, bson.M{"_id": state.AccountID}, state, options.Replace().SetUpsert(true)); err != nil {
+		if state.StateVersion <= 0 {
+			return nil, fmt.Errorf("invalid model feature state version: %d", state.StateVersion)
+		}
+		expectedVersion := state.StateVersion - 1
+		result, err := r.states.ReplaceOne(sc, bson.M{
+			"_id":           state.AccountID,
+			"state_version": expectedVersion,
+		}, state, options.Replace().SetUpsert(true))
+		if err != nil {
 			return nil, fmt.Errorf("save model feature state: %w", err)
+		}
+		if result.MatchedCount == 0 && result.UpsertedCount == 0 {
+			return nil, fmt.Errorf("%w: account=%s expected_version=%d", ErrFeatureStateConflict, state.AccountID, expectedVersion)
 		}
 		if tx.DestinationID != "" {
 			if _, err := r.receivers.UpdateOne(sc, bson.M{"account_id": tx.SourceAccountID, "receiver_id": tx.DestinationID}, bson.M{
@@ -218,7 +244,7 @@ func (r *ModelFeatureRepository) ApplyState(ctx context.Context, tx modelfeature
 				return nil, fmt.Errorf("save known device: %w", err)
 			}
 		}
-		_, err := r.decisions.UpdateOne(sc, bson.M{"_id": tx.EventID, "state_applied": false}, bson.M{"$set": bson.M{"state_applied": true, "applied_at": time.Now().UTC()}})
+		_, err = r.decisions.UpdateOne(sc, bson.M{"_id": tx.EventID, "state_applied": false}, bson.M{"$set": bson.M{"state_applied": true, "applied_at": time.Now().UTC()}})
 		return nil, err
 	})
 	return err

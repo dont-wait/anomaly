@@ -172,6 +172,7 @@ Document decision lưu:
 ```json
 {
   "_id": "event-123",
+  "stream_revision": 123,
   "features": {
     "avg_amount_7d": 6666666,
     "tx_count_1h": 2,
@@ -190,8 +191,9 @@ Khi retry cùng `event_id`:
 2. Publish lại đúng message feature trước đó.
 3. Chỉ cập nhật state nếu `state_applied` chưa được đánh dấu.
 
-State update phải idempotent theo `event_id` hoặc `state_version`, tránh cộng
-amount và counter hai lần.
+State update dùng optimistic locking theo `state_version`, tránh hai relay
+đồng thời ghi đè state của nhau. Decision vẫn là khóa idempotency theo
+`event_id`, tránh cộng amount và counter hai lần khi retry.
 
 ## Cache và hiệu năng
 
@@ -231,8 +233,10 @@ Không còn query và aggregate toàn bộ transaction history cho từng giao d
 
 ## Bootstrap và recovery state
 
-Feature state phải được xây dựng theo đúng thứ tự event trước khi dùng cho dữ
-liệu lịch sử. Relay lưu tiến độ đã xử lý trong collection
+Feature state phải được xây dựng theo thứ tự `occurred_at` của completed event,
+không chỉ theo thứ tự đọc của EventStoreDB. Điều này tránh event có timestamp
+cũ đến sau làm mất dữ liệu cần cho cửa sổ 1 giờ/24 giờ/7 ngày. Relay lưu tiến
+độ đã xử lý trong collection
 `model_feature_progress`. Khi persistent-subscription checkpoint vượt quá tiến
 độ MongoDB, relay tự reset và replay state-only đến đúng checkpoint; các event
 được replay không publish lại Kafka.
@@ -247,9 +251,18 @@ Phải dừng relay chính trước khi chạy lệnh này. Lệnh sẽ xóa và
 decision, receiver/device history từ banking stream mà không ghi message mới
 vào Kafka.
 
-`model_feature_decisions` có cleanup định kỳ cho các decision đã applied quá 90
-ngày. Không xóa sớm hơn thời gian mà hệ thống còn cần replay EventStoreDB;
-nếu cần replay xa hơn phải dùng state-only bootstrap.
+`model_feature_decisions` có cleanup định kỳ nhưng chỉ xóa decision khi đồng
+thời thỏa hai điều kiện: đã quá 90 ngày và `stream_revision` đã nằm dưới
+checkpoint ACK của persistent subscription. Vì vậy event đã apply nhưng chưa
+ACK không bị xóa idempotency marker rồi tính lại lần hai.
+
+State update cũng giữ lại các bucket mới hơn khi một event historical đến trễ;
+chỉ prune theo mốc thời gian mới nhất của state. Với live event đến sai thứ tự
+quá xa, bootstrap theo `occurred_at` vẫn là cách khôi phục chính xác nhất.
+
+`X-Device-ID` vẫn là metadata do client cung cấp và chỉ được dùng như model
+signal, không phải cơ chế xác thực hoặc security control. Muốn có trusted
+device thực sự cần bổ sung device registration/attestation.
 
 Thiết kế này vẫn giữ nguyên một Kafka topic, giữ nguyên event payload gốc và
 đưa phần tính feature về đúng phía producer như yêu cầu.
