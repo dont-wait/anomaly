@@ -2,12 +2,18 @@ package composition
 
 import (
 	"github.com/dont-wait/anomaly/internal/application/loan/commands"
+	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/loanadapter"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	loanhttp "github.com/dont-wait/anomaly/internal/presentation/http/handler/loan"
 )
+
+func AttachLoanProducts(h *loanhttp.Handler, catalog *mongorepo.LoanPackageCatalog) {
+	h.Products = loanqueries.NewLoanProductCatalogQueryService(catalog)
+	h.PreApplicationQuote = loanqueries.NewPreApplicationQuoteQueryService(catalog)
+}
 
 func NewLoanHandler(
 	bank *eventstore.BankRepository,

@@ -120,6 +120,11 @@ func main() {
 		mediaRepo,
 	)
 
+	composition.AttachLoanProducts(
+		loanHandler,
+		mongo.NewLoanPackageCatalog(mongoClient, config.MongoConfig.MongoDBName),
+	)
+
 	composition.AttachLoanRepayment(
 		loanHandler,
 		bank,
