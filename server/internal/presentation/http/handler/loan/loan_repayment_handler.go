@@ -98,6 +98,10 @@ func repaymentHandleError(
 		repaymentWriteError(w, 404, "LOAN_NOT_FOUND",
 			"Loan or payment not found")
 
+	case errors.Is(err, loanqueries.ErrInvalidPaymentAccount):
+		repaymentWriteError(w, 422, "INVALID_PAYMENT_ACCOUNT",
+			"Payment account is not eligible")
+
 	case errors.Is(err, loanqueries.ErrInvalidRepaymentQuery):
 		repaymentWriteError(w, 400, "INVALID_REQUEST",
 			"Invalid repayment request")

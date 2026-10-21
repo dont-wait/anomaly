@@ -271,8 +271,11 @@ func (m *LoanReadModel) SaveLoanContract(
 		bson.M{"$setOnInsert": loanDoc},
 		options.UpdateOne().SetUpsert(true),
 	)
+	if err != nil {
+		return err
+	}
 
-	return err
+	return m.ensureLoanContractFields(ctx, loanOID, loanDoc, repayment)
 }
 
 // Ap dung LoanInstallmentPaid.

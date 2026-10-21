@@ -218,6 +218,26 @@ func TestLoanRepaymentHTTPE2E(t *testing.T) {
 	if len(schedule["items"].([]any)) != 6 {
 		t.Fatalf("unexpected schedule: %+v", schedule)
 	}
+	customerOID, err := bson.ObjectIDFromHex(owner.CustomerId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Quote and Write must reject the same unverified customer.
+	if _, err := db.Collection("customers").UpdateOne(ctx,
+		bson.M{"_id": customerOID},
+		bson.M{"$set": bson.M{"kyc_status": "not_started"}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	call("POST", base+"/repayments/quote", jwt, map[string]any{
+		"installmentNo": 1, "sourceAccountId": owner.Id,
+	}, "", 422)
+	if _, err := db.Collection("customers").UpdateOne(ctx,
+		bson.M{"_id": customerOID},
+		bson.M{"$set": bson.M{"kyc_status": "verified"}},
+	); err != nil {
+		t.Fatal(err)
+	}
 	quote := call("POST", base+"/repayments/quote", jwt, map[string]any{
 		"installmentNo": 1, "sourceAccountId": owner.Id,
 	}, "", 200)

@@ -403,7 +403,20 @@ func (r *LoanRepaymentQuery) ReadAvailableBalance(
 	).Decode(&account)
 
 	if errors.Is(err, mongodrv.ErrNoDocuments) {
-		return 0, loanqueries.ErrLoanNotFound
+		return 0, loanqueries.ErrInvalidPaymentAccount
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	// Banking Write also requires verified KYC. A quote must not be
+	// created for an account that would be rejected at debit time.
+	err = r.db.Collection("customers").FindOne(ctx, bson.M{
+		"_id":        owner.CustomerID,
+		"kyc_status": "verified",
+	}).Err()
+	if errors.Is(err, mongodrv.ErrNoDocuments) {
+		return 0, loanqueries.ErrInvalidPaymentAccount
 	}
 	if err != nil {
 		return 0, err

@@ -20,6 +20,9 @@ var (
 	ErrPaymentNotFound = errors.New(
 		"loan payment not found",
 	)
+	ErrInvalidPaymentAccount = errors.New(
+		"repayment source account is not eligible",
+	)
 	ErrInvalidRepaymentQuery = errors.New(
 		"invalid loan repayment query",
 	)

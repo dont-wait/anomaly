@@ -13,12 +13,14 @@ import (
 
 // MongoDB Reader gia lap.
 type repaymentReaderStub struct {
-	calls          int
-	balance        int64
-	schedule       Schedule
-	payments       []Payment
-	onScheduleRead func()
-	rejectAccount  string
+	calls           int
+	balance         int64
+	schedule        Schedule
+	payments        []Payment
+	onScheduleRead  func()
+	rejectAccount   string
+	expectedAccount string
+	checkedAccount  string
 }
 
 func (s *repaymentReaderStub) ReadSchedule(
@@ -58,8 +60,10 @@ func (s *repaymentReaderStub) ReadAvailableBalance(
 	_ context.Context,
 	_, _, accountID string,
 ) (int64, error) {
-	if accountID == s.rejectAccount {
-		return 0, ErrLoanNotFound
+	s.checkedAccount = accountID
+	if accountID == s.rejectAccount ||
+		(s.expectedAccount != "" && accountID != s.expectedAccount) {
+		return 0, ErrInvalidPaymentAccount
 	}
 	return s.balance, nil
 }
@@ -408,7 +412,7 @@ func TestRepaymentQuoteRejectsWrongDayAndInstallment(
 
 	if !errors.Is(
 		err,
-		ErrLoanNotFound,
+		ErrInvalidPaymentAccount,
 	) {
 		t.Fatalf("wrong account: %v", err)
 	}
@@ -511,9 +515,25 @@ func TestRepaymentReadRaceWithInvalidation(t *testing.T) {
 }
 
 func TestRepaymentQuoteAllowsDifferentSourceAccountWhenReaderAuthorizes(t *testing.T) {
-	service, _, _, _ := repaymentFixture()
+	service, reader, _, _ := repaymentFixture()
+	reader.expectedAccount = "other-owned-account"
 	q, err := service.Quote(context.Background(), "loan-001", "owner-001", "other-owned-account", 1)
-	if err != nil || q.SourceAccount.AccountID != "other-owned-account" {
-		t.Fatalf("valid other-owned account should be accepted by the Reader: %+v %v", q, err)
+	if err != nil || q.SourceAccount.AccountID != "other-owned-account" ||
+		reader.checkedAccount != "other-owned-account" {
+		t.Fatalf("quote must authorize selected source account: %+v checked=%s err=%v", q, reader.checkedAccount, err)
+	}
+}
+
+func TestRepaymentQuoteRejectsUnauthorizedSourceAccount(t *testing.T) {
+	service, reader, cache, _ := repaymentFixture()
+	reader.expectedAccount = "only-owned-account"
+	_, err := service.Quote(context.Background(), "loan-001", "owner-001", "stranger-account", 1)
+	if !errors.Is(err, ErrInvalidPaymentAccount) || reader.checkedAccount != "stranger-account" {
+		t.Fatalf("unowned source must be checked and denied: checked=%s err=%v", reader.checkedAccount, err)
+	}
+	for key := range cache.items {
+		if len(key) >= len("loan-repayment:quote:") && key[:len("loan-repayment:quote:")] == "loan-repayment:quote:" {
+			t.Fatal("quote was cached for unauthorized source")
+		}
 	}
 }

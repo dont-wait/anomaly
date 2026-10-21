@@ -4,6 +4,7 @@ package mongo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
 	"github.com/dont-wait/anomaly/internal/domain/loan"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/timeutil"
@@ -134,6 +136,30 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 		t.Fatalf("seed account: %v", err)
 	}
 
+	// KYC lives in customers, not accounts. Match the Banking Write rule.
+	_, err = db.Collection("customers").InsertOne(ctx, bson.M{
+		"_id":           customerID,
+		"customer_code": "REPAY-E2E-001",
+		"profile": bson.M{
+			"full_name": "Repayment E2E", "date_of_birth": nil,
+			"phone": nil, "email": "repayment-e2e@example.test",
+			"address": bson.M{"line": "test", "province_code": "79"},
+		},
+		"identity": bson.M{
+			"type": nil, "number": nil, "issued_date": nil,
+			"issued_place": nil, "permanent_address": nil,
+		},
+		"verified_kyc_session_id": nil,
+		"kyc_status":              "verified",
+		"credit_profile": bson.M{
+			"score": int64(0), "bad_debt": false, "updated_at": at,
+		},
+		"status": "active", "created_at": at, "updated_at": at,
+	})
+	if err != nil {
+		t.Fatalf("seed verified KYC customer: %v", err)
+	}
+
 	// Tao khoan vay gia lap da duoc giai ngan.
 	loanID := uuid.NewString()
 
@@ -232,6 +258,16 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 		)
 	}
 
+	// Legacy loan already exists without EMI and outstanding-principal fields.
+	// Backfill must enrich it instead of treating setOnInsert as success.
+	loanOID := repaymentObjectID("loan", loanID)
+	if _, err := db.Collection("loans").InsertOne(ctx, bson.M{
+		"_id": loanOID, "loan_no": loanID,
+		"principal": app.RequestedAmount, "status": "active",
+	}); err != nil {
+		t.Fatalf("seed legacy loan: %v", err)
+	}
+
 	// Loan Projector tao khoan vay.
 	if err := NewLoanReadModel(
 		client, dbName,
@@ -262,6 +298,21 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 		t.Fatalf("other owned account rejected: balance=%d err=%v", balance, err)
 	}
 
+	// An unverified customer cannot obtain a payable quote.
+	if _, err := db.Collection("customers").UpdateOne(ctx,
+		bson.M{"_id": customerID}, bson.M{"$set": bson.M{"kyc_status": "not_started"}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.ReadAvailableBalance(ctx, loanID, accountID.Hex(), otherAccountID.Hex()); !errors.Is(err, loanqueries.ErrInvalidPaymentAccount) {
+		t.Fatalf("unverified customer must not receive repayment quote: %v", err)
+	}
+	if _, err := db.Collection("customers").UpdateOne(ctx,
+		bson.M{"_id": customerID}, bson.M{"$set": bson.M{"kyc_status": "verified"}},
+	); err != nil {
+		t.Fatal(err)
+	}
+
 	// Bank Projector retry va xu ly du 6 ky.
 	before := initialBalance
 
@@ -282,6 +333,34 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 
 		before -= installment.TotalPayment
 
+		if i == 1 {
+			// Simulate interrupted migration after two paid installments.
+			if _, err := db.Collection("loans").UpdateOne(ctx,
+				bson.M{"_id": loanOID},
+				bson.M{"$unset": bson.M{"repayment_schedule": ""}},
+			); err != nil {
+				t.Fatal(err)
+			}
+			if err := NewLoanReadModel(client, dbName).SaveLoanContract(ctx, app); err != nil {
+				t.Fatalf("backfill partially repaid legacy loan: %v", err)
+			}
+			var halfway struct {
+				Outstanding int64                     `bson:"outstanding_principal"`
+				Schedule    []repaymentInstallmentRow `bson:"repayment_schedule"`
+			}
+			if err := db.Collection("loans").FindOne(ctx,
+				bson.M{"_id": loanOID}).Decode(&halfway); err != nil {
+				t.Fatal(err)
+			}
+			if halfway.Outstanding != app.RepaymentSchedule[1].RemainingBalance ||
+				len(halfway.Schedule) != app.TermMonths ||
+				halfway.Schedule[0].Status != "paid" ||
+				halfway.Schedule[1].Status != "paid" ||
+				halfway.Schedule[2].Status != "upcoming" {
+				t.Fatalf("backfill reset partial repayments: %+v", halfway)
+			}
+		}
+
 		// Replay event trung khong duoc tru lan hai.
 		if err := projection.Apply(
 			ctx,
@@ -293,6 +372,15 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 				err,
 			)
 		}
+	}
+
+	// Simulate an old partially migrated contract missing EMI after 6
+	// recorded payments. Backfill must rebuild the PAID states, not reset
+	// outstanding principal or settlement.
+	if _, err := db.Collection("loans").UpdateOne(ctx,
+		bson.M{"_id": loanOID}, bson.M{"$unset": bson.M{"repayment_schedule": ""}},
+	); err != nil {
+		t.Fatal(err)
 	}
 
 	// Replay giai ngan khong duoc reset
@@ -327,6 +415,20 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 			"loan not settled: %+v, err=%v",
 			actualLoan, err,
 		)
+	}
+	var restored struct {
+		Schedule []repaymentInstallmentRow `bson:"repayment_schedule"`
+	}
+	if err := db.Collection("loans").FindOne(ctx, bson.M{"_id": loanOID}).Decode(&restored); err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.Schedule) != app.TermMonths {
+		t.Fatalf("backfill did not restore EMI: %d", len(restored.Schedule))
+	}
+	for _, item := range restored.Schedule {
+		if item.Status != "paid" {
+			t.Fatalf("backfill reset paid installment %d", item.InstallmentNo)
+		}
 	}
 
 	// Moi ky phai co dung mot document
@@ -432,6 +534,17 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 			"payment ordering=%d",
 			payments[0].InstallmentNo,
 		)
+	}
+
+	// A contradictory old outstanding balance cannot be silently rewritten.
+	if _, err := db.Collection("loans").UpdateOne(ctx,
+		bson.M{"_id": loanOID},
+		bson.M{"$set": bson.M{"outstanding_principal": int64(1)}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewLoanReadModel(client, dbName).SaveLoanContract(ctx, app); err == nil {
+		t.Fatal("inconsistent legacy outstanding accepted by backfill")
 	}
 
 	t.Log(fmt.Sprintf(
