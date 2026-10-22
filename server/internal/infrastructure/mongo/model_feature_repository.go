@@ -70,9 +70,11 @@ func (r *ModelFeatureRepository) EnsureIndexes(ctx context.Context) error {
 	}
 	// Older relay versions used the same name with only state_applied. Drop
 	// that definition first so startup performs the index migration itself.
+	// NamespaceNotFound (26) means the collection does not exist yet, and
+	// IndexNotFound (27) means it exists without the old index; both are fine.
 	if err := r.decisions.Indexes().DropOne(ctx, modelDecisionIndexName); err != nil {
 		var commandErr mongodrv.CommandError
-		if !errors.As(err, &commandErr) || commandErr.Code != 27 {
+		if !errors.As(err, &commandErr) || (commandErr.Code != 26 && commandErr.Code != 27) {
 			return fmt.Errorf("replace model decision index: %w", err)
 		}
 	}
