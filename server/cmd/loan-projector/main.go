@@ -169,9 +169,17 @@ func main() {
 		conf.MongoConfig.MongoDBName,
 	)
 
+	var legacyCutoff time.Time
+	if value := strings.TrimSpace(os.Getenv("LOAN_OFFER_LEGACY_CREDIT_CUTOFF")); value != "" {
+		legacyCutoff, err = time.Parse(time.RFC3339, value)
+		if err != nil {
+			log.Fatal().Err(err).Msg("invalid loan offer legacy credit cutoff")
+		}
+	}
 	reconciler := &commands.ReconcileCreditedLoanCommandHandler{
-		Repo:     repo,
-		Evidence: evidence,
+		Repo:               repo,
+		Evidence:           evidence,
+		LegacyCreditCutoff: legacyCutoff,
 	}
 
 	// Phục hồi ngay khi khởi động, sau đó kiểm tra định kỳ.
@@ -313,6 +321,12 @@ func main() {
 						id,
 					)
 
+					// New event types must not be skipped or quarantined:
+					// only a newer compatible reader can continue safely.
+					if errors.Is(replayErr, eventstore.ErrLoanUnsupportedEvent) {
+						log.Error().Err(replayErr).Str("loan", id).Msg("unsupported loan event; upgrade projector before continuing")
+						break
+					}
 					if replayErr != nil &&
 						!errors.Is(replayErr, eventstore.ErrLoanInvalidReplay) {
 						log.Error().

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,10 +15,10 @@ import (
 )
 
 var (
-	ErrTransferOTPExpired  = errors.New("otp expired")
-	ErrTransferOTPInvalid  = errors.New("invalid otp")
-	ErrTransferOTPExceeded = errors.New("otp attempts exceeded")
-	ErrTransferOTPTooSoon  = errors.New("otp resend too soon")
+	ErrTransferOTPExpired  = appotp.ErrExpired
+	ErrTransferOTPInvalid  = appotp.ErrInvalid
+	ErrTransferOTPExceeded = appotp.ErrExceeded
+	ErrTransferOTPTooSoon  = appotp.ErrTooSoon
 )
 
 const (
@@ -74,13 +73,8 @@ type TransferMailSender interface {
 	Send(context.Context, maildomain.MailMessage) error
 }
 
-type TransferOTPInfo struct {
-	Channel           string    `json:"channel"`
-	MaskedDestination string    `json:"maskedDestination"`
-	ExpiresAt         time.Time `json:"expiresAt"`
-	AttemptsLeft      int       `json:"attemptsLeft"`
-	ResendAvailableAt time.Time `json:"resendAvailableAt"`
-}
+// Alias maintains backwards compatibility for transfer OTP consumers.
+type TransferOTPInfo = appotp.ContractOTPInfo
 
 type TransferOTPStore struct {
 	rdb     *redis.Client
@@ -203,10 +197,11 @@ func (s *TransferOTPStore) Delete(ctx context.Context, transferID string) error 
 func transferOTPKey(id string) string         { return "transfer:otp:" + id }
 func transferOTPAttemptsKey(id string) string { return "transfer:otp:attempts:" + id }
 func transferOTPVerifiedKey(id string) string { return "transfer:otp:verified:" + id }
-func transferOTPCooldownKey(email string) string {
-	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
-	return "transfer:otp:cooldown:" + hex.EncodeToString(sum[:])
-}
+
+// func transferOTPCooldownKey(email string) string {
+// 	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
+// 	return "transfer:otp:cooldown:" + hex.EncodeToString(sum[:])
+// }
 
 func maskEmail(email string) string {
 	parts := strings.SplitN(email, "@", 2)

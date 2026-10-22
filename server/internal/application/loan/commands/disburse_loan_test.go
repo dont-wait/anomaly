@@ -284,3 +284,24 @@ func TestDisburseLoan_RequiresContractConfirmation(t *testing.T) {
 		t.Fatalf("expected fail-closed before banking: %v", err)
 	}
 }
+
+func TestDisburseLoan_OldPreparedLoanCannotBypassConfirmation(t *testing.T) {
+	app := newLoanForAssessmentTest(t)
+	now := time.Now().UTC()
+	approvedAt := now.Add(-time.Minute)
+	app.Status = domain.ApplicationStatusApproved
+	app.ApprovedAt = &approvedAt
+	preparedAt := approvedAt.Add(time.Second)
+	app.DisbursementPreparedAt = &preparedAt
+	app.PreparedAnnualRateBps = 1600
+	repo := &addLoanDocumentRepoStub{app: app, revision: 11}
+	bank := &disburseBankStub{at: now}
+	h := &DisburseLoanCommandHandler{
+		Repo: repo, Authorizer: &manualLoanAuthorizerStub{},
+		Evidence: disburseEvidenceStub{}, Bank: bank,
+	}
+	_, err := h.Handle(context.Background(), DisburseLoanCommand{ApplicationID: app.Id, ActorID: "STAFF001"})
+	if err != domain.ErrLoanContractNotConfirmed || bank.calls != 0 || repo.appendCalls != 0 {
+		t.Fatalf("old preparation bypassed confirmation, err=%v credits=%d appends=%d", err, bank.calls, repo.appendCalls)
+	}
+}

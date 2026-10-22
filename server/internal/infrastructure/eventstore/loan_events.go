@@ -2,6 +2,7 @@ package eventstore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -9,6 +10,10 @@ import (
 
 	loandomain "github.com/dont-wait/anomaly/internal/domain/loan"
 )
+
+// ErrLoanUnsupportedEvent indicates that a newer writer produced an event
+// this reader cannot interpret. Do not quarantine or checkpoint past it.
+var ErrLoanUnsupportedEvent = errors.New("unsupported loan event version")
 
 const (
 	EventLoanApplicationCreated   = "LoanApplicationCreated"
@@ -385,10 +390,13 @@ func applyLoanEvent(
 
 		preview := *app
 
-		if err := preview.MarkDisbursed(
-			p.DisbursedAt,
-			p.AnnualRateBps,
-		); err != nil {
+		finalize := preview.MarkDisbursed
+		if preview.Offer == nil {
+			// Historical LoanDisbursed events are already immutable facts;
+			// replay must not retroactively reject previously credited loans.
+			finalize = preview.RestoreLegacyDisbursement
+		}
+		if err := finalize(p.DisbursedAt, p.AnnualRateBps); err != nil {
 			return err
 		}
 
@@ -404,8 +412,8 @@ func applyLoanEvent(
 		*app = preview
 	default:
 		return fmt.Errorf(
-			"unknown loan event type: %s",
-			eventType,
+			"%w: %s",
+			ErrLoanUnsupportedEvent, eventType,
 		)
 	}
 

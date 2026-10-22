@@ -23,12 +23,15 @@ import (
 
 	accountqueries "github.com/dont-wait/anomaly/internal/application/account/queries"
 	commands "github.com/dont-wait/anomaly/internal/application/loan/commands"
+	appotp "github.com/dont-wait/anomaly/internal/application/otp"
 	domain "github.com/dont-wait/anomaly/internal/domain/loan"
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const maxLoanDocSize int64 = 10 << 20
@@ -243,7 +246,10 @@ func RegisterRoutes(
 			op.Response = domain.LoanOffer{}
 		case "requestPersonalLoanContractOTP":
 			op.Description = "Owner-only email OTP for an accepted loan offer"
+			op.Response = appotp.ContractOTPInfo{}
+			op.FailureStatuses = append(op.FailureStatuses, 429, 410, 423)
 		case "confirmPersonalLoanContract":
+			op.FailureStatuses = append(op.FailureStatuses, 429, 410, 423)
 			op.Description = "Owner-only contract confirmation with OTP; demo contract acceptance, not a qualified digital signature"
 			op.Request = struct {
 				OTP         string `json:"otp"`
@@ -378,6 +384,18 @@ func serviceError(
 	}
 
 	msg := err.Error()
+	// gRPC status codes are typed; names such as "Unavailable" are not
+	// reliably detected by case-sensitive error-text matching.
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.Unavailable, codes.ResourceExhausted:
+			fail(w, http.StatusServiceUnavailable, "")
+			return
+		case codes.DeadlineExceeded:
+			fail(w, http.StatusGatewayTimeout, "")
+			return
+		}
+	}
 	status := http.StatusUnprocessableEntity
 
 	switch {

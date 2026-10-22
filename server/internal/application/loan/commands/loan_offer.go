@@ -81,6 +81,24 @@ func (h *LoanOfferCommandHandler) transition(ctx context.Context, id, owner stri
 	if a == nil || a.CustomerId != owner {
 		return nil, fmt.Errorf("loan application not found")
 	}
+	// Retries after a successful append must not append another event.
+	// Only the exact requested terminal state is an idempotent success.
+	if a.Offer != nil {
+		switch kind {
+		case "accept":
+			if a.Offer.Status == loan.LoanOfferAccepted {
+				return a, nil
+			}
+		case "reject":
+			if a.Offer.Status == loan.LoanOfferRejected {
+				return a, nil
+			}
+		case "confirm":
+			if a.Offer.Status == loan.LoanOfferConfirmed {
+				return a, nil
+			}
+		}
+	}
 	preview := *a
 	if a.Offer != nil {
 		offer := *a.Offer

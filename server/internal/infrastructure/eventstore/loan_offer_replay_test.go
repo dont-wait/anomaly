@@ -1,6 +1,9 @@
 package eventstore
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -30,11 +33,21 @@ func TestLoanOfferReplayAndLegacyCredit(t *testing.T) {
 	if a.Offer == nil || a.Offer.Status != loandomain.LoanOfferConfirmed {
 		t.Fatal("replay lost confirmation")
 	}
-	prev := a.Offer.ConfirmedAt
+	before, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := applyLoanEvent(a, EventLoanOfferAccepted, loanReplayJSON(t, loanOfferTransitionPayload{At: at.Add(time.Second), UpdatedAt: at.Add(time.Second)})); err == nil {
 		t.Fatal("duplicate acceptance replay passed")
 	}
-	if !a.Offer.ConfirmedAt.Equal(*prev) {
-		t.Fatal("rejected replay event mutated aggregate")
+	after, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("rejected replay mutated aggregate: before=%s after=%s", before, after)
+	}
+	if !errors.Is(applyLoanEvent(a, "FutureLoanEvent", []byte(`{}`)), ErrLoanUnsupportedEvent) {
+		t.Fatal("unknown version must be typed unsupported-event error")
 	}
 }

@@ -85,9 +85,10 @@ func (h *DisburseLoanCommandHandler) Handle(
 	if a.Status != domain.ApplicationStatusApproved {
 		return nil, domain.ErrInvalidApplicationStatus
 	}
-	// Backward compatibility: an already-prepared legacy credit must still be finalized.
-	// New credits always require a confirmed offer before calling Banking.
-	if a.DisbursementPreparedAt == nil && (a.Offer == nil || a.Offer.Status != domain.LoanOfferConfirmed || a.Offer.ConfirmedAt == nil) {
+	// New banking credits require confirmation regardless of whether an old
+	// API instance created a preparation event during the rollout.
+	// Previously credited legacy loans are handled by the reconciler only.
+	if a.Offer == nil || a.Offer.Status != domain.LoanOfferConfirmed || a.Offer.ConfirmedAt == nil {
 		return nil, domain.ErrLoanContractNotConfirmed
 	}
 

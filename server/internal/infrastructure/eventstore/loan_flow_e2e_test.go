@@ -45,6 +45,7 @@ import (
 // Chạy projection đồng bộ sau command để kiểm tra read model mà không phụ thuộc
 // lịch chạy worker; bài test này không kiểm tra vòng lặp subscription/checkpoint.
 func TestPersonalLoanHTTPE2E(t *testing.T) {
+	t.Setenv("LOAN_OFFER_WRITES_ENABLED", "true")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 

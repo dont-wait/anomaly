@@ -76,7 +76,7 @@ func (s *reconcileRepoStub) Append(
 
 	next := *s.app
 
-	if err := next.MarkDisbursed(
+	if err := next.RestoreLegacyDisbursement(
 		event.DisbursedAt,
 		event.AnnualRateBps,
 	); err != nil {
@@ -150,8 +150,9 @@ func TestReconcileCreditedLoan_SuccessAndIdempotency(t *testing.T) {
 	}
 
 	handler := &ReconcileCreditedLoanCommandHandler{
-		Repo:     repo,
-		Evidence: disburseEvidenceStub{e: evidence},
+		Repo:               repo,
+		Evidence:           disburseEvidenceStub{e: evidence},
+		LegacyCreditCutoff: time.Now().UTC().Add(time.Hour),
 	}
 
 	cmd := ReconcileCreditedLoanCommand{
@@ -195,8 +196,9 @@ func TestReconcileCreditedLoan_RetryAfterAppendFailure(t *testing.T) {
 	}
 
 	handler := &ReconcileCreditedLoanCommandHandler{
-		Repo:     repo,
-		Evidence: disburseEvidenceStub{e: evidence},
+		Repo:               repo,
+		Evidence:           disburseEvidenceStub{e: evidence},
+		LegacyCreditCutoff: time.Now().UTC().Add(time.Hour),
 	}
 
 	cmd := ReconcileCreditedLoanCommand{
@@ -240,8 +242,9 @@ func TestReconcileCreditedLoan_MismatchedCredit(t *testing.T) {
 	}
 
 	handler := &ReconcileCreditedLoanCommandHandler{
-		Repo:     repo,
-		Evidence: disburseEvidenceStub{e: evidence},
+		Repo:               repo,
+		Evidence:           disburseEvidenceStub{e: evidence},
+		LegacyCreditCutoff: time.Now().UTC().Add(time.Hour),
 	}
 
 	err := handler.Handle(
@@ -284,10 +287,9 @@ func TestReconcileCreditedLoan_UsesPreparedRate(t *testing.T) {
 	}
 
 	handler := &ReconcileCreditedLoanCommandHandler{
-		Repo: repo,
-		Evidence: disburseEvidenceStub{
-			err: errors.New("evidence must not be read"),
-		},
+		Repo:               repo,
+		Evidence:           disburseEvidenceStub{err: errors.New("evidence must not be read")},
+		LegacyCreditCutoff: time.Now().UTC().Add(time.Hour),
 	}
 
 	cmd := ReconcileCreditedLoanCommand{
@@ -340,5 +342,24 @@ func TestReconcileCreditedLoan_UsesPreparedRate(t *testing.T) {
 			"expected one append, got %d",
 			repo.appendCalls,
 		)
+	}
+}
+
+func TestReconcileCreditedLoan_RejectsNewCreditWithoutConfirmation(t *testing.T) {
+	app, evidence := prepareReconcileLoanTest(t)
+	repo := &reconcileRepoStub{app: app, revision: 10}
+	handler := &ReconcileCreditedLoanCommandHandler{
+		Repo: repo, Evidence: disburseEvidenceStub{e: evidence},
+		LegacyCreditCutoff: time.Now().UTC().Add(-time.Minute),
+	}
+	err := handler.Handle(context.Background(), ReconcileCreditedLoanCommand{
+		LoanID: app.Id, AccountID: app.DisbursementAccountId,
+		Amount: app.RequestedAmount, CreditedAt: time.Now().UTC(),
+	})
+	if !errors.Is(err, domain.ErrLoanContractNotConfirmed) {
+		t.Fatalf("want contract guard: %v", err)
+	}
+	if repo.appendCalls != 0 {
+		t.Fatal("unconfirmed loan finalized")
 	}
 }

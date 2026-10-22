@@ -31,17 +31,48 @@ qualified electronic signature or a downloadable legally binding contract.
 replayed into the `Application.offer` projection. A rejected offer is terminal
 in this MVP: a new application is needed to start a new offer.
 
-## Rollout and compatibility
+## Rollout and compatibility (mandatory, no mixed binaries)
 
-Existing completed loans do not need an Offer. Already prepared old loans
-(`LoanDisbursementPrepared` exists) may still finalize a previously credited
-bank transaction via reconciliation; new disbursements without preparation
-require the confirmed offer. Never replay or force-write a confirmation.
+**Do not deploy these writers with a rolling mixed-version API or projector.**
+Old API binaries cannot replay the four new offer events and may still write
+unconfirmed `LoanDisbursementPrepared`/bank credits. Old projectors can
+quarantine a loan and advance a checkpoint past unknown events.
 
-SMTP must be configured. Missing SMTP/Redis fails closed, not bypassed.
-The email OTP is an application-level confirmation for the **research demo**,
-not a legally qualified electronic signature. Confirm any production signing,
-contract artifact, legal disclosures, and audit requirements separately.
+1. Keep `LOAN_OFFER_WRITES_ENABLED` unset/`false` on the new binary (fail closed).
+2. Stop **every** old API instance and the old loan-projector instance on every
+   host. Drain in-flight disbursements and make sure no old instance can start.
+3. Record an operator-verified exclusive UTC cutoff after the old writers have
+   stopped. Audit any older credited loans that were not finalized. **Never
+   choose a cutoff while old writers can still credit new loans.**
+4. Deploy updated API and projector binaries together; verify readiness and
+   read-model checkpoint/projection failure status. For previously quarantined
+   loans, use the existing `--retry-loan` recovery workflow after an upgrade.
+5. Configure `LOAN_OFFER_LEGACY_CREDIT_CUTOFF=YYYY-MM-DDTHH:MM:SSZ` **on the
+   reconciler only** for previously credited loans older than that cutoff.
+   An unset value disables the legacy exemption and leaves such loans for
+   operator investigation, rather than automatically declaring them confirmed.
+6. Only after old writers/readers have been drained and the new projector is
+   healthy, restart the updated API with `LOAN_OFFER_WRITES_ENABLED=true`.
+   The API returns 503 for offer mutation endpoints until this is enabled.
+
+**Compatibility policy:** The ordinary disbursement command now always requires
+an Offer with `confirmed` status (including for an old preparation). Reconciliation
+can finalize a previously credited unconfirmed loan only when bank credit time
+(and preparation time, if any) is strictly before the configured cutoff. Such
+credits must be independently audited; this cutoff is a deployment safety control,
+not evidence of customer consent. Reconciliation never credits the bank account.
+New loan credits must follow Offer → acceptance → OTP confirmation → disbursement.
+Already recorded historical `LoanDisbursed` events remain replayable, but replay
+of a committed fact must not be used as a way to authorize a new credit.
+
+New readers stop at unknown future loan events rather than checkpointing past them;
+**this does not retrofit old running binaries**. Do not roll back to older
+readers after any new offer event has been written.
+
+SMTP and Redis must be configured. Missing SMTP/Redis fails closed, not bypassed.
+Email OTP is an application-level confirmation for the **research demo**,
+not a legally qualified electronic signature. Production deployment requires
+separate review of contract artifacts, disclosures, signing, and audit rules.
 
 ## Test commands
 
