@@ -70,6 +70,9 @@ func NewLoanHandler(
 			Evidence:   evidence,
 			Bank:       bank,
 		},
+		Contracts: loanqueries.NewLoanContractQueryService(
+			mongorepo.NewLoanContractQuery(read),
+		),
 		Read:     repo,
 		List:     read,
 		Evidence: evidence,

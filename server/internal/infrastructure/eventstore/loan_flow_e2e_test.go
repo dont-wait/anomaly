@@ -398,6 +398,119 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 			if !found {
 				t.Fatal("disbursed application missing from loan read model API")
 			}
+			// Loan Contract API must read the projected agreement and never
+			// expose contracts owned by another authenticated customer.
+			contracts := decodeLoanE2E[struct {
+				Items []struct {
+					LoanID    string `json:"loanId"`
+					Principal int64  `json:"principal"`
+				} `json:"items"`
+			}](t, api.json(t, "GET", "/api/loans/contracts", owner, nil, nil, 200))
+			contractFound := false
+			for _, item := range contracts.Items {
+				if item.LoanID == a.Id && item.Principal == paid.RequestedAmount {
+					contractFound = true
+				}
+			}
+			if !contractFound {
+				t.Fatal("projected contract missing from customer list")
+			}
+
+			// The outsider must not see any of the owner's contracts.
+			foreignContracts := decodeLoanE2E[struct {
+				Items []struct {
+					LoanID string `json:"loanId"`
+				} `json:"items"`
+			}](t, api.json(
+				t,
+				"GET",
+				"/api/loans/contracts",
+				outsider,
+				nil,
+				nil,
+				200,
+			))
+
+			if len(foreignContracts.Items) != 0 {
+				t.Fatalf(
+					"foreign customer can see owner's contracts: %+v",
+					foreignContracts.Items,
+				)
+			}
+
+			contract := decodeLoanE2E[struct {
+				LoanID            string `json:"loanId"`
+				Status            string `json:"status"`
+				RepaymentSchedule []struct {
+					InstallmentNo int    `json:"installmentNo"`
+					DueDate       string `json:"dueDate"`
+					PrincipalDue  int64  `json:"principalDue"`
+					InterestDue   int64  `json:"interestDue"`
+					TotalDue      int64  `json:"totalDue"`
+					Status        string `json:"status"`
+				} `json:"repaymentSchedule"`
+			}](t, api.json(
+				t,
+				"GET",
+				"/api/loans/contracts/detail/"+a.Id,
+				owner,
+				nil,
+				nil,
+				200,
+			))
+
+			if contract.LoanID != a.Id ||
+				contract.Status != "active" ||
+				len(contract.RepaymentSchedule) != len(paid.RepaymentSchedule) {
+				t.Fatalf("invalid contract detail: %+v", contract)
+			}
+
+			for i, actual := range contract.RepaymentSchedule {
+				expected := paid.RepaymentSchedule[i]
+
+				if actual.InstallmentNo != expected.InstallmentNo {
+					t.Fatalf(
+						"installment %d: number=%d, want=%d",
+						i+1,
+						actual.InstallmentNo,
+						expected.InstallmentNo,
+					)
+				}
+
+				if actual.DueDate != expected.DueDate.UTC().Format("2006-01-02") {
+					t.Fatalf(
+						"installment %d: due date=%s, want=%s",
+						i+1,
+						actual.DueDate,
+						expected.DueDate.UTC().Format("2006-01-02"),
+					)
+				}
+
+				if actual.PrincipalDue != expected.PrincipalAmount ||
+					actual.InterestDue != expected.InterestAmount ||
+					actual.TotalDue != expected.TotalPayment {
+					t.Fatalf(
+						"installment %d: amount mismatch; actual=%+v expected=%+v",
+						i+1,
+						actual,
+						expected,
+					)
+				}
+
+				if actual.Status != "upcoming" && actual.Status != "due" {
+					t.Fatalf(
+						"installment %d: unexpected status=%s",
+						i+1,
+						actual.Status,
+					)
+				}
+			}
+
+			if contract.LoanID != a.Id || contract.Status != "active" || len(contract.RepaymentSchedule) != 12 {
+				t.Fatalf("invalid contract detail: %+v", contract)
+			}
+			api.json(t, "GET", "/api/loans/contracts/detail/"+a.Id, outsider, nil, nil, 404)
+			api.json(t, "GET", "/api/loans/contracts/detail/"+a.Id, "", nil, nil, 401)
 			// Xóa object thật để kiểm tra sentinel RustFS qua HTTP (404, không 503).
 			if err := media.Delete(ctx, documents[0].StorageKey); err != nil {
 				t.Fatal(err)
