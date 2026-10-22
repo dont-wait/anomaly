@@ -35,7 +35,7 @@ func newDisbursedRepayment(
 	app.Status = ApplicationStatusApproved
 	app.ApprovedAt = &approvedAt
 
-	err = app.MarkDisbursed(
+	err = app.RestoreLegacyDisbursement(
 		approvedAt.Add(24*time.Hour),
 		1630,
 	)
@@ -270,7 +270,7 @@ func TestLoanRepaymentRejectsBrokenSchedule(
 	app.Status = ApplicationStatusApproved
 	app.ApprovedAt = &approvedAt
 
-	if err := app.MarkDisbursed(
+	if err := app.RestoreLegacyDisbursement(
 		approvedAt.Add(24*time.Hour),
 		1630,
 	); err != nil {
@@ -309,7 +309,7 @@ func TestLoanRepaymentCopiesSchedule(
 	app.Status = ApplicationStatusApproved
 	app.ApprovedAt = &approvedAt
 
-	if err := app.MarkDisbursed(
+	if err := app.RestoreLegacyDisbursement(
 		approvedAt.Add(24*time.Hour),
 		1630,
 	); err != nil {

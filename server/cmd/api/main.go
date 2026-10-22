@@ -127,6 +127,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("ensure unique loan product index")
 	}
 	composition.AttachLoanProducts(loanHandler, packageCatalog)
+	composition.AttachLoanContractOTP(loanHandler, rdb, config.SMTPConfig, *logger)
 
 	composition.AttachLoanRepayment(
 		loanHandler,
