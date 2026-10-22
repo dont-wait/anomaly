@@ -14,6 +14,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/pro
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/loan-projector ./cmd/loan-projector
 
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/import-bank ./cmd/import-bank
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/relay ./cmd/relay
+RUN chmod +x /app/bin/relay
 
 FROM alpine:3.20
 
@@ -28,6 +30,7 @@ COPY --from=builder /app/bin/migrate ./migrate
 COPY --from=builder /app/bin/projector ./projector
 COPY --from=builder /app/bin/loan-projector ./loan-projector
 COPY --from=builder /app/bin/import-bank ./import-bank
+COPY --from=builder /app/bin/relay ./relay
 COPY --from=builder /app/migrations ./migrations
 
 USER appuser

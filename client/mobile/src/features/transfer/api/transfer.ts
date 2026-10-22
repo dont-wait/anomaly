@@ -1,6 +1,7 @@
 import type { TransactionRecord } from "@/features/transactions/model";
 import { ANOMALY_BANK, type Recipient } from "@/features/transfer/model";
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
+import { getDeviceId, getPlatform } from "@/shared/lib/device";
 import { requestJson } from "@/shared/lib/http";
 
 interface RecipientDto {
@@ -83,7 +84,11 @@ export function createTransfer(
   return requestJson<TransferIntent>(API_ENDPOINTS.TRANSFERS.CREATE, {
     method: "POST",
     token,
-    headers: { "Idempotency-Key": idempotencyKey },
+    headers: {
+      "Idempotency-Key": idempotencyKey,
+      "X-Device-ID": getDeviceId(),
+      "X-Platform": getPlatform(),
+    },
     body: input,
   });
 }
