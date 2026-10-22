@@ -718,7 +718,7 @@ func (r SeedRepository) Save(ctx context.Context, a *accountdomain.UserAccount) 
 		return accountdomain.ErrAccountNotFound
 	}
 
-	if current.EffectiveRole() != a.EffectiveRole() || current.IsVerified() != a.IsVerified() {
+	if current.EffectiveRole() != a.EffectiveRole() || seedKYCStateChanged(current, a) {
 		a.Version = current.Version + 1
 		a.UpdatedAt = time.Now().UTC()
 		if a.Customer != nil {
@@ -730,6 +730,17 @@ func (r SeedRepository) Save(ctx context.Context, a *accountdomain.UserAccount) 
 	}
 
 	return r.SetSeedBalance(ctx, a.Id, targetBalance)
+}
+
+func seedKYCStateChanged(current, next *accountdomain.UserAccount) bool {
+	if current.IsVerified() != next.IsVerified() {
+		return true
+	}
+	if current.Customer == nil || next.Customer == nil {
+		return current.Customer != next.Customer
+	}
+	return current.Customer.VerifiedKYCSessionId != next.Customer.VerifiedKYCSessionId ||
+		len(current.KYCSessions) != len(next.KYCSessions)
 }
 
 // EnsureReady prevents starting a fresh canonical history over existing Mongo

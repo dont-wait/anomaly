@@ -118,13 +118,19 @@ func reconcileExistingSeed(
 		return err
 	}
 
+	adminKYCNeeded := isSeedAdmin(seed) && !hasSeedAdminKYC(account)
 	if account.Balance.Current == seed.Balance &&
 		account.EffectiveRole() == seed.role() &&
-		account.IsVerified() == isSeedAdmin(seed) {
+		!adminKYCNeeded {
 		return nil
 	}
 
-	account.Balance = accountdomain.Balance{Current: seed.Balance}
+	// A KYC-only repair must not overwrite money that may have changed since
+	// the account was originally seeded. Balance reconciliation remains the
+	// existing behavior for other seed changes.
+	if !adminKYCNeeded {
+		account.Balance = accountdomain.Balance{Current: seed.Balance}
+	}
 	account.Role = seed.role()
 	markSeedAdminVerified(account, seed)
 	account.Version++
@@ -138,13 +144,66 @@ func reconcileExistingSeed(
 }
 
 func markSeedAdminVerified(account *accountdomain.UserAccount, seed accountSeed) {
-	if isSeedAdmin(seed) && account.Customer != nil {
-		account.Customer.KYCStatus = accountdomain.KYCStatusVerified
+	if !isSeedAdmin(seed) || account.Customer == nil {
+		return
 	}
+	if account.IsVerified() && account.VerifiedKYCSession() != nil {
+		return
+	}
+
+	now := account.UpdatedAt
+	if now.IsZero() {
+		now = account.CreatedAt
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	sessionID := "seed-kyc-" + account.Id
+	var session *accountdomain.KYCSession
+	for _, existing := range account.KYCSessions {
+		if existing != nil && existing.Id == sessionID {
+			session = existing
+			break
+		}
+	}
+	if session == nil {
+		completedAt := now
+		session = &accountdomain.KYCSession{
+			Id:         sessionID,
+			CustomerId: account.CustomerId,
+			AttemptNo:  len(account.KYCSessions) + 1,
+			Status:     accountdomain.KYCSessionStatusVerified,
+			IdentityData: accountdomain.KYCIdentityData{
+				Type:        account.Customer.Identity.Type,
+				Number:      account.Customer.Identity.Number,
+				FullName:    account.Customer.Profile.FullName,
+				DateOfBirth: account.Customer.Profile.DateOfBirth,
+				IssuedDate:  account.Customer.Identity.IssuedDate,
+			},
+			Verification: accountdomain.KYCVerification{
+				OCRStatus:       accountdomain.VerificationStatusNotRun,
+				LivenessStatus:  accountdomain.VerificationStatusNotRun,
+				FaceMatchStatus: accountdomain.VerificationStatusNotRun,
+				Provider:        "seed",
+			},
+			StartedAt:   now,
+			CompletedAt: &completedAt,
+			CreatedAt:   now,
+		}
+		account.KYCSessions = append(account.KYCSessions, session)
+	}
+
+	session.Status = accountdomain.KYCSessionStatusVerified
+	account.Customer.KYCStatus = accountdomain.KYCStatusVerified
+	account.Customer.VerifiedKYCSessionId = session.Id
 }
 
 func isSeedAdmin(seed accountSeed) bool {
 	return seed.role() == accountdomain.AccountRoleAdmin
+}
+
+func hasSeedAdminKYC(account *accountdomain.UserAccount) bool {
+	return account.IsVerified() && account.VerifiedKYCSession() != nil
 }
 
 func validateExistingSeed(account *accountdomain.UserAccount, seed accountSeed) error {
