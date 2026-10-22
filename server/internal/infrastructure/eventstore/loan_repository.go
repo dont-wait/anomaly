@@ -322,6 +322,10 @@ func (r *LoanRepository) AppendBatch(
 			EventLoanApplicationApproved,
 			EventLoanApplicationRejected,
 			EventLoanDisbursementPrepared,
+			EventLoanOfferIssued,
+			EventLoanOfferAccepted,
+			EventLoanOfferRejected,
+			EventLoanContractConfirmed,
 			EventLoanDisbursed:
 		default:
 			return fmt.Errorf(
