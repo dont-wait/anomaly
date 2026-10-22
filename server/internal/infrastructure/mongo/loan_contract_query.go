@@ -490,7 +490,6 @@ func (r *LoanContractQuery) ListContractPage(
 	}
 
 	return items, hasMore, nil
-
 }
 
 func (r *LoanContractQuery) ReadContract(

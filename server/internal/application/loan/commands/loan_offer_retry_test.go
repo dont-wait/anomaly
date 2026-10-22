@@ -22,6 +22,7 @@ func (r *offerRetryRepo) FindByIDWithRevision(_ context.Context, id string) (*do
 	}
 	return r.app, r.revision, nil
 }
+
 func (r *offerRetryRepo) Append(_ context.Context, id string, rev uint64, kind string, payload any) error {
 	if id != r.app.Id || rev != r.revision {
 		return errors.New("revision conflict")
@@ -57,6 +58,7 @@ func (r *offerRetryRepo) Append(_ context.Context, id string, rev uint64, kind s
 	r.revision++
 	return nil
 }
+
 func newRetryOffer(t *testing.T) *domain.Application {
 	t.Helper()
 	a, err := domain.NewDraftApplication("loan-retry", "LA-retry", "owner", "PERSONAL_UNSECURED_SALARY", "account", 10_000_000, 12)
@@ -71,6 +73,7 @@ func newRetryOffer(t *testing.T) *domain.Application {
 	}
 	return a
 }
+
 func TestLoanOfferAcceptAndConfirmAreIdempotent(t *testing.T) {
 	repo := &offerRetryRepo{app: newRetryOffer(t), revision: 10}
 	handler := &LoanOfferCommandHandler{Repo: repo}
@@ -100,6 +103,7 @@ func TestLoanOfferAcceptAndConfirmAreIdempotent(t *testing.T) {
 		t.Fatal("rejected confirmed offer")
 	}
 }
+
 func TestLoanOfferRejectRetryIsIdempotent(t *testing.T) {
 	repo := &offerRetryRepo{app: newRetryOffer(t), revision: 10}
 	handler := &LoanOfferCommandHandler{Repo: repo}

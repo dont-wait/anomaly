@@ -14,13 +14,16 @@ import (
 )
 
 // The handler depends on the application port, not Redis/SMTP implementations.
-type ContractOTPService = appotp.ContractOTPService
-type ContractEmailReader interface {
-	LoanContractEmail(context.Context, string) (string, error)
-}
+type (
+	ContractOTPService  = appotp.ContractOTPService
+	ContractEmailReader interface {
+		LoanContractEmail(context.Context, string) (string, error)
+	}
+)
 
 // Keep writes off until every old API and loan-projector instance is drained.
 func offerWritesEnabled() bool { return os.Getenv("LOAN_OFFER_WRITES_ENABLED") == "true" }
+
 func requireOfferWrites(w http.ResponseWriter) bool {
 	if offerWritesEnabled() {
 		return true
