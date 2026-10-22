@@ -100,6 +100,7 @@ func seedAccount(ctx context.Context, repo Repository, seed accountSeed) error {
 
 	account.Balance = accountdomain.Balance{Current: seed.Balance}
 	account.Role = seed.role()
+	markSeedAdminVerified(account, seed)
 	if err := repo.Save(ctx, account); err != nil {
 		return fmt.Errorf("save seed balance: %w", err)
 	}
@@ -117,12 +118,15 @@ func reconcileExistingSeed(
 		return err
 	}
 
-	if account.Balance.Current == seed.Balance && account.EffectiveRole() == seed.role() {
+	if account.Balance.Current == seed.Balance &&
+		account.EffectiveRole() == seed.role() &&
+		account.IsVerified() == isSeedAdmin(seed) {
 		return nil
 	}
 
 	account.Balance = accountdomain.Balance{Current: seed.Balance}
 	account.Role = seed.role()
+	markSeedAdminVerified(account, seed)
 	account.Version++
 	now := time.Now().UTC()
 	account.UpdatedAt = now
@@ -131,6 +135,16 @@ func reconcileExistingSeed(
 		return fmt.Errorf("save reconciled seed account: %w", err)
 	}
 	return nil
+}
+
+func markSeedAdminVerified(account *accountdomain.UserAccount, seed accountSeed) {
+	if isSeedAdmin(seed) && account.Customer != nil {
+		account.Customer.KYCStatus = accountdomain.KYCStatusVerified
+	}
+}
+
+func isSeedAdmin(seed accountSeed) bool {
+	return seed.role() == accountdomain.AccountRoleAdmin
 }
 
 func validateExistingSeed(account *accountdomain.UserAccount, seed accountSeed) error {

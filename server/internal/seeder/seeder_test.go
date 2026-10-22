@@ -93,6 +93,9 @@ func TestRunCreatesHashedDemoAndCanRepeat(t *testing.T) {
 	if admin.EffectiveRole() != accountdomain.AccountRoleAdmin {
 		t.Fatalf("admin role = %q, want %q", admin.EffectiveRole(), accountdomain.AccountRoleAdmin)
 	}
+	if !admin.IsVerified() {
+		t.Fatal("admin should be seeded as KYC verified")
+	}
 	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(adminSeed.Password)); err != nil {
 		t.Fatalf("admin password hash: %v", err)
 	}
@@ -145,12 +148,16 @@ func TestRunReconcilesAdminRole(t *testing.T) {
 	}
 	admin := repo.accounts[demoAccounts()[1].CCCD]
 	admin.Role = accountdomain.AccountRoleUser
+	admin.Customer.KYCStatus = accountdomain.KYCStatusNotStarted
 
 	if err := Run(context.Background(), Dependencies{Accounts: repo}); err != nil {
 		t.Fatal(err)
 	}
 	if admin.Role != accountdomain.AccountRoleAdmin {
 		t.Fatalf("admin role = %q, want %q", admin.Role, accountdomain.AccountRoleAdmin)
+	}
+	if !admin.IsVerified() {
+		t.Fatal("existing admin should be reconciled as KYC verified")
 	}
 }
 

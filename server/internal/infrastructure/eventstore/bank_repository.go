@@ -718,7 +718,7 @@ func (r SeedRepository) Save(ctx context.Context, a *accountdomain.UserAccount) 
 		return accountdomain.ErrAccountNotFound
 	}
 
-	if current.EffectiveRole() != a.EffectiveRole() {
+	if current.EffectiveRole() != a.EffectiveRole() || current.IsVerified() != a.IsVerified() {
 		a.Version = current.Version + 1
 		a.UpdatedAt = time.Now().UTC()
 		if a.Customer != nil {
