@@ -23,6 +23,7 @@ import (
 
 	accountqueries "github.com/dont-wait/anomaly/internal/application/account/queries"
 	commands "github.com/dont-wait/anomaly/internal/application/loan/commands"
+	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
 	appotp "github.com/dont-wait/anomaly/internal/application/otp"
 	domain "github.com/dont-wait/anomaly/internal/domain/loan"
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
@@ -130,7 +131,9 @@ type Handler struct {
 	ContractOTP   ContractOTPService
 	ContractEmail ContractEmailReader
 
-	Repayment *RepaymentHTTP
+	Repayment           *RepaymentHTTP
+	Products            *loanqueries.LoanProductCatalogQueryService
+	PreApplicationQuote *loanqueries.PreApplicationQuoteQueryService
 
 	Read     Reader
 	List     ListReader
@@ -235,6 +238,17 @@ func RegisterRoutes(
 			op.Response = openapi.Binary{}
 			op.ResponseContentType = "application/octet-stream"
 
+		case "listLoanPackages":
+			op.Description = "Only active loan products supported by the application. Annual rate depends on verified income, region and term; no fixed product interest rate is promised."
+			op.Response = struct {
+				Items []loanqueries.LoanPackage `json:"items"`
+			}{}
+
+		case "preApplicationLoanQuote":
+			op.Description = "Unverified provisional loan calculation only; no application or loan agreement is created."
+			op.Request = loanqueries.PreApplicationQuoteInput{}
+			op.Response = loanqueries.PreApplicationQuoteResult{}
+
 		case "quotePersonalLoan":
 			op.Description = "Provisional loan repayment schedule"
 			op.Response = loanQuoteResponse{}
@@ -273,6 +287,16 @@ func RegisterRoutes(
 		router.Handle(pattern, protected, op)
 	}
 
+	auth(
+		"GET /api/loans/packages",
+		h.listLoanPackages,
+		"listLoanPackages",
+	)
+	auth(
+		"POST /api/loans/quotes",
+		h.createPreApplicationQuote,
+		"preApplicationLoanQuote",
+	)
 	auth(
 		"POST /api/loans",
 		h.create,

@@ -30,6 +30,7 @@ type transferRepositoryFake struct {
 	sourceCalls    int
 	recipientCalls int
 	createCalls    int
+	created        mongorepo.TransferDocument
 }
 
 func (f *transferRepositoryFake) FindOwnedAccount(context.Context, string) (mongorepo.TransferAccount, error) {
@@ -58,9 +59,10 @@ func (f *transferRepositoryFake) FindTransferByIdempotencyKey(_ context.Context,
 	return f.existing, f.lookupErr
 }
 
-func (f *transferRepositoryFake) CreatePending(context.Context, mongorepo.TransferDocument) (mongorepo.TransferDocument, bool, error) {
+func (f *transferRepositoryFake) CreatePending(_ context.Context, tx mongorepo.TransferDocument) (mongorepo.TransferDocument, bool, error) {
 	f.createCalls++
-	return mongorepo.TransferDocument{}, false, nil
+	f.created = tx
+	return tx, false, nil
 }
 
 func (*transferRepositoryFake) FindTransfer(context.Context, string, string) (mongorepo.TransferDocument, error) {
@@ -90,6 +92,10 @@ func (*transferRepositoryFake) Summary(context.Context, bson.ObjectID, time.Time
 }
 
 func createTransferRequestForTest(t *testing.T, repo Repository, key, body string) *httptest.ResponseRecorder {
+	return createTransferRequestWithHeaders(t, repo, key, body, nil)
+}
+
+func createTransferRequestWithHeaders(t *testing.T, repo Repository, key, body string, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	tokens := infraauth.NewTokenService("test-secret", time.Hour)
 	token, _, err := tokens.Issue("owner-id", "owner", "user", true)
@@ -103,8 +109,38 @@ func createTransferRequestForTest(t *testing.T, repo Repository, key, body strin
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", key)
+	for name, value := range headers {
+		request.Header.Set(name, value)
+	}
 	secured.ServeHTTP(recorder, request)
 	return recorder
+}
+
+func TestCreateTransferStoresModelMetadataFromHeaders(t *testing.T) {
+	repo := &transferRepositoryFake{
+		lookupErr: mongorepo.ErrTransactionAccountNotFound,
+		source:    mongorepo.TransferAccount{ID: bson.NewObjectID(), AccountNo: "99999180105", Status: "active", Email: "owner@example.com"},
+		recipient: mongorepo.TransferAccount{ID: bson.NewObjectID(), AccountNo: "99999180147", Name: "TRAN THI BICH"},
+	}
+	recorder := createTransferRequestWithHeaders(t, repo, "34297a72-9433-4adf-8958-868d5e50d197", `{"toBankCode":"ANOMALY","toAccountNo":"99999180147","amount":50000000,"note":"test"}`, map[string]string{
+		"X-Device-ID": "550e8400-e29b-41d4-a716-446655440000",
+		"X-Platform":  "android",
+	})
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body = %s", recorder.Code, recorder.Body.String())
+	}
+	if repo.created.DeviceID != "550e8400-e29b-41d4-a716-446655440000" || repo.created.Platform != "ANDROID" || repo.created.Channel != "mobile" {
+		t.Fatalf("created metadata = device=%q platform=%q channel=%q", repo.created.DeviceID, repo.created.Platform, repo.created.Channel)
+	}
+}
+
+func TestNormalizeDeviceIDRejectsCallerSuppliedNonUUID(t *testing.T) {
+	if got := normalizeDeviceID("DEVICE01"); got != "" {
+		t.Fatalf("normalizeDeviceID() = %q, want empty for untrusted arbitrary ID", got)
+	}
+	if got := normalizeDeviceID("550e8400-e29b-41d4-a716-446655440000"); got == "" {
+		t.Fatal("normalizeDeviceID() rejected a valid device UUID")
+	}
 }
 
 type recipientContactsFake struct {

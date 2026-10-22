@@ -2,6 +2,7 @@ package composition
 
 import (
 	"github.com/dont-wait/anomaly/internal/application/loan/commands"
+	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/loanadapter"
@@ -12,6 +13,12 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
+
+func AttachLoanProducts(h *loanhttp.Handler, catalog *mongorepo.LoanPackageCatalog) {
+	h.Create.PackagePolicy = catalog
+	h.Products = loanqueries.NewLoanProductCatalogQueryService(catalog)
+	h.PreApplicationQuote = loanqueries.NewPreApplicationQuoteQueryService(catalog)
+}
 
 func NewLoanHandler(
 	bank *eventstore.BankRepository,

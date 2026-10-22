@@ -12,6 +12,7 @@
 - `redis`: cache hoặc infra phụ trợ
 - `kafka`: streaming broker
 - `kafka-ui`: UI quan sát Kafka
+- `anomaly-relay`: EventStoreDB persistent subscription và Kafka producer
 
 ## Default Ports
 
@@ -49,6 +50,20 @@ Ngoài ra code còn hỗ trợ:
 
 ```env
 EVENT_STORE_CONN_STRING=esdb://localhost:2113?tls=false
+KAFKA_BROKERS=localhost:9092
+KAFKA_TOPIC=anomaly.bank.events.v1
+KAFKA_PRODUCER_ID=anomaly-server
+KAFKA_EVENTSTORE_SUBSCRIPTION=kafka-publisher
+KAFKA_PAYLOAD_REDACTION_KEY=replace-with-a-secret-key
+```
+
+`KAFKA_PAYLOAD_REDACTION_KEY` được dùng để pseudonymize account/device
+identifiers trước khi publish vào Kafka. Nếu không khai báo, relay dùng
+`JWT_SECRET` làm key dự phòng. Không log raw banking payload ở consumer. Khi
+feature state cần rebuild, dừng relay rồi chạy:
+
+```bash
+docker compose run --rm anomaly-relay /app/relay --bootstrap-model-features
 ```
 
 ## Common Workflows
@@ -57,6 +72,13 @@ Chạy full local stack:
 
 ```bash
 docker compose up --build
+```
+
+Kafka model consumer chạy độc lập ngoài Compose:
+
+```bash
+cd ../consumer-mock
+go run .
 ```
 
 Dừng stack:

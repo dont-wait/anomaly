@@ -10,7 +10,7 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: help start-app start-worker start-api seed add-money migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
+.PHONY: help start-app start-worker start-relay start-api seed add-money migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
 
 start-app:
 	docker compose --profile app up --build
@@ -21,6 +21,7 @@ help:
 	@echo "  help              Show available commands"
 	@echo "  start-app         Build and start the Docker Compose app profile"
 	@echo "  start-worker      Project the banking stream into MongoDB"
+	@echo "  start-relay       Publish EventStoreDB events to Kafka"
 	@echo "  import-bank       Offline import of legacy EventStore account streams"
 	@echo "  import-mongo-bank  Offline adoption of audited direct-Mongo MVP data"
 	@echo "  test-transaction-e2e  Run isolated MongoDB/EventStoreDB E2E"
@@ -68,6 +69,9 @@ test-account-e2e:
 
 start-worker:
 	go run ./cmd/projector
+
+start-relay:
+	go run ./cmd/relay
 
 start-api:
 	go run ./cmd/api/main.go

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	loanhttp "github.com/dont-wait/anomaly/internal/presentation/http/handler/loan"
@@ -44,6 +45,8 @@ func TestLoanRoutesRegisteredAndProtected(t *testing.T) {
 	}
 
 	paths := []string{
+		"/api/loans/packages",
+		"/api/loans/quotes",
 		"/api/loans",
 		"/api/loans/{applicationId}",
 		"/api/loans/{applicationId}/documents",
@@ -71,6 +74,17 @@ func TestLoanRoutesRegisteredAndProtected(t *testing.T) {
 			nil,
 		),
 	)
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/loans/packages"},
+		{http.MethodPost, "/api/loans/quotes"},
+	} {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`)))
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated %s %s: got %d, want 401", tc.method, tc.path, w.Code)
+		}
+	}
 
 	if unauth.Code != http.StatusUnauthorized {
 		t.Fatalf(
