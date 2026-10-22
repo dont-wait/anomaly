@@ -197,39 +197,34 @@ func (m *LoanReadModel) SaveLoanContract(
 		"updated_at": a.UpdatedAt,
 	}
 
-	// Chi lien ket goi vay khi co ban ghi that.
-	var packageRow struct {
-		ID bson.ObjectID `bson:"_id"`
-	}
-
-	packageFilter := bson.M{
-		"package_code": a.LoanPackageId,
-	}
-
-	if id, err := bson.ObjectIDFromHex(
-		a.LoanPackageId,
-	); err == nil {
-		packageFilter = bson.M{"_id": id}
-	}
-
-	packageErr := m.db.Collection(
-		"loan_packages",
-	).FindOne(
-		ctx,
-		packageFilter,
-	).Decode(&packageRow)
-
-	if packageErr == nil {
-		appDoc["loan_package_id"] = packageRow.ID
-	} else if errors.Is(
-		packageErr,
-		mongodrv.ErrNoDocuments,
-	) {
-		// Catalog chua co: giu ma goc,
-		// khong tao ObjectId gia.
-		appDoc["loan_package_code"] = a.LoanPackageId
+	// Historical loans may outlive a discontinued package. Only link an active,
+	// unique authoritative package. Never bind to a random inactive duplicate.
+	catalog := &LoanPackageCatalog{db: m.db}
+	var packageRow *loanPackageRecord
+	if _, err := bson.ObjectIDFromHex(a.LoanPackageId); err == nil {
+		// Legacy applications may reference a real ObjectID.
+		id, _ := bson.ObjectIDFromHex(a.LoanPackageId)
+		var found loanPackageRecord
+		lookupCtx, cancel := context.WithTimeout(ctx, catalogReadTimeout)
+		lookupErr := m.db.Collection("loan_packages").FindOne(lookupCtx, bson.M{"_id": id}).Decode(&found)
+		cancel()
+		if lookupErr == nil {
+			packageRow = &found
+		} else if !errors.Is(lookupErr, mongodrv.ErrNoDocuments) {
+			return lookupErr
+		}
 	} else {
-		return packageErr
+		packageRow, err = catalog.uniquePackageByCode(ctx, a.LoanPackageId)
+		if err != nil {
+			return err
+		}
+	}
+	if packageRow != nil && normalizePackageStatus(packageRow.Status) == "ACTIVE" {
+		appDoc["loan_package_id"] = packageRow.ID
+	} else {
+		// Preserve the source code for contracts whose product was retired or
+		// not projected; never create or attach a synthetic package ObjectID.
+		appDoc["loan_package_code"] = a.LoanPackageId
 	}
 
 	_, err = m.db.Collection(

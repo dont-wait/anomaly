@@ -3,12 +3,22 @@ package composition
 import (
 	"github.com/dont-wait/anomaly/internal/application/loan/commands"
 	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
+	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/loanadapter"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
+	"github.com/dont-wait/anomaly/internal/infrastructure/otp"server/internal/presentation/http/handler/loan/loan_handler.go
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	loanhttp "github.com/dont-wait/anomaly/internal/presentation/http/handler/loan"
+	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog"
 )
+
+func AttachLoanProducts(h *loanhttp.Handler, catalog *mongorepo.LoanPackageCatalog) {
+	h.Create.PackagePolicy = catalog
+	h.Products = loanqueries.NewLoanProductCatalogQueryService(catalog)
+	h.PreApplicationQuote = loanqueries.NewPreApplicationQuoteQueryService(catalog)
+}
 
 func NewLoanHandler(
 	bank *eventstore.BankRepository,
@@ -52,6 +62,8 @@ func NewLoanHandler(
 			repo,
 			access,
 		),
+		Offer:         &commands.LoanOfferCommandHandler{Repo: repo, Authorizer: access, Evidence: evidence},
+		ContractEmail: access,
 		Disburse: &commands.DisburseLoanCommandHandler{
 			Repo:       repo,
 			Authorizer: access,
@@ -66,5 +78,13 @@ func NewLoanHandler(
 		Evidence: evidence,
 		Media:    media,
 		Reviewer: access,
+	}
+}
+
+// AttachLoanContractOTP configures a dedicated loan contract challenge. SMTP
+// misconfiguration fails closed via the disabled sender used for transfers.
+func AttachLoanContractOTP(h *loanhttp.Handler, rdb *redis.Client, smtp *domain.SMTPConfig, logger zerolog.Logger) {
+	if h != nil {
+		h.ContractOTP = otp.NewLoanContractOTPStore(rdb, newTransferMailSender(smtp, logger))
 	}
 }

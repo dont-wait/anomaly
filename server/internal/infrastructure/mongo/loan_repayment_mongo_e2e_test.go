@@ -179,7 +179,7 @@ func TestLoanRepaymentMongoProjectionE2E(t *testing.T) {
 	app.Status = loan.ApplicationStatusApproved
 	app.ApprovedAt = &at
 
-	if err := app.MarkDisbursed(
+	if err := app.RestoreLegacyDisbursement(
 		at, 1600,
 	); err != nil {
 		t.Fatal(err)

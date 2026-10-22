@@ -52,7 +52,7 @@ func TestEvidenceBuildAndDisbursement(t *testing.T) {
 
 	paid := now.Add(time.Second)
 
-	if err := app.MarkDisbursed(paid, rate); err != nil {
+	if err := app.RestoreLegacyDisbursement(paid, rate); err != nil {
 		t.Fatal(err)
 	}
 
@@ -62,7 +62,7 @@ func TestEvidenceBuildAndDisbursement(t *testing.T) {
 		t.Fatal("loan was not fully scheduled")
 	}
 
-	if err := app.MarkDisbursed(paid, rate); err == nil {
+	if err := app.RestoreLegacyDisbursement(paid, rate); err == nil {
 		t.Fatal("duplicate disbursement accepted")
 	}
 }
@@ -116,7 +116,7 @@ func TestMarkDisbursed_RejectsDifferentPreparedRate(t *testing.T) {
 	creditedAt := preparedAt.Add(time.Second)
 
 	// Lãi suất 16% khác mức đã chốt 15,4%.
-	if err := app.MarkDisbursed(
+	if err := app.RestoreLegacyDisbursement(
 		creditedAt,
 		1600,
 	); err == nil {
@@ -130,7 +130,7 @@ func TestMarkDisbursed_RejectsDifferentPreparedRate(t *testing.T) {
 	}
 
 	// Sử dụng đúng lãi suất đã chốt.
-	if err := app.MarkDisbursed(
+	if err := app.RestoreLegacyDisbursement(
 		creditedAt,
 		preparedRate,
 	); err != nil {

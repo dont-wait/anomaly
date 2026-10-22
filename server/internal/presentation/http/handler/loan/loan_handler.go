@@ -24,12 +24,15 @@ import (
 	accountqueries "github.com/dont-wait/anomaly/internal/application/account/queries"
 	commands "github.com/dont-wait/anomaly/internal/application/loan/commands"
 	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
+	appotp "github.com/dont-wait/anomaly/internal/application/otp"
 	domain "github.com/dont-wait/anomaly/internal/domain/loan"
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const maxLoanDocSize int64 = 10 << 20
@@ -117,16 +120,21 @@ type loanQuoteResponse struct {
 }
 
 type Handler struct {
-	Create   *commands.CreateLoanApplicationCommandHandler
-	Add      *commands.AddLoanDocumentCommandHandler
-	Submit   *commands.SubmitLoanApplicationCommandHandler
-	Review   *commands.StartLoanReviewCommandHandler
-	Assess   *commands.AssessLoanApplicationCommandHandler
-	Decide   *commands.ManualLoanDecisionCommandHandler
-	Disburse *commands.DisburseLoanCommandHandler
+	Create        *commands.CreateLoanApplicationCommandHandler
+	Add           *commands.AddLoanDocumentCommandHandler
+	Submit        *commands.SubmitLoanApplicationCommandHandler
+	Review        *commands.StartLoanReviewCommandHandler
+	Assess        *commands.AssessLoanApplicationCommandHandler
+	Decide        *commands.ManualLoanDecisionCommandHandler
+	Disburse      *commands.DisburseLoanCommandHandler
+	Offer         *commands.LoanOfferCommandHandler
+	ContractOTP   ContractOTPService
+	ContractEmail ContractEmailReader
 
-	Repayment *RepaymentHTTP
-	Contracts *loanqueries.LoanContractQueryService
+	Repayment           *RepaymentHTTP
+	Contracts           *loanqueries.LoanContractQueryService
+	Products            *loanqueries.LoanProductCatalogQueryService
+	PreApplicationQuote *loanqueries.PreApplicationQuoteQueryService
 
 	Read     Reader
 	List     ListReader
@@ -231,6 +239,17 @@ func RegisterRoutes(
 			op.Response = openapi.Binary{}
 			op.ResponseContentType = "application/octet-stream"
 
+		case "listLoanPackages":
+			op.Description = "Only active loan products supported by the application. Annual rate depends on verified income, region and term; no fixed product interest rate is promised."
+			op.Response = struct {
+				Items []loanqueries.LoanPackage `json:"items"`
+			}{}
+
+		case "preApplicationLoanQuote":
+			op.Description = "Unverified provisional loan calculation only; no application or loan agreement is created."
+			op.Request = loanqueries.PreApplicationQuoteInput{}
+			op.Response = loanqueries.PreApplicationQuoteResult{}
+
 		case "quotePersonalLoan":
 			op.Description = "Provisional loan repayment schedule"
 			op.Response = loanQuoteResponse{}
@@ -249,8 +268,28 @@ func RegisterRoutes(
 			op.Description = "Customer-owned disbursed contract with outstanding balance and repayment schedule."
 			op.Response = loanqueries.ContractDetail{}
 
+		case "issuePersonalLoanOffer":
+			op.Description = "Admin issues an immutable offer from verified, approved loan evidence"
+			op.Response = domain.LoanOffer{}
+
+		case "getPersonalLoanOffer", "acceptPersonalLoanOffer", "rejectPersonalLoanOffer":
+			op.Response = domain.LoanOffer{}
+
+		case "requestPersonalLoanContractOTP":
+			op.Description = "Owner-only email OTP for an accepted loan offer"
+			op.Response = appotp.ContractOTPInfo{}
+			op.FailureStatuses = append(op.FailureStatuses, 429, 410, 423)
+
+		case "confirmPersonalLoanContract":
+			op.FailureStatuses = append(op.FailureStatuses, 429, 410, 423)
+			op.Description = "Owner-only contract confirmation with OTP; demo contract acceptance, not a qualified digital signature"
+			op.Request = struct {
+				OTP         string `json:"otp"`
+				AcceptTerms bool   `json:"acceptTerms"`
+			}{}
+			op.Response = domain.LoanOffer{}
 		case "disbursePersonalLoan":
-			op.Description = "Admin-only loan disbursement"
+			op.Description = "Admin-only loan disbursement, requires confirmed loan contract"
 		}
 
 		protected := middleware.RequireAuth(tokens)(
@@ -266,6 +305,16 @@ func RegisterRoutes(
 		router.Handle(pattern, protected, op)
 	}
 
+	auth(
+		"GET /api/loans/packages",
+		h.listLoanPackages,
+		"listLoanPackages",
+	)
+	auth(
+		"POST /api/loans/quotes",
+		h.createPreApplicationQuote,
+		"preApplicationLoanQuote",
+	)
 	auth(
 		"POST /api/loans",
 		h.create,
@@ -339,6 +388,13 @@ func RegisterRoutes(
 		"getLoanContract",
 	)
 
+	auth("POST /api/loans/{applicationId}/offer/issue", h.issueOffer, "issuePersonalLoanOffer")
+	auth("GET /api/loans/{applicationId}/offer", h.getOffer, "getPersonalLoanOffer")
+	auth("POST /api/loans/{applicationId}/offer/accept", h.acceptOffer, "acceptPersonalLoanOffer")
+	auth("POST /api/loans/{applicationId}/offer/reject", h.rejectOffer, "rejectPersonalLoanOffer")
+	auth("POST /api/loans/{applicationId}/contract/otp", h.issueContractOTP, "requestPersonalLoanContractOTP")
+	auth("POST /api/loans/{applicationId}/contract/confirm", h.confirmContract, "confirmPersonalLoanContract")
+
 	// Dang ky rieng 5 API tra no vay.
 	if h.Repayment != nil {
 		h.Repayment.RegisterRoutes(router, tokens)
@@ -382,6 +438,18 @@ func serviceError(
 	}
 
 	msg := err.Error()
+	// gRPC status codes are typed; names such as "Unavailable" are not
+	// reliably detected by case-sensitive error-text matching.
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.Unavailable, codes.ResourceExhausted:
+			fail(w, http.StatusServiceUnavailable, "")
+			return
+		case codes.DeadlineExceeded:
+			fail(w, http.StatusGatewayTimeout, "")
+			return
+		}
+	}
 	status := http.StatusUnprocessableEntity
 
 	switch {
