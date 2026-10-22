@@ -701,7 +701,7 @@ func (h *Handler) upload(
 		fail(w, 400, "file is required")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	data, err := io.ReadAll(
 		io.LimitReader(file, maxLoanDocSize+1),
@@ -806,7 +806,7 @@ func (h *Handler) download(
 		}
 		return
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	w.Header().Set(
 		"Content-Type",
