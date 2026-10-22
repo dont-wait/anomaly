@@ -80,6 +80,8 @@ func TestLoanRoutesRegisteredAndProtected(t *testing.T) {
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/api/loans/packages"},
 		{http.MethodPost, "/api/loans/quotes"},
+		{http.MethodGet, "/api/loans/contracts"},
+		{http.MethodGet, "/api/loans/contracts/detail/123"},
 	} {
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`)))

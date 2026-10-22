@@ -12,14 +12,15 @@ import (
 )
 
 type loanContractReaderStub struct {
-	owner   string
-	loanID  string
-	limit   int
-	afterID string
-	rows    []ContractListRow
-	more    bool
-	listErr error
-	getErr  error
+	owner    string
+	loanID   string
+	limit    int
+	afterID  string
+	rows     []ContractListRow
+	more     bool
+	listErr  error
+	getErr   error
+	snapshot string
 }
 
 func (s *loanContractReaderStub) ListContractPage(_ context.Context, customerID string, limit int, _ time.Time, afterID string) ([]ContractListRow, bool, error) {
@@ -108,5 +109,49 @@ func TestLoanContractQueryPropagatesReaderErrors(t *testing.T) {
 	_, err = service.Get(context.Background(), id, "owner")
 	if !errors.Is(err, ErrLoanContractNotFound) || reader.loanID != id || reader.owner != "owner" {
 		t.Fatalf("reader must authorize requested ID: id=%q owner=%q err=%v", reader.loanID, reader.owner, err)
+	}
+}
+
+func (s *loanContractReaderStub) ContractSnapshot(
+	_ context.Context,
+	_ string,
+) (string, error) {
+	if s.snapshot != "" {
+		return s.snapshot, nil
+	}
+	return "test-snapshot-v1", nil
+}
+
+func TestLoanContractListRejectsChangedSnapshot(t *testing.T) {
+	id := uuid.NewString()
+	reader := &loanContractReaderStub{
+		snapshot: "revision-1",
+		more:     true,
+		rows: []ContractListRow{{
+			ApplicationID:        id,
+			ApplicationCreatedAt: time.Now().UTC(),
+			Contract: ContractSummary{
+				LoanID: id,
+			},
+		}},
+	}
+
+	service := NewLoanContractQueryService(reader)
+
+	first, err := service.List(
+		context.Background(), "owner", 1, "",
+	)
+	if err != nil || first.NextCursor == nil {
+		t.Fatalf("first page: %+v, err=%v", first, err)
+	}
+
+	// A previously non-disbursed application enters the list.
+	reader.snapshot = "revision-2"
+
+	_, err = service.List(
+		context.Background(), "owner", 1, *first.NextCursor,
+	)
+	if !errors.Is(err, ErrLoanContractPageChanged) {
+		t.Fatalf("expected snapshot conflict, got %v", err)
 	}
 }

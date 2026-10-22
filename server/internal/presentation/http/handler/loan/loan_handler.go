@@ -223,6 +223,19 @@ func RegisterRoutes(
 
 		case "attestPersonalLoanEvidence":
 			op.SuccessStatus = 201
+			// Keep the Swagger request schema aligned with the JSON decoded by attest().
+			op.Request = struct {
+				MonthlySalaries       [3]int64                      `json:"monthlySalaries"`
+				RegionCode            string                        `json:"regionCode"`
+				ExistingMonthlyDebt   int64                         `json:"existingMonthlyDebt"`
+				InsuranceMonths       int                           `json:"insuranceMonths"`
+				InsuranceVerified     bool                          `json:"insuranceVerified"`
+				RepaymentHistory      domain.RepaymentHistoryStatus `json:"repaymentHistory"`
+				HistoryVerified       bool                          `json:"historyVerified"`
+				FinancialDataVerified bool                          `json:"financialDataVerified"`
+				DocumentsVerified     bool                          `json:"documentsVerified"`
+				Sources               []string                      `json:"sources"`
+			}{}
 			op.Response = domain.VerifiedEvidence{}
 			op.Description = "Admin verifies evidence in simulation"
 

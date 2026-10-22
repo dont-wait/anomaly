@@ -78,3 +78,10 @@ func TestLoanContractHTTPAuthorizationAndErrors(t *testing.T) {
 		t.Fatalf("projection missing status=%d", w.Code)
 	}
 }
+
+func (s *contractHTTPReader) ContractSnapshot(
+	_ context.Context,
+	_ string,
+) (string, error) {
+	return "test-snapshot-v1", nil
+}

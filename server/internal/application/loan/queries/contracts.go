@@ -15,6 +15,7 @@ var (
 	ErrInvalidLoanContractQuery = errors.New("invalid loan contract query")
 	ErrLoanContractNotFound     = errors.New("loan contract not found")
 	ErrLoanContractNotReady     = errors.New("loan contract projection is not ready")
+	ErrLoanContractPageChanged  = errors.New("loan contract list changed; restart pagination")
 )
 
 // ContractSummary is the customer-facing view of a disbursed loan.
@@ -75,6 +76,7 @@ type ContractListPage struct {
 type LoanContractReader interface {
 	ListContractPage(ctx context.Context, customerID string, limit int, afterTime time.Time, afterID string) ([]ContractListRow, bool, error)
 	ReadContract(ctx context.Context, loanID, customerID string) (ContractDetail, error)
+	ContractSnapshot(ctx context.Context, customerID string) (string, error)
 }
 
 type LoanContractQueryService struct {
@@ -89,6 +91,7 @@ type contractCursor struct {
 	CreatedAt time.Time `json:"createdAt"`
 	ID        string    `json:"id"`
 	Owner     string    `json:"owner"`
+	Snapshot  string    `json:"snapshot"`
 }
 
 func (s *LoanContractQueryService) List(ctx context.Context, customerID string, limit int, token string) (ContractListPage, error) {
@@ -107,12 +110,36 @@ func (s *LoanContractQueryService) List(ctx context.Context, customerID string, 
 		}
 	}
 
+	snapshot, err := s.Reader.ContractSnapshot(ctx, customerID)
+	if err != nil {
+		return ContractListPage{}, err
+	}
+
+	if token != "" {
+		if after.Snapshot == "" {
+			return ContractListPage{}, ErrInvalidLoanContractQuery
+		}
+
+		if after.Snapshot != snapshot {
+			return ContractListPage{}, ErrLoanContractPageChanged
+		}
+	}
+
 	rows, hasMore, err := s.Reader.ListContractPage(ctx, customerID, limit, after.CreatedAt, after.ID)
 	if err != nil {
 		return ContractListPage{}, err
 	}
 	if len(rows) > limit {
 		return ContractListPage{}, ErrLoanContractNotReady
+	}
+
+	latestSnapshot, err := s.Reader.ContractSnapshot(ctx, customerID)
+	if err != nil {
+		return ContractListPage{}, err
+	}
+
+	if latestSnapshot != snapshot {
+		return ContractListPage{}, ErrLoanContractPageChanged
 	}
 
 	page := ContractListPage{Items: make([]ContractSummary, 0, len(rows)), EventualConsistency: true}
@@ -125,6 +152,7 @@ func (s *LoanContractQueryService) List(ctx context.Context, customerID string, 
 			CreatedAt: last.ApplicationCreatedAt,
 			ID:        last.ApplicationID,
 			Owner:     customerID,
+			Snapshot:  snapshot,
 		})
 		if err != nil {
 			return ContractListPage{}, err
@@ -139,8 +167,11 @@ func (s *LoanContractQueryService) Get(ctx context.Context, loanID, customerID s
 	if s == nil || s.Reader == nil || strings.TrimSpace(customerID) == "" {
 		return ContractDetail{}, ErrInvalidLoanContractQuery
 	}
-	if _, err := uuid.Parse(loanID); err != nil {
+
+	parsedID, err := uuid.Parse(loanID)
+	if err != nil {
 		return ContractDetail{}, ErrInvalidLoanContractQuery
 	}
-	return s.Reader.ReadContract(ctx, loanID, customerID)
+
+	return s.Reader.ReadContract(ctx, parsedID.String(), customerID)
 }

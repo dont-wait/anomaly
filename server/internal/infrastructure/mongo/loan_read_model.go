@@ -14,6 +14,33 @@ import (
 
 const loanCheckpointID = "loan-projection-all-v1"
 
+const loanRecoveryStateID = "loan-projection-recovery-v1"
+
+// LoanProjectionRebuilding reports whether an operator-initiated
+// rebuild is in progress.
+func (m *LoanReadModel) LoanProjectionRebuilding(
+	ctx context.Context,
+) (bool, error) {
+	var state struct {
+		Status string `bson:"status"`
+	}
+
+	err := m.db.Collection("loan_projection_state").
+		FindOne(ctx, bson.M{
+			"_id": loanRecoveryStateID,
+		}).Decode(&state)
+
+	if errors.Is(err, mongodrv.ErrNoDocuments) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	// Unknown states must fail closed.
+	return state.Status != "ready", nil
+}
+
 type LoanReadModel struct {
 	db *mongodrv.Database
 }
@@ -292,8 +319,20 @@ func (m *LoanReadModel) SaveCheckpoint(
 func (m *LoanReadModel) ResetAfterInvalidCheckpoint(
 	ctx context.Context,
 ) error {
+	_, err := m.db.Collection("loan_projection_state").UpdateOne(
+		ctx,
+		bson.M{"_id": loanRecoveryStateID},
+		bson.M{"$set": bson.M{
+			"status":     "rebuilding",
+			"updated_at": time.Now().UTC(),
+		}},
+		options.UpdateOne().SetUpsert(true),
+	)
+	if err != nil {
+		return err
+	}
 	// Xóa dữ liệu đọc cũ để xây dựng lại từ EventStoreDB.
-	_, err := m.db.Collection(
+	_, err = m.db.Collection(
 		"loan_applications_read",
 	).DeleteMany(ctx, bson.M{})
 	if err != nil {
@@ -428,4 +467,53 @@ func (m *LoanReadModel) listPage(
 	}
 
 	return items, hasMore, nil
+}
+
+// HasOpenLoanProjectionFailures prevents publishing a partially recovered read model.
+func (m *LoanReadModel) HasOpenLoanProjectionFailures(ctx context.Context) (bool, error) {
+	count, err := m.db.Collection("loan_projection_failures").CountDocuments(
+		ctx, bson.M{"status": "open"}, options.Count().SetLimit(1),
+	)
+	return count > 0, err
+}
+
+// MarkLoanProjectionReady must only be called after the operator
+// has verified that replay reached the expected EventStoreDB
+// position and the required projections are complete.
+func (m *LoanReadModel) MarkLoanProjectionReady(
+	ctx context.Context,
+) error {
+	hasFailures, err := m.HasOpenLoanProjectionFailures(ctx)
+	if err != nil {
+		return err
+	}
+	if hasFailures {
+		return errors.New("loan projection has unresolved failures")
+	}
+	checkpoint, exists, err := m.LoadCheckpoint(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists || checkpoint.EventID == "" {
+		return errors.New("loan projection has no verified checkpoint")
+	}
+	result, err := m.db.Collection("loan_projection_state").
+		UpdateOne(
+			ctx,
+			bson.M{
+				"_id":    loanRecoveryStateID,
+				"status": "rebuilding",
+			},
+			bson.M{"$set": bson.M{
+				"status":     "ready",
+				"updated_at": time.Now().UTC(),
+			}},
+		)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount != 1 {
+		return errors.New("loan projection is not marked rebuilding")
+	}
+	return nil
 }

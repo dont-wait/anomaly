@@ -7,7 +7,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/loanadapter"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
-	"github.com/dont-wait/anomaly/internal/infrastructure/otp"server/internal/presentation/http/handler/loan/loan_handler.go
+	"github.com/dont-wait/anomaly/internal/infrastructure/otp"
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	loanhttp "github.com/dont-wait/anomaly/internal/presentation/http/handler/loan"
 	"github.com/redis/go-redis/v9"

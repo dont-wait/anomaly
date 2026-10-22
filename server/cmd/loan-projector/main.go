@@ -94,6 +94,54 @@ func main() {
 		return
 	}
 
+	// Operator-only completion after replay reaches the EventStoreDB head.
+	// Pause writes and stop the regular projector before using this command.
+	if len(os.Args) == 2 && os.Args[1] == "--finalize-loan-recovery" {
+		if os.Getenv("LOAN_PROJECTION_READY_CONFIRM") != "I_VERIFIED_LOAN_REPLAY" {
+			log.Fatal().Msg("recovery finalization denied: explicit confirmation required")
+		}
+		rebuilding, err := read.LoanProjectionRebuilding(ctx)
+		if err != nil {
+			log.Fatal().Err(err).Msg("read loan recovery state")
+		}
+		if !rebuilding {
+			log.Fatal().Msg("loan projection is not rebuilding")
+		}
+		checkpoint, found, err := read.LoadCheckpoint(ctx)
+		if err != nil {
+			log.Fatal().Err(err).Msg("read replay checkpoint")
+		}
+		if !found || checkpoint.EventID == "" {
+			log.Fatal().Msg("no replay checkpoint to verify")
+		}
+		invalid, err := checkpointAheadOfStore(ctx, es, checkpoint)
+		if err != nil {
+			log.Fatal().Err(err).Msg("verify checkpoint")
+		}
+		if invalid {
+			log.Fatal().Msg("replay checkpoint is invalid")
+		}
+		head, err := latestEventStorePosition(ctx, es)
+		if err != nil {
+			log.Fatal().Err(err).Msg("read EventStoreDB head")
+		}
+		if head.Commit != checkpoint.Commit || head.Prepare != checkpoint.Prepare || head.EventID != checkpoint.EventID {
+			log.Fatal().Msg("replay has not reached current EventStoreDB head")
+		}
+		failures, err := read.HasOpenLoanProjectionFailures(ctx)
+		if err != nil {
+			log.Fatal().Err(err).Msg("check projection failures")
+		}
+		if failures {
+			log.Fatal().Msg("unresolved loan projection failures")
+		}
+		if err := read.MarkLoanProjectionReady(ctx); err != nil {
+			log.Fatal().Err(err).Msg("finalize loan recovery")
+		}
+		log.Info().Msg("loan read model verified and marked ready")
+		return
+	}
+
 	// Backfill Read Model tra no cho cac khoan vay
 	// da duoc projection tu truoc.
 	// Khong xoa checkpoint hoac du lieu thanh toan.
@@ -505,6 +553,31 @@ func checkpointAheadOfStore(
 		recorded.EventID.String() != checkpoint.EventID
 
 	return invalid, nil
+}
+
+// latestEventStorePosition reads the last event across all streams.
+func latestEventStorePosition(ctx context.Context, client *esdb.Client) (mongo.LoanCheckpoint, error) {
+	stream, err := client.ReadAll(ctx, esdb.ReadAllOptions{
+		Direction: esdb.Backwards,
+		From:      esdb.End{},
+	}, 1)
+	if err != nil {
+		return mongo.LoanCheckpoint{}, err
+	}
+	defer stream.Close()
+	event, err := stream.Recv()
+	if err != nil {
+		return mongo.LoanCheckpoint{}, err
+	}
+	recorded := event.OriginalEvent()
+	if recorded == nil {
+		return mongo.LoanCheckpoint{}, errors.New("EventStoreDB head has no event")
+	}
+	return mongo.LoanCheckpoint{
+		Commit:  recorded.Position.Commit,
+		Prepare: recorded.Position.Prepare,
+		EventID: recorded.EventID.String(),
+	}, nil
 }
 
 func backfillLoanContracts(
