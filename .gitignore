@@ -47,6 +47,9 @@ eggs/
 .eggs/
 lib/
 lib64/
+# `client/mobile/src/shared/lib` is application source, not a Python package.
+!client/mobile/src/shared/lib/
+!client/mobile/src/shared/lib/**
 parts/
 sdist/
 var/

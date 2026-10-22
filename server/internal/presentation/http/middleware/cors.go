@@ -16,7 +16,7 @@ func NewCORS(allowedOrigins []string) func(http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set(
 				"Access-Control-Allow-Headers",
-				"Content-Type, Authorization, Idempotency-Key",
+				"Content-Type, Authorization, Idempotency-Key, X-Device-ID, X-Platform",
 			)
 
 			if origin := r.Header.Get("Origin"); origin != "" {
