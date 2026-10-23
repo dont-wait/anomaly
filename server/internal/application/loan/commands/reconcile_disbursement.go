@@ -21,6 +21,9 @@ type ReconcileCreditedLoanCommand struct {
 type ReconcileCreditedLoanCommandHandler struct {
 	Repo     LoanDocumentRepository
 	Evidence LoanEvidenceReader
+	// Exclusive UTC cutoff for credits from the pre-offer deployment.
+	// Zero means no unconfirmed legacy credits may be finalized.
+	LegacyCreditCutoff time.Time
 }
 
 func (h *ReconcileCreditedLoanCommandHandler) Handle(
@@ -66,6 +69,15 @@ func (h *ReconcileCreditedLoanCommandHandler) Handle(
 
 	if a.Status != domain.ApplicationStatusApproved {
 		return domain.ErrInvalidApplicationStatus
+	}
+
+	legacy := a.Offer == nil && !h.LegacyCreditCutoff.IsZero() &&
+		cmd.CreditedAt.Before(h.LegacyCreditCutoff) &&
+		(a.DisbursementPreparedAt == nil || a.DisbursementPreparedAt.Before(h.LegacyCreditCutoff))
+	if !legacy && (a.Offer == nil || a.Offer.Status != domain.LoanOfferConfirmed || a.Offer.ConfirmedAt == nil || cmd.CreditedAt.Before(*a.Offer.ConfirmedAt)) {
+		// Keep credited-but-unconfirmed transactions visible for an operator;
+		// do not forge a contract confirmation or re-credit the bank account.
+		return domain.ErrLoanContractNotConfirmed
 	}
 
 	// Đọc lại chứng cứ thẩm định đã lưu.
@@ -117,10 +129,11 @@ func (h *ReconcileCreditedLoanCommandHandler) Handle(
 
 	preview := *a
 
-	if err := preview.MarkDisbursed(
-		cmd.CreditedAt,
-		rate,
-	); err != nil {
+	finalize := preview.MarkDisbursed
+	if legacy {
+		finalize = preview.RestoreLegacyDisbursement
+	}
+	if err := finalize(cmd.CreditedAt, rate); err != nil {
 		return err
 	}
 
