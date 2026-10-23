@@ -11,6 +11,9 @@
 - `cmd/relay`: persistent subscription từ EventStoreDB và Kafka producer
 
 `consumer-mock/` là Kafka consumer giả lập độc lập cho model pipeline, chạy ngoài `server/`.
+`server/ml-pipeline/` là publisher Python chạy riêng: consume trigger
+`TransferCreated` từ Kafka, đọc event gốc + history từ EventStoreDB, chạy bundle
+GATv2 local, publish risk response và training record.
 
 ## Layers
 
@@ -52,7 +55,7 @@
    hay loại bỏ field; chỉ thêm metadata và `model_features` ở cấp envelope.
 
 Feature state được lưu trong MongoDB bằng materialized view tăng dần, không query
-toàn bộ transaction history cho mỗi event. Model pipeline đọc `model_features`
+toàn bộ transaction history cho mỗi event. `consumer-mock` đọc `model_features`
 cùng account number, authentication và metadata thiết bị từ envelope. Client gửi
 `X-Device-ID` và `X-Platform`; giá trị thiếu được chuyển thành `UNKNOWN`.
 
@@ -60,6 +63,14 @@ Model trả risk decision về Kafka topic `anomaly.bank.risk-decisions.v1`. API
 lưu decision tạm thời theo transfer ID để confirm có thể trả `PENDING`, `ALLOW` hoặc
 `BLOCK`. Decision được gắn vào event terminal `TransferCompleted` hoặc
 `TransferFailed`; không tạo event risk riêng.
+=======
+Publisher GATv2 tại `server/ml-pipeline` không dùng payload Kafka để dựng feature
+vì relay đã pseudonymize account/device ID. Service này dùng `TransferCreated` trên
+Kafka làm trigger, đọc raw event + toàn bộ transfer history trước `occurredAt` từ
+EventStoreDB, rồi chạy `ReplayPredictor` trên bundle GATv2 đã export. Kết quả được
+publish vào `anomaly.bank.risk.v1`; training record được ghi JSONL và publish vào
+`anomaly.model.training.v1`. Record này chứa request gốc + response + timestamp,
+không phải label.
 
 Chi tiết contract và state lifecycle: [Model feature enrichment](MODEL_FEATURES.md).
 
