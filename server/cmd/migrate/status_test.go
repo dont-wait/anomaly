@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -52,7 +55,8 @@ func TestPrintStatus(t *testing.T) {
 }
 
 func TestListMigrations(t *testing.T) {
-	src, err := iofs.New(os.DirFS("../../migrations"), ".")
+	const dir = "../../migrations"
+	src, err := iofs.New(os.DirFS(dir), ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,23 +72,43 @@ func TestListMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(entries) != 11 ||
-		entries[0].name != "create_customers" ||
-		entries[3].name != "add_account_role" ||
-		entries[4].name != "create_transaction_collections" ||
-		entries[5].version != 6 ||
-		entries[5].name != "transaction_event_pipeline" ||
-		entries[6].version != 7 ||
-		entries[6].name != "create_recipient_contacts" ||
-		entries[7].version != 8 ||
-		entries[7].name != "create_receipt_outbox" ||
-		entries[8].version != 9 ||
-		entries[8].name != "allow_loan_disbursement_feed" ||
-		entries[9].version != 10 ||
-		entries[9].name != "real_kyc_evidence" {
-		entries[10].version != 11 ||
-    entries[10].name != "allow_loan_repayment" {
-		t.Fatalf("unexpected migrations: %+v", entries)
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []migrationEntry
+	for _, file := range files {
+		matches := migrationFilePattern.FindStringSubmatch(file.Name())
+		if matches == nil || matches[3] != "up" {
+			continue
+		}
+		version, err := strconv.ParseUint(matches[1], 10, 32)
+		if err != nil {
+			t.Fatalf("parse version in %q: %v", file.Name(), err)
+		}
+		want = append(want, migrationEntry{version: uint(version), name: matches[2]})
+	}
+	if len(want) == 0 {
+		t.Fatal("no migration files found")
+	}
+	if len(entries) != len(want) {
+		t.Fatalf("listMigrations() returned %d entries, found %d up files", len(entries), len(want))
+	}
+	for i := range want {
+		if entries[i] != want[i] {
+			t.Fatalf("entry %d = %+v, want %+v", i, entries[i], want[i])
+		}
+		if entries[i].version != uint(i+1) {
+			t.Fatalf("migration versions must be contiguous from 1: %+v", entries)
+		}
+	}
+	for _, entry := range entries {
+		base := fmt.Sprintf("%06d_%s", entry.version, entry.name)
+		for _, suffix := range []string{".up.json", ".down.json"} {
+			if _, err := os.Stat(filepath.Join(dir, base+suffix)); err != nil {
+				t.Errorf("missing migration file: %v", err)
+			}
+		}
 	}
 }
 

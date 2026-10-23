@@ -19,13 +19,34 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fatalf("usage: migrate <up|up-by-one|down|version|status>")
+	if len(os.Args) < 2 {
+		fatalf("usage: migrate <up|up-by-one|down|version|status|new> [name]")
 	}
-	switch os.Args[1] {
+	command := os.Args[1]
+	switch command {
 	case "up", "up-by-one", "down", "version", "status":
+		if len(os.Args) != 2 {
+			fatalf("usage: migrate %s", command)
+		}
+	case "new":
+		if len(os.Args) != 3 {
+			fatalf("usage: migrate new <name>")
+		}
 	default:
-		fatalf("unknown command %q", os.Args[1])
+		fatalf("unknown command %q", command)
+	}
+
+	migrationsPath, err := filepath.Abs("migrations")
+	if err != nil {
+		fatalf("resolve migrations directory: %v", err)
+	}
+	if command == "new" {
+		upPath, downPath, err := createMigration(migrationsPath, os.Args[2])
+		if err != nil {
+			fatalf("create migration: %v", err)
+		}
+		fmt.Printf("created %s\ncreated %s\n", upPath, downPath)
+		return
 	}
 
 	log := logger.NewLogger(zerolog.InfoLevel)
@@ -35,10 +56,6 @@ func main() {
 		fatalf("build MongoDB migration URL: %v", err)
 	}
 
-	migrationsPath, err := filepath.Abs("migrations")
-	if err != nil {
-		fatalf("resolve migrations directory: %v", err)
-	}
 	fmt.Printf("migrations=%s database=%s\n", migrationsPath, loader.LoadMongoConfig().MongoDBName)
 	src, err := iofs.New(os.DirFS(migrationsPath), ".")
 	if err != nil {
