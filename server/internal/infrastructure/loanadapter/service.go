@@ -262,7 +262,7 @@ func (v *DocumentVerifier) VerifyLoanDocument(
 	if err != nil {
 		return err
 	}
-	defer result.Body.Close()
+	defer func() { _ = result.Body.Close() }()
 
 	if result.ContentType != doc.MIMEType {
 		return fmt.Errorf(

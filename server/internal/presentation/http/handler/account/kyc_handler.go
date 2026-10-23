@@ -170,7 +170,7 @@ func readKYCUpload(form *multipart.Form, field string, maxBytes int64, imageFile
 	if err != nil {
 		return kycUpload{}, fmt.Errorf("open %s: %w", field, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
 	if err != nil {
 		return kycUpload{}, fmt.Errorf("read %s: %w", field, err)
