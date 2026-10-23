@@ -321,7 +321,17 @@ class StubVisionPipeline:
 
 def build_vision_pipeline(settings: Settings) -> VisionPipeline:
     backend = settings.vision_pipeline_backend.strip().lower()
-    stub_allowed = settings.allow_stub_vision_pipeline or settings.app_env == "test"
+    stub_allowed = settings.app_env == "test" or (
+        settings.app_env == "development" and settings.allow_stub_vision_pipeline
+    )
+
+    if backend == "real":
+        try:
+            from app.services.real_pipeline import RealVisionPipeline
+
+            return RealVisionPipeline(settings)
+        except Exception as exc:
+            raise VisionPipelineConfigurationError("Real vision backend is unavailable") from exc
 
     if backend == "stub":
         if not stub_allowed:

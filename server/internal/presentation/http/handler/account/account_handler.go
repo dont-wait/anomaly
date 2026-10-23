@@ -19,16 +19,27 @@ import (
 )
 
 type Handler struct {
-	logger     zerolog.Logger
-	register   *commands.RegisterAccountCommandHandler
-	verify     *commands.VerifyAccountCommandHandler
-	login      *queries.LoginQueryHandler
-	getByID    *queries.GetAccountByIDQueryHandler
-	getByEmail *queries.GetAccountByEmailQueryHandler
-	getAll     *queries.GetAllAccountsQueryHandler
-	tokens     queries.TokenService
-	kyc        KYCVerifier
-	media      MediaStore
+	logger          zerolog.Logger
+	register        *commands.RegisterAccountCommandHandler
+	verify          *commands.VerifyAccountCommandHandler
+	login           *queries.LoginQueryHandler
+	getByID         *queries.GetAccountByIDQueryHandler
+	getByEmail      *queries.GetAccountByEmailQueryHandler
+	getAll          *queries.GetAllAccountsQueryHandler
+	tokens          queries.TokenService
+	kyc             KYCVerifier
+	media           MediaStore
+	realtime        *kycinfra.RealtimeStore
+	realtimeOrigins map[string]bool
+}
+
+func (h *Handler) WithRealtime(store *kycinfra.RealtimeStore, origins []string) *Handler {
+	h.realtime = store
+	h.realtimeOrigins = make(map[string]bool, len(origins))
+	for _, origin := range origins {
+		h.realtimeOrigins[origin] = true
+	}
+	return h
 }
 
 type KYCVerifier interface {

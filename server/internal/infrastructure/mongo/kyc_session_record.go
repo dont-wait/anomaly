@@ -40,12 +40,14 @@ type kycMediaRecord struct {
 }
 
 type kycVerificationRecord struct {
-	OCRStatus           string           `bson:"ocr_status"`
-	LivenessStatus      string           `bson:"liveness_status"`
-	FaceMatchStatus     string           `bson:"face_match_status"`
-	FaceMatchScore      *bson.Decimal128 `bson:"face_match_score"`
-	Provider            *string          `bson:"provider"`
-	ProviderReferenceId *string          `bson:"provider_reference_id"`
+	OCRStatus           string                     `bson:"ocr_status"`
+	LivenessStatus      string                     `bson:"liveness_status"`
+	FaceMatchStatus     string                     `bson:"face_match_status"`
+	FaceMatchScore      *bson.Decimal128           `bson:"face_match_score"`
+	Provider            *string                    `bson:"provider"`
+	ProviderReferenceId *string                    `bson:"provider_reference_id"`
+	LivenessScore       float64                    `bson:"liveness_score,omitempty"`
+	Evidence            *accountdomain.KYCEvidence `bson:"evidence,omitempty"`
 }
 
 type kycFailureRecord struct {
@@ -156,6 +158,8 @@ func toKYCSessionRecord(session *accountdomain.KYCSession) (kycSessionRecord, er
 			FaceMatchScore:      score,
 			Provider:            optionalString(session.Verification.Provider),
 			ProviderReferenceId: optionalString(session.Verification.ProviderReferenceId),
+			LivenessScore:       session.Verification.LivenessScore,
+			Evidence:            session.Verification.Evidence,
 		},
 		Failure:     failure,
 		StartedAt:   session.StartedAt,
@@ -231,6 +235,8 @@ func fromKYCSessionRecord(record kycSessionRecord) *accountdomain.KYCSession {
 			FaceMatchScore:      decimalValue(record.Verification.FaceMatchScore),
 			Provider:            stringValue(record.Verification.Provider),
 			ProviderReferenceId: stringValue(record.Verification.ProviderReferenceId),
+			LivenessScore:       record.Verification.LivenessScore,
+			Evidence:            record.Verification.Evidence,
 		},
 		Failure:     failure,
 		StartedAt:   record.StartedAt,

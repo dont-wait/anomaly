@@ -26,6 +26,11 @@ func TestToKYCSessionRecordIncludesLivenessVideoMediaFields(t *testing.T) {
 			},
 		},
 	}
+	session.Verification = accountdomain.KYCVerification{
+		OCRStatus: accountdomain.VerificationStatusNotRun, LivenessStatus: accountdomain.VerificationStatusPassed, FaceMatchStatus: accountdomain.VerificationStatusPassed,
+		FaceMatchScore: "0.91", LivenessScore: 1, Provider: "anomaly-real-vision", ProviderReferenceId: "attempt",
+		Evidence: &accountdomain.KYCEvidence{RequestID: "attempt", ModelVersion: "weights-v1", CalibrationVersion: "calibration-v1", MatchingStatus: "passed", LivenessStatus: "passed", MatchedFrames: 8},
+	}
 
 	record, err := toKYCSessionRecord(session)
 	if err != nil {
@@ -51,6 +56,18 @@ func TestToKYCSessionRecordIncludesLivenessVideoMediaFields(t *testing.T) {
 
 	if got, ok := raw.Lookup("size_bytes").Int64OK(); !ok || got != 1234 {
 		t.Errorf("BSON field size_bytes = %d, %v; want 1234, true", got, ok)
+	}
+	encoded, err := bson.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded kycSessionRecord
+	if err := bson.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	restored := fromKYCSessionRecord(decoded)
+	if restored.Verification.FaceMatchScore != "0.91" || restored.Verification.LivenessScore != 1 || restored.Verification.Evidence == nil || restored.Verification.Evidence.ModelVersion != "weights-v1" || restored.Verification.OCRStatus != accountdomain.VerificationStatusNotRun {
+		t.Fatalf("lost inference evidence: %#v", restored.Verification)
 	}
 }
 

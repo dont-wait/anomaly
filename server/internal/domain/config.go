@@ -87,12 +87,29 @@ func (l *Loader) LoadAllConfig() *Config {
 }
 
 type KYCConfig struct {
-	ServiceURL string
+	ServiceURL            string
+	ServiceToken          string
+	MaxAttempts           int
+	AttemptWindow         time.Duration
+	AttemptTTL            time.Duration
+	MaxConcurrentAttempts int
+	StartsPerMinute       int
 }
 
 func (l *Loader) LoadKYCConfig() *KYCConfig {
 	l.logger().Info().Msg("Load KYC config")
-	return &KYCConfig{ServiceURL: l.LoadEnvOr("KYC_SERVICE_URL", "http://localhost:8090")}
+	positive := func(key string, fallback int) int {
+		value, err := strconv.Atoi(l.LoadEnvOr(key, strconv.Itoa(fallback)))
+		if err != nil || value < 1 {
+			return fallback
+		}
+		return value
+	}
+	return &KYCConfig{
+		ServiceURL: l.LoadEnvOr("KYC_SERVICE_URL", "http://localhost:8090"), ServiceToken: l.LoadEnvOr("KYC_SERVICE_TOKEN", ""),
+		MaxAttempts: positive("KYC_MAX_ATTEMPTS", 3), AttemptWindow: l.LoadEnvDuration("KYC_ATTEMPT_WINDOW", 24*time.Hour),
+		AttemptTTL: l.LoadEnvDuration("KYC_ATTEMPT_TTL", 2*time.Minute), MaxConcurrentAttempts: positive("KYC_MAX_CONCURRENT_ATTEMPTS", 8), StartsPerMinute: positive("KYC_STARTS_PER_MINUTE", 6),
+	}
 }
 
 type DocsConfig struct {

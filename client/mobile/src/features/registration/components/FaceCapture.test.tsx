@@ -7,6 +7,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { FaceCapture } from "./FaceCapture";
+import type { CaptureProgress, RealtimeCapture } from "../api/realtime";
+
 class Recorder {
   static isTypeSupported = () => true;
   state = "inactive";
@@ -28,7 +30,8 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
-it("records all four timed instructions then supplies a real File and closes the camera", async () => {
+
+function setup() {
   vi.useFakeTimers();
   const stop = vi.fn();
   const track = { stop, onended: null };
@@ -41,30 +44,87 @@ it("records all four timed instructions then supplies a real File and closes the
     },
   });
   vi.stubGlobal("MediaRecorder", Recorder);
+  let progress!: (value: CaptureProgress) => void;
+  const session: RealtimeCapture = {
+    attemptId: "attempt",
+    idempotencyKey: "key",
+    mimeTypes: ["video/webm"],
+    start: vi.fn().mockResolvedValue(undefined),
+    send: vi.fn(),
+    finish: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn(),
+  };
+  const prepare = vi.fn(async (callback) => {
+    progress = callback;
+    return session;
+  });
   const onComplete = vi.fn();
-  const { unmount } = render(<FaceCapture onComplete={onComplete} />);
+  const view = render(
+    <FaceCapture onComplete={onComplete} prepareCapture={prepare} />,
+  );
+  return {
+    stop,
+    session,
+    onComplete,
+    view,
+    progress: (step: number) =>
+      progress({
+        challengeStep: step,
+        challengePassed: step === 3,
+        faceState: "single",
+        qualityState: "passed",
+        matchingState: "collecting",
+      }),
+  };
+}
+
+it("uses server evidence instead of the timer and hands off the exact recording with its attempt", async () => {
+  const test = setup();
   await act(async () =>
     fireEvent.click(screen.getByRole("button", { name: "Mở camera" })),
   );
-  fireEvent.click(
-    screen.getByRole("button", { name: "Bắt đầu quay và xác thực" }),
+  await act(async () =>
+    fireEvent.click(
+      screen.getByRole("button", { name: "Bắt đầu quay và xác thực" }),
+    ),
   );
   act(() => vi.advanceTimersByTime(3000));
+  expect(screen.getByText("Nhìn thẳng vào camera")).toBeTruthy();
+  act(() => test.progress(1));
   expect(screen.getByText("Từ từ quay đầu sang trái")).toBeTruthy();
-  act(() => vi.advanceTimersByTime(3000));
+  act(() => test.progress(2));
   expect(screen.getByText("Từ từ quay đầu sang phải")).toBeTruthy();
-  act(() => vi.advanceTimersByTime(3000));
-  expect(screen.getByText("Chớp mắt và giữ yên")).toBeTruthy();
-  expect(onComplete).not.toHaveBeenCalled();
-  act(() => vi.advanceTimersByTime(3000));
-  expect(onComplete).toHaveBeenCalledOnce();
-  const file = onComplete.mock.calls[0][0];
-  expect(file).toBeInstanceOf(File);
-  expect(file.type).toBe("video/webm");
-  expect(file.size).toBeGreaterThan(0);
-  unmount();
-  expect(stop).toHaveBeenCalledOnce();
+  expect(test.onComplete).not.toHaveBeenCalled();
+  await act(async () => vi.advanceTimersByTime(9000));
+  expect(test.session.send).toHaveBeenCalledOnce();
+  expect(test.session.finish).toHaveBeenCalledOnce();
+  expect(test.onComplete).toHaveBeenCalledWith(expect.any(File), {
+    attemptId: "attempt",
+    idempotencyKey: "key",
+  });
+  expect(test.onComplete.mock.calls[0][0].type).toBe("video/webm");
+  expect(test.stop).toHaveBeenCalledOnce();
+  expect(test.session.dispose).toHaveBeenCalledWith(false);
 });
+
+it("does not submit an offline recording if no realtime feedback arrived while recording", async () => {
+  const test = setup();
+  await act(async () =>
+    fireEvent.click(screen.getByRole("button", { name: "Mở camera" })),
+  );
+  await act(async () =>
+    fireEvent.click(
+      screen.getByRole("button", { name: "Bắt đầu quay và xác thực" }),
+    ),
+  );
+  await act(async () => vi.advanceTimersByTime(12000));
+  expect(test.onComplete).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert").textContent).toContain(
+    "Chưa nhận được phản hồi trực tiếp",
+  );
+  expect(test.session.dispose).toHaveBeenCalled();
+});
+
 it("stops a camera permission request that resolves after leaving the page", async () => {
   let resolve!: (stream: unknown) => void;
   const stop = vi.fn();
@@ -81,9 +141,7 @@ it("stops a camera permission request that resolves after leaving the page", asy
   const { unmount } = render(<FaceCapture onComplete={onComplete} />);
   fireEvent.click(screen.getByRole("button", { name: "Mở camera" }));
   unmount();
-  await act(async () => {
-    resolve({ getTracks: () => [{ stop }] });
-  });
+  await act(async () => resolve({ getTracks: () => [{ stop }] }));
   expect(stop).toHaveBeenCalledOnce();
   expect(onComplete).not.toHaveBeenCalled();
 });
