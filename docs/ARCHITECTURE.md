@@ -42,12 +42,12 @@
 ### Kafka relay
 
 1. `cmd/relay` tạo persistent subscription `kafka-publisher` trên stream `banking`
-2. Đọc event từ EventStoreDB và tạo envelope versioned
-3. Với `TransferCompleted`, đọc feature state theo source account và enrich
-   envelope bằng các feature model
+2. Đọc event từ EventStoreDB và chỉ giữ `TransferCompleted` để publish
+3. Đọc feature state theo source account và enrich envelope bằng các feature model
 4. Publish envelope vào Kafka topic `anomaly.bank.events.v1`
 5. Cập nhật feature state sau khi Kafka xác nhận thành công rồi ACK EventStoreDB
-6. NACK retry khi Kafka hoặc feature state lỗi; payload loại bỏ các field nhạy
+6. ACK các event khác mà không publish; NACK retry khi Kafka hoặc feature state lỗi;
+   payload loại bỏ các field nhạy
    cảm như password
 
 Feature state được lưu trong MongoDB bằng materialized view tăng dần, không query

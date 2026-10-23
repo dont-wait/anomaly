@@ -332,6 +332,25 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 
 		resolved := message.EventAppeared.Event
 		recorded := resolved.OriginalEvent()
+		if recorded.EventType != journal.Completed {
+			// Keep feature progress aligned with the EventStoreDB stream even
+			// though only completed transfers are published to Kafka.
+			if err := featureStore.SaveProgress(ctx, recorded.EventID.String(), recorded.EventNumber); err != nil {
+				if nackErr := subscription.Nack("model feature progress update failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
+					return nackErr
+				}
+				return err
+			}
+			if err := subscription.Ack(resolved); err != nil {
+				return err
+			}
+			log.Debug().
+				Str("event_id", recorded.EventID.String()).
+				Str("event_type", recorded.EventType).
+				Uint64("stream_revision", recorded.EventNumber).
+				Msg("event skipped; not published to kafka")
+			continue
+		}
 		envelope, pendingFeatureUpdate, err := buildEnrichedEnvelope(ctx, recorded, featureStore, redactionKey)
 		if err != nil {
 			action := esdb.NackActionPark
