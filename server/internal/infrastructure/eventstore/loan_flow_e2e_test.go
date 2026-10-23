@@ -28,6 +28,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/loanadapter"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
+	"github.com/dont-wait/anomaly/internal/infrastructure/otp"
 	"github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	presentation "github.com/dont-wait/anomaly/internal/presentation/http"
 	loanhttp "github.com/dont-wait/anomaly/internal/presentation/http/handler/loan"
@@ -44,6 +45,7 @@ import (
 // Chạy projection đồng bộ sau command để kiểm tra read model mà không phụ thuộc
 // lịch chạy worker; bài test này không kiểm tra vòng lặp subscription/checkpoint.
 func TestPersonalLoanHTTPE2E(t *testing.T) {
+	t.Setenv("LOAN_OFFER_WRITES_ENABLED", "true")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -77,6 +79,18 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 	repo := eventstore.NewLoanRepository(es)
 	read := mongorepo.NewLoanReadModel(mongoClient, db.Name())
 	if err := read.EnsureIndexes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Collection("loan_packages").InsertOne(ctx, bson.M{
+		"package_code": "PERSONAL_UNSECURED_SALARY", "name": "Vay tín chấp theo lương",
+		"status": "ACTIVE", "min_amount": int64(1_000_000), "max_amount": int64(500_000_000),
+		"term_options": bson.A{bson.M{"months": 6}, bson.M{"months": 12}, bson.M{"months": 24}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := mongorepo.NewLoanPackageCatalog(mongoClient, db.Name())
+	if err := catalog.EnsureIndexes(ctx); err != nil {
 		t.Fatal(err)
 	}
 	evidence := loanadapter.NewEvidenceStore(mongoClient, db.Name())
@@ -124,6 +138,8 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 	// Dựng lại handler/repository khi retry để không dựa vào cache của request cũ.
 	serve := func() (*httptest.Server, *loanhttp.Handler) {
 		h := composition.NewLoanHandler(eventstore.NewBankRepository(es, reads), eventstore.NewLoanRepository(es), read, evidence, media)
+		composition.AttachLoanProducts(h, catalog)
+		h.ContractOTP = demoLoanContractOTP{}
 		tx := transactionhttp.NewHandler(zerolog.Nop(), bank, nil, nil, nil)
 		accounts := composition.NewAccountHandler(bank, tokens, zerolog.Nop())
 		srv := httptest.NewServer(presentation.NewRouter(http.NewServeMux(), accounts, nil, nil, tx, tokens, false, h))
@@ -239,6 +255,24 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 					}
 				}
 				return
+			}
+
+			// New credit must fail closed until owner confirms offer via OTP.
+			api.json(t, "POST", base+"/disburse", admin, nil, nil, 422)
+			api.json(t, "POST", base+"/offer/issue", owner, nil, nil, 403)
+			issued := decodeLoanE2E[loan.LoanOffer](t, api.json(t, "POST", base+"/offer/issue", admin, nil, nil, 200))
+			if issued.Status != loan.LoanOfferIssued || issued.AnnualRateBps <= 0 {
+				t.Fatal("offer not issued")
+			}
+			api.json(t, "GET", base+"/offer", outsider, nil, nil, 404)
+			api.json(t, "POST", base+"/offer/accept", outsider, nil, nil, 404)
+			api.json(t, "POST", base+"/offer/accept", owner, nil, nil, 200)
+			api.json(t, "POST", base+"/disburse", admin, nil, nil, 422)
+			api.json(t, "POST", base+"/contract/otp", owner, nil, nil, 200)
+			api.json(t, "POST", base+"/contract/confirm", owner, map[string]any{"otp": "bad", "acceptTerms": true}, nil, 400)
+			confirmed := decodeLoanE2E[loan.LoanOffer](t, api.json(t, "POST", base+"/contract/confirm", owner, map[string]any{"otp": "123456", "acceptTerms": true}, nil, 200))
+			if confirmed.Status != loan.LoanOfferConfirmed || confirmed.ConfirmedAt == nil {
+				t.Fatal("offer not confirmed")
 			}
 
 			if tt.reconcile {
@@ -364,6 +398,119 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 			if !found {
 				t.Fatal("disbursed application missing from loan read model API")
 			}
+			// Loan Contract API must read the projected agreement and never
+			// expose contracts owned by another authenticated customer.
+			contracts := decodeLoanE2E[struct {
+				Items []struct {
+					LoanID    string `json:"loanId"`
+					Principal int64  `json:"principal"`
+				} `json:"items"`
+			}](t, api.json(t, "GET", "/api/loans/contracts", owner, nil, nil, 200))
+			contractFound := false
+			for _, item := range contracts.Items {
+				if item.LoanID == a.Id && item.Principal == paid.RequestedAmount {
+					contractFound = true
+				}
+			}
+			if !contractFound {
+				t.Fatal("projected contract missing from customer list")
+			}
+
+			// The outsider must not see any of the owner's contracts.
+			foreignContracts := decodeLoanE2E[struct {
+				Items []struct {
+					LoanID string `json:"loanId"`
+				} `json:"items"`
+			}](t, api.json(
+				t,
+				"GET",
+				"/api/loans/contracts",
+				outsider,
+				nil,
+				nil,
+				200,
+			))
+
+			if len(foreignContracts.Items) != 0 {
+				t.Fatalf(
+					"foreign customer can see owner's contracts: %+v",
+					foreignContracts.Items,
+				)
+			}
+
+			contract := decodeLoanE2E[struct {
+				LoanID            string `json:"loanId"`
+				Status            string `json:"status"`
+				RepaymentSchedule []struct {
+					InstallmentNo int    `json:"installmentNo"`
+					DueDate       string `json:"dueDate"`
+					PrincipalDue  int64  `json:"principalDue"`
+					InterestDue   int64  `json:"interestDue"`
+					TotalDue      int64  `json:"totalDue"`
+					Status        string `json:"status"`
+				} `json:"repaymentSchedule"`
+			}](t, api.json(
+				t,
+				"GET",
+				"/api/loans/contracts/detail/"+a.Id,
+				owner,
+				nil,
+				nil,
+				200,
+			))
+
+			if contract.LoanID != a.Id ||
+				contract.Status != "active" ||
+				len(contract.RepaymentSchedule) != len(paid.RepaymentSchedule) {
+				t.Fatalf("invalid contract detail: %+v", contract)
+			}
+
+			for i, actual := range contract.RepaymentSchedule {
+				expected := paid.RepaymentSchedule[i]
+
+				if actual.InstallmentNo != expected.InstallmentNo {
+					t.Fatalf(
+						"installment %d: number=%d, want=%d",
+						i+1,
+						actual.InstallmentNo,
+						expected.InstallmentNo,
+					)
+				}
+
+				if actual.DueDate != expected.DueDate.UTC().Format("2006-01-02") {
+					t.Fatalf(
+						"installment %d: due date=%s, want=%s",
+						i+1,
+						actual.DueDate,
+						expected.DueDate.UTC().Format("2006-01-02"),
+					)
+				}
+
+				if actual.PrincipalDue != expected.PrincipalAmount ||
+					actual.InterestDue != expected.InterestAmount ||
+					actual.TotalDue != expected.TotalPayment {
+					t.Fatalf(
+						"installment %d: amount mismatch; actual=%+v expected=%+v",
+						i+1,
+						actual,
+						expected,
+					)
+				}
+
+				if actual.Status != "upcoming" && actual.Status != "due" {
+					t.Fatalf(
+						"installment %d: unexpected status=%s",
+						i+1,
+						actual.Status,
+					)
+				}
+			}
+
+			if contract.LoanID != a.Id || contract.Status != "active" || len(contract.RepaymentSchedule) != 12 {
+				t.Fatalf("invalid contract detail: %+v", contract)
+			}
+			api.json(t, "GET", "/api/loans/contracts/detail/"+a.Id, outsider, nil, nil, 404)
+			api.json(t, "GET", "/api/loans/contracts/detail/"+a.Id, "", nil, nil, 401)
 			// Xóa object thật để kiểm tra sentinel RustFS qua HTTP (404, không 503).
 			if err := media.Delete(ctx, documents[0].StorageKey); err != nil {
 				t.Fatal(err)
@@ -496,3 +643,18 @@ func decodeLoanE2E[T any](t *testing.T, body []byte) T {
 	}
 	return value
 }
+
+// Challenge used only by the isolated E2E HTTP server; production uses Redis+SMTP.
+type demoLoanContractOTP struct{}
+
+func (demoLoanContractOTP) Issue(_ context.Context, _, _ string) (otp.TransferOTPInfo, error) {
+	return otp.TransferOTPInfo{Channel: "email", ExpiresAt: time.Now().Add(time.Minute)}, nil
+}
+
+func (demoLoanContractOTP) Verify(_ context.Context, _, code string) (int, error) {
+	if code != "123456" {
+		return 2, otp.ErrTransferOTPInvalid
+	}
+	return 3, nil
+}
+func (demoLoanContractOTP) Consume(_ context.Context, _ string) error { return nil }

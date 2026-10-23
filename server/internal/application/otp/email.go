@@ -33,8 +33,9 @@ type otpEmailData struct {
 type OTPEmailPurpose string
 
 const (
-	OTPEmailAccount  OTPEmailPurpose = "account"
-	OTPEmailTransfer OTPEmailPurpose = "transfer"
+	OTPEmailAccount      OTPEmailPurpose = "account"
+	OTPEmailTransfer     OTPEmailPurpose = "transfer"
+	OTPEmailLoanContract OTPEmailPurpose = "loan_contract"
 )
 
 type otpEmailCopy struct {
@@ -65,6 +66,12 @@ func otpEmailCopyFor(purpose OTPEmailPurpose) (otpEmailCopy, error) {
 			introVI:  "Đây là mã OTP để xác nhận giao dịch chuyển tiền của bạn:",
 			titleEN:  "Confirm your transfer",
 			introEN:  "Your one-time password (OTP) to confirm this transfer is:",
+		}, nil
+	case OTPEmailLoanContract:
+		return otpEmailCopy{
+			headerVI: "Xác nhận hợp đồng vay", headerEN: "Loan contract confirmation",
+			titleVI: "Xác nhận hợp đồng vay AnomalyBank", introVI: "Mã OTP xác nhận hợp đồng vay của bạn là:",
+			titleEN: "Confirm your loan contract", introEN: "Your loan-contract confirmation code is:",
 		}, nil
 	default:
 		return otpEmailCopy{}, fmt.Errorf("unsupported OTP email purpose %q", purpose)

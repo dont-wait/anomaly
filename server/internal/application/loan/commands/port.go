@@ -139,3 +139,9 @@ type LoanManualDecisionAuthorizer interface {
 		actorID string,
 	) error
 }
+
+// LoanPackagePolicyValidator checks the currently active, authoritative
+// package before the first LoanApplicationCreated event is written.
+type LoanPackagePolicyValidator interface {
+	ValidateLoanPackage(ctx context.Context, packageCode string, amount int64, termMonths int) error
+}
