@@ -1,6 +1,8 @@
 param(
-    [ValidateSet("up", "up-by-one", "down", "version", "status")]
-    [string]$Command = "up"
+    [ValidateSet("up", "up-by-one", "down", "version", "status", "new")]
+    [string]$Command = "up",
+    [Parameter(Position = 1)]
+    [string]$Name
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,7 +11,11 @@ $serverRoot = Split-Path -Parent $scriptsRoot
 
 Push-Location $serverRoot
 try {
-    & go run ./cmd/migrate $Command
+    $arguments = @($Command)
+    if ($Name) {
+        $arguments += $Name
+    }
+    & go run ./cmd/migrate @arguments
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }

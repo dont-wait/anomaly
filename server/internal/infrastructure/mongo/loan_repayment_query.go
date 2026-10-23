@@ -266,7 +266,7 @@ func (r *LoanRepaymentQuery) ReadPayments(
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	result := make([]loanqueries.Payment, 0)
 

@@ -64,7 +64,7 @@ func (c *Client) VerifyFace(ctx context.Context, front, video Media, challengeTy
 	if err != nil {
 		return nil, fmt.Errorf("call KYC service: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("KYC service returned status %d", resp.StatusCode)
 	}

@@ -221,7 +221,7 @@ func (m *LoanReadModel) list(
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	out := make([]*loan.Application, 0)
 
@@ -440,7 +440,7 @@ func (m *LoanReadModel) listPage(
 	if err != nil {
 		return nil, false, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	items := make([]*loan.Application, 0, limit)
 	hasMore := false

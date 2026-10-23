@@ -24,6 +24,9 @@ const recipient = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
 
+const isRecipientContactsUrl = (input: RequestInfo | URL) =>
+  String(input).split("?")[0].endsWith("/api/contacts/recipients");
+
 const otpInfo = (
   resendAvailableAt = new Date(Date.now() + 30_000).toISOString(),
 ) => ({
@@ -149,7 +152,7 @@ it("loads recent recipients and looks up only ANOMALY accounts with auth", async
 it("loads contacts only when opened and reuses the cached list", async () => {
   const fetchMock = renderFlow((input, init) => {
     if (
-      String(input).endsWith("/api/contacts/recipients") &&
+      isRecipientContactsUrl(input) &&
       (!init?.method || init.method === "GET")
     ) {
       return Promise.resolve(json({ items: [recipient] }));
@@ -159,8 +162,7 @@ it("loads contacts only when opened and reuses the cached list", async () => {
   const contactGets = () =>
     fetchMock.mock.calls.filter(
       ([url, init]) =>
-        String(url).endsWith("/api/contacts/recipients") &&
-        (!init?.method || init.method === "GET"),
+        isRecipientContactsUrl(url) && (!init?.method || init.method === "GET"),
     );
 
   expect(contactGets()).toHaveLength(0);
@@ -191,7 +193,7 @@ it("loads contacts only when opened and reuses the cached list", async () => {
 it("does not present a failed contacts load as an empty address book", async () => {
   const fetchMock = renderFlow((input, init) => {
     if (
-      String(input).endsWith("/api/contacts/recipients") &&
+      isRecipientContactsUrl(input) &&
       (!init?.method || init.method === "GET")
     ) {
       return Promise.reject(new Error("contacts unavailable"));
@@ -218,27 +220,27 @@ it("persists a recipient contact through the contacts API", async () => {
   const fetchMock = renderFlow((input, init) => {
     const url = String(input);
     if (
-      url.endsWith("/api/contacts/recipients") &&
+      isRecipientContactsUrl(url) &&
       (!init?.method || init.method === "GET")
     ) {
       return Promise.resolve(json({ items: saved ? [recipient] : [] }));
     }
-    if (url.endsWith("/api/contacts/recipients") && init?.method === "POST") {
+    if (isRecipientContactsUrl(url) && init?.method === "POST") {
       saved = true;
     }
     return defaultFetch(input, init);
   });
   await enterRecipient();
 
-  fireEvent.click(screen.getByRole("button", { name: "Lưu vào danh bạ" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Lưu vào danh bạ" }),
+  );
   await waitFor(() =>
     expect(screen.getByText("Đã có trong danh bạ")).toBeTruthy(),
   );
 
   const saveCall = fetchMock.mock.calls.find(
-    ([url, init]) =>
-      String(url).endsWith("/api/contacts/recipients") &&
-      init?.method === "POST",
+    ([url, init]) => isRecipientContactsUrl(url) && init?.method === "POST",
   );
   expect(saveCall?.[1]).toMatchObject({
     headers: expect.objectContaining({ Authorization: `Bearer ${token}` }),
@@ -247,6 +249,66 @@ it("persists a recipient contact through the contacts API", async () => {
       bankCode: "ANOMALY",
     }),
   });
+});
+
+it("recognizes a saved contact when selecting a recent recipient", async () => {
+  const fetchMock = renderFlow((input, init) => {
+    const url = String(input);
+    if (url.includes("/api/transfers/recent-recipients")) {
+      return Promise.resolve(
+        json({
+          items: [{ ...recipient, lastTransferredAt: "2026-10-07T05:01:00Z" }],
+        }),
+      );
+    }
+    if (
+      isRecipientContactsUrl(url) &&
+      (!init?.method || init.method === "GET")
+    ) {
+      return Promise.resolve(json({ items: [recipient] }));
+    }
+    return defaultFetch(input, init);
+  });
+
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: `Chuyển đến ${recipient.name}, AnomalyBank`,
+    }),
+  );
+
+  expect(await screen.findByText("Đã có trong danh bạ")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Lưu vào danh bạ" })).toBeNull();
+  expect(
+    fetchMock.mock.calls.some(
+      ([url, init]) =>
+        isRecipientContactsUrl(url) &&
+        (!init?.method || init.method === "GET") &&
+        String(url).includes(`q=${recipient.accountNo}`),
+    ),
+  ).toBe(true);
+});
+
+it("shows a retryable error and keeps saving available when contact check fails", async () => {
+  renderFlow((input, init) => {
+    if (
+      isRecipientContactsUrl(input) &&
+      (!init?.method || init.method === "GET") &&
+      String(input).includes("q=")
+    ) {
+      return Promise.reject(new Error("contacts unavailable"));
+    }
+    return defaultFetch(input, init);
+  });
+
+  await enterRecipient();
+
+  expect(
+    await screen.findByText(
+      "Không kiểm tra được danh bạ người nhận. Vui lòng thử lại.",
+    ),
+  ).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Lưu vào danh bạ" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Kiểm tra lại" })).toBeTruthy();
 });
 
 it("creates the intent before opening OTP and confirms into a local transaction record", async () => {

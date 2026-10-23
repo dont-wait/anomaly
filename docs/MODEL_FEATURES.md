@@ -152,10 +152,10 @@ thể bỏ field hoặc để `null`.
 7. Sau khi Kafka xác nhận, cập nhật rolling state và receiver/device history.
 8. ACK event trong EventStoreDB.
 
-### Event không phải transfer
+### Event không phải `TransferCompleted`
 
-Các event khác vẫn được publish vào cùng topic với payload gốc. Relay không cần
-tính model feature cho những event này.
+Các event khác không được publish vào Kafka. Relay chỉ cập nhật progress và ACK
+EventStoreDB để tiếp tục xử lý stream.
 
 ## At-least-once và idempotency
 

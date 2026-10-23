@@ -82,6 +82,7 @@ func snapshotLoanOffer(t *testing.T, a *Application) []byte {
 	}
 	return b
 }
+
 func assertLoanOfferUnchanged(t *testing.T, a *Application, before []byte) {
 	t.Helper()
 	after := snapshotLoanOffer(t, a)

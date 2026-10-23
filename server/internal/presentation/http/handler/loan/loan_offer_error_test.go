@@ -25,6 +25,7 @@ func TestServiceErrorMapsTypedGRPCUnavailable(t *testing.T) {
 		}
 	}
 }
+
 func TestOfferMutationRolloutGate(t *testing.T) {
 	t.Setenv("LOAN_OFFER_WRITES_ENABLED", "")
 	if offerWritesEnabled() {

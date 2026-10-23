@@ -10,7 +10,7 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: help start-app start-worker start-relay start-api seed add-money migrate migrate-up migrate-up-one migrate-version migrate-status migrate-down test test-api test-account-e2e
+.PHONY: help start-app start-worker start-relay start-api seed add-money migrate migrate-up migrate-up-one migrate-new migrate-version migrate-status migrate-down test test-api test-account-e2e
 
 start-app:
 	docker compose --profile app up --build
@@ -34,6 +34,7 @@ help:
 	@echo "  migrate           Alias for migrate-up"
 	@echo "  migrate-up        Apply all pending migrations"
 	@echo "  migrate-up-one    Apply the next pending migration"
+	@echo "  migrate-new       Create the next up/down migration files: make migrate-new NAME=<name>"
 	@echo "  migrate-version   Show migration version and dirty state"
 	@echo "  migrate-status    List applied, pending, or dirty migrations"
 	@echo "  migrate-down      Roll back the latest migration"
@@ -48,6 +49,12 @@ migrate-up:
 
 migrate-up-one:
 	$(MIGRATE_CMD) up-by-one
+
+# Pass NAME through the environment so the shell never re-parses it.
+migrate-new: export MIGRATION_NAME := $(NAME)
+migrate-new:
+	$(if $(strip $(MIGRATION_NAME)),,$(error Usage: make migrate-new NAME=<name>))
+	$(MIGRATE_CMD) new "$$MIGRATION_NAME"
 
 migrate-version:
 	$(MIGRATE_CMD) version

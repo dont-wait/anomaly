@@ -245,10 +245,16 @@ backend đang ghi, gồm nested object, nullable field, enum và kiểu tham chi
 ```bash
 make migrate          # apply all pending migrations
 make migrate-up-one   # apply the next pending migration
+make migrate-new NAME=add_loan_repayment  # create the next up/down files
 make migrate-version  # show current version and dirty state
 make migrate-status   # list migration states and resolved directory
 make migrate-down     # roll back the latest migration
 ```
+
+`migrate-new` scans `migrations/` and creates the next numbered pair, for
+example `000011_add_loan_repayment.up.json` and `.down.json`. Both files start
+as empty JSON arrays (`[]`), so fill in the commands before applying them.
+Existing files are never overwritten.
 
 Trên Windows có thể chạy native bằng PowerShell hoặc Command Prompt, không cần
 cài `make`:
@@ -256,6 +262,7 @@ cài `make`:
 ```powershell
 .\scripts\windows\migrate.ps1 up
 .\scripts\windows\migrate.ps1 up-by-one
+.\scripts\windows\migrate.ps1 new add_loan_repayment
 .\scripts\windows\migrate.ps1 version
 .\scripts\windows\migrate.ps1 down
 ```
@@ -263,6 +270,7 @@ cài `make`:
 ```bat
 scripts\windows\migrate.cmd up
 scripts\windows\migrate.cmd up-by-one
+scripts\windows\migrate.cmd new add_loan_repayment
 scripts\windows\migrate.cmd version
 scripts\windows\migrate.cmd down
 ```
