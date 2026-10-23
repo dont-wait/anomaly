@@ -54,6 +54,20 @@ func main() {
 
 func logMessage(log *slog.Logger) messageHandler {
 	return func(_ context.Context, message kafkago.Message) error {
+		var metadata struct {
+			EventID       string `json:"event_id"`
+			EventType     string `json:"event_type"`
+			SchemaVersion int    `json:"schema_version"`
+		}
+		if err := json.Unmarshal(message.Value, &metadata); err != nil {
+			return fmt.Errorf("decode kafka event metadata: %w", err)
+		}
+		if metadata.EventType != completedEventType {
+			// Ignore historical or manually-produced events that predate the
+			// relay filter. Only completed transfers are model inputs.
+			return nil
+		}
+
 		if input, ok, err := selectModelInput(message.Value); err != nil {
 			return err
 		} else if ok {
@@ -74,14 +88,6 @@ func logMessage(log *slog.Logger) messageHandler {
 			return nil
 		}
 
-		var metadata struct {
-			EventID       string `json:"event_id"`
-			EventType     string `json:"event_type"`
-			SchemaVersion int    `json:"schema_version"`
-		}
-		if err := json.Unmarshal(message.Value, &metadata); err != nil {
-			return fmt.Errorf("decode kafka event metadata: %w", err)
-		}
 		log.Info("kafka event received",
 			"topic", message.Topic,
 			"partition", message.Partition,

@@ -36,8 +36,11 @@ docker compose exec kafka \
 Nhập message, ví dụ:
 
 ```json
-{"event_id":"test-1","event_type":"TestEvent","stream":"banking","stream_revision":1,"schema_version":1,"payload":{"message":"hello"}}
+{"event_id":"test-1","event_type":"TransferCompleted","stream":"banking","stream_revision":1,"schema_version":2,"payload":{"transfer":{"ID":"TX001","Type":"transfer","Source":{"AccountNo":"ACC001"},"Destination":{"AccountNo":"ACC002"},"Amount":50000000,"Channel":"mobile","CreatedAt":"2026-10-17T00:50:00Z","DeviceID":"DEVICE01","Platform":"android","Authentication":{"Method":"email_otp","Verified":true}}},"model_features":{"avg_amount_7d":12500000,"tx_count_1h":3,"tx_count_24h":12,"last_tx_at":"2026-10-16T00:50:00Z","new_receiver":true,"new_device":false}}
 ```
+
+Consumer chỉ xử lý `TransferCompleted`. Các event khác, bao gồm cả những
+message cũ còn tồn tại trong topic, sẽ được ACK và bỏ qua.
 
 Consumer commit offset sau khi log thành công. EventStoreDB relay thuộc
 `server/cmd/relay`, không thuộc service consumer này.
