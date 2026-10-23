@@ -1,4 +1,6 @@
 import {
+  useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -105,7 +107,7 @@ export function TransferFlow({
     );
   const amountSuggestions = suggestAmounts(flow.amount, flow.source.balance);
 
-  const loadContacts = (force = false) => {
+  const loadContacts = useCallback((force = false) => {
     if (
       !force &&
       contactsState.sessionKey === contactsSessionKey &&
@@ -174,7 +176,20 @@ export function TransferFlow({
           error: "Không tải được danh bạ người nhận.",
         }));
       });
-  };
+  }, [
+    contactsSessionKey,
+    contactsState.loaded,
+    contactsState.sessionKey,
+    onUnauthorized,
+    token,
+  ]);
+
+  useEffect(() => {
+    if (flow.recipient) loadContacts();
+  }, [flow.recipient?.accountNo, flow.recipient?.bank.code, loadContacts]);
+
+  const contactsReady =
+    contactsState.sessionKey === contactsSessionKey && contactsState.loaded;
 
   const retryContacts = () => {
     loadContacts(true);
@@ -425,20 +440,26 @@ export function TransferFlow({
               </div>
 
               {lookup.status === "found" &&
-                (isSaved ? (
-                  <p className="mt-2 text-xs text-on-surface-variant">
-                    Đã có trong danh bạ
-                  </p>
+                (contactsReady ? (
+                  isSaved ? (
+                    <p className="mt-2 text-xs text-on-surface-variant">
+                      Đã có trong danh bạ
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={saveContact}
+                      disabled={contactSaving}
+                      className="mt-2 -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-semibold text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none disabled:opacity-50"
+                    >
+                      <BookmarkPlusIcon aria-hidden="true" className="h-4 w-4" />
+                      {contactSaving ? "Đang lưu..." : "Lưu vào danh bạ"}
+                    </button>
+                  )
                 ) : (
-                  <button
-                    type="button"
-                    onClick={saveContact}
-                    disabled={contactSaving}
-                    className="mt-2 -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-semibold text-secondary-strong transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none disabled:opacity-50"
-                  >
-                    <BookmarkPlusIcon aria-hidden="true" className="h-4 w-4" />
-                    {contactSaving ? "Đang lưu..." : "Lưu vào danh bạ"}
-                  </button>
+                  <p className="mt-2 text-xs text-on-surface-variant">
+                    Đang kiểm tra danh bạ...
+                  </p>
                 ))}
               {contactsError && (
                 <p role="alert" className="mt-2 text-sm font-medium text-error">
