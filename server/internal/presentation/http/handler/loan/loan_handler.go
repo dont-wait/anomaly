@@ -239,6 +239,11 @@ func RegisterRoutes(
 			op.Response = domain.VerifiedEvidence{}
 			op.Description = "Admin verifies evidence in simulation"
 
+		case "decidePersonalLoan":
+			op.Request = struct {
+				Decision domain.ApplicationStatus `json:"decision"`
+				Reason   string                   `json:"reason"`
+			}{}
 		case "assessPersonalLoan":
 			op.Description = "Requires all evidence verification flags to be true. Incomplete evidence returns 422 without recording an assessment; complete evidence via the evidence endpoint before retrying."
 
