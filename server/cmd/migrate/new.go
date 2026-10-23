@@ -3,11 +3,22 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+)
+
+const (
+	// The lock file does not match migrationFilePattern, so the migration
+	// source and the migration tests both ignore it.
+	migrationLockName    = ".migrate-new.lock"
+	migrationLockWait    = 5 * time.Second
+	migrationLockRetry   = 50 * time.Millisecond
+	migrationFileContent = "[]\n"
 )
 
 var (
@@ -22,6 +33,17 @@ func createMigration(dir, name string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	if info, err := os.Stat(dir); err != nil {
+		return "", "", fmt.Errorf("read migrations directory: %w", err)
+	} else if !info.IsDir() {
+		return "", "", fmt.Errorf("migrations path %q is not a directory", dir)
+	}
+	release, err := lockMigrations(dir)
+	if err != nil {
+		return "", "", err
+	}
+	defer release()
+
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", "", fmt.Errorf("read migrations directory: %w", err)
@@ -46,24 +68,69 @@ func createMigration(dir, name string) (string, string, error) {
 
 	version := maxVersion + 1
 	base := fmt.Sprintf("%06d_%s", version, slug)
-	upName := base + ".up.json"
-	downName := base + ".down.json"
-	for _, name := range []string{upName, downName} {
-		if _, exists := seen[name]; exists {
-			return "", "", fmt.Errorf("migration %q already exists", filepath.Join(dir, name))
+	upPath := filepath.Join(dir, base+".up.json")
+	downPath := filepath.Join(dir, base+".down.json")
+	for _, path := range []string{upPath, downPath} {
+		if _, exists := seen[filepath.Base(path)]; exists {
+			return "", "", fmt.Errorf("migration %q already exists", path)
 		}
 	}
 
-	upPath := filepath.Join(dir, upName)
-	downPath := filepath.Join(dir, downName)
-	if err := os.WriteFile(upPath, []byte("[]\n"), 0o644); err != nil {
-		return "", "", fmt.Errorf("write up migration: %w", err)
+	// Create the down file first: if the process is interrupted between the
+	// two writes, the leftover down-only file is ignored by migration tooling
+	// and by the migration tests, while an up-only file would look runnable
+	// but could not be rolled back.
+	if err := writeMigrationFile(downPath); err != nil {
+		return "", "", err
 	}
-	if err := os.WriteFile(downPath, []byte("[]\n"), 0o644); err != nil {
-		_ = os.Remove(upPath)
-		return "", "", fmt.Errorf("write down migration: %w", err)
+	if err := writeMigrationFile(upPath); err != nil {
+		_ = os.Remove(downPath)
+		return "", "", err
 	}
 	return upPath, downPath, nil
+}
+
+// writeMigrationFile creates the file exclusively so concurrent runs can never
+// truncate or overwrite a migration that another process just created.
+func writeMigrationFile(path string) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("migration %q already exists", path)
+		}
+		return fmt.Errorf("create migration %q: %w", path, err)
+	}
+	if _, err := file.WriteString(migrationFileContent); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return fmt.Errorf("write migration %q: %w", path, err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("close migration %q: %w", path, err)
+	}
+	return nil
+}
+
+// lockMigrations serializes version selection and file creation so concurrent
+// runs cannot allocate the same version.
+func lockMigrations(dir string) (func(), error) {
+	lockPath := filepath.Join(dir, migrationLockName)
+	deadline := time.Now().Add(migrationLockWait)
+	for {
+		file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			_ = file.Close()
+			return func() { _ = os.Remove(lockPath) }, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, fmt.Errorf("create migration lock: %w", err)
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("migrations directory is locked by another migrate new; remove %s if stale", lockPath)
+		}
+		time.Sleep(migrationLockRetry)
+	}
 }
 
 func migrationSlug(name string) (string, error) {

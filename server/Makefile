@@ -50,9 +50,11 @@ migrate-up:
 migrate-up-one:
 	$(MIGRATE_CMD) up-by-one
 
+# Pass NAME through the environment so the shell never re-parses it.
+migrate-new: export MIGRATION_NAME := $(NAME)
 migrate-new:
-	@test -n "$(NAME)" || (echo "Usage: make migrate-new NAME=<name>" && exit 2)
-	$(MIGRATE_CMD) new "$(NAME)"
+	$(if $(strip $(MIGRATION_NAME)),,$(error Usage: make migrate-new NAME=<name>))
+	$(MIGRATE_CMD) new "$$MIGRATION_NAME"
 
 migrate-version:
 	$(MIGRATE_CMD) version
