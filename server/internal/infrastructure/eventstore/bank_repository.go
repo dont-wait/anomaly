@@ -14,6 +14,7 @@ import (
 	"time"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+	savingsdomain "github.com/dont-wait/anomaly/internal/domain/savings"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/google/uuid"
@@ -45,14 +46,18 @@ type loanCreditState struct {
 }
 
 type bankState struct {
-	Accounts     map[string]*accountdomain.UserAccount
-	Balances     map[string]int64
-	Transfers    map[string]transferState
-	Keys         map[string]string
-	Exists       bool
-	Revision     uint64
-	LoanCredits  map[string]loanCreditState
-	LoanPayments map[string]journal.LoanInstallmentPayment
+	Accounts              map[string]*accountdomain.UserAccount
+	Balances              map[string]int64
+	Transfers             map[string]transferState
+	Keys                  map[string]string
+	Exists                bool
+	Revision              uint64
+	LoanCredits           map[string]loanCreditState
+	LoanPayments          map[string]journal.LoanInstallmentPayment
+	Savings               map[string]journal.SavingsMovement
+	SavingsKeys           map[string]string
+	SavingsQuotes         map[string]string
+	SavingsWithdrawalKeys map[string]string
 }
 
 // The JWT actor is a UserAccount ID. CustomerId is the stable profile owner ID.
@@ -75,7 +80,7 @@ func financialID(id string) bson.ObjectID {
 }
 
 func (r *BankRepository) load(ctx context.Context) (*bankState, error) {
-	s := &bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}, Transfers: map[string]transferState{}, Keys: map[string]string{}, LoanCredits: map[string]loanCreditState{}, LoanPayments: map[string]journal.LoanInstallmentPayment{}}
+	s := &bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}, Transfers: map[string]transferState{}, Keys: map[string]string{}, LoanCredits: map[string]loanCreditState{}, LoanPayments: map[string]journal.LoanInstallmentPayment{}, Savings: map[string]journal.SavingsMovement{}, SavingsKeys: map[string]string{}, SavingsQuotes: map[string]string{}, SavingsWithdrawalKeys: map[string]string{}}
 	var from esdb.StreamPosition = esdb.Start{}
 	for {
 		stream, err := r.client.ReadStream(ctx, journal.BankStream, esdb.ReadStreamOptions{From: from, RequiresLeader: true}, PAGESIZE)
@@ -149,6 +154,33 @@ func (s *bankState) apply(record journal.Record) error {
 			s.Accounts[a.Id] = a
 			s.Balances[financialID(a.Id).Hex()] = a.Balance.Current
 		}
+	case journal.SavingsOpened, journal.SavingsSettled:
+		if record.Savings == nil || record.BalanceBefore == nil || record.BalanceAfter == nil {
+			return fmt.Errorf("missing savings journal")
+		}
+		m := *record.Savings
+		c := m.Contract
+		key := financialID(c.SourceAccountID).Hex()
+		if !ownedByCustomer(s.Accounts, m.ActorID, c.SourceAccountID) || s.Accounts[c.SourceAccountID].CustomerId != c.CustomerID || s.Balances[key] != *record.BalanceBefore {
+			return fmt.Errorf("savings ownership or balance mismatch")
+		}
+		previous, exists := s.Savings[c.ID]
+		if record.Type == journal.SavingsOpened {
+			if exists || s.SavingsKeys[m.OpeningKey] != "" || s.SavingsQuotes[m.OpeningQuoteID] != "" || !strings.HasPrefix(m.OpeningKey, m.ActorID+":") {
+				return fmt.Errorf("duplicate savings opening")
+			}
+			s.SavingsKeys[m.OpeningKey] = c.ID
+			s.SavingsQuotes[m.OpeningQuoteID] = c.ID
+		} else {
+			if !exists || previous.Contract.Status == savingsdomain.ContractSettled || previous.OpeningQuoteID != m.OpeningQuoteID || previous.OpeningKey != m.OpeningKey || previous.Contract.Principal != c.Principal || previous.Contract.MaturityAt != c.MaturityAt || previous.Contract.SourceAccountID != c.SourceAccountID || previous.Contract.CustomerID != c.CustomerID || previous.ActorID != m.ActorID || previous.Contract.SavingsNo != c.SavingsNo || previous.Contract.PackageID != c.PackageID || previous.Contract.TermMonths != c.TermMonths || previous.Contract.AnnualRateBps != c.AnnualRateBps || !previous.Contract.OpenedAt.Equal(c.OpenedAt) || (s.SavingsWithdrawalKeys[m.WithdrawalKey] != "" && s.SavingsWithdrawalKeys[m.WithdrawalKey] != c.ID) {
+				return fmt.Errorf("invalid savings transition")
+			}
+		}
+		if record.Type == journal.SavingsSettled {
+			s.SavingsWithdrawalKeys[m.WithdrawalKey] = c.ID
+		}
+		s.Balances[key] = *record.BalanceAfter
+		s.Savings[c.ID] = m
 	case journal.LoanDisbursementCredited:
 		if _, exists := s.LoanCredits[record.LoanID]; exists {
 			return fmt.Errorf("duplicate loan credit journal")
