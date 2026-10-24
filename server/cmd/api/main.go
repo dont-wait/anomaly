@@ -148,7 +148,7 @@ func main() {
 		logger.Error().Err(err).Msg("savings read indexes unavailable; savings read API disabled")
 		savingsHandler.Read = nil
 	} else {
-		go mongo.NewSavingsMaturityWorker(mongoClient, config.MongoConfig.MongoDBName).Run(ctx)
+		go mongo.NewSavingsMaturityWorker(mongoClient, config.MongoConfig.MongoDBName, bank).Run(ctx)
 	}
 	if err := savingsCatalog.EnsureSeeded(ctx); err != nil {
 		logger.Error().Err(err).Msg("savings catalog unavailable; savings APIs disabled (banking APIs remain up)")

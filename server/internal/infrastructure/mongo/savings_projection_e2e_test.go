@@ -103,6 +103,14 @@ func TestSavingsProjectionReplayWithMongoValidator(t *testing.T) {
 		t.Fatalf("project opening with validator: %v", err)
 	}
 
+	// A notice generated while the read projection was active must be
+	// retracted transactionally when SavingsSettled is projected.
+	if _, err := db.Collection("savings_notifications").InsertOne(ctx, bson.M{
+		"_id": "savings-maturity:" + contract.ID, "customer_id": customerID.Hex(),
+		"savings_id": contract.ID, "type": "savings_matured",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	settledAt := contract.MaturityAt.Add(time.Minute)
 	contract.Revision = 0
 	intent, err := contract.PrepareWithdrawal(settledAt)
@@ -127,6 +135,9 @@ func TestSavingsProjectionReplayWithMongoValidator(t *testing.T) {
 		t.Fatalf("project settlement with validator: %v", err)
 	}
 	assertSavingsProjected(t, ctx, db, contract.ID, fid, settleAfter, 2)
+	if n, err := db.Collection("savings_notifications").CountDocuments(ctx, bson.M{"savings_id": contract.ID}); err != nil || n != 0 {
+		t.Fatalf("settlement did not delete stale notice: n=%d err=%v", n, err)
+	}
 
 	// Replay after a checkpoint reset, with the newer settled read model still
 	// present. Applying the older opening event must not resurrect Active.

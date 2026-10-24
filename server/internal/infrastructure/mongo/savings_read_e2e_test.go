@@ -18,6 +18,18 @@ import (
 )
 
 // Uses a disposable Mongo replica set, not the user's existing project data.
+type savingsMaturityTestVerifier struct {
+	settled     map[string]bool
+	unavailable map[string]bool
+}
+
+func (v *savingsMaturityTestVerifier) SavingsMaturityEligible(ctx context.Context, customer, id string) (bool, error) {
+	if v.unavailable[id] {
+		return false, fmt.Errorf("test-only bank stream unavailable")
+	}
+	return !v.settled[id], nil
+}
+
 func TestSavingsReadAndMaturityNoticesWithMongo(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -76,7 +88,8 @@ func TestSavingsReadAndMaturityNoticesWithMongo(t *testing.T) {
 	if _, err := read.Detail(ctx, "owner", "outsider"); err == nil {
 		t.Fatal("foreign contract leaked")
 	}
-	worker := NewSavingsMaturityWorker(client, db.Name())
+	verifier := &savingsMaturityTestVerifier{settled: map[string]bool{}, unavailable: map[string]bool{}}
+	worker := NewSavingsMaturityWorker(client, db.Name(), verifier)
 	worker.Now = func() time.Time { return now }
 	if n, err := worker.RunOnce(ctx); err != nil || n != 2 {
 		t.Fatalf("first maturity scan: %d / %v", n, err)
@@ -129,6 +142,36 @@ func TestSavingsReadAndMaturityNoticesWithMongo(t *testing.T) {
 	}
 	if n, err := worker.RunOnce(ctx); err != nil || n != 0 {
 		t.Fatalf("post-cleanup should not duplicate notices: %d / %v", n, err)
+	}
+
+	// A lagging Mongo projection still calls a contract active even though
+	// the authoritative stream reports it settled. No notice may be claimed.
+	verifier.settled["already-settled-in-eventstore"] = true
+	if _, err := db.Collection("savings_contracts").InsertOne(ctx, bson.M{
+		"_id": "already-settled-in-eventstore", "customer_id": "owner", "savings_no": "SVLAG",
+		"status": "active", "maturity_at": due,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := worker.RunOnce(ctx); err != nil || n != 0 {
+		t.Fatalf("stale Mongo projection generated notice: %d / %v", n, err)
+	}
+	if err := db.Collection("savings_notifications").FindOne(ctx, bson.M{"_id": "savings-maturity:already-settled-in-eventstore"}).Err(); err == nil {
+		t.Fatal("notification was inserted for an already settled contract")
+	}
+	// A failed authoritative read must also fail closed.
+	verifier.unavailable["unverified"] = true
+	if _, err := db.Collection("savings_contracts").InsertOne(ctx, bson.M{
+		"_id": "unverified", "customer_id": "owner", "savings_no": "SVUNVERIFIED",
+		"status": "active", "maturity_at": due,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := worker.RunOnce(ctx); err == nil || n != 0 {
+		t.Fatalf("unavailable authoritative stream must fail closed: %d / %v", n, err)
+	}
+	if _, err := db.Collection("savings_contracts").DeleteMany(ctx, bson.M{"_id": bson.M{"$in": bson.A{"unverified", "already-settled-in-eventstore"}}}); err != nil {
+		t.Fatal(err)
 	}
 
 	// Force one notification transaction to fail validation. The worker must

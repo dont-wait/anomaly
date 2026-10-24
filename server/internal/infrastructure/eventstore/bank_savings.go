@@ -17,12 +17,13 @@ import (
 )
 
 var (
-	ErrSavingsNotFound            = errors.New("savings contract not found")
-	ErrSavingsIdempotencyConflict = errors.New("savings idempotency conflict")
-	ErrSavingsQuoteUsed           = errors.New("savings opening quote already used")
-	ErrSavingsSourceUnavailable   = errors.New("savings payment account unavailable")
-	ErrSavingsInsufficientFunds   = errors.New("savings source balance insufficient")
-	ErrSavingsWritesDisabled      = errors.New("savings event writes disabled until consumers are upgraded")
+	ErrSavingsNotFound              = errors.New("savings contract not found")
+	ErrSavingsIdempotencyConflict   = errors.New("savings idempotency conflict")
+	ErrSavingsQuoteUsed             = errors.New("savings opening quote already used")
+	ErrSavingsSourceUnavailable     = errors.New("savings payment account unavailable")
+	ErrSavingsInsufficientFunds     = errors.New("savings source balance insufficient")
+	ErrSavingsWritesDisabled        = errors.New("savings event writes disabled until consumers are upgraded")
+	ErrSavingsSettlementUnconfirmed = errors.New("savings settlement outcome unconfirmed")
 )
 
 // Savings event writes must be enabled ONLY after every deployed API and bank
@@ -222,9 +223,75 @@ func (r *BankRepository) SettleSavings(ctx context.Context, actorID, contractID,
 	if err != nil {
 		return journal.SavingsMovement{}, err
 	}
-	m, ok := result.(journal.SavingsMovement)
-	if !ok {
+	if _, ok := result.(journal.SavingsMovement); !ok {
 		return journal.SavingsMovement{}, fmt.Errorf("unexpected savings settlement result")
 	}
-	return m, nil
+	// EventStoreDB can acknowledge a repeated EventID as an idempotent append,
+	// even if this caller supplied a different withdrawal idempotency key.
+	// The persisted Banking Stream, not the locally built movement, decides
+	// which request actually settled the contract. Verify every success before
+	// returning a receipt, including results recovered after commit timeouts.
+	return confirmSavingsSettlementWithRecovery(ctx, r.load, contractID, quoteID, actorID+":"+strings.ToLower(key))
+}
+
+// confirmSavingsSettlement must never report a different request's successful
+// append as this request's success. The same event ID intentionally protects
+// each contract against duplicate financial credits, but it alone cannot
+// distinguish two different requests during concurrent event-store appends.
+func confirmSavingsSettlement(s *bankState, contractID, quoteID, withdrawKey string) (journal.SavingsMovement, error) {
+	if s == nil {
+		return journal.SavingsMovement{}, fmt.Errorf("savings settlement cannot be confirmed: missing bank state")
+	}
+	committed, found := s.Savings[contractID]
+	if !found || committed.Contract.Status != savings.ContractSettled || committed.Contract.Settlement == nil {
+		return journal.SavingsMovement{}, fmt.Errorf("savings settlement not yet confirmed in bank stream")
+	}
+	if committed.WithdrawalKey != withdrawKey || committed.WithdrawalQuoteID != quoteID {
+		return journal.SavingsMovement{}, savings.ErrAlreadySettled
+	}
+	return committed, nil
+}
+
+// confirmSavingsSettlementWithRecovery reads the authoritative bank stream,
+// including after a cancelled HTTP request. An accepted append may have
+// credited money already: never re-append based on a failed confirmation read.
+// Returning ErrSavingsSettlementUnconfirmed means *unknown*, not rollback.
+func confirmSavingsSettlementWithRecovery(ctx context.Context, read func(context.Context) (*bankState, error), contractID, quoteID, withdrawKey string) (journal.SavingsMovement, error) {
+	const maxReads = 4
+	recoveryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	var lastErr error
+	for attempt := 0; attempt < maxReads; attempt++ {
+		authoritative, err := read(recoveryCtx)
+		if err == nil {
+			var movement journal.SavingsMovement
+			movement, err = confirmSavingsSettlement(authoritative, contractID, quoteID, withdrawKey)
+			if err == nil || errors.Is(err, savings.ErrAlreadySettled) {
+				return movement, err
+			}
+		}
+		lastErr = err
+		if attempt == maxReads-1 {
+			break
+		}
+		timer := time.NewTimer(time.Duration(50<<attempt) * time.Millisecond)
+		select {
+		case <-recoveryCtx.Done():
+			timer.Stop()
+			return journal.SavingsMovement{}, fmt.Errorf("%w: %v", ErrSavingsSettlementUnconfirmed, lastErr)
+		case <-timer.C:
+		}
+	}
+	return journal.SavingsMovement{}, fmt.Errorf("%w: %v", ErrSavingsSettlementUnconfirmed, lastErr)
+}
+
+// SavingsMaturityEligible checks EventStoreDB rather than relying on a lagging
+// MongoDB projection. A missing, foreign or settled contract is never eligible.
+func (r *BankRepository) SavingsMaturityEligible(ctx context.Context, customerID, contractID string) (bool, error) {
+	state, err := r.load(ctx)
+	if err != nil {
+		return false, err
+	}
+	m, exists := state.Savings[contractID]
+	return exists && m.Contract.CustomerID == customerID && (m.Contract.Status == savings.ContractActive || m.Contract.Status == savings.ContractMatured) && !time.Now().UTC().Before(m.Contract.MaturityAt), nil
 }
