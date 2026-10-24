@@ -108,10 +108,10 @@ Producer kiểm tra sự tồn tại tại thời điểm `occurred_at` trước
 
 ## Kafka event contract
 
-Giữ cấu trúc payload banking cần thiết và thêm `model_features` ở cấp envelope.
-Payload trước khi publish được redact các profile/KYC/contact/media/credential
-fields; account number, account ID và device ID được pseudonymize bằng
-`KAFKA_PAYLOAD_REDACTION_KEY` (hoặc SHA-256 khi chạy local không cấu hình key).
+`payload` giữ nguyên toàn bộ field và giá trị trong event banking từ EventStoreDB,
+bao gồm số tài khoản, account ID và device ID. Relay không hash, xóa field hay
+thay đổi giá trị; `model_features` được thêm riêng ở cấp envelope.
+Payload có thể chứa dữ liệu nhạy cảm: giới hạn quyền truy cập Kafka/model.
 Consumer mock không log raw payload.
 
 ```json

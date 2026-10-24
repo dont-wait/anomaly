@@ -86,14 +86,12 @@ services:
       MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=rs0
       MONGO_DB: anomaly
       EVENT_STORE_CONN_STRING: esdb://eventstore:2113?tls=false
-      JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:29092
       KAFKA_TOPIC: ${KAFKA_TOPIC:-anomaly.bank.events.v1}
       KAFKA_RISK_DECISION_TOPIC: ${KAFKA_RISK_DECISION_TOPIC:-anomaly.bank.risk-decisions.v1}
       KAFKA_RISK_DECISION_GROUP: ${KAFKA_RISK_DECISION_GROUP:-anomaly-server-risk-decisions}
       KAFKA_PRODUCER_ID: ${KAFKA_PRODUCER_ID:-anomaly-server}
       KAFKA_EVENTSTORE_SUBSCRIPTION: ${KAFKA_EVENTSTORE_SUBSCRIPTION:-kafka-publisher}
-      KAFKA_PAYLOAD_REDACTION_KEY: ${KAFKA_PAYLOAD_REDACTION_KEY:-}
       TZ: Asia/Ho_Chi_Minh
     depends_on:
       eventstore:

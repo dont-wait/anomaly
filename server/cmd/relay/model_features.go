@@ -56,8 +56,8 @@ type transferFeatureSnapshot struct {
 	DeviceID string `json:"DeviceID"`
 }
 
-func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, store modelFeatureStore, redactionKey string) (kafkainfra.EventEnvelope, *pendingFeatureUpdate, error) {
-	envelope, err := buildEnvelope(recorded, redactionKey)
+func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, store modelFeatureStore) (kafkainfra.EventEnvelope, *pendingFeatureUpdate, error) {
+	envelope, err := buildEnvelope(recorded)
 	if err != nil {
 		return kafkainfra.EventEnvelope{}, nil, err
 	}

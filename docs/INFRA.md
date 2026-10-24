@@ -56,12 +56,11 @@ KAFKA_RISK_DECISION_TOPIC=anomaly.bank.risk-decisions.v1
 KAFKA_RISK_DECISION_GROUP=anomaly-server-risk-decisions
 KAFKA_PRODUCER_ID=anomaly-server
 KAFKA_EVENTSTORE_SUBSCRIPTION=kafka-publisher
-KAFKA_PAYLOAD_REDACTION_KEY=replace-with-a-secret-key
 ```
 
-`KAFKA_PAYLOAD_REDACTION_KEY` được dùng để pseudonymize account/device
-identifiers trước khi publish vào Kafka. Nếu không khai báo, relay dùng
-`JWT_SECRET` làm key dự phòng. Không log raw banking payload ở consumer. Khi
+Relay giữ nguyên payload EventStoreDB khi publish vào Kafka, không hash định danh
+hay loại bỏ field. Vì có thể chứa dữ liệu nhạy cảm, cần giới hạn quyền truy cập
+Kafka/model và không log raw banking payload ở consumer. Khi
 feature state cần rebuild, dừng relay rồi chạy:
 
 ```bash

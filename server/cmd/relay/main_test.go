@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
@@ -12,28 +13,58 @@ import (
 	esdb "github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 )
 
-func TestSanitizePayloadRemovesSensitiveFields(t *testing.T) {
-	got, err := sanitizePayload([]byte(`{"account":{"PasswordHash":"secret","username":"demo"},"nested":{"access_token":"token"},"transfer":{"Source":{"AccountNo":"ACC001","Name":"Alice"}}}`), "test-key")
+func TestBuildEnvelopePreservesOriginalPayload(t *testing.T) {
+	data := []byte(`{ "account":{"PasswordHash":"secret","username":"demo"},"nested":{"access_token":"token"},"transfer":{"Source":{"AccountNo":"001234567890","Name":"Nguyễn Văn A"},"DeviceID":"DEVICE01","Note":"test <transfer>","Amount":9007199254740993,"optional":null} }`)
+	recorded := &esdb.RecordedEvent{EventID: uuid.New(), EventType: journal.Created, StreamID: journal.BankStream, Data: data}
+	envelope, err := buildEnvelope(recorded)
 	if err != nil {
-		t.Fatalf("sanitizePayload() error = %v", err)
+		t.Fatalf("buildEnvelope() error = %v", err)
 	}
-	var payload map[string]any
-	if err := json.Unmarshal(got, &payload); err != nil {
-		t.Fatalf("sanitized payload is invalid JSON: %v", err)
+	if !bytes.Equal(envelope.Payload, data) {
+		t.Fatalf("payload changed: %s", envelope.Payload)
 	}
-	if _, ok := payload["account"]; ok {
-		t.Fatal("account aggregate should be removed")
+	// Verify serialization to the Kafka envelope preserves every field/value,
+	// including large integers and strings, without float64 decoding or redaction.
+	wire, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
 	}
-	transfer := payload["transfer"].(map[string]any)
-	source := transfer["Source"].(map[string]any)
-	if source["AccountNo"] == "ACC001" || source["Name"] != nil {
-		t.Fatalf("sensitive transfer fields were not protected: %#v", source)
+	var decoded struct {
+		Payload json.RawMessage `json:"payload"`
+	}
+	if err := json.Unmarshal(wire, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	var expected any
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&expected); err != nil {
+		t.Fatal(err)
+	}
+	expectedJSON, err := json.Marshal(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var actual any
+	decoder = json.NewDecoder(bytes.NewReader(decoded.Payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(&actual); err != nil {
+		t.Fatal(err)
+	}
+	actualJSON, err := json.Marshal(actual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(expectedJSON, actualJSON) {
+		t.Fatalf("serialized payload values changed: %s", decoded.Payload)
 	}
 }
 
-func TestSanitizePayloadRejectsInvalidJSON(t *testing.T) {
-	if _, err := sanitizePayload([]byte(`not-json`), ""); err == nil {
-		t.Fatal("sanitizePayload() error = nil, want error")
+func TestBuildEnvelopeRejectsInvalidJSON(t *testing.T) {
+	for _, data := range []string{"", "not-json", `{} {}`} {
+		if _, err := buildEnvelope(&esdb.RecordedEvent{Data: []byte(data)}); err == nil {
+			t.Fatalf("buildEnvelope(%q) error = nil, want error", data)
+		}
 	}
 }
 
@@ -135,12 +166,15 @@ func TestBuildEnrichedEnvelopeAddsModelFeatures(t *testing.T) {
 	envelope, pending, err := buildEnrichedEnvelope(context.Background(), &esdb.RecordedEvent{
 		EventID: eventID, EventType: journal.Completed, StreamID: journal.BankStream,
 		EventNumber: 1, CreatedDate: at, Data: data,
-	}, store, "test-redaction-key")
+	}, store)
 	if err != nil {
 		t.Fatalf("buildEnrichedEnvelope() error = %v", err)
 	}
 	if pending == nil || envelope.ModelFeatures == nil {
 		t.Fatalf("envelope = %#v, pending = %#v; want model features", envelope, pending)
+	}
+	if !bytes.Equal(envelope.Payload, data) {
+		t.Fatal("feature enrichment changed the original payload")
 	}
 	if envelope.ModelFeatures.AvgAmount7d != 0 || envelope.ModelFeatures.TxCount1h != 0 || !envelope.ModelFeatures.NewReceiver || !envelope.ModelFeatures.NewDevice {
 		t.Fatalf("model features = %#v", envelope.ModelFeatures)
@@ -150,5 +184,35 @@ func TestBuildEnrichedEnvelopeAddsModelFeatures(t *testing.T) {
 	}
 	if store.decision.StreamRevision != 1 {
 		t.Fatalf("decision stream revision = %d, want 1", store.decision.StreamRevision)
+	}
+}
+
+func TestCreatedEnvelopePreservesAccountAndDeviceFields(t *testing.T) {
+	id := uuid.NewString()
+	at := time.Now().UTC()
+	event := journal.Event{
+		ID: journal.EventID(id, journal.Created), TransactionID: id, Type: journal.Created,
+		SchemaVersion: journal.SchemaVersion, Sequence: 1, OccurredAt: at,
+		Payload: journal.Payload{SourceAccountID: "source-id", DestinationAccountID: "destination-id",
+			Amount: 1000, Currency: "VND", Channel: "mobile", Status: "awaiting_otp"},
+	}
+	record := journal.Record{ID: event.ID, Type: event.Type, At: at, Event: &event,
+		Transfer: json.RawMessage(`{"ID":"` + id + `","Source":{"AccountNo":"001234567890","Name":"Sender"},"Destination":{"AccountNo":"009876543210","Name":"Recipient"},"DeviceID":"DEVICE01","Note":"original note"}`)}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &relayFeatureStoreFake{}
+	envelope, pending, err := buildEnrichedEnvelope(context.Background(), &esdb.RecordedEvent{
+		EventID: uuid.MustParse(event.ID), EventType: journal.Created, StreamID: journal.BankStream, Data: data,
+	}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(envelope.Payload, data) {
+		t.Fatal("created payload was modified")
+	}
+	if envelope.ModelFeatures == nil || pending != nil || store.saved {
+		t.Fatal("created must enrich features without applying rolling state")
 	}
 }

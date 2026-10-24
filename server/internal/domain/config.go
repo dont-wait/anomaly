@@ -137,7 +137,6 @@ type KafkaConfig struct {
 	RiskDecisionGroup      string
 	ProducerID             string
 	EventStoreSubscription string
-	PayloadRedactionKey    string
 }
 
 func (l *Loader) LoadKafkaConfig() *KafkaConfig {
@@ -149,7 +148,6 @@ func (l *Loader) LoadKafkaConfig() *KafkaConfig {
 		RiskDecisionGroup:      l.LoadEnvOr("KAFKA_RISK_DECISION_GROUP", "anomaly-server-risk-decisions"),
 		ProducerID:             l.LoadEnvOr("KAFKA_PRODUCER_ID", "anomaly-server"),
 		EventStoreSubscription: l.LoadEnvOr("KAFKA_EVENTSTORE_SUBSCRIPTION", "kafka-publisher"),
-		PayloadRedactionKey:    l.LoadEnvOr("KAFKA_PAYLOAD_REDACTION_KEY", ""),
 	}
 }
 

@@ -47,9 +47,9 @@
 3. Publish envelope vào Kafka request topic `anomaly.bank.events.v1`
 4. ACK `TransferCreated` sau khi Kafka xác nhận thành công
 5. Với `TransferCompleted`, không publish lại nhưng cập nhật feature state rồi ACK
-6. ACK các event khác mà không publish; NACK retry khi Kafka hoặc feature state lỗi;
-   payload loại bỏ các field nhạy
-   cảm như password
+6. ACK các event khác mà không publish; NACK retry khi Kafka hoặc feature state lỗi.
+   Payload giữ nguyên field và giá trị từ EventStoreDB, không hash account/device
+   hay loại bỏ field; chỉ thêm metadata và `model_features` ở cấp envelope.
 
 Feature state được lưu trong MongoDB bằng materialized view tăng dần, không query
 toàn bộ transaction history cho mỗi event. Model pipeline đọc `model_features`
