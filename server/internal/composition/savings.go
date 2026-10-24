@@ -10,7 +10,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func NewSavingsHandler(catalog *mongo.SavingsPackageCatalog, bank *eventstore.BankRepository, redisClient *redis.Client) *savingshttp.Handler {
+func NewSavingsHandler(catalog *mongo.SavingsPackageCatalog, bank *eventstore.BankRepository, redisClient *redis.Client, read ...*mongo.SavingsRead) *savingshttp.Handler {
 	q := &savingsqueries.Service{Catalog: catalog, Accounts: bank, Quotes: cache.NewSavingsQuoteRedis(redisClient)}
-	return &savingshttp.Handler{Service: q, Commands: &savingscommands.Service{Quotes: q, Bank: savingsBankCommandAdapter{BankRepository: bank}, WithdrawalQuotes: cache.NewSavingsWithdrawalQuoteRedis(redisClient)}}
+	handler := &savingshttp.Handler{Service: q, Commands: &savingscommands.Service{Quotes: q, Bank: savingsBankCommandAdapter{BankRepository: bank}, WithdrawalQuotes: cache.NewSavingsWithdrawalQuoteRedis(redisClient)}}
+	if len(read) > 0 && read[0] != nil {
+		handler.Read = &savingsqueries.SavingsReadService{Store: read[0], Accounts: read[0], Cache: cache.NewSavingsReadRedis(redisClient)}
+	}
+	return handler
 }
