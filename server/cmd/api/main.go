@@ -138,8 +138,16 @@ func main() {
 		rdb,
 	)
 
+	// GĐ2 savings: seed the current approved package once and fail closed on
+	// invalid persisted policy. This does not debit funds or open contracts.
+	savingsCatalog := mongo.NewSavingsPackageCatalog(mongoClient, config.MongoConfig.MongoDBName)
+	if err := savingsCatalog.EnsureSeeded(ctx); err != nil {
+		logger.Fatal().Err(err).Msg("ensure savings package catalog")
+	}
+	savingsHandler := composition.NewSavingsHandler(savingsCatalog, bank, rdb)
+
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled, loanHandler)
+	mux = presentation.NewRouterWithSavings(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled, savingsHandler, loanHandler)
 
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
 	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(

@@ -9,6 +9,7 @@ import (
 	loan "github.com/dont-wait/anomaly/internal/presentation/http/handler/loan"
 	media "github.com/dont-wait/anomaly/internal/presentation/http/handler/media"
 	otp "github.com/dont-wait/anomaly/internal/presentation/http/handler/otp"
+	savings "github.com/dont-wait/anomaly/internal/presentation/http/handler/savings"
 	transaction "github.com/dont-wait/anomaly/internal/presentation/http/handler/transaction"
 
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
@@ -20,6 +21,11 @@ import (
 // thuộc trực tiếp vào infrastructure, đúng dependency rule của Clean
 // Architecture.
 func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, loanHandlers ...*loan.Handler) *http.ServeMux {
+	return NewRouterWithSavings(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, loanHandlers...)
+}
+
+// NewRouterWithSavings adds the savings GĐ2 API without changing existing NewRouter callers.
+func NewRouterWithSavings(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, loanHandlers ...*loan.Handler) *http.ServeMux {
 	router := openapi.NewRegistry(mux, swaggerEnabled)
 	account.RegisterRoutes(router, accountHandler, tokenSvc)
 	media.RegisterRoutes(router, mediaHandler, tokenSvc)
@@ -44,6 +50,9 @@ func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler
 		Response:            "OK",
 		ResponseContentType: "text/plain",
 	})
+	if savingsHandler != nil {
+		savings.RegisterRoutes(router, savingsHandler, tokenSvc)
+	}
 	router.RegisterDocs()
 
 	return mux
