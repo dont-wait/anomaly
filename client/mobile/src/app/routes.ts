@@ -4,6 +4,7 @@ export const routes = {
   dashboard: "#/dashboard",
   transfer: "#/transfer",
   transactions: "#/transactions",
+  loanRegister: "#/loan/register",
 } as const;
 
 const TRANSACTION_DETAIL_PREFIX = `${routes.transactions}/`;
@@ -32,6 +33,7 @@ const PROTECTED_ROUTES: readonly string[] = [
   routes.dashboard,
   routes.transfer,
   routes.transactions,
+  routes.loanRegister,
 ];
 
 export const isProtectedRoute = (hash: string) =>

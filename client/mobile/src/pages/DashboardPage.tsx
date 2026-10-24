@@ -188,6 +188,23 @@ const DashboardPage = () => {
             if (action.icon === "transfer") navigate(routes.transfer);
           }}
         />
+        <button
+          type="button"
+          onClick={() => navigate(routes.loanRegister)}
+          className="flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-primary to-secondary px-5 py-4 text-left text-white shadow-lg shadow-secondary/20 transition-transform active:scale-[0.99]"
+        >
+          <span>
+            <span className="block text-xs font-medium text-white/75">
+              Ưu đãi riêng cho bạn
+            </span>
+            <span className="mt-1 block text-base font-bold">
+              Đăng ký khoản vay trong 15 phút
+            </span>
+          </span>
+          <span aria-hidden="true" className="text-2xl">
+            →
+          </span>
+        </button>
         <PromoBanner promo={promo} />
         <TransactionList
           transactions={transactions}
