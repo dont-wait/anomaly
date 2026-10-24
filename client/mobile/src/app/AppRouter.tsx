@@ -7,6 +7,7 @@ import DashboardPage from "@/pages/DashboardPage";
 import TransferPage from "@/pages/TransferPage";
 import TransactionHistoryPage from "@/pages/TransactionHistoryPage";
 import TransactionDetailPage from "@/pages/TransactionDetailPage";
+import LoanRegisterPage from "@/pages/LoanRegisterPage";
 import { isProtectedRoute, parseTransactionId, routes } from "./routes";
 
 function subscribe(onChange: () => void) {
@@ -50,6 +51,8 @@ export function AppRouter() {
       return <TransferPage />;
     case routes.transactions:
       return <TransactionHistoryPage />;
+    case routes.loanRegister:
+      return <LoanRegisterPage />;
     case routes.register:
       return <RegisterPage />;
     default:
