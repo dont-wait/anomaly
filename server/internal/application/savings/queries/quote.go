@@ -110,11 +110,16 @@ func termLabel(months int) string {
 // ValidateCatalog fails closed if stored Mongo policy and approved domain policy
 // diverge; the quote must never use a term/rate the domain won't accept.
 func ValidateCatalog(items []Package) error {
+	return ValidateCatalogAt(items, time.Now().UTC())
+}
+
+// ValidateCatalogAt evaluates product eligibility at a single authoritative clock instant.
+func ValidateCatalogAt(items []Package, now time.Time) error {
 	if len(items) != 1 {
 		return ErrPackageUnavailable
 	}
 	p := items[0]
-	if p.PackageID != StandardPackageID || strings.TrimSpace(p.Name) == "" || p.Currency != "VND" || p.MinimumDeposit != savings.MinimumDepositVND || p.EffectiveAt.IsZero() {
+	if p.PackageID != StandardPackageID || strings.TrimSpace(p.Name) == "" || p.Currency != "VND" || p.MinimumDeposit != savings.MinimumDepositVND || (p.EffectiveAt.IsZero() || p.EffectiveAt.After(now)) {
 		return ErrPackageUnavailable
 	}
 	approved := savings.CurrentTermRates()
@@ -130,6 +135,13 @@ func ValidateCatalog(items []Package) error {
 	return nil
 }
 
+func (s *Service) now() time.Time {
+	if s != nil && s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
 func (s *Service) ListPackages(ctx context.Context) ([]Package, error) {
 	if s == nil || s.Catalog == nil {
 		return nil, errors.New("savings catalog unavailable")
@@ -138,7 +150,7 @@ func (s *Service) ListPackages(ctx context.Context) ([]Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := ValidateCatalog(items); err != nil {
+	if err := ValidateCatalogAt(items, s.now()); err != nil {
 		return nil, err
 	}
 	return items, nil
@@ -190,11 +202,7 @@ func (s *Service) CreateQuote(ctx context.Context, actorID string, in CreateQuot
 	if ownerAccount.Balance.Current < in.Amount {
 		return QuoteResponse{}, ErrInsufficientFunds
 	}
-	clock := time.Now
-	if s.Now != nil {
-		clock = s.Now
-	}
-	now := clock().UTC()
+	now := s.now()
 	maturity, err := savings.CalculateMaturityAt(now, in.TermMonths)
 	if err != nil {
 		return QuoteResponse{}, err

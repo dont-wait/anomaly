@@ -87,7 +87,7 @@ func (c *SavingsPackageCatalog) ListActive(ctx context.Context) ([]savingsquerie
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cur, err := c.collection.Find(ctx, bson.M{"package_code": savingsqueries.StandardPackageID})
+	cur, err := c.collection.Find(ctx, bson.M{"package_code": savingsqueries.StandardPackageID, "status": "ACTIVE", "effective_at": bson.M{"$lte": time.Now().UTC()}})
 	if err != nil {
 		return nil, err
 	}

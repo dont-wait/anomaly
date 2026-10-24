@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/domain/savings"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/google/uuid"
+	esdb "github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 )
 
 var (
@@ -20,11 +22,53 @@ var (
 	ErrSavingsQuoteUsed           = errors.New("savings opening quote already used")
 	ErrSavingsSourceUnavailable   = errors.New("savings payment account unavailable")
 	ErrSavingsInsufficientFunds   = errors.New("savings source balance insufficient")
+	ErrSavingsWritesDisabled      = errors.New("savings event writes disabled until consumers are upgraded")
 )
+
+// Savings event writes must be enabled ONLY after every deployed API and bank
+// projector has been upgraded to decode SavingsOpened/SavingsSettled. Old
+// processes cannot be repaired by shipping new code to other processes.
+func savingsWritesEnabled() bool { return os.Getenv("SAVINGS_EVENT_WRITE_ENABLED") == "true" }
+
+// mutateSavings retries only ambiguous EventStoreDB commit aborts. An aborted
+// append may already have committed, so each attempt MUST re-read the canonical
+// banking stream and re-run the operation's idempotency/status checks before
+// issuing another append. Other errors are never blindly retried here.
+func (r *BankRepository) mutateSavings(ctx context.Context, build func(*bankState) (*journal.Record, any, error)) (any, error) {
+	const maxAttempts = 6
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		result, err := r.mutate(ctx, build)
+		if err == nil {
+			return result, nil
+		}
+		var esErr *esdb.Error
+		if !errors.As(err, &esErr) || esErr.Code() != esdb.ErrorAborted {
+			return nil, err
+		}
+		// In particular, a commit phase timeout does NOT imply rollback.
+		// A retry is safe only through mutate(), which reloads the stream
+		// before re-checking the Savings operation's stable idempotency key.
+		if attempt == maxAttempts-1 {
+			return nil, fmt.Errorf("savings append outcome unconfirmed after %d attempts: %w", maxAttempts, err)
+		}
+		backoff := time.Duration(50<<min(attempt, 3)) * time.Millisecond
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil, errors.New("savings mutation retry exhausted")
+}
 
 // Financial mutation and contract transition are committed in ONE canonical
 // banking-stream append. The existing mutate CAS retries against fresh state.
 func (r *BankRepository) OpenSavings(ctx context.Context, in journal.SavingsOpenInput) (journal.SavingsMovement, error) {
+	if !savingsWritesEnabled() {
+		return journal.SavingsMovement{}, ErrSavingsWritesDisabled
+	}
 	if _, err := uuid.Parse(in.IdempotencyKey); err != nil {
 		return journal.SavingsMovement{}, ErrSavingsIdempotencyConflict
 	}
@@ -32,7 +76,7 @@ func (r *BankRepository) OpenSavings(ctx context.Context, in journal.SavingsOpen
 		return journal.SavingsMovement{}, savings.ErrInvalidContract
 	}
 	key := in.ActorID + ":" + strings.ToLower(in.IdempotencyKey)
-	result, err := r.mutate(ctx, func(s *bankState) (*journal.Record, any, error) {
+	result, err := r.mutateSavings(ctx, func(s *bankState) (*journal.Record, any, error) {
 		if id := s.SavingsKeys[key]; id != "" {
 			existing := s.Savings[id]
 			if existing.OpeningQuoteID != in.QuoteID || existing.Contract.SourceAccountID != in.SourceAccountID || existing.Contract.Principal != in.Principal || existing.Contract.TermMonths != in.TermMonths {
@@ -123,10 +167,13 @@ func (r *BankRepository) FindSavings(ctx context.Context, actorID, id string) (j
 // contract. The same contract can never be credited twice even with different
 // idempotency keys or simultaneous requests.
 func (r *BankRepository) SettleSavings(ctx context.Context, actorID, contractID, quoteID, key string, expiresAt time.Time) (journal.SavingsMovement, error) {
+	if !savingsWritesEnabled() {
+		return journal.SavingsMovement{}, ErrSavingsWritesDisabled
+	}
 	if _, err := uuid.Parse(key); err != nil {
 		return journal.SavingsMovement{}, ErrSavingsIdempotencyConflict
 	}
-	result, err := r.mutate(ctx, func(s *bankState) (*journal.Record, any, error) {
+	result, err := r.mutateSavings(ctx, func(s *bankState) (*journal.Record, any, error) {
 		m, exists := s.Savings[contractID]
 		if !exists || !ownedByCustomer(s.Accounts, actorID, m.Contract.SourceAccountID) || s.Accounts[actorID] == nil || s.Accounts[actorID].CustomerId != m.Contract.CustomerID {
 			return nil, nil, ErrSavingsNotFound

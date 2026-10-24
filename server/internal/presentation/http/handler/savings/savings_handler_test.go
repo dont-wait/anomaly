@@ -65,7 +65,7 @@ func newTestRouter() (*http.ServeMux, *httpQuotes) {
 	h := &Handler{Service: &savingsqueries.Service{
 		Catalog: httpCatalog{items: []savingsqueries.Package{{
 			PackageID: savingsqueries.StandardPackageID, Name: "Tiết kiệm có kỳ hạn", Currency: "VND",
-			MinimumDeposit: savings.MinimumDepositVND, EffectiveAt: time.Now().UTC(), TermOptions: terms,
+			MinimumDeposit: savings.MinimumDepositVND, EffectiveAt: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), TermOptions: terms,
 		}}}, Accounts: httpAccounts{}, Quotes: store,
 		Now: func() time.Time { return time.Date(2026, 10, 12, 2, 10, 0, 0, time.UTC) },
 	}}

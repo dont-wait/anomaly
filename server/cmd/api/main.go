@@ -138,13 +138,16 @@ func main() {
 		rdb,
 	)
 
-	// GĐ2 savings: seed the current approved package once and fail closed on
-	// invalid persisted policy. This does not debit funds or open contracts.
+	// An invalid savings catalog must fail CLOSED for savings without making
+	// unrelated account, transfer and loan APIs unavailable. Operators must
+	// repair the catalog and restart this instance before enabling Savings.
 	savingsCatalog := mongo.NewSavingsPackageCatalog(mongoClient, config.MongoConfig.MongoDBName)
-	if err := savingsCatalog.EnsureSeeded(ctx); err != nil {
-		logger.Fatal().Err(err).Msg("ensure savings package catalog")
-	}
 	savingsHandler := composition.NewSavingsHandler(savingsCatalog, bank, rdb)
+	if err := savingsCatalog.EnsureSeeded(ctx); err != nil {
+		logger.Error().Err(err).Msg("savings catalog unavailable; savings APIs disabled (banking APIs remain up)")
+		savingsHandler.Service = nil
+		savingsHandler.Commands = nil
+	}
 
 	mux := netHTTP.NewServeMux()
 	mux = presentation.NewRouterWithSavings(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled, savingsHandler, loanHandler)

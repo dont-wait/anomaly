@@ -22,6 +22,10 @@ var (
 	ErrIdempotencyConflict       = errors.New("savings idempotency key reused for another request")
 	ErrDestinationUnavailable    = errors.New("destination payment account unavailable")
 	ErrWithdrawalQuoteExpired    = errors.New("withdrawal quote expired")
+	ErrSavingsNotFound           = errors.New("savings contract not found")
+	ErrSavingsSourceUnavailable  = errors.New("savings source account unavailable")
+	ErrSavingsInsufficientFunds  = errors.New("savings insufficient funds")
+	ErrSavingsWritesDisabled     = errors.New("savings event writes not enabled")
 )
 
 type Bank interface {
@@ -110,7 +114,7 @@ type OpenResponse struct {
 
 func opened(m journal.SavingsMovement) OpenResponse {
 	c := m.Contract
-	return OpenResponse{SavingsID: c.ID, SavingsNo: c.SavingsNo, TransactionID: journal.EventID(c.ID, "deposit"), Status: savings.ContractActive, Principal: c.Principal, AnnualInterestRate: savingsqueries.RateString(c.AnnualRateBps), TermMonths: c.TermMonths, OpenedAt: c.OpenedAt, MaturityAt: c.MaturityAt, SourceAccountID: c.SourceAccountID}
+	return OpenResponse{SavingsID: c.ID, SavingsNo: c.SavingsNo, TransactionID: journal.EventID(c.ID, "deposit"), Status: c.Status, Principal: c.Principal, AnnualInterestRate: savingsqueries.RateString(c.AnnualRateBps), TermMonths: c.TermMonths, OpenedAt: c.OpenedAt, MaturityAt: c.MaturityAt, SourceAccountID: c.SourceAccountID}
 }
 
 func (s *Service) Open(ctx context.Context, actor, key string, in OpenInput) (OpenResponse, error) {
@@ -178,6 +182,19 @@ func (s *Service) WithdrawalPreview(ctx context.Context, actor, id, withdrawalTy
 	q := WithdrawalQuote{ID: uuid.NewString(), ActorID: actor, SavingsID: id, Principal: m.Contract.Principal, Interest: interest, Total: total, ExpiresAt: now.Add(savings.QuoteTTL), MaturityAt: m.Contract.MaturityAt, DestinationAccountID: m.Contract.SourceAccountID}
 	if err := s.WithdrawalQuotes.SaveWithdrawal(ctx, q); err != nil {
 		return WithdrawalPreviewResponse{}, err
+	}
+	// A settlement may have committed while the quote was being stored. Re-read
+	// the authoritative stream before reporting success. A quote is a preview,
+	// not a reservation; Withdraw must still enforce CAS before crediting.
+	latest, err := s.Bank.FindSavings(ctx, actor, id)
+	if err != nil {
+		return WithdrawalPreviewResponse{}, err
+	}
+	if err := latest.Contract.CanWithdraw(s.now()); err != nil {
+		return WithdrawalPreviewResponse{}, err
+	}
+	if latest.Contract.SourceAccountID != q.DestinationAccountID || latest.Contract.Principal != q.Principal || !latest.Contract.MaturityAt.Equal(q.MaturityAt) || latest.Contract.AnnualRateBps != m.Contract.AnnualRateBps {
+		return WithdrawalPreviewResponse{}, ErrInvalidWithdrawalQuote
 	}
 	return WithdrawalPreviewResponse{QuoteID: q.ID, SavingsID: q.SavingsID, ContractAnnualInterestRate: savingsqueries.RateString(m.Contract.AnnualRateBps), AppliedAnnualInterestRate: savingsqueries.RateString(m.Contract.AnnualRateBps), WithdrawalType: "full", SettlementType: "at_maturity", Principal: q.Principal, InterestAmount: q.Interest, TotalPayout: q.Total, MaturityAt: q.MaturityAt, CalculatedAt: now, DestinationAccountID: q.DestinationAccountID, QuoteExpiresAt: q.ExpiresAt, RequiresEarlyWithdrawalConfirmation: false}, nil
 }

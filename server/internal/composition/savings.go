@@ -12,5 +12,5 @@ import (
 
 func NewSavingsHandler(catalog *mongo.SavingsPackageCatalog, bank *eventstore.BankRepository, redisClient *redis.Client) *savingshttp.Handler {
 	q := &savingsqueries.Service{Catalog: catalog, Accounts: bank, Quotes: cache.NewSavingsQuoteRedis(redisClient)}
-	return &savingshttp.Handler{Service: q, Commands: &savingscommands.Service{Quotes: q, Bank: bank, WithdrawalQuotes: cache.NewSavingsWithdrawalQuoteRedis(redisClient)}}
+	return &savingshttp.Handler{Service: q, Commands: &savingscommands.Service{Quotes: q, Bank: savingsBankCommandAdapter{BankRepository: bank}, WithdrawalQuotes: cache.NewSavingsWithdrawalQuoteRedis(redisClient)}}
 }

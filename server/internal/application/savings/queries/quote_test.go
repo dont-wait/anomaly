@@ -49,7 +49,7 @@ func approvedPackage() Package {
 	}
 	return Package{
 		PackageID: StandardPackageID, Name: "Tiết kiệm có kỳ hạn", Currency: "VND",
-		MinimumDeposit: savings.MinimumDepositVND, EffectiveAt: time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC), TermOptions: terms,
+		MinimumDeposit: savings.MinimumDepositVND, EffectiveAt: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), TermOptions: terms,
 	}
 }
 
@@ -63,6 +63,20 @@ func activePayment(id, customer string, funds int64) *account.UserAccount {
 
 func TestCreateQuoteAllApprovedTerms(t *testing.T) {
 	now := time.Date(2027, 1, 31, 7, 30, 0, 0, time.UTC) // 14:30 Vietnam
+	// Independent calendar-day and HALF_UP oracles for 100M VND opened on
+	// 2027-01-31 (Vietnam). Do not use CalculateMaturityPayout to compute wants.
+	want := map[int]struct {
+		maturity string
+		interest int64
+	}{
+		3:  {"2027-04-30", 1_097_260},
+		6:  {"2027-07-31", 2_380_274},
+		9:  {"2027-10-31", 3_739_726},
+		12: {"2028-01-31", 5_200_000},
+		24: {"2029-01-31", 11_015_068},
+		36: {"2030-01-31", 17_415_890},
+		60: {"2032-01-31", 30_016_438},
+	}
 	for _, term := range savings.CurrentTermRates() {
 		t.Run(termLabel(term.Months), func(t *testing.T) {
 			store := &fakeQuoteStore{}
@@ -87,11 +101,9 @@ func TestCreateQuoteAllApprovedTerms(t *testing.T) {
 			if resp.QuoteExpiresAt.Sub(now) != 5*time.Minute || store.quote.ActorID != "actor" || store.quote.CustomerID != "customer-a" {
 				t.Fatalf("invalid bound quote: %+v", store.quote)
 			}
-			if resp.EstimatedInterest <= 0 || resp.EstimatedTotalAtMaturity != resp.Principal+resp.EstimatedInterest {
-				t.Fatalf("invalid interest: %+v", resp)
-			}
-			if term.Months == 3 && resp.ExpectedMaturityDate != "2027-04-30" {
-				t.Fatalf("Jan 31 maturity = %q, want 2027-04-30", resp.ExpectedMaturityDate)
+			expected, ok := want[term.Months]
+			if !ok || resp.EstimatedInterest != expected.interest || resp.EstimatedTotalAtMaturity != resp.Principal+expected.interest || resp.ExpectedMaturityDate != expected.maturity {
+				t.Fatalf("term=%d unexpected exact maturity/interest: got %+v, want %+v", term.Months, resp, expected)
 			}
 		})
 	}
@@ -186,5 +198,30 @@ func TestLoadValidQuoteRejectsExpiryAndAnotherActor(t *testing.T) {
 	svc.Now = func() time.Time { return now.Add(5 * time.Minute) }
 	if _, err := svc.LoadValidQuote(context.Background(), "owner", response.QuoteID); !errors.Is(err, ErrQuoteExpired) {
 		t.Fatalf("expired quote loaded: %v", err)
+	}
+}
+
+func TestSavingsFuturePackageRejectedAtCatalogAndQuoteBoundary(t *testing.T) {
+	now := time.Date(2026, 10, 12, 2, 10, 0, 0, time.UTC)
+	future := approvedPackage()
+	future.EffectiveAt = now.Add(time.Second)
+	if !errors.Is(ValidateCatalogAt([]Package{future}, now), ErrPackageUnavailable) {
+		t.Fatal("future-dated package passed catalog validation")
+	}
+	store := &fakeQuoteStore{}
+	svc := &Service{
+		Catalog: fakeCatalog{items: []Package{future}}, Quotes: store,
+		Accounts: fakeAccounts{accounts: map[string]*account.UserAccount{
+			"actor":  activePayment("actor", "customer-a", 10_000_000),
+			"source": activePayment("source", "customer-a", 10_000_000),
+		}}, Now: func() time.Time { return now },
+	}
+	_, err := svc.CreateQuote(context.Background(), "actor", CreateQuoteInput{PackageID: StandardPackageID, SourceAccountID: "source", Amount: 1_000_000, TermMonths: 3})
+	if !errors.Is(err, ErrPackageUnavailable) || store.quote.ID != "" {
+		t.Fatalf("future quote accepted: %v %+v", err, store.quote)
+	}
+	future.EffectiveAt = now
+	if err := ValidateCatalogAt([]Package{future}, now); err != nil {
+		t.Fatalf("package effective exactly now should be accepted: %v", err)
 	}
 }

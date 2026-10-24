@@ -2,6 +2,7 @@ package savings
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -39,6 +40,7 @@ func (h *Handler) packages(w http.ResponseWriter, r *http.Request) {
 			replyError(w, http.StatusServiceUnavailable, "SAVINGS_POLICY_UNAVAILABLE", "savings catalog is not consistent with approved policy")
 			return
 		}
+		slog.ErrorContext(r.Context(), "savings dependency failure", "operation", "list_savings_packages", "error", err)
 		replyError(w, http.StatusServiceUnavailable, "SAVINGS_UNAVAILABLE", "savings catalog unavailable")
 		return
 	}
@@ -78,6 +80,7 @@ func (h *Handler) quote(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, savingsqueries.ErrInsufficientFunds):
 			replyError(w, http.StatusBadRequest, "INSUFFICIENT_FUNDS", "insufficient funds")
 		default:
+			slog.ErrorContext(r.Context(), "savings dependency failure", "operation", "create_savings_quote", "error", err)
 			replyError(w, http.StatusServiceUnavailable, "SAVINGS_QUOTE_UNAVAILABLE", "savings quote unavailable")
 		}
 		return
@@ -112,10 +115,10 @@ func RegisterRoutes(router *openapi.Registry, h *Handler, tokens accountqueries.
 		Request:     savingsqueries.CreateQuoteInput{}, Response: savingsqueries.QuoteResponse{},
 		FailureStatuses: []int{400, 401, 404, 422, 503},
 	})
-	auth("POST /api/savings/contracts", h.openContract, openapi.Operation{ID: "openSavingsContract", Summary: "Confirm quote and atomically open savings", Request: savingscommands.OpenInput{}, Response: savingscommands.OpenResponse{}, FailureStatuses: []int{400, 401, 404, 409, 410, 422, 503}})
+	auth("POST /api/savings/contracts", h.openContract, openapi.Operation{ID: "openSavingsContract", Summary: "Confirm quote and atomically open savings", SuccessStatus: http.StatusCreated, Parameters: []openapi.Parameter{{Name: "Idempotency-Key", In: "header", Required: true, Type: "string", Format: "uuid"}}, Request: savingscommands.OpenInput{}, Response: savingscommands.OpenResponse{}, FailureStatuses: []int{400, 401, 404, 409, 410, 422, 503}})
 	auth("POST /api/savings/contracts/{id}/withdrawal-quotes", h.withdrawalQuote, openapi.Operation{ID: "quoteSavingsWithdrawal", Summary: "Preview full maturity payout", Request: struct {
 		WithdrawalType string `json:"withdrawalType"`
 	}{}, Response: savingscommands.WithdrawalPreviewResponse{}, FailureStatuses: []int{400, 401, 404, 409, 422, 423, 503}})
-	auth("POST /api/savings/contracts/{id}/withdrawals", h.withdraw, openapi.Operation{ID: "withdrawSavings", Summary: "Settle matured savings exactly once", Request: savingscommands.WithdrawInput{}, Response: savingscommands.WithdrawResponse{}, FailureStatuses: []int{400, 401, 404, 409, 410, 422, 423, 503}})
+	auth("POST /api/savings/contracts/{id}/withdrawals", h.withdraw, openapi.Operation{ID: "withdrawSavings", Summary: "Settle matured savings exactly once", Parameters: []openapi.Parameter{{Name: "Idempotency-Key", In: "header", Required: true, Type: "string", Format: "uuid"}}, Request: savingscommands.WithdrawInput{}, Response: savingscommands.WithdrawResponse{}, FailureStatuses: []int{400, 401, 404, 409, 410, 422, 423, 503}})
 	auth("GET /api/savings/contracts/{id}/settlement", h.settlement, openapi.Operation{ID: "savingsSettlementReceipt", Summary: "Read authoritative settlement receipt", Response: savingscommands.SettlementReceipt{}, FailureStatuses: []int{401, 404, 409, 503}})
 }
