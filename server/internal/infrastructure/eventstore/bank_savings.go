@@ -222,9 +222,35 @@ func (r *BankRepository) SettleSavings(ctx context.Context, actorID, contractID,
 	if err != nil {
 		return journal.SavingsMovement{}, err
 	}
-	m, ok := result.(journal.SavingsMovement)
-	if !ok {
+	if _, ok := result.(journal.SavingsMovement); !ok {
 		return journal.SavingsMovement{}, fmt.Errorf("unexpected savings settlement result")
 	}
-	return m, nil
+	// EventStoreDB can acknowledge a repeated EventID as an idempotent append,
+	// even if this caller supplied a different withdrawal idempotency key.
+	// The persisted Banking Stream, not the locally built movement, decides
+	// which request actually settled the contract. Verify every success before
+	// returning a receipt, including results recovered after commit timeouts.
+	authoritative, err := r.load(ctx)
+	if err != nil {
+		return journal.SavingsMovement{}, fmt.Errorf("unable to confirm savings settlement in bank stream: %w", err)
+	}
+	return confirmSavingsSettlement(authoritative, contractID, quoteID, actorID+":"+strings.ToLower(key))
+}
+
+// confirmSavingsSettlement must never report a different request's successful
+// append as this request's success. The same event ID intentionally protects
+// each contract against duplicate financial credits, but it alone cannot
+// distinguish two different requests during concurrent event-store appends.
+func confirmSavingsSettlement(s *bankState, contractID, quoteID, withdrawKey string) (journal.SavingsMovement, error) {
+	if s == nil {
+		return journal.SavingsMovement{}, fmt.Errorf("savings settlement cannot be confirmed: missing bank state")
+	}
+	committed, found := s.Savings[contractID]
+	if !found || committed.Contract.Status != savings.ContractSettled || committed.Contract.Settlement == nil {
+		return journal.SavingsMovement{}, fmt.Errorf("savings settlement not yet confirmed in bank stream")
+	}
+	if committed.WithdrawalKey != withdrawKey || committed.WithdrawalQuoteID != quoteID {
+		return journal.SavingsMovement{}, savings.ErrAlreadySettled
+	}
+	return committed, nil
 }
