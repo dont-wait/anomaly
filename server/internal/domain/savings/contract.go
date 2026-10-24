@@ -38,6 +38,10 @@ type Contract struct {
 	MaturityAt      time.Time
 	Status          ContractStatus
 	Settlement      *Settlement
+	// Revision is the authoritative EventStoreDB stream revision loaded by the
+	// repository. Settlement must be claimed with a compare-and-swap against
+	// this revision BEFORE any account credit is attempted.
+	Revision uint64
 }
 
 type OpenContractParams struct {
@@ -64,10 +68,15 @@ func NewContract(p OpenContractParams) (*Contract, error) {
 	if err := ValidateDeposit(p.Principal, p.TermMonths); err != nil {
 		return nil, err
 	}
-	// Current policy lives in the packages catalog. Accept an already
-	// confirmed rate snapshot here so a future policy update cannot
-	// silently change an existing savings contract.
-	if p.AnnualRateBps <= 0 || p.AnnualRateBps > 10_000 {
+	// GĐ1 opens contracts only at an approved term/rate combination.
+	// Preserve that validated rate as a snapshot for all future payouts.
+	// In GĐ2/GĐ3 the catalogue/quote authority must validate the offered
+	// policy version before constructing the contract.
+	approvedRate, err := AnnualRateBpsForTerm(p.TermMonths)
+	if err != nil {
+		return nil, err
+	}
+	if p.AnnualRateBps != approvedRate {
 		return nil, ErrInvalidInterestRate
 	}
 	maturity, err := CalculateMaturityAt(p.OpenedAt, p.TermMonths)
@@ -101,6 +110,9 @@ func (c *Contract) CanWithdraw(now time.Time) error {
 	if c.Status != ContractActive && c.Status != ContractMatured {
 		return ErrInvalidContract
 	}
+	if c.OpenedAt.IsZero() || c.MaturityAt.IsZero() || !c.MaturityAt.After(c.OpenedAt) {
+		return ErrInvalidMaturity
+	}
 	if now.IsZero() || now.Before(c.MaturityAt) {
 		return ErrNotMatured
 	}
@@ -117,22 +129,63 @@ func (c *Contract) MarkMatured(now time.Time) error {
 	return nil
 }
 
-// ConfirmSettled can only be called by the application layer AFTER it has
-// durably confirmed a single bank-account credit through EventStoreDB.
-// This method itself never changes a payment account's balance.
-func (c *Contract) ConfirmSettled(transactionID string, now time.Time) error {
+// WithdrawalIntent describes the ONE permitted settlement of this contract.
+// Two independently loaded copies MUST yield the same IdempotencyKey. The
+// application layer must use it for the bank credit and atomically claim the
+// expected EventStoreDB revision before issuing that credit; checking the
+// in-memory Contract.Status alone cannot prevent concurrent double credits.
+type WithdrawalIntent struct {
+	ContractID       string
+	IdempotencyKey   string
+	ExpectedRevision uint64
+	InterestAmount   int64
+	TotalAmount      int64
+}
+
+func (c *Contract) PrepareWithdrawal(now time.Time) (WithdrawalIntent, error) {
+	if err := c.CanWithdraw(now); err != nil {
+		return WithdrawalIntent{}, err
+	}
+	if strings.TrimSpace(c.ID) == "" {
+		return WithdrawalIntent{}, ErrInvalidContract
+	}
+	interest, total, err := CalculateMaturityPayout(c.Principal, c.AnnualRateBps, c.OpenedAt, c.MaturityAt)
+	if err != nil {
+		return WithdrawalIntent{}, err
+	}
+	return WithdrawalIntent{
+		ContractID:       c.ID,
+		IdempotencyKey:   "savings:settlement:" + c.ID,
+		ExpectedRevision: c.Revision,
+		InterestAmount:   interest,
+		TotalAmount:      total,
+	}, nil
+}
+
+// ConfirmSettled applies the durable settlement result to the in-memory
+// contract AFTER the repository has atomically claimed ExpectedRevision and
+// the banking layer has confirmed its single idempotent credit. This method
+// does not perform CAS or move money; those controls MUST be implemented by
+// the command/repository integration in GĐ3 and tested in GĐ5.
+func (c *Contract) ConfirmSettled(intent WithdrawalIntent, transactionID string, committedRevision uint64, now time.Time) error {
 	if err := c.CanWithdraw(now); err != nil {
 		return err
 	}
 	if strings.TrimSpace(transactionID) == "" {
 		return ErrInvalidSettlement
 	}
-	interest, total, err := CalculateMaturityPayout(c.Principal, c.AnnualRateBps, c.OpenedAt, c.MaturityAt)
+	current, err := c.PrepareWithdrawal(now)
 	if err != nil {
 		return err
 	}
-	c.Settlement = &Settlement{TransactionID: transactionID, InterestAmount: interest,
-		TotalAmount: total, SettledAt: now}
+	if intent != current || committedRevision <= intent.ExpectedRevision || committedRevision != intent.ExpectedRevision+1 {
+		return ErrSettlementConflict
+	}
+	c.Settlement = &Settlement{
+		TransactionID: transactionID, InterestAmount: current.InterestAmount,
+		TotalAmount: current.TotalAmount, SettledAt: now,
+	}
 	c.Status = ContractSettled
+	c.Revision = committedRevision
 	return nil
 }

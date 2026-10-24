@@ -162,14 +162,19 @@ func TestContractMaturityAndManualWithdrawal(t *testing.T) {
 		t.Fatalf("maturity transition failed: %v", err)
 	}
 	// Waiting any amount of time does not add post-maturity interest.
-	if err := c.ConfirmSettled("tx_1", c.MaturityAt.Add(30*24*time.Hour)); err != nil {
+	withdrawAt := c.MaturityAt.Add(30 * 24 * time.Hour)
+	intent, err := c.PrepareWithdrawal(withdrawAt)
+	if err != nil {
+		t.Fatalf("prepare withdrawal failed: %v", err)
+	}
+	if err := c.ConfirmSettled(intent, "tx_1", intent.ExpectedRevision+1, withdrawAt); err != nil {
 		t.Fatalf("confirm settlement failed: %v", err)
 	}
 	if c.Status != ContractSettled || c.Settlement.InterestAmount != 5_200_000 ||
 		c.Settlement.TotalAmount != 105_200_000 || c.Settlement.TransactionID != "tx_1" {
 		t.Fatalf("wrong settlement: %+v", c)
 	}
-	if err := c.ConfirmSettled("tx_2", c.MaturityAt.Add(31*24*time.Hour)); !errors.Is(err, ErrAlreadySettled) {
+	if err := c.ConfirmSettled(intent, "tx_2", intent.ExpectedRevision+1, c.MaturityAt.Add(31*24*time.Hour)); !errors.Is(err, ErrAlreadySettled) {
 		t.Fatalf("duplicate withdrawal accepted: %v", err)
 	}
 	if err := c.MarkMatured(c.MaturityAt.Add(31 * 24 * time.Hour)); !errors.Is(err, ErrAlreadySettled) {
@@ -192,7 +197,11 @@ func TestContractInvalidAndLocked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.ConfirmSettled("", c.MaturityAt); !errors.Is(err, ErrInvalidSettlement) {
+	intent, err := c.PrepareWithdrawal(c.MaturityAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ConfirmSettled(intent, "", intent.ExpectedRevision+1, c.MaturityAt); !errors.Is(err, ErrInvalidSettlement) {
 		t.Fatalf("empty bank transaction accepted: %v", err)
 	}
 	if c.Settlement != nil || c.Status != ContractActive {
@@ -201,5 +210,111 @@ func TestContractInvalidAndLocked(t *testing.T) {
 	c.Status = ContractLocked
 	if err := c.CanWithdraw(c.MaturityAt); !errors.Is(err, ErrContractLocked) {
 		t.Fatalf("locked savings can be withdrawn: %v", err)
+	}
+}
+
+func TestContractRejectsUnapprovedTermRateAtOpening(t *testing.T) {
+	for _, tc := range []struct {
+		months int
+		bps    int64
+	}{
+		{3, 900}, {3, 520}, {12, 450}, {60, 10000},
+	} {
+		p := testContractParams()
+		p.TermMonths, p.AnnualRateBps = tc.months, tc.bps
+		if _, err := NewContract(p); !errors.Is(err, ErrInvalidInterestRate) {
+			t.Fatalf("accepted term=%d rate=%d: %v", tc.months, tc.bps, err)
+		}
+	}
+	p := testContractParams()
+	p.TermMonths = 4
+	if _, err := NewContract(p); !errors.Is(err, ErrUnsupportedTerm) {
+		t.Fatalf("unsupported term accepted: %v", err)
+	}
+	// Once approved and stored, an existing contract uses its frozen rate
+	// for payout and does not re-check the current catalogue at withdrawal.
+	c, err := NewContract(testContractParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.AnnualRateBps = 500 // Simulate a previously approved historic snapshot.
+	intent, err := c.PrepareWithdrawal(c.MaturityAt)
+	if err != nil || intent.InterestAmount != 5_000_000 {
+		t.Fatalf("historic snapshot payout: %+v %v", intent, err)
+	}
+}
+
+func TestMissingOrInvalidMaturityCannotBeWithdrawn(t *testing.T) {
+	for _, status := range []ContractStatus{ContractActive, ContractMatured} {
+		c, err := NewContract(testContractParams())
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Status = status
+		c.MaturityAt = time.Time{}
+		if err := c.CanWithdraw(localDate(2028, 1, 1, 0, 0)); !errors.Is(err, ErrInvalidMaturity) {
+			t.Fatalf("status %s accepted missing maturity: %v", status, err)
+		}
+		if err := c.MarkMatured(localDate(2028, 1, 1, 0, 0)); !errors.Is(err, ErrInvalidMaturity) {
+			t.Fatalf("marked invalid maturity: %v", err)
+		}
+		if _, err := c.PrepareWithdrawal(localDate(2028, 1, 1, 0, 0)); !errors.Is(err, ErrInvalidMaturity) {
+			t.Fatalf("prepared invalid maturity: %v", err)
+		}
+	}
+}
+
+func TestCalendarDayDifferenceBeyondDurationCeiling(t *testing.T) {
+	// 400 years include 97 leap days. time.Time.Sub would saturate at
+	// about 292 years and incorrectly report fewer than 146097 days.
+	start := localDate(2000, 1, 1, 14, 30)
+	end := localDate(2400, 1, 1, 14, 30)
+	days, err := ActualCalendarDays(start, end)
+	if err != nil || days != 146097 {
+		t.Fatalf("400-year calendar days=%d err=%v, want 146097", days, err)
+	}
+	interest, err := CalculateMaturityInterest(1_000_000, 450, start, end)
+	if err != nil || interest != 18_011_959 {
+		t.Fatalf("400-year interest=%d err=%v", interest, err)
+	}
+}
+
+func TestSettlementIntentStableAcrossCopiesRequiresCAS(t *testing.T) {
+	original, err := NewContract(testContractParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	original.Revision = 8 // Stream revision supplied by repository after load.
+	copyA, copyB := *original, *original
+	intentA, err := copyA.PrepareWithdrawal(copyA.MaturityAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intentB, err := copyB.PrepareWithdrawal(copyB.MaturityAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if intentA != intentB || intentA.IdempotencyKey != "savings:settlement:id_1" || intentA.ExpectedRevision != 8 {
+		t.Fatalf("concurrent copies must plan the same bank operation: %+v %+v", intentA, intentB)
+	}
+	if err := copyA.ConfirmSettled(intentA, "tx-one", 8, copyA.MaturityAt); !errors.Is(err, ErrSettlementConflict) {
+		t.Fatalf("non-advanced revision accepted: %v", err)
+	}
+	forged := intentA
+	forged.IdempotencyKey = "different-operation"
+	if err := copyA.ConfirmSettled(forged, "tx-one", 9, copyA.MaturityAt); !errors.Is(err, ErrSettlementConflict) {
+		t.Fatalf("forged settlement intent accepted: %v", err)
+	}
+	if copyA.Settlement != nil || copyA.Status != ContractActive {
+		t.Fatal("failed commit must not mutate the contract")
+	}
+	// In GĐ3, only one of these two intents may win a conditional
+	// EventStoreDB revision claim. The bank MUST deduplicate their common
+	// key; this pure-domain test cannot replace that integration test.
+	if err := copyA.ConfirmSettled(intentA, "tx-one", 9, copyA.MaturityAt); err != nil {
+		t.Fatalf("valid durable commit could not be applied: %v", err)
+	}
+	if copyA.Revision != 9 || copyA.Status != ContractSettled {
+		t.Fatalf("settlement confirmation failed: %+v", copyA)
 	}
 }

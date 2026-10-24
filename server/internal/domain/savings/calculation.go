@@ -47,7 +47,10 @@ func ActualCalendarDays(openedAt, maturityAt time.Time) (int64, error) {
 	end := maturityAt.In(timeutil.VietnamLocation)
 	startDate := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, time.UTC)
-	days := int64(endDate.Sub(startDate) / (24 * time.Hour))
+	// UTC midnights are exact multiples of 86_400 Unix seconds.
+	// Unix-second arithmetic does not saturate at time.Duration's ~292-year
+	// ceiling, unlike time.Time.Sub.
+	days := endDate.Unix()/86_400 - startDate.Unix()/86_400
 	if days <= 0 {
 		return 0, ErrInvalidMaturity
 	}

@@ -17,39 +17,31 @@ type TermRate struct {
 	AnnualRateBps int64
 }
 
-// CurrentTermRates returns a copy in the order displayed by the API.
-// Package/catalog infrastructure will persist and serve these terms in GĐ2.
+// approvedTermRates is the single authoritative rate table in the GĐ1
+// simulated savings policy. The package catalog/quote in GĐ2 must use this
+// list rather than maintain a second independent rate lookup.
+var approvedTermRates = [...]TermRate{
+	{Months: 3, AnnualRateBps: 450},
+	{Months: 6, AnnualRateBps: 480},
+	{Months: 9, AnnualRateBps: 500},
+	{Months: 12, AnnualRateBps: 520},
+	{Months: 24, AnnualRateBps: 550},
+	{Months: 36, AnnualRateBps: 580},
+	{Months: 60, AnnualRateBps: 600},
+}
+
+// CurrentTermRates returns an independent copy ordered for the API.
 func CurrentTermRates() []TermRate {
-	return []TermRate{
-		{Months: 3, AnnualRateBps: 450},
-		{Months: 6, AnnualRateBps: 480},
-		{Months: 9, AnnualRateBps: 500},
-		{Months: 12, AnnualRateBps: 520},
-		{Months: 24, AnnualRateBps: 550},
-		{Months: 36, AnnualRateBps: 580},
-		{Months: 60, AnnualRateBps: 600},
-	}
+	return append([]TermRate(nil), approvedTermRates[:]...)
 }
 
 func AnnualRateBpsForTerm(months int) (int64, error) {
-	switch months {
-	case 3:
-		return 450, nil
-	case 6:
-		return 480, nil
-	case 9:
-		return 500, nil
-	case 12:
-		return 520, nil
-	case 24:
-		return 550, nil
-	case 36:
-		return 580, nil
-	case 60:
-		return 600, nil
-	default:
-		return 0, ErrUnsupportedTerm
+	for _, term := range approvedTermRates {
+		if term.Months == months {
+			return term.AnnualRateBps, nil
+		}
 	}
+	return 0, ErrUnsupportedTerm
 }
 
 func ValidateDeposit(principal int64, termMonths int) error {

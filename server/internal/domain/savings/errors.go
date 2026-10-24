@@ -14,4 +14,5 @@ var (
 	ErrAlreadySettled       = errors.New("savings contract already settled")
 	ErrContractLocked       = errors.New("savings contract is locked")
 	ErrInvalidSettlement    = errors.New("invalid savings settlement")
+	ErrSettlementConflict   = errors.New("savings settlement revision or intent conflict")
 )
