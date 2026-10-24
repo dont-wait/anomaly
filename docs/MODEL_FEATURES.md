@@ -117,7 +117,7 @@ Consumer mock không log raw payload.
 ```json
 {
   "event_id": "event-123",
-  "event_type": "TransferCompleted",
+  "event_type": "TransferCreated",
   "stream": "banking",
   "stream_revision": 123,
   "occurred_at": "2026-10-19T10:30:00Z",
@@ -136,23 +136,29 @@ Consumer mock không log raw payload.
 }
 ```
 
-`model_features` chỉ cần có giá trị cho `TransferCompleted`. Các event khác có
-thể bỏ field hoặc để `null`.
+`model_features` được enrich cho `TransferCreated`, trước khi giao dịch được OTP
+confirm. `TransferCompleted` không được publish lại cho model; nó chỉ dùng để
+commit rolling feature state sau khi debit/credit thành công.
 
 ## Quy trình xử lý
 
 ### Event mới
 
-1. Relay nhận event từ persistent subscription của EventStoreDB.
+1. Relay nhận `TransferCreated` từ persistent subscription của EventStoreDB.
 2. Relay decode transfer và xác định source account, receiver, device.
 3. Đọc `model_feature_states` và kiểm tra receiver/device history.
 4. Tính sáu feature từ state hiện tại.
 5. Tạo envelope có `model_features`.
 6. Publish envelope vào `anomaly.bank.events.v1`.
-7. Sau khi Kafka xác nhận, cập nhật rolling state và receiver/device history.
-8. ACK event trong EventStoreDB.
+7. ACK `TransferCreated` sau khi Kafka xác nhận.
+8. Model publish risk decision vào `anomaly.bank.risk-decisions.v1`.
+9. API server lưu decision tạm thời; confirm dùng decision để trả `PENDING`,
+   `ALLOW` hoặc `BLOCK`.
+10. `ALLOW` tạo `TransferCompleted`; `BLOCK` tạo `TransferFailed`.
+11. Chỉ sau `TransferCompleted`, relay cập nhật rolling state và receiver/device
+    history.
 
-### Event không phải `TransferCompleted`
+### Event không phải `TransferCreated` hoặc `TransferCompleted`
 
 Các event khác không được publish vào Kafka. Relay chỉ cập nhật progress và ACK
 EventStoreDB để tiếp tục xử lý stream.

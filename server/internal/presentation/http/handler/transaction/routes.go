@@ -81,8 +81,8 @@ func RegisterRoutes(router *openapi.Registry, h *Handler, tokenSvc queries.Token
 	})
 	auth("POST /api/transfers/{transferId}/confirm", h.ConfirmTransfer, openapi.Operation{
 		ID: "confirmTransfer", Summary: "Confirm a transfer with email OTP",
-		Description: "Send otp as a string. Success returns the outgoing transaction record immediately from canonical state. Retry the same transferId after a timeout; an already successful transfer returns the same result without another debit. INVALID_OTP returns attemptsLeft; OTP_EXPIRED (410) and OTP_ATTEMPTS_EXCEEDED (423) cancel the pending transfer. Insufficient funds at confirmation returns 400.",
-		Request:     confirmRequest{}, Response: transactionResponseDoc{}, FailureStatuses: []int{400, 404, 409, 410, 423},
+		Description: "Send otp as a string. If the model risk decision is not ready, the endpoint returns 202 with RISK_CHECK_PENDING without consuming OTP; retry the same request. ALLOW verifies OTP and returns the successful canonical transaction. BLOCK returns a failed transaction without debit/credit. An already terminal transfer returns the same result without another debit.",
+		Request:     confirmRequest{}, Response: transactionResponseDoc{}, FailureStatuses: []int{202, 400, 404, 409, 410, 423},
 	})
 	auth("POST /api/transfers/{transferId}/otp/resend", h.ResendOTP, openapi.Operation{
 		ID: "resendTransferOTP", Summary: "Resend OTP for a pending transfer",

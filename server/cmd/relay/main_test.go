@@ -48,6 +48,10 @@ func (f *relayFeatureStoreFake) FindDecision(context.Context, string) (modelfeat
 	return f.decision, f.decisionSet, nil
 }
 
+func (f *relayFeatureStoreFake) FindDecisionByTransactionID(context.Context, string) (modelfeature.Decision, bool, error) {
+	return f.decision, f.decisionSet, nil
+}
+
 func (f *relayFeatureStoreFake) SaveDecision(_ context.Context, decision modelfeature.Decision) error {
 	f.decision = decision
 	f.decisionSet = true

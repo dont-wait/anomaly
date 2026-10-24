@@ -16,7 +16,7 @@ const (
 	FeatureBucketSize   = time.Minute
 )
 
-// Features are the model features attached to a completed transfer event.
+// Features are the model features attached to a transfer before risk evaluation.
 // LastTxAt is the timestamp before the current transaction is applied.
 type Features struct {
 	AvgAmount7d int64      `json:"avg_amount_7d" bson:"avg_amount_7d"`
@@ -32,6 +32,7 @@ type Features struct {
 
 type Transaction struct {
 	EventID         string
+	TransactionID   string
 	StreamRevision  uint64
 	SourceAccountID string
 	DestinationID   string
@@ -67,6 +68,7 @@ type State struct {
 
 type Decision struct {
 	EventID        string   `json:"event_id" bson:"_id"`
+	TransactionID  string   `json:"transaction_id" bson:"transaction_id"`
 	StreamRevision uint64   `json:"stream_revision" bson:"stream_revision"`
 	Features       Features `json:"features" bson:"features"`
 	StateApplied   bool     `json:"state_applied" bson:"state_applied"`

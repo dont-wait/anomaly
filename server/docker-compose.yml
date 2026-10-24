@@ -23,6 +23,10 @@ services:
       KYC_SERVICE_URL: ${KYC_SERVICE_URL:-http://anomaly-kyc-service:8090}
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-anomaly.bank.events.v1}
+      KAFKA_RISK_DECISION_TOPIC: ${KAFKA_RISK_DECISION_TOPIC:-anomaly.bank.risk-decisions.v1}
+      KAFKA_RISK_DECISION_GROUP: ${KAFKA_RISK_DECISION_GROUP:-anomaly-server-risk-decisions}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -85,6 +89,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       KAFKA_BROKERS: kafka:29092
       KAFKA_TOPIC: ${KAFKA_TOPIC:-anomaly.bank.events.v1}
+      KAFKA_RISK_DECISION_TOPIC: ${KAFKA_RISK_DECISION_TOPIC:-anomaly.bank.risk-decisions.v1}
+      KAFKA_RISK_DECISION_GROUP: ${KAFKA_RISK_DECISION_GROUP:-anomaly-server-risk-decisions}
       KAFKA_PRODUCER_ID: ${KAFKA_PRODUCER_ID:-anomaly-server}
       KAFKA_EVENTSTORE_SUBSCRIPTION: ${KAFKA_EVENTSTORE_SUBSCRIPTION:-kafka-publisher}
       KAFKA_PAYLOAD_REDACTION_KEY: ${KAFKA_PAYLOAD_REDACTION_KEY:-}

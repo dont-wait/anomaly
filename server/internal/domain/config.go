@@ -133,6 +133,8 @@ func (l *Loader) LoadEventStoreConfig() *EventStoreConfig {
 type KafkaConfig struct {
 	Brokers                []string
 	Topic                  string
+	RiskDecisionTopic      string
+	RiskDecisionGroup      string
 	ProducerID             string
 	EventStoreSubscription string
 	PayloadRedactionKey    string
@@ -143,6 +145,8 @@ func (l *Loader) LoadKafkaConfig() *KafkaConfig {
 	return &KafkaConfig{
 		Brokers:                splitCSV(l.LoadEnvOr("KAFKA_BROKERS", "localhost:9092")),
 		Topic:                  l.LoadEnvOr("KAFKA_TOPIC", "anomaly.bank.events.v1"),
+		RiskDecisionTopic:      l.LoadEnvOr("KAFKA_RISK_DECISION_TOPIC", "anomaly.bank.risk-decisions.v1"),
+		RiskDecisionGroup:      l.LoadEnvOr("KAFKA_RISK_DECISION_GROUP", "anomaly-server-risk-decisions"),
 		ProducerID:             l.LoadEnvOr("KAFKA_PRODUCER_ID", "anomaly-server"),
 		EventStoreSubscription: l.LoadEnvOr("KAFKA_EVENTSTORE_SUBSCRIPTION", "kafka-publisher"),
 		PayloadRedactionKey:    l.LoadEnvOr("KAFKA_PAYLOAD_REDACTION_KEY", ""),

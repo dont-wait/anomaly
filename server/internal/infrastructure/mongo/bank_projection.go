@@ -203,7 +203,7 @@ func (p *BankProjection) Apply(ctx context.Context, record journal.Record, revis
 					return nil, err
 				}
 			}
-			if e.Type == journal.Completed || e.Type == journal.Cancelled {
+			if e.Type == journal.Completed || e.Type == journal.Cancelled || e.Type == journal.Failed {
 				if err := p.feed(sc, tx, "OUT", e.Payload.SourceBalanceAfter, e.OccurredAt); err != nil {
 					return nil, err
 				}

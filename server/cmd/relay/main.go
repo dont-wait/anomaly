@@ -332,9 +332,9 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 
 		resolved := message.EventAppeared.Event
 		recorded := resolved.OriginalEvent()
-		if recorded.EventType != journal.Completed {
+		if recorded.EventType != journal.Created && recorded.EventType != journal.Completed {
 			// Keep feature progress aligned with the EventStoreDB stream even
-			// though only completed transfers are published to Kafka.
+			// though only created transfers are published to Kafka.
 			if err := featureStore.SaveProgress(ctx, recorded.EventID.String(), recorded.EventNumber); err != nil {
 				if nackErr := subscription.Nack("model feature progress update failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
 					return nackErr
@@ -373,11 +373,13 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 			continue
 		}
 
-		if err := producer.Publish(ctx, envelope); err != nil {
-			if nackErr := subscription.Nack("kafka publish failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
-				return nackErr
+		if recorded.EventType == journal.Created {
+			if err := producer.Publish(ctx, envelope); err != nil {
+				if nackErr := subscription.Nack("kafka publish failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
+					return nackErr
+				}
+				return err
 			}
-			return err
 		}
 		if pendingFeatureUpdate != nil {
 			if applyErr := featureStore.ApplyState(ctx, pendingFeatureUpdate.Transaction, pendingFeatureUpdate.NextState); applyErr != nil {
@@ -401,7 +403,7 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 			Str("event_id", envelope.EventID).
 			Str("event_type", envelope.EventType).
 			Uint64("stream_revision", envelope.StreamRevision).
-			Msg("event published to kafka")
+			Msg(map[bool]string{true: "event published to kafka", false: "completed event applied to feature state"}[recorded.EventType == journal.Created])
 	}
 	return ctx.Err()
 }

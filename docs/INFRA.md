@@ -52,6 +52,8 @@ Ngoài ra code còn hỗ trợ:
 EVENT_STORE_CONN_STRING=esdb://localhost:2113?tls=false
 KAFKA_BROKERS=localhost:9092
 KAFKA_TOPIC=anomaly.bank.events.v1
+KAFKA_RISK_DECISION_TOPIC=anomaly.bank.risk-decisions.v1
+KAFKA_RISK_DECISION_GROUP=anomaly-server-risk-decisions
 KAFKA_PRODUCER_ID=anomaly-server
 KAFKA_EVENTSTORE_SUBSCRIPTION=kafka-publisher
 KAFKA_PAYLOAD_REDACTION_KEY=replace-with-a-secret-key
