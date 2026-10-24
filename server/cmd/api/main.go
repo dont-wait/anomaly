@@ -142,7 +142,14 @@ func main() {
 	// unrelated account, transfer and loan APIs unavailable. Operators must
 	// repair the catalog and restart this instance before enabling Savings.
 	savingsCatalog := mongo.NewSavingsPackageCatalog(mongoClient, config.MongoConfig.MongoDBName)
-	savingsHandler := composition.NewSavingsHandler(savingsCatalog, bank, rdb)
+	savingsRead := mongo.NewSavingsRead(mongoClient, config.MongoConfig.MongoDBName)
+	savingsHandler := composition.NewSavingsHandler(savingsCatalog, bank, rdb, savingsRead)
+	if err := savingsRead.EnsureIndexes(ctx); err != nil {
+		logger.Error().Err(err).Msg("savings read indexes unavailable; savings read API disabled")
+		savingsHandler.Read = nil
+	} else {
+		go mongo.NewSavingsMaturityWorker(mongoClient, config.MongoConfig.MongoDBName).Run(ctx)
+	}
 	if err := savingsCatalog.EnsureSeeded(ctx); err != nil {
 		logger.Error().Err(err).Msg("savings catalog unavailable; savings APIs disabled (banking APIs remain up)")
 		savingsHandler.Service = nil

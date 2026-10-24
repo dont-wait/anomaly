@@ -18,6 +18,7 @@ import (
 type Handler struct {
 	Service  *savingsqueries.Service
 	Commands *savingscommands.Service
+	Read     *savingsqueries.SavingsReadService
 }
 
 type apiError struct {
@@ -120,5 +121,6 @@ func RegisterRoutes(router *openapi.Registry, h *Handler, tokens accountqueries.
 		WithdrawalType string `json:"withdrawalType"`
 	}{}, Response: savingscommands.WithdrawalPreviewResponse{}, FailureStatuses: []int{400, 401, 404, 409, 422, 423, 503}})
 	auth("POST /api/savings/contracts/{id}/withdrawals", h.withdraw, openapi.Operation{ID: "withdrawSavings", Summary: "Settle matured savings exactly once", Parameters: []openapi.Parameter{{Name: "Idempotency-Key", In: "header", Required: true, Type: "string", Format: "uuid"}}, Request: savingscommands.WithdrawInput{}, Response: savingscommands.WithdrawResponse{}, FailureStatuses: []int{400, 401, 404, 409, 410, 422, 423, 503}})
+	h.RegisterReadRoutes(auth)
 	auth("GET /api/savings/contracts/{id}/settlement", h.settlement, openapi.Operation{ID: "savingsSettlementReceipt", Summary: "Read authoritative settlement receipt", Response: savingscommands.SettlementReceipt{}, FailureStatuses: []int{401, 404, 409, 503}})
 }
