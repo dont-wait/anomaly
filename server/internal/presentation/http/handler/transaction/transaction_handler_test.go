@@ -3,6 +3,7 @@ package transaction
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -160,9 +161,10 @@ func TestNormalizeDeviceIDRejectsCallerSuppliedNonUUID(t *testing.T) {
 }
 
 type riskDecisionFake struct {
-	decision  risk.Decision
-	found     bool
-	finalized int
+	decision    risk.Decision
+	found       bool
+	finalized   int
+	finalizeErr error
 }
 
 func (f *riskDecisionFake) Find(context.Context, string) (risk.Decision, bool, error) {
@@ -171,7 +173,7 @@ func (f *riskDecisionFake) Find(context.Context, string) (risk.Decision, bool, e
 
 func (f *riskDecisionFake) Finalize(context.Context, string) error {
 	f.finalized++
-	return nil
+	return f.finalizeErr
 }
 
 func confirmRequestForTest(t *testing.T, h *Handler, transferID string) *httptest.ResponseRecorder {
@@ -234,8 +236,31 @@ func TestConfirmTransferBlocksAndIsIdempotentOnRedelivery(t *testing.T) {
 	if second.Code != http.StatusOK || repo.failCalls != 1 {
 		t.Fatalf("redelivery response = %d/%s, failCalls=%d; want one failure append", second.Code, second.Body.String(), repo.failCalls)
 	}
-	if riskStore.finalized != 1 {
-		t.Fatalf("finalize calls = %d, want one", riskStore.finalized)
+	if riskStore.finalized != 2 {
+		t.Fatalf("finalize calls = %d, want retry on terminal requests", riskStore.finalized)
+	}
+}
+
+func TestTerminalConfirmRetriesRiskFinalization(t *testing.T) {
+	for _, status := range []string{"success", "failed", "cancelled"} {
+		t.Run(status, func(t *testing.T) {
+			id := uuid.NewString()
+			repo := &transferRepositoryFake{transfer: mongorepo.TransferDocument{ID: id, Status: status},
+				feed: mongorepo.FeedDocument{TransactionID: id, Status: status}}
+			store := &riskDecisionFake{finalizeErr: errors.New("mongo unavailable")}
+			h := NewHandler(zerolog.Nop(), repo, nil, nil, nil)
+			h.SetRiskDecisionStore(store)
+			if response := confirmRequestForTest(t, h, id); response.Code != http.StatusOK {
+				t.Fatalf("canonical outcome lost after finalize failure: %s", response.Body.String())
+			}
+			store.finalizeErr = nil
+			if response := confirmRequestForTest(t, h, id); response.Code != http.StatusOK {
+				t.Fatalf("terminal retry failed: %s", response.Body.String())
+			}
+			if store.finalized != 2 || repo.failCalls != 0 {
+				t.Fatalf("finalize=%d failures=%d; want cleanup retried without another append", store.finalized, repo.failCalls)
+			}
+		})
 	}
 }
 

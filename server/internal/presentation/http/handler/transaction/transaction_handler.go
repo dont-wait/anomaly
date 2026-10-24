@@ -383,6 +383,7 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if tx.Status == "success" || tx.Status == "failed" || tx.Status == "cancelled" {
+		h.finalizeRiskDecision(r.Context(), id)
 		if tx.Status == "success" && h.outbox != nil {
 			h.sendTransferReceipt(r.Context(), owner, tx)
 		}
@@ -426,9 +427,7 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 				h.writeRepoError(w, err)
 				return
 			}
-			if finalizeErr := h.risk.Finalize(r.Context(), id); finalizeErr != nil {
-				h.logger.Warn().Err(finalizeErr).Str("transferId", id).Msg("finalize risk decision failed")
-			}
+			h.finalizeRiskDecision(r.Context(), id)
 			feed, err := h.repo.GetFeed(r.Context(), owner.ID, failed.ID)
 			if err != nil {
 				h.writeRepoError(w, err)
@@ -489,11 +488,7 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		h.writeRepoError(w, err)
 		return
 	}
-	if h.risk != nil {
-		if finalizeErr := h.risk.Finalize(r.Context(), id); finalizeErr != nil {
-			h.logger.Warn().Err(finalizeErr).Str("transferId", id).Msg("finalize risk decision failed")
-		}
-	}
+	h.finalizeRiskDecision(r.Context(), id)
 	_ = h.otp.Consume(r.Context(), id)
 	h.sendTransferReceipt(r.Context(), owner, confirmed)
 	feed, err := h.repo.GetFeed(r.Context(), owner.ID, confirmed.ID)
@@ -502,6 +497,17 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, transactionResponse(feed))
+}
+
+func (h *Handler) finalizeRiskDecision(ctx context.Context, id string) {
+	if h.risk == nil {
+		return
+	}
+	if err := h.risk.Finalize(ctx, id); err != nil {
+		// The canonical outcome has committed. HTTP retries and the durable
+		// banking projector both retry this cleanup without reapplying money.
+		h.logger.Warn().Err(err).Str("transferId", id).Msg("finalize risk decision failed")
+	}
 }
 
 func (h *Handler) sendTransferReceipt(ctx context.Context, owner mongorepo.TransferAccount, tx mongorepo.TransferDocument) {

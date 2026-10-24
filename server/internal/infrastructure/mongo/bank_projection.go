@@ -207,6 +207,11 @@ func (p *BankProjection) Apply(ctx context.Context, record journal.Record, revis
 				if err := p.feed(sc, tx, "OUT", e.Payload.SourceBalanceAfter, e.OccurredAt); err != nil {
 					return nil, err
 				}
+				// Recover API crashes between the canonical append and risk cleanup.
+				// Finalization and the projection checkpoint commit together.
+				if err := NewRiskDecisionRepository(p.client, p.db.Name()).Finalize(sc, tx.ID); err != nil {
+					return nil, err
+				}
 			}
 		}
 		_, err = p.db.Collection("checkpoints").UpdateOne(sc, bson.M{"_id": bankCheckpointID}, bson.M{"$set": bson.M{"revision": revision}}, options.UpdateOne().SetUpsert(true))

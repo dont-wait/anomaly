@@ -158,6 +158,23 @@ commit rolling feature state sau khi debit/credit thành công.
 11. Chỉ sau `TransferCompleted`, relay cập nhật rolling state và receiver/device
     history.
 
+### Risk decision retention và recovery
+
+- API chỉ sử dụng decision chưa finalized và `expires_at > now`; không chờ MongoDB
+  TTL xóa record mới coi là hết hạn.
+- Response được lưu lần đầu theo `transfer_id`. Chỉ cho phép `PENDING` tiến tới
+  `ALLOW`/`BLOCK` với cùng `source_event_id`; terminal decision và finalized record
+  không bị ghi đè hoặc gia hạn bởi redelivery. Terminal response đầu tiên được giữ
+  nguyên, response mâu thuẫn đến sau không thay đổi kết quả đã nhận.
+- Finalize là idempotent và giữ audit thêm 24 giờ từ lần finalize đầu tiên.
+  Confirm retry thử cleanup lại; banking projector cũng finalize khi project event
+  terminal, cùng MongoDB transaction với checkpoint, để khôi phục khi API crash.
+- Response JSON/validation/correlation lỗi được park trong MongoDB collection
+  `risk_decision_rejections` (TTL 7 ngày), định danh bằng Kafka topic/partition/offset.
+  Chỉ commit Kafka offset sau khi park thành công. Lỗi storage vẫn được retry;
+  raw payload không được log. Collection này phục vụ điều tra/replay thủ công,
+  không tự động replay response lỗi.
+
 ### Event không phải `TransferCreated` hoặc `TransferCompleted`
 
 Các event khác không được publish vào Kafka. Relay chỉ cập nhật progress và ACK
