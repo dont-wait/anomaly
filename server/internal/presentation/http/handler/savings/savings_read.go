@@ -115,7 +115,12 @@ func (h *Handler) maturityNotifications(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) RegisterReadRoutes(auth func(string, http.HandlerFunc, openapi.Operation)) {
 	auth("GET /api/savings/contracts", h.listContracts, openapi.Operation{
-		ID: "listSavingsContracts", Summary: "List customer savings with runtime maturity status", Response: savingsqueries.SavingsPage{}, FailureStatuses: []int{400, 401, 409, 503},
+		ID: "listSavingsContracts", Summary: "List customer savings with runtime maturity status", Response: savingsqueries.SavingsPage{}, FailureStatuses: []int{400, 401, 404, 409, 503},
+		Parameters: []openapi.Parameter{
+			{Name: "status", In: "query", Type: "string", Example: "all"},
+			{Name: "cursor", In: "query", Type: "string"},
+			{Name: "limit", In: "query", Type: "integer", Example: "20"},
+		},
 	})
 	auth("GET /api/savings/contracts/{id}", h.contractDetail, openapi.Operation{
 		ID: "getSavingsContract", Summary: "Read customer-owned savings contract", Response: savingsqueries.SavingsContract{}, FailureStatuses: []int{400, 401, 404, 409, 503},
@@ -124,6 +129,7 @@ func (h *Handler) RegisterReadRoutes(auth func(string, http.HandlerFunc, openapi
 		ID: "listSavingsHistory", Summary: "Read savings debit and settlement ledger", Response: savingsqueries.SavingsHistory{}, FailureStatuses: []int{400, 401, 404, 503},
 	})
 	auth("GET /api/savings/notifications", h.maturityNotifications, openapi.Operation{
-		ID: "listSavingsNotifications", Summary: "Read one-time in-app maturity notifications", Response: savingsqueries.SavingsNotices{}, FailureStatuses: []int{400, 401, 503},
+		ID: "listSavingsNotifications", Summary: "Read one-time in-app maturity notifications", Response: savingsqueries.SavingsNotices{}, FailureStatuses: []int{400, 401, 404, 503},
+		Parameters: []openapi.Parameter{{Name: "limit", In: "query", Type: "integer", Example: "20"}},
 	})
 }

@@ -66,7 +66,7 @@ func (r *SavingsRead) List(ctx context.Context, customer, status string, limit i
 	filter := bson.M{"customer_id": customer}
 	switch status {
 	case "active":
-		filter["status"] = "active"
+		filter["status"] = bson.M{"$in": bson.A{"active", "matured"}}
 		filter["maturity_at"] = bson.M{"$gt": now}
 	case "matured":
 		filter["status"] = bson.M{"$in": bson.A{"active", "matured"}}

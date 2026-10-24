@@ -1,9 +1,12 @@
 package queries
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,10 +54,12 @@ func (s *testSavingsStore) List(_ context.Context, customer, status string, limi
 	return rows, nil
 }
 
-func (s *testSavingsStore) Detail(_ context.Context, customer, id string) (*SavingsContract, error) {
+func (s *testSavingsStore) Detail(_ context.Context, _ string, id string) (*SavingsContract, error) {
 	s.reads++
+	// Deliberately do NOT filter by customer: test the service ownership guard
+	// independently of the MongoDB repository's additional protection.
 	for _, c := range s.rows {
-		if c.CustomerID == customer && c.SavingsID == id {
+		if c.SavingsID == id {
 			return &c, nil
 		}
 	}
@@ -102,7 +107,7 @@ func TestSavingsReadOwnershipAndMaturityWithoutScheduler(t *testing.T) {
 		t.Fatalf("not matured at read: %+v %v", c, err)
 	}
 	if _, err := service.Detail(ctx, "actor", "foreign"); !errors.Is(err, ErrContractNotFound) {
-		t.Fatalf("foreign accessible: %v", err)
+		t.Fatalf("service ownership guard did not reject foreign contract: %v", err)
 	}
 	page, err := service.List(ctx, "actor", "matured", "", 20)
 	if err != nil || len(page.Items) != 1 || page.Items[0].SavingsID != "own" {
@@ -159,5 +164,100 @@ func TestSavingsReadPaginationBoundToProjectionRevision(t *testing.T) {
 	data, _ := json.Marshal(page)
 	if err := json.Unmarshal(data, &response); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Keep the membership clock pinned to page one even when a contract matures
+// between page requests and no projection event changes the checkpoint.
+func TestSavingsReadPaginationKeepsInitialClassificationTime(t *testing.T) {
+	ctx := context.Background()
+	first := time.Date(2027, 10, 24, 9, 59, 0, 0, time.UTC)
+	clock := first
+	store := &testSavingsStore{revision: 7, rows: []SavingsContract{
+		testContract("newer", "cust-1", savings.ContractActive, first.Add(30*time.Minute)),
+		testContract("crossing", "cust-1", savings.ContractActive, first.Add(time.Minute)),
+		testContract("older", "cust-1", savings.ContractActive, first.Add(time.Hour)),
+	}}
+	for i := range store.rows {
+		store.rows[i].OpenedAt = first.Add(-time.Duration(i) * time.Hour)
+	}
+	service := &SavingsReadService{Accounts: fakeAccounts{accounts: map[string]*account.UserAccount{
+		"actor": activePayment("actor", "cust-1", 0),
+	}}, Store: store, Now: func() time.Time { return clock }}
+	page, err := service.List(ctx, "actor", "active", "", 1)
+	if err != nil || len(page.Items) != 1 || page.NextCursor == nil || page.Items[0].SavingsID != "newer" {
+		t.Fatalf("first active page: %+v / %v", page, err)
+	}
+	firstCursor := *page.NextCursor
+	decoded, err := DecodeSavingsCursor(firstCursor)
+	if err != nil || !decoded.AsOf.Equal(first) {
+		t.Fatalf("cursor lost page-one classification time: %+v / %v", decoded, err)
+	}
+	clock = first.Add(2 * time.Minute) // crossing contract has now matured
+	page, err = service.List(ctx, "actor", "active", firstCursor, 1)
+	if err != nil || len(page.Items) != 1 || page.Items[0].SavingsID != "crossing" || page.NextCursor == nil || page.Items[0].Status != savings.ContractActive {
+		t.Fatalf("second active page must reuse original time: %+v / %v", page, err)
+	}
+	page, err = service.List(ctx, "actor", "active", *page.NextCursor, 1)
+	if err != nil || len(page.Items) != 1 || page.Items[0].SavingsID != "older" {
+		t.Fatalf("third active page skipped record: %+v / %v", page, err)
+	}
+	fresh, err := service.List(ctx, "actor", "matured", "", 10)
+	if err != nil || len(fresh.Items) != 1 || fresh.Items[0].SavingsID != "crossing" {
+		t.Fatalf("fresh page should use new classification: %+v / %v", fresh, err)
+	}
+	old := EncodeSavingsCursor(SavingsCursor{ID: "x", OpenedAt: first, Revision: 7, Status: "active"})
+	if _, err := service.List(ctx, "actor", "active", old, 1); !errors.Is(err, ErrInvalidRead) {
+		t.Fatalf("cursor without as-of must be rejected: %v", err)
+	}
+}
+
+type failingSavingsReadCache struct {
+	data   []byte
+	found  bool
+	getErr error
+	setErr error
+}
+
+func (c *failingSavingsReadCache) Get(context.Context, string) ([]byte, bool, error) {
+	return c.data, c.found, c.getErr
+}
+
+func (c *failingSavingsReadCache) Set(context.Context, string, []byte, time.Duration) error {
+	return c.setErr
+}
+
+func TestSavingsReadCacheFailuresWarnButDoNotBlockMongo(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2027, 10, 24, 10, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name    string
+		cache   failingSavingsReadCache
+		wantLog string
+	}{
+		{name: "GET outage", cache: failingSavingsReadCache{getErr: errors.New("redis unavailable")}, wantLog: "operation=GET"},
+		{name: "SET outage", cache: failingSavingsReadCache{setErr: errors.New("redis unavailable")}, wantLog: "operation=SET"},
+		{name: "bad cached JSON", cache: failingSavingsReadCache{data: []byte("{invalid"), found: true}, wantLog: "operation=DECODE"},
+		{name: "normal miss", cache: failingSavingsReadCache{}, wantLog: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			store := &testSavingsStore{revision: 8, rows: []SavingsContract{testContract("settled", "cust-1", savings.ContractSettled, now.Add(-time.Hour))}}
+			cache := tc.cache
+			service := &SavingsReadService{
+				Accounts: fakeAccounts{accounts: map[string]*account.UserAccount{"actor": activePayment("actor", "cust-1", 0)}}, Store: store, Cache: &cache,
+				Logger: slog.New(slog.NewTextHandler(&logs, nil)), Now: func() time.Time { return now },
+			}
+			got, err := service.Detail(ctx, "actor", "settled")
+			if err != nil || got.SavingsID != "settled" || store.reads != 1 {
+				t.Fatalf("Mongo fallback failed: %+v / %v (reads=%d)", got, err, store.reads)
+			}
+			if tc.wantLog == "" && logs.Len() != 0 || tc.wantLog != "" && !strings.Contains(logs.String(), tc.wantLog) {
+				t.Fatalf("unexpected cache diagnostic: %s", logs.String())
+			}
+			if strings.Contains(logs.String(), "cust-1") || strings.Contains(logs.String(), "savings:read:") {
+				t.Fatalf("customer identifier or Redis key leaked into log: %s", logs.String())
+			}
+		})
 	}
 }

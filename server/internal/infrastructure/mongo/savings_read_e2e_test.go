@@ -4,6 +4,7 @@ package mongo
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"testing"
 	"time"
@@ -93,5 +94,68 @@ func TestSavingsReadAndMaturityNoticesWithMongo(t *testing.T) {
 	worker.Now = func() time.Time { return later.Add(time.Minute) }
 	if n, err := worker.RunOnce(ctx); err != nil || n != 0 {
 		t.Fatalf("settled contract produced a notice: %d / %v", n, err)
+	}
+
+	// Regression: >100 malformed due rows used to block the same first 100
+	// forever. Both decoded-invalid rows and BSON decode errors must be skipped.
+	bad := make([]any, 0, 106)
+	for i := 0; i < 105; i++ {
+		row := bson.M{"_id": fmt.Sprintf("bad-%03d", i), "status": "active", "maturity_at": due.Add(-time.Hour), "savings_no": "SVBAD"}
+		if i%2 == 0 {
+			row["customer_id"] = int32(42) // malformed BSON type
+		} // odd records have no customer ID
+		bad = append(bad, row)
+	}
+	if _, err := db.Collection("savings_contracts").InsertMany(ctx, bad); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Collection("savings_contracts").InsertOne(ctx, bson.M{
+		"_id": "after-invalid-rows", "customer_id": "owner", "savings_no": "SVTAIL",
+		"status": "active", "maturity_at": due, "opened_at": due.AddDate(0, -3, 0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := worker.RunOnce(ctx); err == nil || n != 1 {
+		t.Fatalf("bad records must be reported without starving a valid row: %d / %v", n, err)
+	}
+	notices, err := read.Notifications(ctx, "owner", 50)
+	if err != nil || len(notices) != 2 {
+		t.Fatalf("later valid notice was not persisted: %+v / %v", notices, err)
+	}
+	for i := 0; i < 105; i++ {
+		if _, err := db.Collection("savings_contracts").DeleteOne(ctx, bson.M{"_id": fmt.Sprintf("bad-%03d", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := worker.RunOnce(ctx); err != nil || n != 0 {
+		t.Fatalf("post-cleanup should not duplicate notices: %d / %v", n, err)
+	}
+
+	// Force one notification transaction to fail validation. The worker must
+	// process the next due row and leave the failed contract unclaimed for retry.
+	if err := db.RunCommand(ctx, bson.D{
+		{Key: "collMod", Value: "savings_notifications"},
+		{Key: "validator", Value: bson.M{"savings_no": bson.M{"$ne": "SVFAIL"}}},
+	}).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Collection("savings_contracts").InsertMany(ctx, []any{
+		bson.M{"_id": "failure", "customer_id": "owner", "savings_no": "SVFAIL", "status": "active", "maturity_at": due.Add(-30 * time.Minute)},
+		bson.M{"_id": "success", "customer_id": "owner", "savings_no": "SVSUCCESS", "status": "active", "maturity_at": due.Add(-10 * time.Minute)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := worker.RunOnce(ctx); err == nil || n != 1 {
+		t.Fatalf("transaction failure blocked later contract: %d / %v", n, err)
+	}
+	var failedDoc bson.M
+	if err := db.Collection("savings_contracts").FindOne(ctx, bson.M{"_id": "failure"}).Decode(&failedDoc); err != nil {
+		t.Fatal(err)
+	}
+	if _, claimed := failedDoc["maturity_notice_at"]; claimed {
+		t.Fatalf("failed transaction incorrectly claimed notification: %+v", failedDoc)
+	}
+	if err := db.Collection("savings_notifications").FindOne(ctx, bson.M{"_id": "savings-maturity:success"}).Err(); err != nil {
+		t.Fatalf("later valid notification missing after transaction failure: %v", err)
 	}
 }

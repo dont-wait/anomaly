@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -103,6 +104,7 @@ type SavingsCursor struct {
 	ID       string    `json:"i"`
 	Revision int64     `json:"r"`
 	Status   string    `json:"s"`
+	AsOf     time.Time `json:"a"`
 }
 
 func EncodeSavingsCursor(c SavingsCursor) string {
@@ -119,7 +121,7 @@ func DecodeSavingsCursor(value string) (SavingsCursor, error) {
 		return SavingsCursor{}, ErrInvalidRead
 	}
 	var c SavingsCursor
-	if err := json.Unmarshal(bytes, &c); err != nil || c.OpenedAt.IsZero() || c.ID == "" || c.Revision <= 0 {
+	if err := json.Unmarshal(bytes, &c); err != nil || c.OpenedAt.IsZero() || c.ID == "" || c.Revision <= 0 || c.AsOf.IsZero() {
 		return SavingsCursor{}, ErrInvalidRead
 	}
 	return c, nil
@@ -142,6 +144,7 @@ type SavingsReadService struct {
 	Accounts AccountReader
 	Store    SavingsReadStore
 	Cache    SavingsReadCache
+	Logger   *slog.Logger
 	Now      func() time.Time
 }
 
@@ -188,12 +191,32 @@ func (s *SavingsReadService) stable(ctx context.Context, revision int64) error {
 	return nil
 }
 
+func (s *SavingsReadService) warnCache(ctx context.Context, op string, err error) {
+	logger := s.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	// Redis keys can include customer/account identifiers; never log the key.
+	logger.WarnContext(ctx, "savings read cache failure", "operation", op, "error", err)
+}
+
 func (s *SavingsReadService) cached(ctx context.Context, key string, dst any) bool {
 	if s.Cache == nil {
 		return false
 	}
 	b, found, err := s.Cache.Get(ctx, key)
-	return err == nil && found && json.Unmarshal(b, dst) == nil
+	if err != nil {
+		s.warnCache(ctx, "GET", err)
+		return false
+	}
+	if !found {
+		return false
+	}
+	if err := json.Unmarshal(b, dst); err != nil {
+		s.warnCache(ctx, "DECODE", err)
+		return false
+	}
+	return true
 }
 
 func (s *SavingsReadService) put(ctx context.Context, key string, value any) {
@@ -201,8 +224,12 @@ func (s *SavingsReadService) put(ctx context.Context, key string, value any) {
 		return
 	}
 	b, err := json.Marshal(value)
-	if err == nil {
-		_ = s.Cache.Set(ctx, key, b, ReadCacheTTL)
+	if err != nil {
+		s.warnCache(ctx, "ENCODE", err)
+		return
+	}
+	if err := s.Cache.Set(ctx, key, b, ReadCacheTTL); err != nil {
+		s.warnCache(ctx, "SET", err)
 	}
 }
 
@@ -227,6 +254,7 @@ func (s *SavingsReadService) List(ctx context.Context, actor, status, cursor str
 	if err != nil {
 		return SavingsPage{}, err
 	}
+	asOf := s.now()
 	var after *SavingsCursor
 	if cursor != "" {
 		decoded, err := DecodeSavingsCursor(cursor)
@@ -236,6 +264,10 @@ func (s *SavingsReadService) List(ctx context.Context, actor, status, cursor str
 		if decoded.Revision != revision {
 			return SavingsPage{}, ErrReadChanged
 		}
+		if decoded.AsOf.After(asOf) {
+			return SavingsPage{}, ErrInvalidRead
+		}
+		asOf = decoded.AsOf
 		after = &decoded
 	}
 	key := fmt.Sprintf("savings:read:list:%s:%s:%d:%d:%s", customerID, status, limit, revision, cursor)
@@ -248,8 +280,7 @@ func (s *SavingsReadService) List(ctx context.Context, actor, status, cursor str
 		}
 		return page, nil
 	}
-	now := s.now()
-	rows, err := s.Store.List(ctx, customerID, status, limit+1, after, now)
+	rows, err := s.Store.List(ctx, customerID, status, limit+1, after, asOf)
 	if err != nil {
 		return SavingsPage{}, err
 	}
@@ -261,7 +292,7 @@ func (s *SavingsReadService) List(ctx context.Context, actor, status, cursor str
 		if rows[i].CustomerID != customerID {
 			return SavingsPage{}, ErrReadNotReady
 		}
-		if err := rows[i].normalize(now); err != nil {
+		if err := rows[i].normalize(asOf); err != nil {
 			return SavingsPage{}, err
 		}
 	}
@@ -271,7 +302,7 @@ func (s *SavingsReadService) List(ctx context.Context, actor, status, cursor str
 	}
 	if more {
 		last := rows[len(rows)-1]
-		encoded := EncodeSavingsCursor(SavingsCursor{OpenedAt: last.OpenedAt, ID: last.SavingsID, Revision: revision, Status: status})
+		encoded := EncodeSavingsCursor(SavingsCursor{OpenedAt: last.OpenedAt, ID: last.SavingsID, Revision: revision, Status: status, AsOf: asOf})
 		page.NextCursor = &encoded
 	}
 	if err := s.stable(ctx, revision); err != nil {

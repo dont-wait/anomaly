@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -39,27 +40,45 @@ func (w *SavingsMaturityWorker) RunOnce(ctx context.Context) (int, error) {
 	}
 	now := w.now()
 	filter := bson.M{"status": bson.M{"$in": bson.A{"active", "matured"}}, "maturity_at": bson.M{"$lte": now}, "maturity_notice_at": bson.M{"$exists": false}}
-	cur, err := w.DB.Collection("savings_contracts").Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "maturity_at", Value: 1}}).SetLimit(100))
+	// Stream the complete eligible set in bounded Mongo batches. A fixed Find
+	// limit of 100 allows a permanently malformed record to starve later rows.
+	cur, err := w.DB.Collection("savings_contracts").Find(ctx, filter,
+		options.Find().SetSort(bson.D{{Key: "maturity_at", Value: 1}, {Key: "_id", Value: 1}}).SetBatchSize(100))
 	if err != nil {
 		return 0, err
 	}
-	var rows []struct {
+	defer cur.Close(ctx)
+	type dueRow struct {
 		ID         string    `bson:"_id"`
 		CustomerID string    `bson:"customer_id"`
 		SavingsNo  string    `bson:"savings_no"`
 		MaturityAt time.Time `bson:"maturity_at"`
 	}
-	if err := cur.All(ctx, &rows); err != nil {
-		return 0, err
-	}
 	count := 0
-	for _, row := range rows {
-		if row.ID == "" || row.CustomerID == "" || row.MaturityAt.IsZero() {
-			return count, fmt.Errorf("invalid savings maturity projection")
+	failed := 0
+	var firstError error
+	recordFailure := func(err error) {
+		failed++
+		if firstError == nil {
+			firstError = err
+		}
+		slog.WarnContext(ctx, "savings maturity notice skipped", "error", err)
+	}
+	for cur.Next(ctx) {
+		var row dueRow
+		// Decode each document independently; cur.All would abort the batch.
+		if err := cur.Decode(&row); err != nil {
+			recordFailure(fmt.Errorf("decode savings maturity row: %w", err))
+			continue
+		}
+		if row.ID == "" || row.CustomerID == "" || row.SavingsNo == "" || row.MaturityAt.IsZero() {
+			recordFailure(fmt.Errorf("invalid savings maturity projection for contract %q", row.ID))
+			continue
 		}
 		session, err := w.Client.StartSession()
 		if err != nil {
-			return count, err
+			recordFailure(fmt.Errorf("start savings notice session: %w", err))
+			continue
 		}
 		result, txErr := session.WithTransaction(ctx, func(sc context.Context) (any, error) {
 			// Write to the SAME contract document as the banking projector to
@@ -77,11 +96,18 @@ func (w *SavingsMaturityWorker) RunOnce(ctx context.Context) (int, error) {
 		})
 		session.EndSession(ctx)
 		if txErr != nil {
-			return count, txErr
+			recordFailure(fmt.Errorf("create savings maturity notice for %q: %w", row.ID, txErr))
+			continue
 		}
 		if claimed, ok := result.(bool); ok && claimed {
 			count++
 		}
+	}
+	if err := cur.Err(); err != nil {
+		return count, errors.Join(firstError, err)
+	}
+	if failed > 0 {
+		return count, fmt.Errorf("%d savings maturity records skipped (first error: %w)", failed, firstError)
 	}
 	return count, nil
 }
