@@ -21,6 +21,20 @@ func CalculateMaturityAt(openedAt time.Time, termMonths int) (time.Time, error) 
 		return time.Time{}, err
 	}
 
+	return MaturityForStoredContract(openedAt, termMonths)
+}
+
+// MaturityForStoredContract validates the maturity of an immutable historical
+// contract without consulting today's approved term catalogue. Otherwise
+// removing a product would make old event streams impossible to replay.
+func MaturityForStoredContract(openedAt time.Time, termMonths int) (time.Time, error) {
+	if openedAt.IsZero() {
+		return time.Time{}, ErrInvalidOpenedAt
+	}
+	if termMonths <= 0 || termMonths > 1200 {
+		return time.Time{}, ErrInvalidMaturity
+	}
+
 	start := openedAt.In(timeutil.VietnamLocation)
 	first := time.Date(start.Year(), start.Month()+time.Month(termMonths), 1,
 		0, 0, 0, 0, timeutil.VietnamLocation)

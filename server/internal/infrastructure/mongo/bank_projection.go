@@ -74,6 +74,10 @@ func (p *BankProjection) Apply(ctx context.Context, record journal.Record, revis
 					return nil, err
 				}
 			}
+		case journal.SavingsOpened, journal.SavingsSettled:
+			if err := p.savingsMovement(sc, record, sequence); err != nil {
+				return nil, err
+			}
 		case journal.LoanDisbursementCredited:
 			if err := p.balance(
 				sc,
