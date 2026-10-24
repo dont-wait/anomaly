@@ -134,7 +134,17 @@ func (r *SavingsRead) History(ctx context.Context, customer, id string) ([]savin
 }
 
 func (r *SavingsRead) Notifications(ctx context.Context, customer string, limit int) ([]savingsqueries.SavingsNotice, error) {
-	cur, err := r.db.Collection("savings_notifications").Find(ctx, bson.M{"customer_id": customer}, options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}, {Key: "_id", Value: -1}}).SetLimit(int64(limit)))
+	// Never return a maturity notice for a contract already projected as
+	// settled. The settlement projection also deletes the notice.
+	pipeline := mongodrv.Pipeline{
+		{{Key: "$match", Value: bson.M{"customer_id": customer}}},
+		{{Key: "$lookup", Value: bson.M{"from": "savings_contracts", "localField": "savings_id", "foreignField": "_id", "as": "contract"}}},
+		{{Key: "$match", Value: bson.M{"contract": bson.M{"$elemMatch": bson.M{"customer_id": customer, "status": bson.M{"$in": bson.A{"active", "matured"}}}}}}},
+		{{Key: "$sort", Value: bson.D{{Key: "created_at", Value: -1}, {Key: "_id", Value: -1}}}},
+		{{Key: "$limit", Value: int64(limit)}},
+		{{Key: "$project", Value: bson.M{"contract": 0}}},
+	}
+	cur, err := r.db.Collection("savings_notifications").Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, err
 	}

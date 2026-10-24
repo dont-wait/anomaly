@@ -24,6 +24,7 @@ func TestSavingsCommandErrorResponses(t *testing.T) {
 		wantLog    bool
 	}{
 		{name: "not settled", err: savingscommands.ErrSavingsNotSettled, status: http.StatusConflict, code: "SAVINGS_NOT_SETTLED"},
+		{name: "settlement unconfirmed", err: savingscommands.ErrSavingsSettlementUnconfirmed, status: http.StatusServiceUnavailable, code: "SAVINGS_SETTLEMENT_UNCONFIRMED", wantLog: true},
 		{name: "writes disabled", err: savingscommands.ErrSavingsWritesDisabled, status: http.StatusServiceUnavailable, code: "SAVINGS_WRITES_DISABLED", wantLog: true},
 		{name: "idempotency conflict", err: savingscommands.ErrIdempotencyConflict, status: http.StatusConflict, code: "IDEMPOTENCY_CONFLICT"},
 		{name: "invalid source", err: savingsqueries.ErrInvalidSource, status: http.StatusUnprocessableEntity, code: "INVALID_SOURCE_ACCOUNT"},

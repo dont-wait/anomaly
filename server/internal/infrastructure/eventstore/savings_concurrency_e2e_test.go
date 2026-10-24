@@ -148,6 +148,15 @@ func TestSavingsCommandsExactlyOnceWithEventStoreDB(t *testing.T) {
 	if winner < 0 {
 		t.Fatalf("no successful settlement, errors=%v", withdrawErrors)
 	}
+	// Repository-level regression: the stream must contain the winning key,
+	// not merely an idempotent acknowledgement of the shared EventID.
+	persisted, err := eventstore.NewBankRepository(es, nil).FindSavings(ctx, actor.Id, contract.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.WithdrawalKey != actor.Id+":"+keys[winner] || persisted.WithdrawalQuoteID != withdrawQuote {
+		t.Fatalf("repository returned wrong winner: saved key=%q success key=%q", persisted.WithdrawalKey, keys[winner])
+	}
 	payout := results[winner].Contract.Settlement.TotalAmount
 	assertBankBalance(t, ctx, eventstore.NewBankRepository(es, nil), actor.Id, afterPast+payout)
 	again, err := eventstore.NewBankRepository(es, nil).SettleSavings(ctx, actor.Id, contract.ID, withdrawQuote, keys[winner], time.Now().Add(5*time.Minute))

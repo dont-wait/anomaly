@@ -241,7 +241,7 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 	if matured.Status != savings.ContractMatured {
 		t.Fatalf("historical contract must be matured: %+v", matured)
 	}
-	maturityWorker := mongorepo.NewSavingsMaturityWorker(mongoClient, db.Name())
+	maturityWorker := mongorepo.NewSavingsMaturityWorker(mongoClient, db.Name(), bank)
 	if n, err := maturityWorker.RunOnce(ctx); err != nil || n != 1 {
 		t.Fatalf("first notice scan: count=%d err=%v", n, err)
 	}
@@ -273,7 +273,23 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 	if got := countSavingsEvents(readBank(t, ctx, es), journal.SavingsSettled); got != 1 {
 		t.Fatalf("settlement recorded %d credits, want exactly one", got)
 	}
+	// Recreate the exact projection-lag race: EventStoreDB already settled,
+	// but Mongo still says active and has not claimed any maturity notice.
+	if _, err := db.Collection("savings_contracts").UpdateOne(ctx, bson.M{"_id": oldContract.ID}, bson.M{"$unset": bson.M{"maturity_notice_at": ""}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Collection("savings_notifications").DeleteOne(ctx, bson.M{"_id": "savings-maturity:" + oldContract.ID}); err != nil {
+		t.Fatal(err)
+	}
+	// The worker must verify the bank stream instead of trusting stale Mongo.
+	if n, err := maturityWorker.RunOnce(ctx); err != nil || n != 0 {
+		t.Fatalf("worker retried a settled contract during projection lag: %d / %v", n, err)
+	}
 	projectNew()
+	remaining := decodeLoanE2E[savingsqueries.SavingsNotices](t, api.json(t, "GET", "/api/savings/notifications", ownerToken, nil, nil, http.StatusOK))
+	if len(remaining.Items) != 0 {
+		t.Fatalf("settlement projection did not revoke obsolete notices: %+v", remaining)
+	}
 	finalDetail := decodeLoanE2E[savingsqueries.SavingsContract](t, api.json(t, "GET", maturedPath, ownerToken, nil, nil, http.StatusOK))
 	if finalDetail.Status != savings.ContractSettled || finalDetail.Settlement == nil || finalDetail.Settlement.TotalAmount != withdrawn.TotalPayout {
 		t.Fatalf("settlement not projected: %+v", finalDetail)

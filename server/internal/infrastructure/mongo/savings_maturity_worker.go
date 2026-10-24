@@ -15,16 +15,23 @@ import (
 
 // SavingsMaturityWorker produces one durable in-app notice per matured savings
 // contract. It NEVER modifies the account balance, settlement, or banking stream.
-// Multiple API replicas are safe: eligibility and the deterministic insert are
-// committed in a Mongo transaction (Mongo replica set required).
-type SavingsMaturityWorker struct {
-	Client *mongodrv.Client
-	DB     *mongodrv.Database
-	Now    func() time.Time
+// A guard against the authoritative bank stream is required before the
+// Mongo transaction. Mongo-only checks do not protect against projector lag.
+// Concurrent settlement can still race the guard, so SavingsSettled projection
+// also removes any previously persisted notice.
+type SavingsMaturityVerifier interface {
+	SavingsMaturityEligible(context.Context, string, string) (bool, error)
 }
 
-func NewSavingsMaturityWorker(client *mongodrv.Client, db string) *SavingsMaturityWorker {
-	return &SavingsMaturityWorker{Client: client, DB: client.Database(db)}
+type SavingsMaturityWorker struct {
+	Client   *mongodrv.Client
+	DB       *mongodrv.Database
+	Verifier SavingsMaturityVerifier
+	Now      func() time.Time
+}
+
+func NewSavingsMaturityWorker(client *mongodrv.Client, db string, verifier SavingsMaturityVerifier) *SavingsMaturityWorker {
+	return &SavingsMaturityWorker{Client: client, DB: client.Database(db), Verifier: verifier}
 }
 
 func (w *SavingsMaturityWorker) now() time.Time {
@@ -35,7 +42,7 @@ func (w *SavingsMaturityWorker) now() time.Time {
 }
 
 func (w *SavingsMaturityWorker) RunOnce(ctx context.Context) (int, error) {
-	if w == nil || w.Client == nil || w.DB == nil {
+	if w == nil || w.Client == nil || w.DB == nil || w.Verifier == nil {
 		return 0, fmt.Errorf("savings worker not initialized")
 	}
 	now := w.now()
@@ -81,6 +88,12 @@ func (w *SavingsMaturityWorker) RunOnce(ctx context.Context) (int, error) {
 			continue
 		}
 		result, txErr := session.WithTransaction(ctx, func(sc context.Context) (any, error) {
+			// Fail closed when the EventStoreDB status is unavailable. Verify
+			// before the claim rather than trusting a stale Mongo status.
+			eligible, err := w.Verifier.SavingsMaturityEligible(sc, row.CustomerID, row.ID)
+			if err != nil || !eligible {
+				return false, err
+			}
 			// Write to the SAME contract document as the banking projector to
 			// prevent a concurrent settlement from racing past eligibility.
 			claim, err := w.DB.Collection("savings_contracts").UpdateOne(sc,

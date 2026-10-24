@@ -90,11 +90,19 @@ On **isolated local/test** infrastructure only:
 - Mongo projection is asynchronous: briefly stale reads are expected. Do not
   infer transaction failure from an absent read model; command idempotency and
   authoritative receipts live in EventStoreDB.
-- Notice worker reads MongoDB. A lagging SavingsSettled projection can produce
-  a maturity notice for an already settled contract. The current notice is
-  informational, but exact correctness relative to EventStoreDB is not proven;
-  it requires a cross-store consistency policy or an authoritative guard.
+- The maturity worker fails closed unless it can verify each candidate against
+  EventStoreDB. Projecting SavingsSettled removes earlier Mongo notices in the
+  same transaction; notice queries exclude contracts projected as settled.
+- The EventStoreDB guard and the MongoDB write are not an atomic cross-store
+  transaction: a concurrent settlement may occur just after verification.
+  The projector compensates by removing the notice, but a transient stale
+  notice remains possible until projection catches up. Do not describe this
+  as strict linearizable notification delivery.
 - Full process startup, real subscription/restart and Kafka consumers are **not**
   automatically tested here. No Kafka code is modified in this phase.
-- Race detector and load/concurrency soak testing remain separate; existing
-  `TestSavingsCommandsExactlyOnceWithEventStoreDB` covers competing commands.
+- Race detector and load/concurrency soak testing remain separate; the
+  repository-level `TestSavingsCommandsExactlyOnceWithEventStoreDB` sends
+  competing keys and asserts exactly one persisted winning key and one credit.
+- When settlement confirmation cannot be read after bounded retries, the HTTP
+  response uses `SAVINGS_SETTLEMENT_UNCONFIRMED` (503): the result is unknown,
+  never a declaration of rollback. Query `/settlement` or retry with the same key.
