@@ -7,12 +7,15 @@ vào `server/`; model pipeline thật sẽ được triển khai riêng sau này
 
 ## Configuration
 
+Các biến được liệt kê đầy đủ trong [`.env.example`](.env.example).
+
 ```env
 KAFKA_BROKERS=localhost:9092
 KAFKA_TOPIC=anomaly.bank.events.v1
 KAFKA_OUTPUT_TOPIC=anomaly.bank.risk-decisions.v1
 KAFKA_CONSUMER_GROUP=model-pipeline
-MOCK_RISK_DECISION=ALLOW # PENDING, ALLOW, or BLOCK
+# PENDING, ALLOW, or BLOCK (cố định, không ngẫu nhiên)
+MOCK_RISK_DECISION=ALLOW
 MOCK_MODEL_VERSION=mock-v1
 ```
 
@@ -22,6 +25,11 @@ host là `localhost:9092`.
 ## Run locally
 
 ```bash
+cp .env.example .env
+# Chỉnh .env nếu cần. Chương trình không tự đọc .env; export trước khi chạy.
+set -a
+source .env
+set +a
 go run .
 ```
 
@@ -47,5 +55,5 @@ sang `KAFKA_OUTPUT_TOPIC`. Đặt `MOCK_RISK_DECISION=BLOCK` để mô phỏng g
 bất thường. Đặt `MOCK_RISK_DECISION=PENDING` để mô phỏng model chưa có kết quả.
 Các event khác sẽ được ACK và bỏ qua.
 
-Consumer commit offset sau khi log thành công. EventStoreDB relay thuộc
+Consumer commit offset sau khi publish risk decision thành công. EventStoreDB relay thuộc
 `server/cmd/relay`, không thuộc service consumer này.
