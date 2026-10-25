@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	netHTTP "net/http"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -29,6 +30,9 @@ func main() {
 
 	loader := domain.GetEnvLoader().Load(logger)
 	config := loader.LoadAllConfig()
+	if strings.TrimSpace(config.KafkaConfig.RiskDecisionSigningKey) == "" {
+		logger.Fatal().Msg("KAFKA_RISK_DECISION_SIGNING_KEY is required")
+	}
 
 	mongoClient, err := mongo.NewMongoClient(ctx, config.MongoConfig)
 	if err != nil {

@@ -18,15 +18,16 @@ type recipientResponse struct {
 }
 
 type transactionResponseDoc struct {
-	ID           string `json:"id"`
-	Reference    string `json:"reference"`
-	Direction    string `json:"direction"`
-	Status       string `json:"status"`
-	Kind         string `json:"kind"`
-	Amount       int64  `json:"amount"`
-	Fee          int64  `json:"fee"`
-	Note         string `json:"note"`
-	Counterparty struct {
+	ID            string `json:"id"`
+	Reference     string `json:"reference"`
+	Direction     string `json:"direction"`
+	Status        string `json:"status"`
+	FailureReason string `json:"failure_reason,omitempty"`
+	Kind          string `json:"kind"`
+	Amount        int64  `json:"amount"`
+	Fee           int64  `json:"fee"`
+	Note          string `json:"note"`
+	Counterparty  struct {
 		Name      string `json:"name"`
 		AccountNo string `json:"accountNo"`
 		BankCode  string `json:"bankCode"`
@@ -40,6 +41,11 @@ type transferErrorDoc struct {
 	Error        string `json:"error"`
 	Code         string `json:"code"`
 	AttemptsLeft *int   `json:"attemptsLeft,omitempty"`
+}
+
+type riskCheckPendingResponseDoc struct {
+	Status     string `json:"status"`
+	TransferID string `json:"transferId"`
 }
 
 func RegisterRoutes(router *openapi.Registry, h *Handler, tokenSvc queries.TokenService) {
@@ -82,7 +88,7 @@ func RegisterRoutes(router *openapi.Registry, h *Handler, tokenSvc queries.Token
 	auth("POST /api/transfers/{transferId}/confirm", h.ConfirmTransfer, openapi.Operation{
 		ID: "confirmTransfer", Summary: "Confirm a transfer with email OTP",
 		Description: "Send otp as a string. If the model risk decision is not ready, the endpoint returns 202 with RISK_CHECK_PENDING without consuming OTP; retry the same request. ALLOW verifies OTP and returns the successful canonical transaction. BLOCK returns a failed transaction without debit/credit. An already terminal transfer returns the same result without another debit.",
-		Request:     confirmRequest{}, Response: transactionResponseDoc{}, FailureStatuses: []int{202, 400, 404, 409, 410, 423},
+		Request:     confirmRequest{}, Response: transactionResponseDoc{}, SuccessResponses: map[int]any{http.StatusAccepted: riskCheckPendingResponseDoc{}}, FailureStatuses: []int{400, 404, 409, 410, 423},
 	})
 	auth("POST /api/transfers/{transferId}/otp/resend", h.ResendOTP, openapi.Operation{
 		ID: "resendTransferOTP", Summary: "Resend OTP for a pending transfer",

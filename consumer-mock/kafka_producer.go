@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -18,17 +21,19 @@ type riskDecisionMessage struct {
 	RiskScore     float64   `json:"risk_score"`
 	ModelVersion  string    `json:"model_version"`
 	EvaluatedAt   time.Time `json:"evaluated_at"`
+	Signature     string    `json:"signature"`
 }
 
 type kafkaProducer struct {
-	writer *kafkago.Writer
+	writer    *kafkago.Writer
+	signingKey string
 }
 
 func newKafkaProducer(cfg config) (*kafkaProducer, error) {
-	if len(cfg.brokers) == 0 || strings.TrimSpace(cfg.outputTopic) == "" {
+	if len(cfg.brokers) == 0 || strings.TrimSpace(cfg.outputTopic) == "" || strings.TrimSpace(cfg.signingKey) == "" {
 		return nil, fmt.Errorf("kafka output configuration is required")
 	}
-	return &kafkaProducer{writer: &kafkago.Writer{
+	return &kafkaProducer{signingKey: cfg.signingKey, writer: &kafkago.Writer{
 		Addr:         kafkago.TCP(cfg.brokers...),
 		Topic:        cfg.outputTopic,
 		Balancer:     &kafkago.Hash{},
@@ -41,6 +46,27 @@ func (p *kafkaProducer) publish(ctx context.Context, message riskDecisionMessage
 	if p == nil || p.writer == nil {
 		return fmt.Errorf("kafka producer is not initialized")
 	}
+	unsigned := message
+	unsigned.Signature = ""
+	canonical, err := json.Marshal(struct {
+		TransferID    string    `json:"transfer_id"`
+		SourceEventID string    `json:"source_event_id"`
+		Decision      string    `json:"decision"`
+		IsAnomalous   bool      `json:"is_anomalous"`
+		RiskScore     float64   `json:"risk_score"`
+		ModelVersion  string    `json:"model_version"`
+		EvaluatedAt   time.Time `json:"evaluated_at"`
+	}{
+		TransferID: unsigned.TransferID, SourceEventID: unsigned.SourceEventID, Decision: unsigned.Decision,
+		IsAnomalous: unsigned.IsAnomalous, RiskScore: unsigned.RiskScore, ModelVersion: unsigned.ModelVersion,
+		EvaluatedAt: unsigned.EvaluatedAt,
+	})
+	if err != nil {
+		return err
+	}
+	hasher := hmac.New(sha256.New, []byte(p.signingKey))
+	_, _ = hasher.Write(canonical)
+	message.Signature = hex.EncodeToString(hasher.Sum(nil))
 	value, err := json.Marshal(message)
 	if err != nil {
 		return err

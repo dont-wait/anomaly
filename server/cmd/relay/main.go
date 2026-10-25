@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain"
+	"github.com/dont-wait/anomaly/internal/domain/risk"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	kafkainfra "github.com/dont-wait/anomaly/internal/infrastructure/kafka"
@@ -60,6 +61,10 @@ func main() {
 	featureStore := mongorepo.NewModelFeatureRepository(mongoClient, mongoConfig.MongoDBName)
 	if err := featureStore.EnsureIndexes(ctx); err != nil {
 		log.Fatal().Err(err).Msg("ensure model feature indexes failed")
+	}
+	riskStore := mongorepo.NewRiskDecisionRepository(mongoClient, mongoConfig.MongoDBName)
+	if err := riskStore.EnsureIndexes(ctx); err != nil {
+		log.Fatal().Err(err).Msg("ensure risk decision indexes failed")
 	}
 	if *bootstrapOnly {
 		if err := featureStore.ResetForBootstrap(ctx); err != nil {
@@ -116,6 +121,9 @@ func main() {
 	}
 	if err := ensureFeatureState(ctx, es, kafkaConfig.EventStoreSubscription, featureStore, log); err != nil {
 		log.Fatal().Err(err).Msg("ensure model feature state failed")
+	}
+	if err := recoverUnresolvedRiskRequests(ctx, es, featureStore, riskStore, producer, log); err != nil {
+		log.Fatal().Err(err).Msg("recover unresolved risk requests failed")
 	}
 	go runDecisionCleanup(ctx, es, kafkaConfig.EventStoreSubscription, featureStore, log)
 
@@ -194,6 +202,77 @@ func ensureFeatureState(ctx context.Context, client *esdb.Client, group string, 
 		return fmt.Errorf("reset model feature state: %w", err)
 	}
 	return bootstrapModelFeatures(ctx, client, featureStore, checkpoint, log)
+}
+
+type riskDecisionLookup interface {
+	Find(context.Context, string) (risk.Decision, bool, error)
+}
+
+// recoverUnresolvedRiskRequests republishes created transfers that were already
+// acknowledged by the EventStoreDB subscription but never received a usable
+// model decision. This closes the upgrade/restart gap where the subscription
+// checkpoint has advanced past a request that was lost before Kafka delivery.
+func recoverUnresolvedRiskRequests(ctx context.Context, client *esdb.Client, featureStore modelFeatureStore, riskStore riskDecisionLookup, producer *kafkainfra.Producer, log *zerolog.Logger) error {
+	stream, err := client.ReadStream(ctx, journal.BankStream, esdb.ReadStreamOptions{
+		Direction: esdb.Forwards,
+		From:      esdb.Start{},
+	}, math.MaxUint64)
+	if err != nil {
+		return fmt.Errorf("read banking stream for risk recovery: %w", err)
+	}
+	defer stream.Close()
+
+	created := make(map[string]*esdb.RecordedEvent)
+	terminal := make(map[string]struct{})
+	for {
+		resolved, recvErr := stream.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+		if recvErr != nil {
+			return fmt.Errorf("receive banking event for risk recovery: %w", recvErr)
+		}
+		if resolved == nil || resolved.Event == nil {
+			continue
+		}
+		recorded := resolved.OriginalEvent()
+		if recorded.EventType != journal.Created && recorded.EventType != journal.Completed && recorded.EventType != journal.Failed && recorded.EventType != journal.Cancelled {
+			continue
+		}
+		record, decodeErr := journal.DecodeRecord(recorded.Data, recorded.EventID.String(), recorded.EventType)
+		if decodeErr != nil || record.Event == nil {
+			log.Warn().Err(decodeErr).Str("event_id", recorded.EventID.String()).Msg("skip invalid event during risk recovery")
+			continue
+		}
+		transactionID := record.Event.TransactionID
+		if recorded.EventType == journal.Created {
+			created[transactionID] = recorded
+			continue
+		}
+		terminal[transactionID] = struct{}{}
+	}
+
+	for transactionID, recorded := range created {
+		if _, done := terminal[transactionID]; done {
+			continue
+		}
+		_, found, err := riskStore.Find(ctx, transactionID)
+		if err != nil {
+			return fmt.Errorf("find risk decision for %s: %w", transactionID, err)
+		}
+		if found {
+			continue
+		}
+		envelope, _, err := buildEnrichedEnvelope(ctx, recorded, featureStore)
+		if err != nil {
+			return fmt.Errorf("build recovered risk request for %s: %w", transactionID, err)
+		}
+		if err := producer.Publish(ctx, envelope); err != nil {
+			return fmt.Errorf("publish recovered risk request for %s: %w", transactionID, err)
+		}
+		log.Warn().Str("transaction_id", transactionID).Str("event_id", recorded.EventID.String()).Msg("republished unresolved risk request")
+	}
+	return nil
 }
 
 func bootstrapModelFeatures(ctx context.Context, client *esdb.Client, featureStore modelFeatureStore, throughRevision uint64, log *zerolog.Logger) error {
@@ -324,6 +403,25 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 		if recorded.EventType != journal.Created && recorded.EventType != journal.Completed {
 			// Keep feature progress aligned with the EventStoreDB stream even
 			// though only created transfers are published to Kafka.
+			if recorded.EventType == journal.Failed || recorded.EventType == journal.Cancelled {
+				record, decodeErr := journal.DecodeRecord(recorded.Data, recorded.EventID.String(), recorded.EventType)
+				if decodeErr != nil || record.Event == nil {
+					reason := "terminal transfer event is missing the event payload"
+					if decodeErr != nil {
+						reason = "invalid terminal transfer event: " + decodeErr.Error()
+					}
+					if nackErr := subscription.Nack(reason, esdb.NackActionPark, resolved); nackErr != nil {
+						return nackErr
+					}
+					continue
+				}
+				if err := featureStore.DiscardDecisionsByTransactionID(ctx, record.Event.TransactionID); err != nil {
+					if nackErr := subscription.Nack("model feature decision cleanup failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
+						return nackErr
+					}
+					return err
+				}
+			}
 			if err := featureStore.SaveProgress(ctx, recorded.EventID.String(), recorded.EventNumber); err != nil {
 				if nackErr := subscription.Nack("model feature progress update failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
 					return nackErr

@@ -6,6 +6,7 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	t.Setenv("KAFKA_BROKERS", "")
 	t.Setenv("KAFKA_TOPIC", "")
 	t.Setenv("KAFKA_CONSUMER_GROUP", "")
+	t.Setenv("KAFKA_RISK_DECISION_SIGNING_KEY", "test-risk-signing-key")
 
 	cfg, err := loadConfig()
 	if err != nil {
@@ -26,6 +27,7 @@ func TestLoadConfigUsesEnvironment(t *testing.T) {
 	t.Setenv("KAFKA_BROKERS", "kafka-a:9092, kafka-b:9092")
 	t.Setenv("KAFKA_TOPIC", "events.v1")
 	t.Setenv("KAFKA_CONSUMER_GROUP", "log-reader")
+	t.Setenv("KAFKA_RISK_DECISION_SIGNING_KEY", "test-risk-signing-key")
 
 	cfg, err := loadConfig()
 	if err != nil {

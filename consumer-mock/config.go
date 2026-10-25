@@ -11,6 +11,7 @@ type config struct {
 	topic         string
 	outputTopic   string
 	consumerGroup string
+	signingKey    string
 	decision      string
 	riskScore     float64
 	modelVersion  string
@@ -22,6 +23,7 @@ func loadConfig() (config, error) {
 		topic:         envOr("KAFKA_TOPIC", "anomaly.bank.events.v1"),
 		outputTopic:   envOr("KAFKA_OUTPUT_TOPIC", "anomaly.bank.risk-decisions.v1"),
 		consumerGroup: envOr("KAFKA_CONSUMER_GROUP", "model-pipeline"),
+		signingKey:    envOr("KAFKA_RISK_DECISION_SIGNING_KEY", ""),
 		decision:      strings.ToUpper(envOr("MOCK_RISK_DECISION", "ALLOW")),
 		modelVersion:  envOr("MOCK_MODEL_VERSION", "mock-v1"),
 	}
@@ -33,6 +35,9 @@ func loadConfig() (config, error) {
 	}
 	if cfg.consumerGroup == "" {
 		return config{}, fmt.Errorf("KAFKA_CONSUMER_GROUP is required")
+	}
+	if cfg.signingKey == "" {
+		return config{}, fmt.Errorf("KAFKA_RISK_DECISION_SIGNING_KEY is required")
 	}
 	if cfg.decision != "PENDING" && cfg.decision != "ALLOW" && cfg.decision != "BLOCK" {
 		return config{}, fmt.Errorf("MOCK_RISK_DECISION must be PENDING, ALLOW, or BLOCK")

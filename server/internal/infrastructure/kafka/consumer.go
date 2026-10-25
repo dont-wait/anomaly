@@ -9,7 +9,13 @@ import (
 )
 
 type Consumer struct {
-	reader *kafkago.Reader
+	reader consumerReader
+}
+
+type consumerReader interface {
+	FetchMessage(context.Context) (kafkago.Message, error)
+	CommitMessages(context.Context, ...kafkago.Message) error
+	Close() error
 }
 
 func NewConsumer(brokers []string, topic, group string) (*Consumer, error) {

@@ -83,14 +83,15 @@ type FeedDocument struct {
 		Name      string `bson:"name"`
 		BankCode  string `bson:"bank_code"`
 	} `bson:"counterparty"`
-	Amount       int64     `bson:"amount"`
-	Fee          int64     `bson:"fee"`
-	BalanceAfter *int64    `bson:"balance_after"`
-	Status       string    `bson:"status"`
-	Note         string    `bson:"note"`
-	Reference    string    `bson:"reference"`
-	SearchText   string    `bson:"search_text"`
-	OccurredAt   time.Time `bson:"occurred_at"`
+	Amount        int64     `bson:"amount"`
+	Fee           int64     `bson:"fee"`
+	BalanceAfter  *int64    `bson:"balance_after"`
+	Status        string    `bson:"status"`
+	FailureReason string    `bson:"failure_reason,omitempty"`
+	Note          string    `bson:"note"`
+	Reference     string    `bson:"reference"`
+	SearchText    string    `bson:"search_text"`
+	OccurredAt    time.Time `bson:"occurred_at"`
 }
 
 type TransferRepository struct {

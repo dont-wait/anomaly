@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"time"
@@ -15,6 +16,8 @@ import (
 const riskDecisionsCollection = "risk_decisions"
 
 const riskDecisionRetention = 24 * time.Hour
+
+const maxRiskRejectionSampleBytes = 4096
 
 type RiskDecisionRepository struct {
 	collection *mongodrv.Collection
@@ -114,13 +117,20 @@ func (r *RiskDecisionRepository) Finalize(ctx context.Context, transferID string
 }
 
 // Reject parks invalid model responses durably before their Kafka offset is
-// committed. Kafka coordinates make retries idempotent; raw payloads are never logged.
+// committed. Kafka coordinates make retries idempotent; only a bounded sample
+// and digest are retained, and raw payloads are never logged.
 func (r *RiskDecisionRepository) Reject(ctx context.Context, topic string, partition int, offset int64, payload []byte, reason string) error {
 	now := time.Now().UTC()
+	digest := sha256.Sum256(payload)
+	sample := payload
+	if len(sample) > maxRiskRejectionSampleBytes {
+		sample = sample[:maxRiskRejectionSampleBytes]
+	}
 	_, err := r.rejected.UpdateOne(ctx, bson.M{"_id": fmt.Sprintf("%s:%d:%d", topic, partition, offset)}, bson.M{
 		"$setOnInsert": bson.M{
 			"topic": topic, "partition": partition, "offset": offset,
-			"payload": payload, "reason": reason, "created_at": now,
+			"payload_sample": sample, "payload_sha256": fmt.Sprintf("%x", digest), "payload_size": len(payload),
+			"reason": reason, "created_at": now,
 			"expires_at": now.Add(7 * 24 * time.Hour),
 		},
 	}, options.UpdateOne().SetUpsert(true))

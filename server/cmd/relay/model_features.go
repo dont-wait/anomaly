@@ -18,6 +18,7 @@ type modelFeatureStore interface {
 	FindDecision(context.Context, string) (modelfeature.Decision, bool, error)
 	FindDecisionByTransactionID(context.Context, string) (modelfeature.Decision, bool, error)
 	SaveDecision(context.Context, modelfeature.Decision) error
+	DiscardDecisionsByTransactionID(context.Context, string) error
 	LoadState(context.Context, string) (modelfeature.State, bool, error)
 	IsKnownReceiver(context.Context, string, string, time.Time) (bool, error)
 	IsKnownDevice(context.Context, string, string, time.Time) (bool, error)

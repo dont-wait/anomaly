@@ -910,6 +910,9 @@ func transactionResponse(row mongorepo.FeedDocument) map[string]any {
 		counterparty["bank"] = "AnomalyBank"
 	}
 	result := map[string]any{"id": row.TransactionID, "reference": row.Reference, "direction": direction, "status": status, "kind": row.Type, "amount": row.Amount, "fee": row.Fee, "note": row.Note, "counterparty": counterparty, "createdAt": row.OccurredAt}
+	if row.FailureReason != "" {
+		result["failure_reason"] = row.FailureReason
+	}
 	if row.BalanceAfter != nil {
 		result["balanceAfter"] = *row.BalanceAfter
 	}

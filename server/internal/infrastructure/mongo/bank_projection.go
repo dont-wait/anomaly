@@ -288,7 +288,7 @@ func (p *BankProjection) feed(ctx context.Context, tx TransferDocument, directio
 	if direction == "IN" {
 		id, no, name, bank, fee = tx.Destination.AccountID, tx.Source.AccountNo, tx.Source.Name, "ANOMALY", 0
 	}
-	row := bson.M{"account_id": id, "transaction_id": tx.ID, "direction": direction, "type": tx.Type, "counterparty": bson.M{"account_no": no, "name": name, "bank_code": bank}, "amount": tx.Amount, "fee": fee, "status": tx.Status, "note": tx.Note, "reference": tx.Reference, "search_text": normalizeFeedSearch(name + " " + no + " " + tx.Note + " " + tx.Reference + " " + fmt.Sprint(tx.Amount)), "occurred_at": at}
+	row := bson.M{"account_id": id, "transaction_id": tx.ID, "direction": direction, "type": tx.Type, "counterparty": bson.M{"account_no": no, "name": name, "bank_code": bank}, "amount": tx.Amount, "fee": fee, "status": tx.Status, "failure_reason": tx.FailureReason, "note": tx.Note, "reference": tx.Reference, "search_text": normalizeFeedSearch(name + " " + no + " " + tx.Note + " " + tx.Reference + " " + fmt.Sprint(tx.Amount)), "occurred_at": at}
 	if balance != nil {
 		row["balance_after"] = *balance
 	}

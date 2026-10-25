@@ -14,6 +14,7 @@ KAFKA_BROKERS=localhost:9092
 KAFKA_TOPIC=anomaly.bank.events.v1
 KAFKA_OUTPUT_TOPIC=anomaly.bank.risk-decisions.v1
 KAFKA_CONSUMER_GROUP=model-pipeline
+KAFKA_RISK_DECISION_SIGNING_KEY=replace-with-the-server-shared-key
 # PENDING, ALLOW, or BLOCK (cố định, không ngẫu nhiên)
 MOCK_RISK_DECISION=ALLOW
 MOCK_MODEL_VERSION=mock-v1

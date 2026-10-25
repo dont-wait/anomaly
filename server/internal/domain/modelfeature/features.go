@@ -67,11 +67,13 @@ type State struct {
 }
 
 type Decision struct {
-	EventID        string   `json:"event_id" bson:"_id"`
-	TransactionID  string   `json:"transaction_id" bson:"transaction_id"`
-	StreamRevision uint64   `json:"stream_revision" bson:"stream_revision"`
-	Features       Features `json:"features" bson:"features"`
-	StateApplied   bool     `json:"state_applied" bson:"state_applied"`
+	EventID        string     `json:"event_id" bson:"_id"`
+	TransactionID  string     `json:"transaction_id" bson:"transaction_id"`
+	StreamRevision uint64     `json:"stream_revision" bson:"stream_revision"`
+	Features       Features   `json:"features" bson:"features"`
+	StateApplied   bool       `json:"state_applied" bson:"state_applied"`
+	CreatedAt      time.Time  `json:"created_at" bson:"created_at"`
+	AppliedAt      *time.Time `json:"applied_at,omitempty" bson:"applied_at,omitempty"`
 }
 
 // Calculate derives features from the state before tx and returns the next

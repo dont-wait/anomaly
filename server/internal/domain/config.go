@@ -135,6 +135,7 @@ type KafkaConfig struct {
 	Topic                  string
 	RiskDecisionTopic      string
 	RiskDecisionGroup      string
+	RiskDecisionSigningKey string
 	ProducerID             string
 	EventStoreSubscription string
 }
@@ -146,6 +147,7 @@ func (l *Loader) LoadKafkaConfig() *KafkaConfig {
 		Topic:                  l.LoadEnvOr("KAFKA_TOPIC", "anomaly.bank.events.v1"),
 		RiskDecisionTopic:      l.LoadEnvOr("KAFKA_RISK_DECISION_TOPIC", "anomaly.bank.risk-decisions.v1"),
 		RiskDecisionGroup:      l.LoadEnvOr("KAFKA_RISK_DECISION_GROUP", "anomaly-server-risk-decisions"),
+		RiskDecisionSigningKey: l.LoadEnvOr("KAFKA_RISK_DECISION_SIGNING_KEY", ""),
 		ProducerID:             l.LoadEnvOr("KAFKA_PRODUCER_ID", "anomaly-server"),
 		EventStoreSubscription: l.LoadEnvOr("KAFKA_EVENTSTORE_SUBSCRIPTION", "kafka-publisher"),
 	}

@@ -89,6 +89,11 @@ func (f *relayFeatureStoreFake) SaveDecision(_ context.Context, decision modelfe
 	return nil
 }
 
+func (f *relayFeatureStoreFake) DiscardDecisionsByTransactionID(context.Context, string) error {
+	f.decisionSet = false
+	return nil
+}
+
 func (f *relayFeatureStoreFake) LoadState(context.Context, string) (modelfeature.State, bool, error) {
 	return f.state, f.state.AccountID != "", nil
 }

@@ -219,7 +219,7 @@ func TestConfirmTransferBlocksAndIsIdempotentOnRedelivery(t *testing.T) {
 	repo := &transferRepositoryFake{
 		source:   mongorepo.TransferAccount{ID: bson.NewObjectID()},
 		transfer: mongorepo.TransferDocument{ID: transferID, Status: "awaiting_otp"},
-		feed:     mongorepo.FeedDocument{TransactionID: transferID, Direction: "OUT", Status: "failed"},
+		feed:     mongorepo.FeedDocument{TransactionID: transferID, Direction: "OUT", Status: "failed", FailureReason: "anomalous_transfer"},
 	}
 	riskStore := &riskDecisionFake{decision: risk.Decision{
 		TransferID: transferID, SourceEventID: journal.EventID(transferID, journal.Created), Decision: risk.DecisionBlock,
@@ -229,7 +229,7 @@ func TestConfirmTransferBlocksAndIsIdempotentOnRedelivery(t *testing.T) {
 	h.SetRiskDecisionStore(riskStore)
 
 	first := confirmRequestForTest(t, h, transferID)
-	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), `"status":"failed"`) {
+	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), `"status":"failed"`) || !strings.Contains(first.Body.String(), `"failure_reason":"anomalous_transfer"`) {
 		t.Fatalf("blocked response = %d/%s, want failed transaction", first.Code, first.Body.String())
 	}
 	second := confirmRequestForTest(t, h, transferID)

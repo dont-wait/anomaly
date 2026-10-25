@@ -172,7 +172,9 @@ commit rolling feature state sau khi debit/credit thành công.
 - Response JSON/validation/correlation lỗi được park trong MongoDB collection
   `risk_decision_rejections` (TTL 7 ngày), định danh bằng Kafka topic/partition/offset.
   Chỉ commit Kafka offset sau khi park thành công. Lỗi storage vẫn được retry;
-  raw payload không được log. Collection này phục vụ điều tra/replay thủ công,
+  rejection chỉ giữ sample giới hạn và SHA-256 digest, raw payload không được log.
+  Risk response phải có HMAC hợp lệ bằng `KAFKA_RISK_DECISION_SIGNING_KEY`.
+  Collection này phục vụ điều tra/replay thủ công,
   không tự động replay response lỗi.
 
 ### Event không phải `TransferCreated` hoặc `TransferCompleted`
