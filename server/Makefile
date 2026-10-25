@@ -81,7 +81,7 @@ start-relay:
 	go run ./cmd/relay
 
 start-api:
-	go run ./cmd/api/main.go
+	go run ./cmd/api
 
 seed:
 	go run ./cmd/seed
