@@ -245,8 +245,10 @@ func TestTerminalConfirmRetriesRiskFinalization(t *testing.T) {
 	for _, status := range []string{"success", "failed", "cancelled"} {
 		t.Run(status, func(t *testing.T) {
 			id := uuid.NewString()
-			repo := &transferRepositoryFake{transfer: mongorepo.TransferDocument{ID: id, Status: status},
-				feed: mongorepo.FeedDocument{TransactionID: id, Status: status}}
+			repo := &transferRepositoryFake{
+				transfer: mongorepo.TransferDocument{ID: id, Status: status},
+				feed:     mongorepo.FeedDocument{TransactionID: id, Status: status},
+			}
 			store := &riskDecisionFake{finalizeErr: errors.New("mongo unavailable")}
 			h := NewHandler(zerolog.Nop(), repo, nil, nil, nil)
 			h.SetRiskDecisionStore(store)

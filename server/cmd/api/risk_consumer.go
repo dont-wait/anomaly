@@ -49,8 +49,10 @@ func decodeRiskDecision(payload []byte) (risk.Decision, error) {
 	}
 	decision := risk.Decision{
 		TransferID: input.TransferID, SourceEventID: input.SourceEventID, Decision: input.Decision,
-		Assessment: risk.Assessment{Decision: input.Decision, IsAnomalous: input.IsAnomalous,
-			RiskScore: input.RiskScore, ModelVersion: input.ModelVersion, EvaluatedAt: input.EvaluatedAt},
+		Assessment: risk.Assessment{
+			Decision: input.Decision, IsAnomalous: input.IsAnomalous,
+			RiskScore: input.RiskScore, ModelVersion: input.ModelVersion, EvaluatedAt: input.EvaluatedAt,
+		},
 	}
 	if err := decision.Validate(); err != nil {
 		return risk.Decision{}, err

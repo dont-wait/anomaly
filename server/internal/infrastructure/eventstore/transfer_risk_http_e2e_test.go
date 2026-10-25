@@ -75,8 +75,10 @@ func TestTransferRiskALLOWHTTPE2E(t *testing.T) {
 	applyMigrations(t, ctx, db)
 	es := startEventStore(t, ctx)
 	rc, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{Image: "redis:7-alpine", ExposedPorts: []string{"6379/tcp"},
-			WaitingFor: wait.ForLog("Ready to accept connections").WithStartupTimeout(time.Minute)}, Started: true,
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image: "redis:7-alpine", ExposedPorts: []string{"6379/tcp"},
+			WaitingFor: wait.ForLog("Ready to accept connections").WithStartupTimeout(time.Minute),
+		}, Started: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -96,9 +98,11 @@ func TestTransferRiskALLOWHTTPE2E(t *testing.T) {
 	register := commands.NewRegisterAccountCommandHandler(bank, bank)
 	var ids []string
 	for i := range 2 {
-		a, err := register.Handle(ctx, commands.RegisterAccountCommand{IdempotencyKey: uuid.NewString(),
-			Username: fmt.Sprintf("risk-user-%d", i), Email: fmt.Sprintf("risk-%d@example.test", i), Password: "LocalTest@123",
-			CCCDNumber: fmt.Sprintf("%012d", i+1), CCCDIssuedDate: time.Now().Add(-24 * time.Hour), DOB: time.Now().AddDate(-25, 0, 0)})
+		a, err := register.Handle(ctx, commands.RegisterAccountCommand{
+			IdempotencyKey: uuid.NewString(),
+			Username:       fmt.Sprintf("risk-user-%d", i), Email: fmt.Sprintf("risk-%d@example.test", i), Password: "LocalTest@123",
+			CCCDNumber: fmt.Sprintf("%012d", i+1), CCCDIssuedDate: time.Now().Add(-24 * time.Hour), DOB: time.Now().AddDate(-25, 0, 0),
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -162,8 +166,10 @@ func TestTransferRiskALLOWHTTPE2E(t *testing.T) {
 	if rdb.Get(ctx, "transfer:otp:"+id).Val() != code || rdb.Exists(ctx, "transfer:otp:attempts:"+id).Val() != 0 {
 		t.Fatal("pending consumed OTP/attempt")
 	}
-	decision := risk.Decision{TransferID: id, SourceEventID: journal.EventID(id, journal.Created), Decision: risk.DecisionAllow,
-		Assessment: risk.Assessment{Decision: risk.DecisionAllow, RiskScore: 0.08, ModelVersion: "e2e-v1", EvaluatedAt: time.Now().UTC()}}
+	decision := risk.Decision{
+		TransferID: id, SourceEventID: journal.EventID(id, journal.Created), Decision: risk.DecisionAllow,
+		Assessment: risk.Assessment{Decision: risk.DecisionAllow, RiskScore: 0.08, ModelVersion: "e2e-v1", EvaluatedAt: time.Now().UTC()},
+	}
 	if err := store.Save(ctx, decision); err != nil {
 		t.Fatal(err)
 	}

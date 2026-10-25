@@ -193,11 +193,15 @@ func TestCreatedEnvelopePreservesAccountAndDeviceFields(t *testing.T) {
 	event := journal.Event{
 		ID: journal.EventID(id, journal.Created), TransactionID: id, Type: journal.Created,
 		SchemaVersion: journal.SchemaVersion, Sequence: 1, OccurredAt: at,
-		Payload: journal.Payload{SourceAccountID: "source-id", DestinationAccountID: "destination-id",
-			Amount: 1000, Currency: "VND", Channel: "mobile", Status: "awaiting_otp"},
+		Payload: journal.Payload{
+			SourceAccountID: "source-id", DestinationAccountID: "destination-id",
+			Amount: 1000, Currency: "VND", Channel: "mobile", Status: "awaiting_otp",
+		},
 	}
-	record := journal.Record{ID: event.ID, Type: event.Type, At: at, Event: &event,
-		Transfer: json.RawMessage(`{"ID":"` + id + `","Source":{"AccountNo":"001234567890","Name":"Sender"},"Destination":{"AccountNo":"009876543210","Name":"Recipient"},"DeviceID":"DEVICE01","Note":"original note"}`)}
+	record := journal.Record{
+		ID: event.ID, Type: event.Type, At: at, Event: &event,
+		Transfer: json.RawMessage(`{"ID":"` + id + `","Source":{"AccountNo":"001234567890","Name":"Sender"},"Destination":{"AccountNo":"009876543210","Name":"Recipient"},"DeviceID":"DEVICE01","Note":"original note"}`),
+	}
 	data, err := json.Marshal(record)
 	if err != nil {
 		t.Fatal(err)

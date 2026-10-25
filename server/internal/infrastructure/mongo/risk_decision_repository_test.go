@@ -45,8 +45,10 @@ func riskTestRepository(t *testing.T) (*RiskDecisionRepository, context.Context)
 }
 
 func riskTestDecision() risk.Decision {
-	return risk.Decision{TransferID: uuid.NewString(), SourceEventID: uuid.NewString(), Decision: risk.DecisionAllow,
-		Assessment: risk.Assessment{RiskScore: 0.08, ModelVersion: "v1", EvaluatedAt: time.Now().UTC()}}
+	return risk.Decision{
+		TransferID: uuid.NewString(), SourceEventID: uuid.NewString(), Decision: risk.DecisionAllow,
+		Assessment: risk.Assessment{RiskScore: 0.08, ModelVersion: "v1", EvaluatedAt: time.Now().UTC()},
+	}
 }
 
 func TestRiskDecisionFindExcludesExpiredBeforeTTLDeletion(t *testing.T) {
