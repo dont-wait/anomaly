@@ -170,8 +170,8 @@ cd deploy/swarm
 export ML_KAFKA_BROKERS='<manager-or-broker-ip>:9092'
 export ML_KAFKA_EXPORTER_SERVER='<manager-or-broker-ip>:9092'
 export ML_EVENTSTORE_URI='esdb://<manager-or-eventstore-ip>:2113?tls=false'
-docker build -f ../../anomaly-service/Dockerfile -t anomaly-ml-service:swarm ../../..
-docker build -f autoscaler/Dockerfile -t anomaly-ml-autoscaler:swarm autoscaler
+make build-ml
+make build-autoscaler
 docker swarm init --advertise-addr <manager-ip>
 docker stack deploy -c ml-stack.yml ml
 ```
