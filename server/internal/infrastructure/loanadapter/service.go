@@ -292,3 +292,18 @@ func (v *DocumentVerifier) VerifyLoanDocument(
 
 	return nil
 }
+
+// LoanContractEmail obtains a verified customer's contact email from canonical Banking.
+func (a *Access) LoanContractEmail(ctx context.Context, customerID string) (string, error) {
+	if a == nil || a.Accounts == nil || strings.TrimSpace(customerID) == "" {
+		return "", fmt.Errorf("loan email verification unavailable")
+	}
+	u, err := a.Accounts.FindByID(ctx, customerID)
+	if err != nil {
+		return "", err
+	}
+	if u == nil || u.Id != customerID || u.Status != account.AccountStatusActive || !u.IsVerified() || u.EffectiveRole() != account.AccountRoleUser || strings.TrimSpace(u.Email) == "" {
+		return "", fmt.Errorf("active verified customer email required")
+	}
+	return u.Email, nil
+}

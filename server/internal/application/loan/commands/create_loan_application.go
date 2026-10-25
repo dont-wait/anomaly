@@ -26,6 +26,8 @@ type CreateLoanApplicationCommand struct {
 type CreateLoanApplicationCommandHandler struct {
 	repo      LoanApplicationRepository
 	validator LoanApplicantValidator
+	// PackagePolicy must use the same authoritative catalog as the quote API.
+	PackagePolicy LoanPackagePolicyValidator
 }
 
 // Constructor sử dụng Dependency Injection.
@@ -106,6 +108,15 @@ func (h *CreateLoanApplicationCommandHandler) Handle(
 	}
 
 	applicationNo := "LA-" + strings.ToUpper(applicationID)
+
+	// Idempotent retry is resolved above, so changes in the current product
+	// policy do not invalidate an application already persisted.
+	if h.PackagePolicy == nil {
+		return nil, fmt.Errorf("loan package policy unavailable: not configured")
+	}
+	if err := h.PackagePolicy.ValidateLoanPackage(ctx, cmd.LoanPackageID, cmd.RequestedAmount, cmd.TermMonths); err != nil {
+		return nil, fmt.Errorf("loan package is not eligible: %w", err)
+	}
 
 	// 5. Sử dụng Domain để khởi tạo hồ sơ.
 	app, err := loandomain.NewDraftApplication(

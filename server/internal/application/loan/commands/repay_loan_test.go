@@ -101,7 +101,7 @@ func newLoanRepaymentCommandFixture(
 	app.Status = loandomain.ApplicationStatusApproved
 	app.ApprovedAt = &approvedAt
 
-	err = app.MarkDisbursed(
+	err = app.RestoreLegacyDisbursement(
 		approvedAt.Add(24*time.Hour),
 		1630,
 	)
