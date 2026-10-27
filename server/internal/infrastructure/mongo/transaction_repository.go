@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/dont-wait/anomaly/internal/domain/risk"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -50,17 +51,19 @@ type TransferDocument struct {
 		BankCode  string        `bson:"bank_code"`
 		Name      string        `bson:"name"`
 	} `bson:"destination"`
-	Amount         int64     `bson:"amount"`
-	Fee            int64     `bson:"fee"`
-	Currency       string    `bson:"currency"`
-	Channel        string    `bson:"channel"`
-	DeviceID       string    `bson:"device_id,omitempty"`
-	Platform       string    `bson:"platform,omitempty"`
-	Status         string    `bson:"status"`
-	Note           string    `bson:"note"`
-	IdempotencyKey string    `bson:"idempotency_key"`
-	CreatedAt      time.Time `bson:"created_at"`
-	PostedAt       time.Time `bson:"posted_at,omitempty"`
+	Amount         int64            `bson:"amount"`
+	Fee            int64            `bson:"fee"`
+	Currency       string           `bson:"currency"`
+	Channel        string           `bson:"channel"`
+	DeviceID       string           `bson:"device_id,omitempty"`
+	Platform       string           `bson:"platform,omitempty"`
+	Status         string           `bson:"status"`
+	FailureReason  string           `bson:"failure_reason,omitempty"`
+	RiskAssessment *risk.Assessment `bson:"risk_assessment,omitempty"`
+	Note           string           `bson:"note"`
+	IdempotencyKey string           `bson:"idempotency_key"`
+	CreatedAt      time.Time        `bson:"created_at"`
+	PostedAt       time.Time        `bson:"posted_at,omitempty"`
 	Authentication struct {
 		Method   string `bson:"method"`
 		Verified bool   `bson:"verified"`
@@ -80,14 +83,15 @@ type FeedDocument struct {
 		Name      string `bson:"name"`
 		BankCode  string `bson:"bank_code"`
 	} `bson:"counterparty"`
-	Amount       int64     `bson:"amount"`
-	Fee          int64     `bson:"fee"`
-	BalanceAfter *int64    `bson:"balance_after"`
-	Status       string    `bson:"status"`
-	Note         string    `bson:"note"`
-	Reference    string    `bson:"reference"`
-	SearchText   string    `bson:"search_text"`
-	OccurredAt   time.Time `bson:"occurred_at"`
+	Amount        int64     `bson:"amount"`
+	Fee           int64     `bson:"fee"`
+	BalanceAfter  *int64    `bson:"balance_after"`
+	Status        string    `bson:"status"`
+	FailureReason string    `bson:"failure_reason,omitempty"`
+	Note          string    `bson:"note"`
+	Reference     string    `bson:"reference"`
+	SearchText    string    `bson:"search_text"`
+	OccurredAt    time.Time `bson:"occurred_at"`
 }
 
 type TransferRepository struct {

@@ -42,18 +42,24 @@
 ### Kafka relay
 
 1. `cmd/relay` tạo persistent subscription `kafka-publisher` trên stream `banking`
-2. Đọc event từ EventStoreDB và chỉ giữ `TransferCompleted` để publish
-3. Đọc feature state theo source account và enrich envelope bằng các feature model
-4. Publish envelope vào Kafka topic `anomaly.bank.events.v1`
-5. Cập nhật feature state sau khi Kafka xác nhận thành công rồi ACK EventStoreDB
-6. ACK các event khác mà không publish; NACK retry khi Kafka hoặc feature state lỗi;
-   payload loại bỏ các field nhạy
-   cảm như password
+2. Đọc `TransferCreated` từ EventStoreDB, đọc feature state theo source account
+   và enrich envelope bằng các feature model
+3. Publish envelope vào Kafka request topic `anomaly.bank.events.v1`
+4. ACK `TransferCreated` sau khi Kafka xác nhận thành công
+5. Với `TransferCompleted`, không publish lại nhưng cập nhật feature state rồi ACK
+6. ACK các event khác mà không publish; NACK retry khi Kafka hoặc feature state lỗi.
+   Payload giữ nguyên field và giá trị từ EventStoreDB, không hash account/device
+   hay loại bỏ field; chỉ thêm metadata và `model_features` ở cấp envelope.
 
 Feature state được lưu trong MongoDB bằng materialized view tăng dần, không query
 toàn bộ transaction history cho mỗi event. Model pipeline đọc `model_features`
 cùng account number, authentication và metadata thiết bị từ envelope. Client gửi
 `X-Device-ID` và `X-Platform`; giá trị thiếu được chuyển thành `UNKNOWN`.
+
+Model trả risk decision về Kafka topic `anomaly.bank.risk-decisions.v1`. API server
+lưu decision tạm thời theo transfer ID để confirm có thể trả `PENDING`, `ALLOW` hoặc
+`BLOCK`. Decision được gắn vào event terminal `TransferCompleted` hoặc
+`TransferFailed`; không tạo event risk riêng.
 
 Chi tiết contract và state lifecycle: [Model feature enrichment](MODEL_FEATURES.md).
 

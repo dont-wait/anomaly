@@ -3,14 +3,17 @@ package transaction
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
+	"github.com/dont-wait/anomaly/internal/domain/risk"
 	"github.com/google/uuid"
 )
 
 const (
 	Created             = "TransferCreated"
 	Completed           = "TransferCompleted"
+	Failed              = "TransferFailed"
 	Cancelled           = "TransferCancelled"
 	OTPUpdated          = "TransferOTPUpdated"
 	SchemaVersion int64 = 1
@@ -29,17 +32,19 @@ type Event struct {
 }
 
 type Payload struct {
-	SourceAccountID          string `json:"sourceAccountId" bson:"source_account_id"`
-	DestinationAccountID     string `json:"destinationAccountId" bson:"destination_account_id"`
-	Amount                   int64  `json:"amount" bson:"amount"`
-	Fee                      int64  `json:"fee" bson:"fee"`
-	Currency                 string `json:"currency" bson:"currency"`
-	Channel                  string `json:"channel" bson:"channel"`
-	Status                   string `json:"status" bson:"status"`
-	SourceBalanceBefore      *int64 `json:"sourceBalanceBefore,omitempty" bson:"source_balance_before,omitempty"`
-	SourceBalanceAfter       *int64 `json:"sourceBalanceAfter,omitempty" bson:"source_balance_after,omitempty"`
-	DestinationBalanceBefore *int64 `json:"destinationBalanceBefore,omitempty" bson:"destination_balance_before,omitempty"`
-	DestinationBalanceAfter  *int64 `json:"destinationBalanceAfter,omitempty" bson:"destination_balance_after,omitempty"`
+	SourceAccountID          string           `json:"sourceAccountId" bson:"source_account_id"`
+	DestinationAccountID     string           `json:"destinationAccountId" bson:"destination_account_id"`
+	Amount                   int64            `json:"amount" bson:"amount"`
+	Fee                      int64            `json:"fee" bson:"fee"`
+	Currency                 string           `json:"currency" bson:"currency"`
+	Channel                  string           `json:"channel" bson:"channel"`
+	Status                   string           `json:"status" bson:"status"`
+	FailureReason            string           `json:"failureReason,omitempty" bson:"failure_reason,omitempty"`
+	RiskAssessment           *risk.Assessment `json:"riskAssessment,omitempty" bson:"risk_assessment,omitempty"`
+	SourceBalanceBefore      *int64           `json:"sourceBalanceBefore,omitempty" bson:"source_balance_before,omitempty"`
+	SourceBalanceAfter       *int64           `json:"sourceBalanceAfter,omitempty" bson:"source_balance_after,omitempty"`
+	DestinationBalanceBefore *int64           `json:"destinationBalanceBefore,omitempty" bson:"destination_balance_before,omitempty"`
+	DestinationBalanceAfter  *int64           `json:"destinationBalanceAfter,omitempty" bson:"destination_balance_after,omitempty"`
 }
 
 // Stable IDs make database retries and delivery retries refer to the same event.
@@ -48,7 +53,7 @@ func EventID(transactionID, eventType string) string {
 }
 
 func IsTransferEvent(eventType string) bool {
-	return eventType == Created || eventType == Completed || eventType == Cancelled || eventType == OTPUpdated
+	return eventType == Created || eventType == Completed || eventType == Failed || eventType == Cancelled || eventType == OTPUpdated
 }
 
 func (e Event) Validate() error {
@@ -68,6 +73,9 @@ func (e Event) Validate() error {
 	if e.Type == Completed {
 		wantStatus = "success"
 	}
+	if e.Type == Failed {
+		wantStatus = "failed"
+	}
 	if e.Type == OTPUpdated {
 		wantStatus = "awaiting_otp"
 	}
@@ -81,12 +89,32 @@ func (e Event) Validate() error {
 	if e.Type == Completed && (p.SourceBalanceBefore == nil || p.SourceBalanceAfter == nil || p.DestinationBalanceBefore == nil || p.DestinationBalanceAfter == nil) {
 		return fmt.Errorf("completed transfer has no balance snapshots")
 	}
+	if e.Type == Failed {
+		if strings.TrimSpace(p.FailureReason) == "" || p.RiskAssessment == nil {
+			return fmt.Errorf("failed transfer requires failure reason and risk assessment")
+		}
+		if err := validateRiskAssessment(*p.RiskAssessment); err != nil {
+			return err
+		}
+	}
 	if e.Type == Completed {
 		sourceBefore, sourceAfter := *p.SourceBalanceBefore, *p.SourceBalanceAfter
 		destinationBefore, destinationAfter := *p.DestinationBalanceBefore, *p.DestinationBalanceAfter
 		if p.Amount > math.MaxInt64-p.Fee || sourceBefore < p.Amount+p.Fee || sourceAfter != sourceBefore-p.Amount-p.Fee || destinationBefore < 0 || destinationBefore > math.MaxInt64-p.Amount || destinationAfter != destinationBefore+p.Amount {
 			return fmt.Errorf("inconsistent completed transfer balances")
 		}
+	}
+	if e.Type == Completed && p.RiskAssessment != nil {
+		if err := validateRiskAssessment(*p.RiskAssessment); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateRiskAssessment(assessment risk.Assessment) error {
+	if assessment.RiskScore < 0 || assessment.RiskScore > 1 || strings.TrimSpace(assessment.ModelVersion) == "" || assessment.EvaluatedAt.IsZero() {
+		return fmt.Errorf("invalid risk assessment")
 	}
 	return nil
 }

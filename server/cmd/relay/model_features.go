@@ -16,7 +16,9 @@ import (
 
 type modelFeatureStore interface {
 	FindDecision(context.Context, string) (modelfeature.Decision, bool, error)
+	FindDecisionByTransactionID(context.Context, string) (modelfeature.Decision, bool, error)
 	SaveDecision(context.Context, modelfeature.Decision) error
+	DiscardDecisionsByTransactionID(context.Context, string) error
 	LoadState(context.Context, string) (modelfeature.State, bool, error)
 	IsKnownReceiver(context.Context, string, string, time.Time) (bool, error)
 	IsKnownDevice(context.Context, string, string, time.Time) (bool, error)
@@ -55,12 +57,12 @@ type transferFeatureSnapshot struct {
 	DeviceID string `json:"DeviceID"`
 }
 
-func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, store modelFeatureStore, redactionKey string) (kafkainfra.EventEnvelope, *pendingFeatureUpdate, error) {
-	envelope, err := buildEnvelope(recorded, redactionKey)
+func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, store modelFeatureStore) (kafkainfra.EventEnvelope, *pendingFeatureUpdate, error) {
+	envelope, err := buildEnvelope(recorded)
 	if err != nil {
 		return kafkainfra.EventEnvelope{}, nil, err
 	}
-	if recorded.EventType != journal.Completed {
+	if recorded.EventType != journal.Created && recorded.EventType != journal.Completed {
 		return envelope, nil, nil
 	}
 	if store == nil {
@@ -72,7 +74,7 @@ func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, st
 		return kafkainfra.EventEnvelope{}, nil, err
 	}
 	if record.Event == nil {
-		return kafkainfra.EventEnvelope{}, nil, fmt.Errorf("completed transfer event is missing")
+		return kafkainfra.EventEnvelope{}, nil, fmt.Errorf("transfer event is missing")
 	}
 
 	var snapshot transferFeatureSnapshot
@@ -81,6 +83,7 @@ func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, st
 	}
 	transaction := modelfeature.Transaction{
 		EventID:         record.Event.ID,
+		TransactionID:   record.Event.TransactionID,
 		StreamRevision:  recorded.EventNumber,
 		SourceAccountID: record.Event.Payload.SourceAccountID,
 		DestinationID:   record.Event.Payload.DestinationAccountID,
@@ -88,6 +91,7 @@ func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, st
 		Amount:          record.Event.Payload.Amount,
 		OccurredAt:      record.Event.OccurredAt,
 	}
+	transactionID := record.Event.TransactionID
 
 	state, _, err := store.LoadState(ctx, transaction.SourceAccountID)
 	if err != nil {
@@ -96,6 +100,12 @@ func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, st
 	decision, found, err := store.FindDecision(ctx, transaction.EventID)
 	if err != nil {
 		return kafkainfra.EventEnvelope{}, nil, retryableFeatureStoreError(fmt.Errorf("load model feature decision: %w", err))
+	}
+	if recorded.EventType == journal.Completed && !found {
+		decision, found, err = store.FindDecisionByTransactionID(ctx, transactionID)
+		if err != nil {
+			return kafkainfra.EventEnvelope{}, nil, retryableFeatureStoreError(fmt.Errorf("load created model feature decision: %w", err))
+		}
 	}
 
 	var features modelfeature.Features
@@ -119,6 +129,7 @@ func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, st
 		if err == nil {
 			err = store.SaveDecision(ctx, modelfeature.Decision{
 				EventID:        transaction.EventID,
+				TransactionID:  transactionID,
 				StreamRevision: transaction.StreamRevision,
 				Features:       features,
 			})
@@ -132,6 +143,19 @@ func buildEnrichedEnvelope(ctx context.Context, recorded *esdb.RecordedEvent, st
 	}
 
 	envelope.ModelFeatures = &features
+	if recorded.EventType == journal.Created {
+		return envelope, nil, nil
+	}
+	// Store a decision under the completed event id as well so the existing
+	// atomic ApplyState operation can commit the state exactly once.
+	if err := store.SaveDecision(ctx, modelfeature.Decision{
+		EventID:        transaction.EventID,
+		TransactionID:  transactionID,
+		StreamRevision: transaction.StreamRevision,
+		Features:       features,
+	}); err != nil {
+		return kafkainfra.EventEnvelope{}, nil, retryableFeatureStoreError(fmt.Errorf("save completed model feature decision: %w", err))
+	}
 	return envelope, &pendingFeatureUpdate{Transaction: transaction, NextState: nextState}, nil
 }
 

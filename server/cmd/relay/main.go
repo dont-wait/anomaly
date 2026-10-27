@@ -2,9 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -14,11 +11,11 @@ import (
 	"os"
 	"os/signal"
 	"sort"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain"
+	"github.com/dont-wait/anomaly/internal/domain/risk"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	kafkainfra "github.com/dont-wait/anomaly/internal/infrastructure/kafka"
@@ -46,13 +43,6 @@ func main() {
 	eventStoreConfig := loader.LoadEventStoreConfig()
 	kafkaConfig := loader.LoadKafkaConfig()
 	mongoConfig := loader.LoadMongoConfig()
-	redactionKey := kafkaConfig.PayloadRedactionKey
-	if redactionKey == "" {
-		redactionKey = os.Getenv("JWT_SECRET")
-	}
-	if strings.TrimSpace(redactionKey) == "" {
-		log.Fatal().Msg("KAFKA_PAYLOAD_REDACTION_KEY or JWT_SECRET is required for payload pseudonymization")
-	}
 
 	es, err := eventstore.NewEventStoreClient(eventStoreConfig)
 	if err != nil {
@@ -72,11 +62,15 @@ func main() {
 	if err := featureStore.EnsureIndexes(ctx); err != nil {
 		log.Fatal().Err(err).Msg("ensure model feature indexes failed")
 	}
+	riskStore := mongorepo.NewRiskDecisionRepository(mongoClient, mongoConfig.MongoDBName)
+	if err := riskStore.EnsureIndexes(ctx); err != nil {
+		log.Fatal().Err(err).Msg("ensure risk decision indexes failed")
+	}
 	if *bootstrapOnly {
 		if err := featureStore.ResetForBootstrap(ctx); err != nil {
 			log.Fatal().Err(err).Msg("reset model feature state failed")
 		}
-		if err := bootstrapModelFeatures(ctx, es, featureStore, math.MaxUint64, redactionKey, log); err != nil {
+		if err := bootstrapModelFeatures(ctx, es, featureStore, math.MaxUint64, log); err != nil {
 			log.Fatal().Err(err).Msg("bootstrap model feature state failed")
 		}
 		log.Info().Msg("model feature state bootstrap completed")
@@ -125,8 +119,11 @@ func main() {
 	if ctx.Err() != nil {
 		return
 	}
-	if err := ensureFeatureState(ctx, es, kafkaConfig.EventStoreSubscription, featureStore, redactionKey, log); err != nil {
+	if err := ensureFeatureState(ctx, es, kafkaConfig.EventStoreSubscription, featureStore, log); err != nil {
 		log.Fatal().Err(err).Msg("ensure model feature state failed")
+	}
+	if err := recoverUnresolvedRiskRequests(ctx, es, featureStore, riskStore, producer, log); err != nil {
+		log.Fatal().Err(err).Msg("recover unresolved risk requests failed")
 	}
 	go runDecisionCleanup(ctx, es, kafkaConfig.EventStoreSubscription, featureStore, log)
 
@@ -146,7 +143,7 @@ func main() {
 			continue
 		}
 
-		err = consume(ctx, subscription, producer, featureStore, redactionKey, log)
+		err = consume(ctx, subscription, producer, featureStore, log)
 		_ = subscription.Close()
 		if ctx.Err() != nil {
 			break
@@ -181,7 +178,7 @@ func ensurePersistentSubscription(ctx context.Context, client *esdb.Client, grou
 	return err
 }
 
-func ensureFeatureState(ctx context.Context, client *esdb.Client, group string, featureStore modelFeatureStore, redactionKey string, log *zerolog.Logger) error {
+func ensureFeatureState(ctx context.Context, client *esdb.Client, group string, featureStore modelFeatureStore, log *zerolog.Logger) error {
 	info, err := client.GetPersistentSubscriptionInfo(ctx, journal.BankStream, group, esdb.GetPersistentSubscriptionOptions{})
 	if err != nil {
 		return fmt.Errorf("load persistent subscription info: %w", err)
@@ -204,10 +201,81 @@ func ensureFeatureState(ctx context.Context, client *esdb.Client, group string, 
 	if err := featureStore.ResetForBootstrap(ctx); err != nil {
 		return fmt.Errorf("reset model feature state: %w", err)
 	}
-	return bootstrapModelFeatures(ctx, client, featureStore, checkpoint, redactionKey, log)
+	return bootstrapModelFeatures(ctx, client, featureStore, checkpoint, log)
 }
 
-func bootstrapModelFeatures(ctx context.Context, client *esdb.Client, featureStore modelFeatureStore, throughRevision uint64, redactionKey string, log *zerolog.Logger) error {
+type riskDecisionLookup interface {
+	Find(context.Context, string) (risk.Decision, bool, error)
+}
+
+// recoverUnresolvedRiskRequests republishes created transfers that were already
+// acknowledged by the EventStoreDB subscription but never received a usable
+// model decision. This closes the upgrade/restart gap where the subscription
+// checkpoint has advanced past a request that was lost before Kafka delivery.
+func recoverUnresolvedRiskRequests(ctx context.Context, client *esdb.Client, featureStore modelFeatureStore, riskStore riskDecisionLookup, producer *kafkainfra.Producer, log *zerolog.Logger) error {
+	stream, err := client.ReadStream(ctx, journal.BankStream, esdb.ReadStreamOptions{
+		Direction: esdb.Forwards,
+		From:      esdb.Start{},
+	}, math.MaxUint64)
+	if err != nil {
+		return fmt.Errorf("read banking stream for risk recovery: %w", err)
+	}
+	defer stream.Close()
+
+	created := make(map[string]*esdb.RecordedEvent)
+	terminal := make(map[string]struct{})
+	for {
+		resolved, recvErr := stream.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+		if recvErr != nil {
+			return fmt.Errorf("receive banking event for risk recovery: %w", recvErr)
+		}
+		if resolved == nil || resolved.Event == nil {
+			continue
+		}
+		recorded := resolved.OriginalEvent()
+		if recorded.EventType != journal.Created && recorded.EventType != journal.Completed && recorded.EventType != journal.Failed && recorded.EventType != journal.Cancelled {
+			continue
+		}
+		record, decodeErr := journal.DecodeRecord(recorded.Data, recorded.EventID.String(), recorded.EventType)
+		if decodeErr != nil || record.Event == nil {
+			log.Warn().Err(decodeErr).Str("event_id", recorded.EventID.String()).Msg("skip invalid event during risk recovery")
+			continue
+		}
+		transactionID := record.Event.TransactionID
+		if recorded.EventType == journal.Created {
+			created[transactionID] = recorded
+			continue
+		}
+		terminal[transactionID] = struct{}{}
+	}
+
+	for transactionID, recorded := range created {
+		if _, done := terminal[transactionID]; done {
+			continue
+		}
+		_, found, err := riskStore.Find(ctx, transactionID)
+		if err != nil {
+			return fmt.Errorf("find risk decision for %s: %w", transactionID, err)
+		}
+		if found {
+			continue
+		}
+		envelope, _, err := buildEnrichedEnvelope(ctx, recorded, featureStore)
+		if err != nil {
+			return fmt.Errorf("build recovered risk request for %s: %w", transactionID, err)
+		}
+		if err := producer.Publish(ctx, envelope); err != nil {
+			return fmt.Errorf("publish recovered risk request for %s: %w", transactionID, err)
+		}
+		log.Warn().Str("transaction_id", transactionID).Str("event_id", recorded.EventID.String()).Msg("republished unresolved risk request")
+	}
+	return nil
+}
+
+func bootstrapModelFeatures(ctx context.Context, client *esdb.Client, featureStore modelFeatureStore, throughRevision uint64, log *zerolog.Logger) error {
 	count := throughRevision
 	if count != math.MaxUint64 {
 		count++
@@ -266,7 +334,7 @@ func bootstrapModelFeatures(ctx context.Context, client *esdb.Client, featureSto
 
 	for _, item := range completed {
 		recorded := item.recorded
-		_, pending, buildErr := buildEnrichedEnvelope(ctx, recorded, featureStore, redactionKey)
+		_, pending, buildErr := buildEnrichedEnvelope(ctx, recorded, featureStore)
 		if buildErr != nil {
 			var retryableErr *retryableFeatureError
 			if errors.As(buildErr, &retryableErr) {
@@ -320,7 +388,7 @@ func runDecisionCleanup(ctx context.Context, client *esdb.Client, group string, 
 	}
 }
 
-func consume(ctx context.Context, subscription *esdb.PersistentSubscription, producer *kafkainfra.Producer, featureStore modelFeatureStore, redactionKey string, log *zerolog.Logger) error {
+func consume(ctx context.Context, subscription *esdb.PersistentSubscription, producer *kafkainfra.Producer, featureStore modelFeatureStore, log *zerolog.Logger) error {
 	for ctx.Err() == nil {
 		message := subscription.Recv()
 		if message.SubscriptionDropped != nil {
@@ -332,9 +400,28 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 
 		resolved := message.EventAppeared.Event
 		recorded := resolved.OriginalEvent()
-		if recorded.EventType != journal.Completed {
+		if recorded.EventType != journal.Created && recorded.EventType != journal.Completed {
 			// Keep feature progress aligned with the EventStoreDB stream even
-			// though only completed transfers are published to Kafka.
+			// though only created transfers are published to Kafka.
+			if recorded.EventType == journal.Failed || recorded.EventType == journal.Cancelled {
+				record, decodeErr := journal.DecodeRecord(recorded.Data, recorded.EventID.String(), recorded.EventType)
+				if decodeErr != nil || record.Event == nil {
+					reason := "terminal transfer event is missing the event payload"
+					if decodeErr != nil {
+						reason = "invalid terminal transfer event: " + decodeErr.Error()
+					}
+					if nackErr := subscription.Nack(reason, esdb.NackActionPark, resolved); nackErr != nil {
+						return nackErr
+					}
+					continue
+				}
+				if err := featureStore.DiscardDecisionsByTransactionID(ctx, record.Event.TransactionID); err != nil {
+					if nackErr := subscription.Nack("model feature decision cleanup failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
+						return nackErr
+					}
+					return err
+				}
+			}
 			if err := featureStore.SaveProgress(ctx, recorded.EventID.String(), recorded.EventNumber); err != nil {
 				if nackErr := subscription.Nack("model feature progress update failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
 					return nackErr
@@ -351,7 +438,7 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 				Msg("event skipped; not published to kafka")
 			continue
 		}
-		envelope, pendingFeatureUpdate, err := buildEnrichedEnvelope(ctx, recorded, featureStore, redactionKey)
+		envelope, pendingFeatureUpdate, err := buildEnrichedEnvelope(ctx, recorded, featureStore)
 		if err != nil {
 			action := esdb.NackActionPark
 			reason := "invalid event payload: " + err.Error()
@@ -373,11 +460,13 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 			continue
 		}
 
-		if err := producer.Publish(ctx, envelope); err != nil {
-			if nackErr := subscription.Nack("kafka publish failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
-				return nackErr
+		if recorded.EventType == journal.Created {
+			if err := producer.Publish(ctx, envelope); err != nil {
+				if nackErr := subscription.Nack("kafka publish failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
+					return nackErr
+				}
+				return err
 			}
-			return err
 		}
 		if pendingFeatureUpdate != nil {
 			if applyErr := featureStore.ApplyState(ctx, pendingFeatureUpdate.Transaction, pendingFeatureUpdate.NextState); applyErr != nil {
@@ -401,7 +490,7 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 			Str("event_id", envelope.EventID).
 			Str("event_type", envelope.EventType).
 			Uint64("stream_revision", envelope.StreamRevision).
-			Msg("event published to kafka")
+			Msg(map[bool]string{true: "event published to kafka", false: "completed event applied to feature state"}[recorded.EventType == journal.Created])
 	}
 	return ctx.Err()
 }
@@ -417,10 +506,9 @@ func loadSubscriptionCheckpoint(ctx context.Context, client *esdb.Client, group 
 	return *info.Stats.LastCheckpointedEventRevision, true, nil
 }
 
-func buildEnvelope(recorded *esdb.RecordedEvent, redactionKey string) (kafkainfra.EventEnvelope, error) {
-	payload, err := sanitizePayload(recorded.Data, redactionKey)
-	if err != nil {
-		return kafkainfra.EventEnvelope{}, err
+func buildEnvelope(recorded *esdb.RecordedEvent) (kafkainfra.EventEnvelope, error) {
+	if !json.Valid(recorded.Data) {
+		return kafkainfra.EventEnvelope{}, fmt.Errorf("event payload must be valid JSON")
 	}
 	return kafkainfra.EventEnvelope{
 		EventID:        recorded.EventID.String(),
@@ -429,83 +517,8 @@ func buildEnvelope(recorded *esdb.RecordedEvent, redactionKey string) (kafkainfr
 		StreamRevision: recorded.EventNumber,
 		OccurredAt:     recorded.CreatedDate,
 		SchemaVersion:  2,
-		Payload:        payload,
+		Payload:        append(json.RawMessage(nil), recorded.Data...),
 	}, nil
-}
-
-func sanitizePayload(data []byte, redactionKey string) (json.RawMessage, error) {
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	decoder.UseNumber()
-	var payload any
-	if err := decoder.Decode(&payload); err != nil {
-		return nil, err
-	}
-	redactSensitiveFields(payload, []byte(redactionKey))
-	result, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func redactSensitiveFields(value any, redactionKey []byte) {
-	switch current := value.(type) {
-	case map[string]any:
-		for key, child := range current {
-			normalized := strings.ToLower(strings.NewReplacer("_", "", "-", "", " ", "").Replace(key))
-			switch {
-			case sensitivePayloadKey(normalized):
-				delete(current, key)
-			case pseudonymousPayloadKey(normalized):
-				if text, ok := child.(string); ok && strings.TrimSpace(text) != "" {
-					current[key] = pseudonymizePayloadValue(text, redactionKey)
-				} else {
-					delete(current, key)
-				}
-			default:
-				redactSensitiveFields(child, redactionKey)
-			}
-		}
-	case []any:
-		for _, child := range current {
-			redactSensitiveFields(child, redactionKey)
-		}
-	}
-}
-
-func sensitivePayloadKey(key string) bool {
-	if strings.HasPrefix(key, "kyc") || (strings.HasSuffix(key, "url") && strings.Contains(key, "idcard")) {
-		return true
-	}
-	switch key {
-	case "password", "passwordhash", "secret", "accesstoken", "refreshtoken",
-		"account", "accounts", "customer", "session", "kycsession", "kyctoken",
-		"email", "phone", "phonenumber", "address", "name", "username", "note",
-		"faceimage", "selfie", "livevideourl", "idcardfronturl", "idcardbackurl",
-		"media", "attachments", "document", "documents", "verification", "biometric",
-		"reference", "idempotencykey", "otpexpiresat", "otpresendat":
-		return true
-	default:
-		return false
-	}
-}
-
-func pseudonymousPayloadKey(key string) bool {
-	return key == "accountid" || key == "accountno" || key == "sourceaccountid" ||
-		key == "destinationaccountid" || key == "deviceid" || key == "customerid"
-}
-
-func pseudonymizePayloadValue(value string, key []byte) string {
-	var digest []byte
-	if len(key) > 0 {
-		mac := hmac.New(sha256.New, key)
-		_, _ = mac.Write([]byte(value))
-		digest = mac.Sum(nil)
-	} else {
-		sum := sha256.Sum256([]byte(value))
-		digest = sum[:]
-	}
-	return "redacted:" + hex.EncodeToString(digest[:12])
 }
 
 func waitForRetry(ctx context.Context) bool {
