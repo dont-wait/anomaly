@@ -32,7 +32,12 @@ func testRealtimeStore(t *testing.T) *RealtimeStore {
 		t.Fatal(err)
 	}
 	client := redis.NewClient(&redis.Options{Network: "unix", Addr: socket})
-	t.Cleanup(func() { client.Close(); process.Process.Kill(); process.Wait(); os.RemoveAll(directory) })
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = process.Process.Kill()
+		_ = process.Wait()
+		_ = os.RemoveAll(directory)
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for client.Ping(ctx).Err() != nil {

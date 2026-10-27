@@ -15,7 +15,7 @@ import (
 
 func TestRealtimeClientAuthenticatesAndStreamsOrderedMedia(t *testing.T) {
 	server := httptest.NewServer(websocket.Handler(func(ws *websocket.Conn) {
-		defer ws.Close()
+		defer func() { _ = ws.Close() }()
 		if ws.Request().Header.Get("X-KYC-Service-Token") != "internal-secret" {
 			t.Error("service authentication missing")
 			return
@@ -30,7 +30,7 @@ func TestRealtimeClientAuthenticatesAndStreamsOrderedMedia(t *testing.T) {
 			t.Error("reference image differs")
 			return
 		}
-		websocket.JSON.Send(ws, map[string]string{"type": "ready"})
+		_ = websocket.JSON.Send(ws, map[string]string{"type": "ready"})
 		var start map[string]string
 		if err := websocket.JSON.Receive(ws, &start); err != nil || start["type"] != "start" {
 			t.Error("missing start")
@@ -46,17 +46,17 @@ func TestRealtimeClientAuthenticatesAndStreamsOrderedMedia(t *testing.T) {
 			t.Error("missing end")
 			return
 		}
-		websocket.JSON.Send(ws, map[string]string{"type": "stream_finished"})
+		_ = websocket.JSON.Send(ws, map[string]string{"type": "stream_finished"})
 	}))
 	defer server.Close()
 	conn, err := NewClient(server.URL, "internal-secret").OpenRealtime(context.Background(), Media{Data: []byte("front")}, "TURN_HEAD_LEFT_RIGHT_BLINK")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
-	websocket.JSON.Send(conn, map[string]string{"type": "start"})
-	websocket.Message.Send(conn, []byte("\x01\x00\x00\x00\x00media"))
-	websocket.JSON.Send(conn, map[string]any{"type": "end", "lastChunkSeq": 0})
+	defer func() { _ = conn.Close() }()
+	_ = websocket.JSON.Send(conn, map[string]string{"type": "start"})
+	_ = websocket.Message.Send(conn, []byte("\x01\x00\x00\x00\x00media"))
+	_ = websocket.JSON.Send(conn, map[string]any{"type": "end", "lastChunkSeq": 0})
 	var event map[string]string
 	if err := websocket.JSON.Receive(conn, &event); err != nil || event["type"] != "stream_finished" {
 		t.Fatalf("stream did not complete: %v", err)

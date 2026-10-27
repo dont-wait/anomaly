@@ -165,6 +165,17 @@ func (s *RealtimeStore) ConsumeTicket(ctx context.Context, id, ticket string) er
 	return nil
 }
 
+func (s *RealtimeStore) TicketMatches(ctx context.Context, id, ticket string) (bool, error) {
+	value, err := s.DB.Get(ctx, "kyc:ticket:"+Digest([]byte(ticket))).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, nil
+		}
+		return false, err
+	}
+	return value == id, nil
+}
+
 func (s *RealtimeStore) Lock(ctx context.Context, id string) (string, error) {
 	token := uuid.NewString()
 	ok, err := s.DB.SetNX(ctx, "kyc:processing:"+id, token, 90*time.Second).Result()

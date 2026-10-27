@@ -67,21 +67,27 @@ it("authenticates by message, orders binary chunks, and waits for the server bef
   const starting = capture.start("video/webm");
   socket.emit("started", 2);
   await starting;
-  const bytes = new Uint8Array([11, 22, 33]);
-  const chunk = new Blob([bytes]);
-  // jsdom's Blob lacks arrayBuffer on some supported test runtimes.
-  Object.defineProperty(chunk, "arrayBuffer", {
-    value: async () => bytes.buffer,
-  });
-  capture.send(chunk);
+  const chunks = [new Uint8Array([11, 22, 33]), new Uint8Array([44, 55])].map(
+    (bytes) => {
+      const chunk = new Blob([bytes]);
+      // jsdom's Blob lacks arrayBuffer on some supported test runtimes.
+      Object.defineProperty(chunk, "arrayBuffer", {
+        value: async () => bytes.buffer,
+      });
+      return chunk;
+    },
+  );
+  chunks.forEach((chunk) => capture.send(chunk));
   const finished = capture.finish();
   await vi.waitFor(() =>
-    expect(socket.sent.some((m) => m instanceof Uint8Array)).toBe(true),
+    expect(socket.sent.filter((m) => m instanceof Uint8Array)).toHaveLength(2),
   );
-  const binary = socket.sent.find((m) => m instanceof Uint8Array) as Uint8Array;
-  expect([...binary]).toEqual([1, 0, 0, 0, 0, 11, 22, 33]);
+  const binary = socket.sent.filter((m) => m instanceof Uint8Array) as Uint8Array[];
+  expect([...binary[0]]).toEqual([1, 0, 0, 0, 0, 11, 22, 33]);
+  expect([...binary[1]]).toEqual([1, 0, 0, 0, 1, 44, 55]);
   socket.emit("ack", 3, { chunkSeq: 0 });
-  socket.emit("progress", 4, {
+  socket.emit("ack", 4, { chunkSeq: 1 });
+  socket.emit("progress", 5, {
     challengeStep: 1,
     challengePassed: false,
     faceState: "single",
@@ -94,7 +100,7 @@ it("authenticates by message, orders binary chunks, and waits for the server bef
   });
   await Promise.resolve();
   expect(done).toBe(false);
-  socket.emit("stream_finished", 5);
+  socket.emit("stream_finished", 6);
   await finished;
   expect(error).not.toHaveBeenCalled();
   capture.dispose(false);

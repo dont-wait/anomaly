@@ -181,10 +181,17 @@ def test_incremental_webm_decoder_emits_frames_before_end():
     worker = threading.Thread(target=consume, daemon=True)
     worker.start()
     try:
+        observed_before_end = False
         for offset in range(0, len(data), 1024):
             decoder.write(data[offset : offset + 1024])
+            if (
+                not observed_before_end
+                and offset >= len(data) // 3
+                and offset + 1024 < len(data)
+            ):
+                observed_before_end = observed.wait(2)
             time.sleep(0.01)
-        assert observed.wait(2), "decoder waited for end-of-file instead of streaming"
+        assert observed_before_end, "decoder waited for end-of-file instead of streaming"
         decoder.finish()
         worker.join(5)
         assert not worker.is_alive() and not errors
@@ -270,7 +277,9 @@ def test_realtime_socket_requires_service_auth_and_streams_decoder_progress(monk
         last = -1
         for last, offset in enumerate(range(0, len(data), 1024)):
             socket.send_bytes(bytes([1]) + last.to_bytes(4, "big") + data[offset : offset + 1024])
-        assert socket.receive_json()["type"] == "progress"
+        progress = socket.receive_json()
+        assert progress["type"] == "progress"
+        assert progress["processedMediaTimeMs"] > 0
         socket.send_json({"type": "end", "lastChunkSeq": last})
         while True:
             event = socket.receive_json()

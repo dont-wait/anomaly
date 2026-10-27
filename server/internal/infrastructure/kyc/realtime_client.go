@@ -16,6 +16,9 @@ type RealtimeError struct{ Code string }
 func (e *RealtimeError) Error() string { return fmt.Sprintf("KYC analysis unavailable: %s", e.Code) }
 
 func (c *Client) OpenRealtime(ctx context.Context, front Media, challenge string) (*websocket.Conn, error) {
+	if err := c.validateTransport(); err != nil {
+		return nil, err
+	}
 	endpoint := strings.Replace(strings.Replace(c.baseURL, "https://", "wss://", 1), "http://", "ws://", 1) + "/v1/kyc/realtime"
 	config, err := websocket.NewConfig(endpoint, c.baseURL)
 	if err != nil {
@@ -30,7 +33,7 @@ func (c *Client) OpenRealtime(ctx context.Context, front Media, challenge string
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 	err = websocket.JSON.Send(conn, map[string]string{"front": base64.StdEncoding.EncodeToString(front.Data), "challenge_type": challenge})
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 	var ready struct {
@@ -38,7 +41,7 @@ func (c *Client) OpenRealtime(ctx context.Context, front Media, challenge string
 		Code string `json:"code"`
 	}
 	if err = websocket.JSON.Receive(conn, &ready); err != nil || ready.Type != "ready" {
-		conn.Close()
+		_ = conn.Close()
 		if err == nil {
 			err = &RealtimeError{Code: ready.Code}
 		}

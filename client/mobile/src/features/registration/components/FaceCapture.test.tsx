@@ -102,7 +102,9 @@ it("uses server evidence instead of the timer and hands off the exact recording 
     attemptId: "attempt",
     idempotencyKey: "key",
   });
-  expect(test.onComplete.mock.calls[0][0].type).toBe("video/webm");
+  const completed = test.onComplete.mock.calls[0][0] as File;
+  expect(completed.type).toBe("video/webm");
+  expect(await completed.text()).toBe("live recording");
   expect(test.stop).toHaveBeenCalledOnce();
   expect(test.session.dispose).toHaveBeenCalledWith(false);
 });

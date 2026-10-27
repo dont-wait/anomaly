@@ -9,8 +9,10 @@ import (
 	"math"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"time"
 
@@ -73,6 +75,9 @@ func NewClient(baseURL string, serviceToken ...string) *Client {
 }
 
 func (c *Client) VerifyFace(ctx context.Context, front, video Media, challengeType string) (*VerifyResult, error) {
+	if err := c.validateTransport(); err != nil {
+		return nil, err
+	}
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	if err := writeFile(writer, "cccd_front_image", front); err != nil {
@@ -138,4 +143,26 @@ func validDecision(decision string) bool {
 	default:
 		return false
 	}
+}
+
+func (c *Client) validateTransport() error {
+	u, err := url.Parse(c.baseURL)
+	if err != nil || u.Hostname() == "" {
+		return fmt.Errorf("invalid KYC service URL")
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	if u.Scheme != "http" {
+		return fmt.Errorf("KYC service URL must use HTTPS")
+	}
+	host := strings.Trim(u.Hostname(), "[]")
+	if host == "localhost" {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	return fmt.Errorf("KYC service URL must use HTTPS outside loopback")
 }

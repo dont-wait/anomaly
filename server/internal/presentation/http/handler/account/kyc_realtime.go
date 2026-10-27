@@ -55,7 +55,7 @@ func (h *Handler) CreateRealtimeAttempt(w http.ResponseWriter, r *http.Request) 
 		h.kycRequestError(w, "invalid or oversized multipart", 400)
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
+	defer func() { _ = r.MultipartForm.RemoveAll() }()
 	front, err := readKYCUpload(r.MultipartForm, "idCardFront", maxImageBytes, true)
 	if err != nil {
 		h.kycRequestError(w, "invalid front image", 400)
@@ -173,13 +173,6 @@ func (h *Handler) RealtimeStream(w http.ResponseWriter, r *http.Request) {
 		h.kycRequestError(w, "unavailable", 503)
 		return
 	}
-	select {
-	case realtimeSockets <- struct{}{}:
-		defer func() { <-realtimeSockets }()
-	default:
-		h.kycRequestError(w, "capacity exceeded", 503)
-		return
-	}
 	server := websocket.Server{Handshake: func(_ *websocket.Config, r *http.Request) error {
 		if !h.realtimeOrigins[r.Header.Get("Origin")] {
 			return fmt.Errorf("origin not allowed")
@@ -190,7 +183,7 @@ func (h *Handler) RealtimeStream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
-	defer browser.Close()
+	defer func() { _ = browser.Close() }()
 	browser.MaxPayloadBytes = 4096
 	_ = browser.SetDeadline(time.Now().Add(5 * time.Second))
 	var auth struct {
@@ -203,6 +196,16 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	id := r.PathValue("attemptId")
+	validTicket, err := h.realtime.TicketMatches(ctx, id, auth.Ticket)
+	if err != nil || !validTicket {
+		return
+	}
+	select {
+	case realtimeSockets <- struct{}{}:
+		defer func() { <-realtimeSockets }()
+	default:
+		return
+	}
 	if err := h.realtime.ConsumeTicket(ctx, id, auth.Ticket); err != nil {
 		return
 	}
@@ -228,6 +231,7 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 	if !ok {
 		return
 	}
+	_ = browser.SetDeadline(time.Now().Add(30 * time.Second))
 	backend, err := client.OpenRealtime(ctx, a.Front, a.Challenge)
 	if err != nil {
 		code := "REALTIME_UNAVAILABLE"
@@ -235,11 +239,11 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 		if errors.As(err, &analysisErr) && (analysisErr.Code == "CCCD_PORTRAIT_NOT_FOUND" || analysisErr.Code == "CCCD_IMAGE_QUALITY_LOW") {
 			code = analysisErr.Code
 		}
-		websocket.JSON.Send(browser, map[string]any{"type": "error", "code": code, "attemptId": id, "eventSeq": 1})
+		_ = websocket.JSON.Send(browser, map[string]any{"type": "error", "code": code, "attemptId": id, "eventSeq": 1})
 		h.realtime.Release(ctx, a)
 		return
 	}
-	defer backend.Close()
+	defer func() { _ = backend.Close() }()
 	_ = browser.SetDeadline(a.ExpiresAt)
 	_ = backend.SetDeadline(a.ExpiresAt)
 	var sendMu sync.Mutex
@@ -281,7 +285,7 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 			var data []byte
 			if err := websocket.Message.Receive(browser, &data); err != nil {
 				ingestErr <- err
-				backend.Close()
+				_ = backend.Close()
 				return
 			}
 			if len(data) > 0 && data[0] == 1 {
@@ -291,13 +295,13 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 				}
 				if seq != lastSeq+1 || len(data) < 6 {
 					ingestErr <- fmt.Errorf("invalid sequence")
-					backend.Close()
+					_ = backend.Close()
 					return
 				}
 				total += len(data) - 5
 				if total > maxVideoBytes {
 					ingestErr <- fmt.Errorf("video too large")
-					backend.Close()
+					_ = backend.Close()
 					return
 				}
 				lastSeq = seq
@@ -306,11 +310,11 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 				hashMu.Unlock()
 				if err := websocket.Message.Send(backend, data); err != nil {
 					ingestErr <- err
-					backend.Close()
+					_ = backend.Close()
 					return
 				}
 				if err := send(map[string]any{"type": "ack", "chunkSeq": seq}); err != nil {
-					backend.Close()
+					_ = backend.Close()
 					return
 				}
 			} else {
@@ -320,7 +324,7 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 				}
 				if json.Unmarshal(data, &end) != nil || end.Type != "end" || end.Last != lastSeq || lastSeq < 0 {
 					ingestErr <- fmt.Errorf("invalid end")
-					backend.Close()
+					_ = backend.Close()
 					return
 				}
 				hashMu.Lock()
@@ -328,7 +332,7 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 				hashMu.Unlock()
 				if err := websocket.Message.Send(backend, string(data)); err != nil {
 					ingestErr <- err
-					backend.Close()
+					_ = backend.Close()
 					return
 				}
 				ingestErr <- nil
@@ -336,11 +340,11 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 			}
 		}
 	}()
-	defer browser.Close()
+	defer func() { _ = browser.Close() }()
 	for {
 		var event map[string]any
 		if err := websocket.JSON.Receive(backend, &event); err != nil {
-			send(map[string]any{"type": "error", "code": "REALTIME_UNAVAILABLE"})
+			_ = send(map[string]any{"type": "error", "code": "REALTIME_UNAVAILABLE"})
 			h.realtime.Release(ctx, a)
 			return
 		}
@@ -364,11 +368,11 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 			a.Front.Data = nil
 			a.Back.Data = nil
 			if err := h.realtime.Save(ctx, a); err != nil {
-				send(map[string]any{"type": "error", "code": "REALTIME_UNAVAILABLE"})
+				_ = send(map[string]any{"type": "error", "code": "REALTIME_UNAVAILABLE"})
 				return
 			}
 			streamFinished = true
-			send(map[string]any{"type": "stream_finished"})
+			_ = send(map[string]any{"type": "stream_finished"})
 			return
 		}
 		// Never expose the internal model scores/evidence to the browser.

@@ -77,6 +77,7 @@ export function useRegistrationFlow() {
   const kycExpiresAt = useRef(
     restoredSession ? Date.parse(restoredSession.kycExpiresAt) : 0,
   );
+  const kycAttemptKey = useRef(crypto.randomUUID());
   const registrationKey = useRef("");
   const step =
     screen === "processing" || screen === "error"
@@ -215,6 +216,7 @@ export function useRegistrationFlow() {
         onProgress,
         onError,
         signal,
+        kycAttemptKey.current,
       );
       if (capture.attemptLimit !== undefined)
         setAttemptLimit(capture.attemptLimit);
@@ -276,6 +278,7 @@ export function useRegistrationFlow() {
       if (result.attemptLimit !== undefined)
         setAttemptLimit(result.attemptLimit);
       if (result.decision === "VERIFIED") {
+        kycAttemptKey.current = crypto.randomUUID();
         pendingCapture.current = null;
         setHasPendingCapture(false);
         if (result.user!.id !== createdAccount.id)
@@ -294,6 +297,7 @@ export function useRegistrationFlow() {
         );
         setScreen("face");
       } else {
+        kycAttemptKey.current = crypto.randomUUID();
         pendingCapture.current = null;
         setHasPendingCapture(false);
         if (result.decision === "FAILED_FINAL") setRemaining(0);

@@ -40,8 +40,8 @@ export async function openRealtimeKyc(
   onProgress: (progress: CaptureProgress) => void,
   onError: (error: Error) => void,
   signal: AbortSignal,
+  idempotencyKey = crypto.randomUUID(),
 ): Promise<RealtimeCapture> {
-  const idempotencyKey = crypto.randomUUID();
   const body = new FormData();
   body.append("idCardFront", front);
   body.append("idCardBack", back);
@@ -70,7 +70,7 @@ export async function openRealtimeKyc(
   )
     throw new Error("Địa chỉ camera không hợp lệ.");
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  const socket = new WebSocket(url);
+  let socket: WebSocket;
   let disposed = false;
   let finished = false;
   let failed: Error | undefined;
@@ -109,6 +109,14 @@ export async function openRealtimeKyc(
       },
     ).catch(() => {});
   };
+  try {
+    socket = new WebSocket(url);
+  } catch (cause) {
+    cancelRemote();
+    throw cause instanceof Error
+      ? cause
+      : new Error("Không thể kết nối xác thực trực tiếp.");
+  }
   const dispose = (cancelAttempt = true) => {
     if (disposed) return;
     disposed = true;
