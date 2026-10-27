@@ -70,7 +70,7 @@ func (r *LoanContractQuery) ContractSnapshot(
 	if err != nil {
 		return "", err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	hash := sha256.New()
 
@@ -308,7 +308,7 @@ func (r *LoanContractQuery) listContractApplications(
 	if err != nil {
 		return nil, false, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	records := make(
 		[]contractApplicationRecord,
@@ -427,7 +427,7 @@ func (r *LoanContractQuery) ListContractPage(
 	if err != nil {
 		return nil, false, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	byID := make(
 		map[bson.ObjectID]repaymentLoanRow,

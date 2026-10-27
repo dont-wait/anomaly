@@ -440,6 +440,7 @@ Canonical events include `BankAccountCreated`, `BankAccountUpdated`,
 - `TransferCreated`: sequence 1, awaiting OTP
 - `TransferOTPUpdated`: subsequent OTP timing updates, without the OTP code
 - `TransferCompleted`: one atomic debit/credit with before/after balance snapshots
+- `TransferFailed`: terminal failed transfer with sanitized risk assessment; no debit/credit
 - `TransferCancelled`: terminal cancellation
 
 Transfer sequences advance for each lifecycle event. Stable IDs make terminal

@@ -42,7 +42,7 @@ nguyên VND, không gửi chuỗi, số thập phân hoặc giá trị đã form
 |---|---|---|
 | `GET /api/accounts/lookup` | Query `bankCode=ANOMALY`, `accountNo` | 200: `{accountNo,name,bankCode}` |
 | `POST /api/transfers` | Header `Idempotency-Key` UUID; body bên dưới | 201: `{transferId,status,recipient,amount,fee,note,otp}` |
-| `POST /api/transfers/{transferId}/confirm` | Body `{"otp":"123456"}` | 200: `TransactionRecord` |
+| `POST /api/transfers/{transferId}/confirm` | Body `{"otp":"123456"}` | 200: `TransactionRecord`; 202: `RISK_CHECK_PENDING` |
 | `POST /api/transfers/{transferId}/otp/resend` | Không cần body | 200: `OTPInfo` |
 | `GET /api/transfers/recent-recipients` | `limit`: mặc định 4, tối đa 10 | 200: `{items:[{accountNo,name,bankCode,lastTransferredAt}]}` |
 | `GET /api/contacts/recipients` | Query `q` và `limit` tùy chọn; `limit` mặc định 50, tối đa 100 | 200: `{items:[{accountNo,name,bankCode}]}` |
@@ -107,10 +107,17 @@ không gửi OTP lần nữa; dùng endpoint resend. `attemptsLeft` trong respon
 retry hiện là 3, không phải số lượt còn lại được đọc từ Redis; cập nhật UI bằng
 `INVALID_OTP.attemptsLeft` và response resend.
 
-Sau confirm thành công, dùng ngay record trả về cho màn kết quả; retry confirm
+Sau confirm thành công, dùng ngay record trả về cho màn kết quả; nếu model chưa
+xử lý xong, API trả `202 RISK_CHECK_PENDING` và không consume OTP. Client có thể
+retry cùng request sau. Retry confirm
 với cùng `transferId` trả kết quả đã thành công mà không trừ thêm tiền. Số dư
 được kiểm tra lại tại confirm, nên giao dịch có thể trả `INSUFFICIENT_FUNDS` dù
 lần tạo trước đó đủ tiền.
+
+Nếu model trả về `BLOCK`, confirm trả transaction record với `status: "failed"` và
+`failure_reason: "anomalous_transfer"`; giao dịch không debit/credit. Kết quả model
+được lưu trong event terminal, còn risk decision tạm thời được dọn theo TTL sau khi
+đã finalized.
 
 ### Record giao dịch
 

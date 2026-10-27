@@ -45,6 +45,7 @@ type Operation struct {
 	ResponseContentType string
 	ResponseDescription string
 	SuccessStatus       int
+	SuccessResponses    map[int]any
 	FailureStatuses     []int
 	FailureResponses    map[int]any
 	Parameters          []Parameter
@@ -148,6 +149,9 @@ func (r *Registry) addOperation(pattern string, operation Operation) {
 			operation.Response,
 			operation.ResponseContentType,
 		),
+	}
+	for status, body := range operation.SuccessResponses {
+		responses[statusKey(status)] = responseObject(http.StatusText(status), body, "application/json")
 	}
 	for _, status := range operation.FailureStatuses {
 		body := operation.FailureResponses[status]

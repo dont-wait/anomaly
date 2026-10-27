@@ -3,6 +3,7 @@ package transaction
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,9 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"go.mongodb.org/mongo-driver/v2/bson"
 
+	"github.com/dont-wait/anomaly/internal/domain/risk"
+	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	infraauth "github.com/dont-wait/anomaly/internal/infrastructure/auth"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
@@ -31,6 +35,9 @@ type transferRepositoryFake struct {
 	recipientCalls int
 	createCalls    int
 	created        mongorepo.TransferDocument
+	transfer       mongorepo.TransferDocument
+	feed           mongorepo.FeedDocument
+	failCalls      int
 }
 
 func (f *transferRepositoryFake) FindOwnedAccount(context.Context, string) (mongorepo.TransferAccount, error) {
@@ -65,12 +72,22 @@ func (f *transferRepositoryFake) CreatePending(_ context.Context, tx mongorepo.T
 	return tx, false, nil
 }
 
-func (*transferRepositoryFake) FindTransfer(context.Context, string, string) (mongorepo.TransferDocument, error) {
-	return mongorepo.TransferDocument{}, nil
+func (f *transferRepositoryFake) FindTransfer(context.Context, string, string) (mongorepo.TransferDocument, error) {
+	return f.transfer, nil
 }
 
 func (*transferRepositoryFake) ConfirmTransfer(context.Context, string, string) (mongorepo.TransferDocument, error) {
 	return mongorepo.TransferDocument{}, nil
+}
+
+func (*transferRepositoryFake) ConfirmTransferWithRisk(context.Context, string, string, *risk.Assessment) (mongorepo.TransferDocument, error) {
+	return mongorepo.TransferDocument{}, nil
+}
+
+func (f *transferRepositoryFake) FailTransfer(context.Context, string, string, risk.Assessment) (mongorepo.TransferDocument, error) {
+	f.failCalls++
+	f.transfer.Status = "failed"
+	return f.transfer, nil
 }
 
 func (*transferRepositoryFake) CancelPending(context.Context, string) error { return nil }
@@ -79,8 +96,8 @@ func (*transferRepositoryFake) SetOTPMetadata(context.Context, string, time.Time
 	return nil
 }
 
-func (*transferRepositoryFake) GetFeed(context.Context, bson.ObjectID, string) (mongorepo.FeedDocument, error) {
-	return mongorepo.FeedDocument{}, nil
+func (f *transferRepositoryFake) GetFeed(context.Context, bson.ObjectID, string) (mongorepo.FeedDocument, error) {
+	return f.feed, nil
 }
 
 func (*transferRepositoryFake) ListFeed(context.Context, bson.ObjectID, bson.M, int64) ([]mongorepo.FeedDocument, error) {
@@ -140,6 +157,112 @@ func TestNormalizeDeviceIDRejectsCallerSuppliedNonUUID(t *testing.T) {
 	}
 	if got := normalizeDeviceID("550e8400-e29b-41d4-a716-446655440000"); got == "" {
 		t.Fatal("normalizeDeviceID() rejected a valid device UUID")
+	}
+}
+
+type riskDecisionFake struct {
+	decision    risk.Decision
+	found       bool
+	finalized   int
+	finalizeErr error
+}
+
+func (f *riskDecisionFake) Find(context.Context, string) (risk.Decision, bool, error) {
+	return f.decision, f.found, nil
+}
+
+func (f *riskDecisionFake) Finalize(context.Context, string) error {
+	f.finalized++
+	return f.finalizeErr
+}
+
+func confirmRequestForTest(t *testing.T, h *Handler, transferID string) *httptest.ResponseRecorder {
+	t.Helper()
+	tokens := infraauth.NewTokenService("test-secret", time.Hour)
+	token, _, err := tokens.Issue("owner-id", "owner", "user", true)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/transfers/"+transferID+"/confirm", strings.NewReader(`{"otp":"123456"}`))
+	request.SetPathValue("transferId", transferID)
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	middleware.RequireAuth(tokens)(http.HandlerFunc(h.ConfirmTransfer)).ServeHTTP(recorder, request)
+	return recorder
+}
+
+func TestConfirmTransferReturnsPendingWithoutConsumingOTP(t *testing.T) {
+	transferID := uuid.NewString()
+	repo := &transferRepositoryFake{
+		source:   mongorepo.TransferAccount{ID: bson.NewObjectID()},
+		transfer: mongorepo.TransferDocument{ID: transferID, Status: "awaiting_otp"},
+	}
+	riskStore := &riskDecisionFake{decision: risk.Decision{TransferID: transferID, SourceEventID: journal.EventID(transferID, journal.Created), Decision: risk.DecisionPending}, found: true}
+	h := NewHandler(zerolog.Nop(), repo, nil, nil, nil)
+	h.SetRiskDecisionStore(riskStore)
+
+	response := confirmRequestForTest(t, h, transferID)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("pending status = %d, want 202; body = %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "RISK_CHECK_PENDING") {
+		t.Fatalf("pending response = %s, want RISK_CHECK_PENDING", response.Body.String())
+	}
+	if repo.failCalls != 0 || riskStore.finalized != 0 {
+		t.Fatalf("pending mutated transfer: failCalls=%d finalized=%d", repo.failCalls, riskStore.finalized)
+	}
+}
+
+func TestConfirmTransferBlocksAndIsIdempotentOnRedelivery(t *testing.T) {
+	transferID := uuid.NewString()
+	repo := &transferRepositoryFake{
+		source:   mongorepo.TransferAccount{ID: bson.NewObjectID()},
+		transfer: mongorepo.TransferDocument{ID: transferID, Status: "awaiting_otp"},
+		feed:     mongorepo.FeedDocument{TransactionID: transferID, Direction: "OUT", Status: "failed", FailureReason: "anomalous_transfer"},
+	}
+	riskStore := &riskDecisionFake{decision: risk.Decision{
+		TransferID: transferID, SourceEventID: journal.EventID(transferID, journal.Created), Decision: risk.DecisionBlock,
+		Assessment: risk.Assessment{Decision: risk.DecisionBlock, IsAnomalous: true, RiskScore: 0.97, ModelVersion: "model-v1", EvaluatedAt: time.Now().UTC()},
+	}, found: true}
+	h := NewHandler(zerolog.Nop(), repo, nil, nil, nil)
+	h.SetRiskDecisionStore(riskStore)
+
+	first := confirmRequestForTest(t, h, transferID)
+	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), `"status":"failed"`) || !strings.Contains(first.Body.String(), `"failure_reason":"anomalous_transfer"`) {
+		t.Fatalf("blocked response = %d/%s, want failed transaction", first.Code, first.Body.String())
+	}
+	second := confirmRequestForTest(t, h, transferID)
+	if second.Code != http.StatusOK || repo.failCalls != 1 {
+		t.Fatalf("redelivery response = %d/%s, failCalls=%d; want one failure append", second.Code, second.Body.String(), repo.failCalls)
+	}
+	if riskStore.finalized != 2 {
+		t.Fatalf("finalize calls = %d, want retry on terminal requests", riskStore.finalized)
+	}
+}
+
+func TestTerminalConfirmRetriesRiskFinalization(t *testing.T) {
+	for _, status := range []string{"success", "failed", "cancelled"} {
+		t.Run(status, func(t *testing.T) {
+			id := uuid.NewString()
+			repo := &transferRepositoryFake{
+				transfer: mongorepo.TransferDocument{ID: id, Status: status},
+				feed:     mongorepo.FeedDocument{TransactionID: id, Status: status},
+			}
+			store := &riskDecisionFake{finalizeErr: errors.New("mongo unavailable")}
+			h := NewHandler(zerolog.Nop(), repo, nil, nil, nil)
+			h.SetRiskDecisionStore(store)
+			if response := confirmRequestForTest(t, h, id); response.Code != http.StatusOK {
+				t.Fatalf("canonical outcome lost after finalize failure: %s", response.Body.String())
+			}
+			store.finalizeErr = nil
+			if response := confirmRequestForTest(t, h, id); response.Code != http.StatusOK {
+				t.Fatalf("terminal retry failed: %s", response.Body.String())
+			}
+			if store.finalized != 2 || repo.failCalls != 0 {
+				t.Fatalf("finalize=%d failures=%d; want cleanup retried without another append", store.finalized, repo.failCalls)
+			}
+		})
 	}
 }
 

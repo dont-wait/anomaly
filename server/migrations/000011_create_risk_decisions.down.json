@@ -1,0 +1,8 @@
+[
+  {
+    "drop": "risk_decision_rejections"
+  },
+  {
+    "drop": "risk_decisions"
+  }
+]
