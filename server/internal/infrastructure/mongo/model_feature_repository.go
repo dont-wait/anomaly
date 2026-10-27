@@ -85,7 +85,8 @@ func (r *ModelFeatureRepository) EnsureIndexes(ctx context.Context) error {
 }
 
 func (r *ModelFeatureRepository) FindDecision(ctx context.Context,
-	eventID string) (modelfeature.Decision, bool, error) {
+	eventID string,
+) (modelfeature.Decision, bool, error) {
 	var decision modelfeature.Decision
 	err := r.decisions.FindOne(ctx, bson.M{"_id": eventID}).Decode(&decision)
 	if errors.Is(err, mongodrv.ErrNoDocuments) {
@@ -98,7 +99,8 @@ func (r *ModelFeatureRepository) FindDecision(ctx context.Context,
 }
 
 func (r *ModelFeatureRepository) FindDecisionByTransactionID(ctx context.Context,
-	transactionID string) (modelfeature.Decision, bool, error) {
+	transactionID string,
+) (modelfeature.Decision, bool, error) {
 	var decision modelfeature.Decision
 	err := r.decisions.FindOne(ctx, bson.M{"transaction_id": transactionID, "state_applied": false},
 		options.FindOne().
