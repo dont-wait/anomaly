@@ -84,7 +84,7 @@ func (r *ModelFeatureRepository) EnsureIndexes(ctx context.Context) error {
 	return nil
 }
 
-func (r *ModelFeatureRepository) FindDecision(ctx context.Context, 
+func (r *ModelFeatureRepository) FindDecision(ctx context.Context,
 	eventID string) (modelfeature.Decision, bool, error) {
 	var decision modelfeature.Decision
 	err := r.decisions.FindOne(ctx, bson.M{"_id": eventID}).Decode(&decision)
@@ -97,13 +97,13 @@ func (r *ModelFeatureRepository) FindDecision(ctx context.Context,
 	return decision, true, nil
 }
 
-func (r *ModelFeatureRepository) FindDecisionByTransactionID(ctx context.Context, 
-		transactionID string) (modelfeature.Decision, bool, error) {
+func (r *ModelFeatureRepository) FindDecisionByTransactionID(ctx context.Context,
+	transactionID string) (modelfeature.Decision, bool, error) {
 	var decision modelfeature.Decision
-	err := r.decisions.FindOne(ctx, bson.M{"transaction_id": transactionID, "state_applied": false}, 
+	err := r.decisions.FindOne(ctx, bson.M{"transaction_id": transactionID, "state_applied": false},
 		options.FindOne().
 			SetSort(bson.D{{Key: "stream_revision", Value: 1}})).
-				Decode(&decision)
+		Decode(&decision)
 	if errors.Is(err, mongodrv.ErrNoDocuments) {
 		return modelfeature.Decision{}, false, nil
 	}
