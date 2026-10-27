@@ -300,6 +300,22 @@ export function useTransferFlow(
     setOtpError("");
     try {
       const record = await confirmTransfer(token, transferId.current, otp);
+      if (record.status === "RISK_CHECK_PENDING") {
+        setOtpError("Đang kiểm tra giao dịch. Vui lòng thử xác nhận lại sau ít phút.");
+        return;
+      }
+      if (record.status === "failed") {
+        transferId.current = null;
+        activeBody.current = null;
+        retryKind.current = null;
+        setResult({
+          ok: false,
+          retryable: false,
+          message: "Giao dịch bị từ chối do có dấu hiệu bất thường.",
+        });
+        setSheet("result");
+        return;
+      }
       if (typeof record.balanceAfter === "number")
         setBalance(record.balanceAfter);
       setResult({ ok: true, record });
