@@ -6,10 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -57,8 +59,20 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read migration version: %v", err)
 	}
-	if version != 4 || dirty {
-		t.Fatalf("migration state = version %d dirty %t, want version 4 dirty false", version, dirty)
+	migrationSource, err := iofs.New(os.DirFS("../../migrations"), ".")
+	if err != nil {
+		t.Fatalf("open migrations: %v", err)
+	}
+	entries, err := listMigrations(migrationSource)
+	if closeErr := migrationSource.Close(); closeErr != nil {
+		t.Fatalf("close migrations: %v", closeErr)
+	}
+	if err != nil {
+		t.Fatalf("list migrations: %v", err)
+	}
+	expectedVersion := entries[len(entries)-1].version
+	if version != expectedVersion || dirty {
+		t.Fatalf("migration state = version %d dirty %t, want latest version %d dirty false", version, dirty, expectedVersion)
 	}
 
 	mongoConfig := &domain.MongoConfig{MongoURI: mongoURI, MongoDBName: databaseName}
