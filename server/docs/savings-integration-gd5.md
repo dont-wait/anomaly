@@ -104,5 +104,5 @@ On **isolated local/test** infrastructure only:
   repository-level `TestSavingsCommandsExactlyOnceWithEventStoreDB` sends
   competing keys and asserts exactly one persisted winning key and one credit.
 - When settlement confirmation cannot be read after bounded retries, the HTTP
-  response uses `SAVINGS_SETTLEMENT_UNCONFIRMED` (503): the result is unknown,
+  response uses `SETTLEMENT_UNAVAILABLE` (503): the result is unknown,
   never a declaration of rollback. Query `/settlement` or retry with the same key.

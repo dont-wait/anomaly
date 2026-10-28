@@ -184,10 +184,13 @@ func (r *BankRepository) SettleSavings(ctx context.Context, actorID, contractID,
 			return nil, nil, ErrSavingsIdempotencyConflict
 		}
 		if m.Contract.Status == savings.ContractSettled {
-			if m.WithdrawalKey != withdrawKey || m.WithdrawalQuoteID != quoteID {
-				return nil, nil, savings.ErrAlreadySettled
+			if m.WithdrawalKey == withdrawKey {
+				if m.WithdrawalQuoteID != quoteID {
+					return nil, nil, ErrSavingsIdempotencyConflict
+				}
+				return nil, m, nil
 			}
-			return nil, m, nil
+			return nil, nil, savings.ErrAlreadySettled
 		}
 		owner := s.Accounts[m.Contract.SourceAccountID]
 		if owner == nil || s.Accounts[actorID].Status != account.AccountStatusActive || owner.Status != account.AccountStatusActive || owner.Type != account.AccountTypePayment || owner.Currency != account.CurrencyVND {
@@ -246,7 +249,10 @@ func confirmSavingsSettlement(s *bankState, contractID, quoteID, withdrawKey str
 	if !found || committed.Contract.Status != savings.ContractSettled || committed.Contract.Settlement == nil {
 		return journal.SavingsMovement{}, fmt.Errorf("savings settlement not yet confirmed in bank stream")
 	}
-	if committed.WithdrawalKey != withdrawKey || committed.WithdrawalQuoteID != quoteID {
+	if committed.WithdrawalKey == withdrawKey && committed.WithdrawalQuoteID != quoteID {
+		return journal.SavingsMovement{}, ErrSavingsIdempotencyConflict
+	}
+	if committed.WithdrawalKey != withdrawKey {
 		return journal.SavingsMovement{}, savings.ErrAlreadySettled
 	}
 	return committed, nil
@@ -266,7 +272,7 @@ func confirmSavingsSettlementWithRecovery(ctx context.Context, read func(context
 		if err == nil {
 			var movement journal.SavingsMovement
 			movement, err = confirmSavingsSettlement(authoritative, contractID, quoteID, withdrawKey)
-			if err == nil || errors.Is(err, savings.ErrAlreadySettled) {
+			if err == nil || errors.Is(err, savings.ErrAlreadySettled) || errors.Is(err, ErrSavingsIdempotencyConflict) {
 				return movement, err
 			}
 		}

@@ -43,7 +43,7 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, operation string,
 	case errors.Is(err, savingscommands.ErrSavingsSettlementUnconfirmed):
 		slog.WarnContext(r.Context(), "savings withdrawal confirmation unavailable", "operation", operation, "error", err)
 		w.Header().Set("Retry-After", "2")
-		replyError(w, 503, "SAVINGS_SETTLEMENT_UNCONFIRMED", "withdrawal outcome is unknown; check settlement receipt or retry with the same idempotency key")
+		replyError(w, 503, "SETTLEMENT_UNAVAILABLE", "withdrawal outcome is unknown; check settlement receipt or retry with the same idempotency key")
 
 	case errors.Is(err, savingscommands.ErrSavingsWritesDisabled):
 		slog.WarnContext(r.Context(), "savings writes disabled", "operation", operation)
