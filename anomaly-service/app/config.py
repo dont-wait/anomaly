@@ -1,6 +1,8 @@
 """Environment configuration for the local GATv2 publisher."""
+
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 class ConfigError(ValueError):
@@ -24,6 +26,8 @@ class Config:
     training_data_path: str
     training_data_fsync: bool
     metrics_port: int
+    training_data_max_bytes: int = 100 * 1024 * 1024
+    training_data_backup_count: int = 5
 
 
 def split_csv(value):
@@ -66,14 +70,19 @@ def load_config():
     auto_offset_reset = env("KAFKA_AUTO_OFFSET_RESET", "earliest").strip().lower()
     model_bundle_path = env(
         "MODEL_BUNDLE_PATH",
-        "../../../GATv2/outputs/registry/gatv2-device-control-v1",
+        str(Path(__file__).resolve().parent.parent / "models" / "gatv2-1m-baseline-v1"),
     ).strip()
-    gatv2_src_path = env("GATV2_SRC_PATH", "../../../GATv2/src").strip() or None
+    gatv2_src_path = env("GATV2_SRC_PATH", "../../GATv2/src").strip() or None
     model_device = env("MODEL_DEVICE", "cpu").strip()
     eventstore_uri = env("EVENTSTORE_URI", "esdb://localhost:2113?tls=false").strip()
     eventstore_stream = env("EVENTSTORE_STREAM", "banking").strip()
     training_data_path = env("TRAINING_DATA_PATH", "./data/training/predictions.jsonl").strip()
     metrics_port = env_number("METRICS_PORT", 9100, int)
+
+    training_data_max_bytes = env_number("TRAINING_DATA_MAX_BYTES", 100 * 1024 * 1024, int)
+    training_data_backup_count = env_number("TRAINING_DATA_BACKUP_COUNT", 5, int)
+    if training_data_max_bytes <= 0 or training_data_backup_count < 1:
+        raise ConfigError("training data max bytes must be positive and backup count at least 1")
 
     if not brokers:
         raise ConfigError("KAFKA_BROKERS is required")
@@ -117,4 +126,6 @@ def load_config():
         training_data_path=training_data_path,
         training_data_fsync=env_bool("TRAINING_DATA_FSYNC", True),
         metrics_port=metrics_port,
+        training_data_max_bytes=training_data_max_bytes,
+        training_data_backup_count=training_data_backup_count,
     )

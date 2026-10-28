@@ -6,12 +6,14 @@ on:
     paths:
       - "server/**"
       - "kyc-service/**"
+      - "anomaly-service/**"
       - ".github/workflows/ci-be.yml"
   pull_request:
     branches: [main]
     paths:
       - "server/**"
       - "kyc-service/**"
+      - "anomaly-service/**"
       - ".github/workflows/ci-be.yml"
 
 permissions:
@@ -165,3 +167,25 @@ jobs:
 
       - name: Validate OpenAPI endpoint
         run: python -c "from fastapi.testclient import TestClient; from app.main import app; client = TestClient(app); response = client.get('/openapi.json'); response.raise_for_status(); print(response.json()['info']['title'])"
+
+  anomaly-service-test:
+    name: anomaly-service-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: anomaly-service
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: python -m pip install 'pytest>=8.4,<9.0' 'prometheus-client>=0.20,<1.0'
+
+      - name: Run offline contract and worker tests
+        run: python -m pytest -q
