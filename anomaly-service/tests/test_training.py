@@ -98,3 +98,19 @@ def test_kafka_failure_happens_after_local_append(tmp_path):
     with pytest.raises(RuntimeError, match="kafka"):
         sink.record(event, request, prediction, producer=FakeProducer(error=RuntimeError("kafka")))
     assert tmp_path.joinpath("predictions.jsonl").exists()
+
+
+def test_append_recovers_from_interrupted_partial_line(tmp_path):
+    path = tmp_path / "predictions.jsonl"
+    # Write a corrupted partial line without ending newline
+    path.write_bytes(b'{"partial": "json"')
+
+    sink = TrainingDataSink(path, fsync=False)
+    event, request, prediction = sample()
+    sink.record(event, request, prediction)
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert lines[0] == '{"partial": "json"'
+    parsed = json.loads(lines[1])
+    assert parsed["event"]["event_id"] == event.event_id

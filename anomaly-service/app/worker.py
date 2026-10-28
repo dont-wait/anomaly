@@ -37,64 +37,70 @@ def handle_message(raw, predictor, output_publisher, training_sink):
     return risk_event
 
 
-def run(config):
-    from kafka import KafkaConsumer, KafkaProducer
-
-    history = EventStoreHistory.from_uri(config.eventstore_uri, config.eventstore_stream)
-    predictor = LocalBundlePredictor(
-        config.model_bundle_path,
-        history,
-        gatv2_src_path=config.gatv2_src_path,
-        device=config.model_device,
-    )
-    consumer = KafkaConsumer(
-        config.input_topic,
-        bootstrap_servers=list(config.kafka_brokers),
-        group_id=config.consumer_group,
-        enable_auto_commit=False,
-        auto_offset_reset=config.auto_offset_reset,
-        max_poll_records=1,
-        max_poll_interval_ms=900_000,
-    )
-    producer = KafkaProducer(
-        bootstrap_servers=list(config.kafka_brokers),
-        acks="all",
-        retries=3,
-    )
-    output = KafkaOutputPublisher(producer, config.output_topic,
-                                  timeout=config.delivery_timeout_seconds)
-    training = TrainingDataSink(
-        config.training_data_path,
-        topic=config.training_topic,
-        fsync=config.training_data_fsync,
-        producer=producer,
-        timeout=config.delivery_timeout_seconds,
-    )
-    start_http_server(config.metrics_port)
-    log.info("ML metrics listening on :%s", config.metrics_port)
+def run(config, *, consumer=None, predictor=None, output=None, training=None):
+    producer = None
+    if predictor is None:
+        history = EventStoreHistory.from_uri(config.eventstore_uri, config.eventstore_stream)
+        predictor = LocalBundlePredictor(
+            config.model_bundle_path,
+            history,
+            gatv2_src_path=config.gatv2_src_path,
+            device=config.model_device,
+        )
+    if (output is None or training is None) and consumer is None:
+        from kafka import KafkaProducer
+        producer = KafkaProducer(
+            bootstrap_servers=list(config.kafka_brokers),
+            acks="all",
+            retries=3,
+        )
+    if consumer is None:
+        from kafka import KafkaConsumer
+        consumer = KafkaConsumer(
+            config.input_topic,
+            bootstrap_servers=list(config.kafka_brokers),
+            group_id=config.consumer_group,
+            enable_auto_commit=False,
+            auto_offset_reset=config.auto_offset_reset,
+            max_poll_records=1,
+            max_poll_interval_ms=900_000,
+        )
+    if output is None:
+        output = KafkaOutputPublisher(producer, config.output_topic,
+                                      timeout=config.delivery_timeout_seconds)
+    if training is None:
+        training = TrainingDataSink(
+            config.training_data_path,
+            topic=config.training_topic,
+            fsync=config.training_data_fsync,
+            producer=producer,
+            timeout=config.delivery_timeout_seconds,
+        )
     log.info("ML publisher started brokers=%s input=%s output=%s training=%s bundle=%s",
              config.kafka_brokers, config.input_topic, config.output_topic,
              config.training_topic, config.model_bundle_path)
     try:
         for message in consumer:
-            started = time.monotonic()
             try:
                 result = handle_message(message.value, predictor, output, training)
-                consumer.commit()
-                MESSAGES_TOTAL.labels("predicted" if result is not None else "ignored").inc()
-                if result is not None:
-                    PREDICTIONS_TOTAL.inc()
-                    log.info("prediction published event_id=%s transaction_id=%s score=%.6f label=%d",
-                             result["event_id"], result["transaction_id"],
-                             result["risk_score"], result["predicted_label"])
-                LAST_SUCCESS.set(datetime.now(timezone.utc).timestamp())
-            except Exception:
-                MESSAGES_TOTAL.labels("failed").inc()
-                raise
-            finally:
-                PROCESSING_SECONDS.observe(time.monotonic() - started)
+            except Exception as exc:
+                offset = getattr(message, "offset", None)
+                partition = getattr(message, "partition", None)
+                log.exception(
+                    "failed to process message offset=%s partition=%s error=%s",
+                    offset, partition, exc
+                )
+                result = None
+            consumer.commit()
+            if result is not None:
+                log.info("prediction published event_id=%s transaction_id=%s score=%.6f label=%d",
+                         result["event_id"], result["transaction_id"],
+                         result["risk_score"], result["predicted_label"])
     finally:
-        consumer.close()
-        producer.close()
-        predictor.close()
+        if getattr(consumer, "close", None) is not None:
+            consumer.close()
+        if producer is not None and getattr(producer, "close", None) is not None:
+            producer.close()
+        if getattr(predictor, "close", None) is not None:
+            predictor.close()
         log.info("ML publisher stopped")

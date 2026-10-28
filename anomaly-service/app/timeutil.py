@@ -19,4 +19,5 @@ def microseconds(value):
         raise ValueError("timestamp must be a nonempty string")
     if parsed.tzinfo is None:
         raise ValueError("timestamp must include a timezone")
-    return int(parsed.astimezone(timezone.utc).timestamp() * 1_000_000)
+    delta = parsed.astimezone(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    return (delta.days * 86400 + delta.seconds) * 1_000_000 + delta.microseconds

@@ -31,7 +31,16 @@ class TrainingDataSink:
     def _append(self, record):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-        with self.path.open("a", encoding="utf-8") as stream:
+        prefix = ""
+        if self.path.exists() and self.path.stat().st_size > 0:
+            with self.path.open("rb") as stream:
+                stream.seek(-1, os.SEEK_END)
+                if stream.read(1) != b"\n":
+                    prefix = "\n"
+        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with open(fd, "a", encoding="utf-8", closefd=True) as stream:
+            if prefix:
+                stream.write(prefix)
             stream.write(line)
             stream.flush()
             if self.fsync:
