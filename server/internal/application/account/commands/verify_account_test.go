@@ -25,6 +25,8 @@ func TestVerifyAccountIsIdempotentForVerifiedAccount(t *testing.T) {
 		IdCardFrontUrl: "kyc/account-id/id-card-front/front",
 		IdCardBackUrl:  "kyc/account-id/id-card-back/back",
 		LiveVideoUrl:   "kyc/account-id/live-video/live",
+		Evidence:       &accountdomain.KYCEvidence{MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true},
+		MatchScore:     0.9, LivenessScore: 1,
 	}
 
 	first, err := handler.Handle(context.Background(), cmd)
@@ -57,6 +59,14 @@ func TestVerifyAccountIsIdempotentForVerifiedAccount(t *testing.T) {
 	}
 	if second.Version != version {
 		t.Errorf("account version = %d, want %d", second.Version, version)
+	}
+}
+
+func TestVerifyAccountRejectsMissingEvidence(t *testing.T) {
+	repo := &verifyAccountRepository{account: &accountdomain.UserAccount{Id: "account-id", Customer: &accountdomain.Customer{}}}
+	_, err := NewVerifyAccountCommandHandler(repo).Handle(context.Background(), VerifyAccountCommand{AccountID: "account-id", IdCardFrontUrl: "kyc/account-id/id-card-front/x", IdCardBackUrl: "kyc/account-id/id-card-back/x", LiveVideoUrl: "kyc/account-id/live-video/x"})
+	if err != accountdomain.ErrInvalidVerifyPayload || repo.saveCalls != 0 {
+		t.Fatalf("missing evidence: error=%v saves=%d", err, repo.saveCalls)
 	}
 }
 

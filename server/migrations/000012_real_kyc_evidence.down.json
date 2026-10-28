@@ -1,0 +1,7 @@
+[
+  {
+    "collMod": "kyc_sessions",
+    "validator": {},
+    "validationLevel": "off"
+  }
+]

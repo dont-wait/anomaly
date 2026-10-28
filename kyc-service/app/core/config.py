@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8090, alias="APP_PORT")
     vision_pipeline_backend: str = Field(default="disabled", alias="VISION_PIPELINE_BACKEND")
+    vision_config_path: str = Field(default="", alias="VISION_CONFIG_PATH")
+    face_model_manifest_path: str = Field(default="", alias="FACE_MODEL_MANIFEST_PATH")
+    service_token: str = Field(default="", alias="KYC_SERVICE_TOKEN")
     # update to true bool when has backend
     allow_stub_vision_pipeline: bool = Field(default=False, alias="ALLOW_STUB_VISION_PIPELINE")
     match_threshold: float = Field(default=0.78, alias="MATCH_THRESHOLD", ge=0.0, le=1.0)

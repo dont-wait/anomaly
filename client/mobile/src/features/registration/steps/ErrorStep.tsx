@@ -5,13 +5,14 @@ import { Button } from "@/shared/ui";
 export function ErrorStep({
   error,
   remaining,
+  attemptLimit,
   heading,
   retry,
   go,
   onLogin,
 }: Pick<
   RegistrationFlowState,
-  "error" | "remaining" | "heading" | "retry" | "go"
+  "error" | "remaining" | "attemptLimit" | "heading" | "retry" | "go"
 > & { onLogin: () => void }) {
   return (
     <>
@@ -28,7 +29,9 @@ export function ErrorStep({
         <p role="alert" className="error-text">
           {error}
         </p>
-        <p className="attempts">Còn {remaining}/3 lượt xác thực</p>
+        <p className="attempts">
+          Còn {remaining}/{attemptLimit} lượt xác thực
+        </p>
         {remaining > 0 && (
           <>
             <Button className="w-full" onClick={retry}>
