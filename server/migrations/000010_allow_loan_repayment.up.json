@@ -1,285 +1,285 @@
 [
-    {
-        "collMod":  "transactions",
-        "validator":  {
-                          "$jsonSchema":  {
-                                              "bsonType":  "object",
-                                              "required":  [
-                                                               "transaction_id",
-                                                               "reference",
-                                                               "type",
-                                                               "source",
-                                                               "destination",
-                                                               "amount",
-                                                               "fee",
-                                                               "currency",
-                                                               "channel",
-                                                               "status",
-                                                               "note",
-                                                               "idempotency_key",
-                                                               "created_at"
-                                                           ],
-                                              "properties":  {
-                                                                 "transaction_id":  {
-                                                                                        "bsonType":  "string",
-                                                                                        "pattern":  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                                                                                    },
-                                                                 "reference":  {
-                                                                                   "bsonType":  "string"
-                                                                               },
-                                                                 "type":  {
-                                                                              "enum":  [
-                                                                                           "transfer",
-                                                                                           "loan_repayment"
-                                                                                       ]
-                                                                          },
-                                                                 "source":  {
-                                                                                "bsonType":  "object",
-                                                                                "required":  [
-                                                                                                 "account_id",
-                                                                                                 "account_no",
-                                                                                                 "name"
-                                                                                             ],
-                                                                                "properties":  {
-                                                                                                   "account_id":  {
-                                                                                                                      "bsonType":  [
-                                                                                                                                       "objectId",
-                                                                                                                                       "string"
-                                                                                                                                   ]
-                                                                                                                  },
-                                                                                                   "account_no":  {
-                                                                                                                      "bsonType":  "string"
-                                                                                                                  },
-                                                                                                   "name":  {
-                                                                                                                "bsonType":  "string"
-                                                                                                            }
-                                                                                               }
-                                                                            },
-                                                                 "destination":  {
-                                                                                     "bsonType":  "object",
-                                                                                     "required":  [
-                                                                                                      "type",
-                                                                                                      "account_no"
-                                                                                                  ],
-                                                                                     "properties":  {
-                                                                                                        "type":  {
-                                                                                                                     "enum":  [
-                                                                                                                                  "internal",
-                                                                                                                                  "external",
-                                                                                                                                  "loan"
-                                                                                                                              ]
-                                                                                                                 },
-                                                                                                        "account_id":  {
-                                                                                                                           "bsonType":  [
-                                                                                                                                            "objectId",
-                                                                                                                                            "null"
-                                                                                                                                        ]
-                                                                                                                       },
-                                                                                                        "account_no":  {
-                                                                                                                           "bsonType":  "string"
-                                                                                                                       },
-                                                                                                        "bank_code":  {
-                                                                                                                          "bsonType":  [
-                                                                                                                                           "string",
-                                                                                                                                           "null"
-                                                                                                                                       ]
-                                                                                                                      },
-                                                                                                        "name":  {
-                                                                                                                     "bsonType":  [
-                                                                                                                                      "string",
-                                                                                                                                      "null"
-                                                                                                                                  ]
-                                                                                                                 }
-                                                                                                    }
-                                                                                 },
-                                                                 "amount":  {
-                                                                                "bsonType":  "long",
-                                                                                "minimum":  1
-                                                                            },
-                                                                 "fee":  {
-                                                                             "bsonType":  "long",
-                                                                             "minimum":  0
-                                                                         },
-                                                                 "currency":  {
-                                                                                  "enum":  [
-                                                                                               "VND"
-                                                                                           ]
-                                                                              },
-                                                                 "channel":  {
-                                                                                 "enum":  [
-                                                                                              "mobile",
-                                                                                              "web",
-                                                                                              "desktop",
-                                                                                              "bank_account"
-                                                                                          ]
-                                                                             },
-                                                                 "status":  {
-                                                                                "enum":  [
-                                                                                             "awaiting_otp",
-                                                                                             "pending",
-                                                                                             "success",
-                                                                                             "failed",
-                                                                                             "cancelled"
-                                                                                         ]
-                                                                            },
-                                                                 "note":  {
-                                                                              "bsonType":  "string",
-                                                                              "maxLength":  100
-                                                                          },
-                                                                 "authentication":  {
-                                                                                        "bsonType":  "object",
-                                                                                        "properties":  {
-                                                                                                           "method":  {
-                                                                                                                          "bsonType":  "string"
-                                                                                                                      },
-                                                                                                           "verified":  {
-                                                                                                                            "bsonType":  "bool"
-                                                                                                                        }
-                                                                                                       }
-                                                                                    },
-                                                                 "device":  {
-                                                                                "bsonType":  "object"
-                                                                            },
-                                                                 "risk":  {
-                                                                              "bsonType":  "object"
-                                                                          },
-                                                                 "idempotency_key":  {
-                                                                                         "bsonType":  "string"
-                                                                                     },
-                                                                 "otp_expires_at":  {
-                                                                                        "bsonType":  [
-                                                                                                         "date",
-                                                                                                         "null"
-                                                                                                     ]
-                                                                                    },
-                                                                 "otp_resend_available_at":  {
-                                                                                                 "bsonType":  [
-                                                                                                                  "date",
-                                                                                                                  "null"
-                                                                                                              ]
-                                                                                             },
-                                                                 "created_at":  {
-                                                                                    "bsonType":  "date"
-                                                                                },
-                                                                 "posted_at":  {
-                                                                                   "bsonType":  [
-                                                                                                    "date",
-                                                                                                    "null"
-                                                                                                ]
-                                                                               }
-                                                             }
-                                          }
-                      },
-        "validationLevel":  "strict",
-        "validationAction":  "error"
+  {
+    "collMod": "transactions",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "transaction_id",
+          "reference",
+          "type",
+          "source",
+          "destination",
+          "amount",
+          "fee",
+          "currency",
+          "channel",
+          "status",
+          "note",
+          "idempotency_key",
+          "created_at"
+        ],
+        "properties": {
+          "transaction_id": {
+            "bsonType": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "reference": {
+            "bsonType": "string"
+          },
+          "type": {
+            "enum": [
+              "transfer",
+              "loan_repayment"
+            ]
+          },
+          "source": {
+            "bsonType": "object",
+            "required": [
+              "account_id",
+              "account_no",
+              "name"
+            ],
+            "properties": {
+              "account_id": {
+                "bsonType": [
+                  "objectId",
+                  "string"
+                ]
+              },
+              "account_no": {
+                "bsonType": "string"
+              },
+              "name": {
+                "bsonType": "string"
+              }
+            }
+          },
+          "destination": {
+            "bsonType": "object",
+            "required": [
+              "type",
+              "account_no"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "internal",
+                  "external",
+                  "loan"
+                ]
+              },
+              "account_id": {
+                "bsonType": [
+                  "objectId",
+                  "null"
+                ]
+              },
+              "account_no": {
+                "bsonType": "string"
+              },
+              "bank_code": {
+                "bsonType": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "bsonType": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "amount": {
+            "bsonType": "long",
+            "minimum": 1
+          },
+          "fee": {
+            "bsonType": "long",
+            "minimum": 0
+          },
+          "currency": {
+            "enum": [
+              "VND"
+            ]
+          },
+          "channel": {
+            "enum": [
+              "mobile",
+              "web",
+              "desktop",
+              "bank_account"
+            ]
+          },
+          "status": {
+            "enum": [
+              "awaiting_otp",
+              "pending",
+              "success",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "note": {
+            "bsonType": "string",
+            "maxLength": 100
+          },
+          "authentication": {
+            "bsonType": "object",
+            "properties": {
+              "method": {
+                "bsonType": "string"
+              },
+              "verified": {
+                "bsonType": "bool"
+              }
+            }
+          },
+          "device": {
+            "bsonType": "object"
+          },
+          "risk": {
+            "bsonType": "object"
+          },
+          "idempotency_key": {
+            "bsonType": "string"
+          },
+          "otp_expires_at": {
+            "bsonType": [
+              "date",
+              "null"
+            ]
+          },
+          "otp_resend_available_at": {
+            "bsonType": [
+              "date",
+              "null"
+            ]
+          },
+          "created_at": {
+            "bsonType": "date"
+          },
+          "posted_at": {
+            "bsonType": [
+              "date",
+              "null"
+            ]
+          }
+        }
+      }
     },
-    {
-        "collMod":  "account_transaction_feed",
-        "validator":  {
-                          "$jsonSchema":  {
-                                              "bsonType":  "object",
-                                              "required":  [
-                                                               "account_id",
-                                                               "transaction_id",
-                                                               "direction",
-                                                               "type",
-                                                               "counterparty",
-                                                               "amount",
-                                                               "fee",
-                                                               "status",
-                                                               "note",
-                                                               "reference",
-                                                               "search_text",
-                                                               "occurred_at"
-                                                           ],
-                                              "properties":  {
-                                                                 "account_id":  {
-                                                                                    "bsonType":  "objectId"
-                                                                                },
-                                                                 "transaction_id":  {
-                                                                                        "bsonType":  "string",
-                                                                                        "pattern":  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                                                                                    },
-                                                                 "direction":  {
-                                                                                   "enum":  [
-                                                                                                "IN",
-                                                                                                "OUT"
-                                                                                            ]
-                                                                               },
-                                                                 "type":  {
-                                                                              "enum":  [
-                                                                                           "transfer",
-                                                                                           "payment",
-                                                                                           "bill",
-                                                                                           "topup",
-                                                                                           "savings",
-                                                                                           "salary",
-                                                                                           "loan_disbursement",
-                                                                                           "loan_repayment"
-                                                                                       ]
-                                                                          },
-                                                                 "counterparty":  {
-                                                                                      "bsonType":  "object",
-                                                                                      "required":  [
-                                                                                                       "account_no",
-                                                                                                       "name"
-                                                                                                   ],
-                                                                                      "properties":  {
-                                                                                                         "account_no":  {
-                                                                                                                            "bsonType":  "string"
-                                                                                                                        },
-                                                                                                         "name":  {
-                                                                                                                      "bsonType":  "string"
-                                                                                                                  },
-                                                                                                         "bank_code":  {
-                                                                                                                           "bsonType":  [
-                                                                                                                                            "string",
-                                                                                                                                            "null"
-                                                                                                                                        ]
-                                                                                                                       }
-                                                                                                     }
-                                                                                  },
-                                                                 "amount":  {
-                                                                                "bsonType":  "long",
-                                                                                "minimum":  1
-                                                                            },
-                                                                 "fee":  {
-                                                                             "bsonType":  "long",
-                                                                             "minimum":  0
-                                                                         },
-                                                                 "balance_after":  {
-                                                                                       "bsonType":  [
-                                                                                                        "long",
-                                                                                                        "null"
-                                                                                                    ],
-                                                                                       "minimum":  0
-                                                                                   },
-                                                                 "status":  {
-                                                                                "enum":  [
-                                                                                             "awaiting_otp",
-                                                                                             "pending",
-                                                                                             "success",
-                                                                                             "failed",
-                                                                                             "cancelled"
-                                                                                         ]
-                                                                            },
-                                                                 "note":  {
-                                                                              "bsonType":  "string",
-                                                                              "maxLength":  100
-                                                                          },
-                                                                 "reference":  {
-                                                                                   "bsonType":  "string"
-                                                                               },
-                                                                 "search_text":  {
-                                                                                     "bsonType":  "string"
-                                                                                 },
-                                                                 "occurred_at":  {
-                                                                                     "bsonType":  "date"
-                                                                                 }
-                                                             }
-                                          }
-                      },
-        "validationLevel":  "strict",
-        "validationAction":  "error"
-    }
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "collMod": "account_transaction_feed",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "account_id",
+          "transaction_id",
+          "direction",
+          "type",
+          "counterparty",
+          "amount",
+          "fee",
+          "status",
+          "note",
+          "reference",
+          "search_text",
+          "occurred_at"
+        ],
+        "properties": {
+          "account_id": {
+            "bsonType": "objectId"
+          },
+          "transaction_id": {
+            "bsonType": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "direction": {
+            "enum": [
+              "IN",
+              "OUT"
+            ]
+          },
+          "type": {
+            "enum": [
+              "transfer",
+              "payment",
+              "bill",
+              "topup",
+              "savings",
+              "salary",
+              "loan_disbursement",
+              "loan_repayment"
+            ]
+          },
+          "counterparty": {
+            "bsonType": "object",
+            "required": [
+              "account_no",
+              "name"
+            ],
+            "properties": {
+              "account_no": {
+                "bsonType": "string"
+              },
+              "name": {
+                "bsonType": "string"
+              },
+              "bank_code": {
+                "bsonType": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "amount": {
+            "bsonType": "long",
+            "minimum": 1
+          },
+          "fee": {
+            "bsonType": "long",
+            "minimum": 0
+          },
+          "balance_after": {
+            "bsonType": [
+              "long",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "status": {
+            "enum": [
+              "awaiting_otp",
+              "pending",
+              "success",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "note": {
+            "bsonType": "string",
+            "maxLength": 100
+          },
+          "reference": {
+            "bsonType": "string"
+          },
+          "search_text": {
+            "bsonType": "string"
+          },
+          "occurred_at": {
+            "bsonType": "date"
+          }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  }
 ]

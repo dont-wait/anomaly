@@ -82,7 +82,7 @@ func (c *LoanPackageCatalog) uniquePackageByCode(ctx context.Context, code strin
 	if err != nil {
 		return nil, err
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var one *loanPackageRecord
 	for cur.Next(ctx) {
 		if one != nil {

@@ -39,24 +39,28 @@ func NewProducer(config *domain.KafkaConfig) (*Producer, error) {
 	if config == nil {
 		return nil, fmt.Errorf("kafka config is required")
 	}
-	if len(config.Brokers) == 0 {
+	return NewProducerForTopic(config.Brokers, config.Topic)
+}
+
+func NewProducerForTopic(brokers []string, topic string) (*Producer, error) {
+	if len(brokers) == 0 {
 		return nil, fmt.Errorf("kafka brokers are required")
 	}
-	for _, broker := range config.Brokers {
+	for _, broker := range brokers {
 		if strings.TrimSpace(broker) == "" {
 			return nil, fmt.Errorf("kafka broker cannot be empty")
 		}
 	}
-	if strings.TrimSpace(config.Topic) == "" {
+	if strings.TrimSpace(topic) == "" {
 		return nil, fmt.Errorf("kafka topic is required")
 	}
 
 	return &Producer{
-		brokers: append([]string(nil), config.Brokers...),
-		topic:   config.Topic,
+		brokers: append([]string(nil), brokers...),
+		topic:   topic,
 		writer: &kafkago.Writer{
-			Addr:         kafkago.TCP(config.Brokers...),
-			Topic:        config.Topic,
+			Addr:         kafkago.TCP(brokers...),
+			Topic:        topic,
 			Balancer:     &kafkago.Hash{},
 			RequiredAcks: kafkago.RequireAll,
 			Async:        false,

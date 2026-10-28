@@ -24,7 +24,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Info("kafka consumer starting", "brokers", cfg.brokers, "topic", cfg.topic, "consumer_group", cfg.consumerGroup)
+	producer, err := newKafkaProducer(cfg)
+	if err != nil {
+		log.Error("create kafka producer failed", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = producer.close() }()
+	if err := producer.ensureTopic(ctx); err != nil {
+		log.Warn("ensure kafka output topic failed; topic will be retried on publish", "error", err)
+	}
+
+	log.Info("kafka model consumer starting", "brokers", cfg.brokers, "topic", cfg.topic, "output_topic", cfg.outputTopic, "consumer_group", cfg.consumerGroup, "decision", cfg.decision)
 	for ctx.Err() == nil {
 		consumer, err := newKafkaConsumer(cfg)
 		if err != nil {
@@ -35,7 +45,7 @@ func main() {
 			continue
 		}
 
-		err = consumer.consume(ctx, logMessage(log))
+		err = consumer.consume(ctx, modelHandler(log, producer, cfg))
 		if closeErr := consumer.close(); closeErr != nil && ctx.Err() == nil {
 			log.Warn("close kafka consumer failed", "error", closeErr)
 		}
@@ -52,8 +62,8 @@ func main() {
 	log.Info("kafka consumer stopped")
 }
 
-func logMessage(log *slog.Logger) messageHandler {
-	return func(_ context.Context, message kafkago.Message) error {
+func modelHandler(log *slog.Logger, producer *kafkaProducer, cfg config) messageHandler {
+	return func(ctx context.Context, message kafkago.Message) error {
 		var metadata struct {
 			EventID       string `json:"event_id"`
 			EventType     string `json:"event_type"`
@@ -62,9 +72,9 @@ func logMessage(log *slog.Logger) messageHandler {
 		if err := json.Unmarshal(message.Value, &metadata); err != nil {
 			return fmt.Errorf("decode kafka event metadata: %w", err)
 		}
-		if metadata.EventType != completedEventType {
-			// Ignore historical or manually-produced events that predate the
-			// relay filter. Only completed transfers are model inputs.
+		if metadata.EventType != modelEventType {
+			// Ignore historical or unrelated events. Only created transfers are
+			// model inputs in the pre-completion risk flow.
 			return nil
 		}
 
@@ -85,18 +95,17 @@ func logMessage(log *slog.Logger) messageHandler {
 				"new_receiver", input.NewReceiver,
 				"new_device", input.NewDevice,
 			)
-			return nil
+			return producer.publish(ctx, riskDecisionMessage{
+				TransferID:    input.TransactionID,
+				SourceEventID: metadata.EventID,
+				Decision:      cfg.decision,
+				IsAnomalous:   cfg.decision == "BLOCK",
+				RiskScore:     cfg.riskScore,
+				ModelVersion:  cfg.modelVersion,
+				EvaluatedAt:   time.Now().UTC(),
+			})
 		}
-
-		log.Info("kafka event received",
-			"topic", message.Topic,
-			"partition", message.Partition,
-			"offset", message.Offset,
-			"event_id", metadata.EventID,
-			"event_type", metadata.EventType,
-			"schema_version", metadata.SchemaVersion,
-		)
-		return nil
+		return fmt.Errorf("model input was not selected")
 	}
 }
 

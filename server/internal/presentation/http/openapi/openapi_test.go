@@ -16,6 +16,9 @@ func TestSpecHandlerServesValidOpenAPIDocument(t *testing.T) {
 		Response: struct {
 			Name string `json:"name"`
 		}{},
+		SuccessResponses: map[int]any{http.StatusAccepted: struct {
+			Status string `json:"status"`
+		}{}},
 		FailureStatuses: []int{http.StatusUnauthorized},
 		Auth:            true,
 	})
@@ -42,5 +45,17 @@ func TestSpecHandlerServesValidOpenAPIDocument(t *testing.T) {
 	}
 	if len(document.Paths) != 1 {
 		t.Fatalf("paths = %d, want 1", len(document.Paths))
+	}
+	var path map[string]struct {
+		Responses map[string]json.RawMessage `json:"responses"`
+	}
+	if err := json.Unmarshal(document.Paths["/api/widgets/{id}"], &path); err != nil {
+		t.Fatalf("decode operation: %v", err)
+	}
+	if _, ok := path["get"].Responses["202"]; !ok {
+		t.Fatal("additional success response 202 was not documented")
+	}
+	if _, ok := path["get"].Responses["401"]; !ok {
+		t.Fatal("failure response 401 was not documented")
 	}
 }

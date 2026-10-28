@@ -20,7 +20,7 @@ export interface OtpInfo {
 
 export interface TransferIntent {
   transferId: string;
-  status: "awaiting_otp" | "success" | "cancelled";
+  status: "awaiting_otp" | "success" | "failed" | "cancelled";
   recipient: RecipientDto;
   amount: number;
   fee: number;
@@ -46,6 +46,11 @@ interface TransactionDto extends Omit<
     bank?: string;
     bankCode?: string;
   };
+}
+
+export interface RiskCheckPending {
+  status: "RISK_CHECK_PENDING";
+  transferId: string;
 }
 
 const toRecipient = (dto: RecipientDto): Recipient => ({
@@ -97,11 +102,12 @@ export async function confirmTransfer(
   token: string,
   transferId: string,
   otp: string,
-): Promise<TransactionRecord> {
-  const dto = await requestJson<TransactionDto>(
+): Promise<TransactionRecord | RiskCheckPending> {
+  const dto = await requestJson<TransactionDto | RiskCheckPending>(
     API_ENDPOINTS.TRANSFERS.CONFIRM(transferId),
     { method: "POST", token, body: { otp } },
   );
+  if (dto.status === "RISK_CHECK_PENDING") return dto;
   return toRecord(dto);
 }
 

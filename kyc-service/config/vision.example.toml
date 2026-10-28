@@ -1,0 +1,33 @@
+# EXAMPLE ONLY. Replace thresholds using your model/media calibration report.
+# Startup intentionally refuses this file until calibrated=true is explicitly set.
+pipeline_version = "real-v1"
+calibration_version = "REPLACE-WITH-YOUR-CALIBRATION"
+calibrated = false
+match_threshold = 0.8
+consistency_threshold = 0.65
+min_match_frame_ratio = 0.8
+liveness_threshold = 1.0
+min_face_ratio = 0.7
+min_frames = 5
+min_duration = 10.0
+max_duration = 15.0
+max_gap_seconds = 0.5
+min_blur = 35.0
+min_brightness = 35.0
+max_brightness = 225.0
+max_glare_ratio = 0.15
+min_face_pixels = 48
+yaw_degrees = 18.0
+# Set from raw, unmirrored video during device validation.
+left_yaw_sign = -1
+frontal_degrees = 12.0
+pose_hold_seconds = 0.3
+blink_closed = 0.55
+blink_open = 0.25
+providers = ["CPUExecutionProvider"]
+max_sessions = 2
+ffmpeg = "ffmpeg"
+# This deployment supports only the calibrated portrait ROI below.
+# This is layout configuration, not proof of document authenticity.
+card_layout = "REPLACE-WITH-VALIDATED-CARD-LAYOUT"
+portrait_roi = [0.02, 0.20, 0.35, 0.95]

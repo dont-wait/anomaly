@@ -20,7 +20,8 @@ const (
 	modelKnownDevicesCollection     = "model_known_devices"
 	modelFeatureProgressCollection  = "model_feature_progress"
 	modelFeatureProgressID          = "relay"
-	modelDecisionIndexName          = "idx_model_decision_state"
+	modelDecisionLookupIndexName    = "idx_model_decision_transaction_state_revision"
+	modelDecisionCleanupIndexName   = "idx_model_decision_state_applied_at"
 )
 
 var ErrFeatureStateConflict = errors.New("model feature state changed concurrently")
@@ -68,28 +69,43 @@ func (r *ModelFeatureRepository) EnsureIndexes(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create model device index: %w", err)
 	}
-	// Older relay versions used the same name with only state_applied. Drop
-	// that definition first so startup performs the index migration itself.
-	// NamespaceNotFound (26) means the collection does not exist yet, and
-	// IndexNotFound (27) means it exists without the old index; both are fine.
-	if err := r.decisions.Indexes().DropOne(ctx, modelDecisionIndexName); err != nil {
-		var commandErr mongodrv.CommandError
-		if !errors.As(err, &commandErr) || (commandErr.Code != 26 && commandErr.Code != 27) {
-			return fmt.Errorf("replace model decision index: %w", err)
-		}
+	if _, err = r.decisions.Indexes().CreateOne(ctx, mongodrv.IndexModel{
+		Keys:    bson.D{{Key: "transaction_id", Value: 1}, {Key: "state_applied", Value: 1}, {Key: "stream_revision", Value: 1}},
+		Options: options.Index().SetName(modelDecisionLookupIndexName),
+	}); err != nil {
+		return fmt.Errorf("create model decision lookup index: %w", err)
 	}
 	if _, err = r.decisions.Indexes().CreateOne(ctx, mongodrv.IndexModel{
-		Keys:    bson.D{{Key: "state_applied", Value: 1}, {Key: "applied_at", Value: 1}},
-		Options: options.Index().SetName(modelDecisionIndexName),
+		Keys:    bson.D{{Key: "state_applied", Value: 1}, {Key: "applied_at", Value: 1}, {Key: "created_at", Value: 1}},
+		Options: options.Index().SetName(modelDecisionCleanupIndexName),
 	}); err != nil {
-		return fmt.Errorf("create model decision index: %w", err)
+		return fmt.Errorf("create model decision cleanup index: %w", err)
 	}
 	return nil
 }
 
-func (r *ModelFeatureRepository) FindDecision(ctx context.Context, eventID string) (modelfeature.Decision, bool, error) {
+func (r *ModelFeatureRepository) FindDecision(ctx context.Context,
+	eventID string,
+) (modelfeature.Decision, bool, error) {
 	var decision modelfeature.Decision
 	err := r.decisions.FindOne(ctx, bson.M{"_id": eventID}).Decode(&decision)
+	if errors.Is(err, mongodrv.ErrNoDocuments) {
+		return modelfeature.Decision{}, false, nil
+	}
+	if err != nil {
+		return modelfeature.Decision{}, false, err
+	}
+	return decision, true, nil
+}
+
+func (r *ModelFeatureRepository) FindDecisionByTransactionID(ctx context.Context,
+	transactionID string,
+) (modelfeature.Decision, bool, error) {
+	var decision modelfeature.Decision
+	err := r.decisions.FindOne(ctx, bson.M{"transaction_id": transactionID, "state_applied": false},
+		options.FindOne().
+			SetSort(bson.D{{Key: "stream_revision", Value: 1}})).
+		Decode(&decision)
 	if errors.Is(err, mongodrv.ErrNoDocuments) {
 		return modelfeature.Decision{}, false, nil
 	}
@@ -106,11 +122,21 @@ func (r *ModelFeatureRepository) SaveDecision(ctx context.Context, decision mode
 	_, err := r.decisions.UpdateOne(ctx, bson.M{"_id": decision.EventID}, bson.M{
 		"$setOnInsert": bson.M{
 			"_id":             decision.EventID,
+			"transaction_id":  decision.TransactionID,
 			"stream_revision": decision.StreamRevision,
 			"features":        decision.Features,
 			"state_applied":   false,
+			"created_at":      time.Now().UTC(),
 		},
 	}, options.UpdateOne().SetUpsert(true))
+	return err
+}
+
+func (r *ModelFeatureRepository) DiscardDecisionsByTransactionID(ctx context.Context, transactionID string) error {
+	if strings.TrimSpace(transactionID) == "" {
+		return fmt.Errorf("transaction id is required")
+	}
+	_, err := r.decisions.DeleteMany(ctx, bson.M{"transaction_id": transactionID, "state_applied": false})
 	return err
 }
 
@@ -191,9 +217,13 @@ func (r *ModelFeatureRepository) CleanupAppliedDecisions(ctx context.Context, ch
 		return nil
 	}
 	_, err := r.decisions.DeleteMany(ctx, bson.M{
-		"state_applied":   true,
-		"stream_revision": bson.M{"$exists": true, "$lte": checkpoint},
-		"applied_at":      bson.M{"$lt": before},
+		"$or": bson.A{
+			bson.M{"state_applied": true, "stream_revision": bson.M{"$exists": true, "$lte": checkpoint}, "applied_at": bson.M{"$lt": before}},
+			bson.M{"state_applied": false, "$or": bson.A{
+				bson.M{"created_at": bson.M{"$lt": before}},
+				bson.M{"created_at": bson.M{"$exists": false}, "stream_revision": bson.M{"$lte": checkpoint}},
+			}},
+		},
 	})
 	return err
 }
@@ -246,7 +276,12 @@ func (r *ModelFeatureRepository) ApplyState(ctx context.Context, tx modelfeature
 				return nil, fmt.Errorf("save known device: %w", err)
 			}
 		}
-		_, err = r.decisions.UpdateOne(sc, bson.M{"_id": tx.EventID, "state_applied": false}, bson.M{"$set": bson.M{"state_applied": true, "applied_at": time.Now().UTC()}})
+		decisionFilter := bson.M{"_id": tx.EventID, "state_applied": false}
+		if tx.TransactionID != "" {
+			decisionFilter = bson.M{"transaction_id": tx.TransactionID, "state_applied": false}
+		}
+		appliedAt := time.Now().UTC()
+		_, err = r.decisions.UpdateMany(sc, decisionFilter, bson.M{"$set": bson.M{"state_applied": true, "applied_at": appliedAt}})
 		return nil, err
 	})
 	return err

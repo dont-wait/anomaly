@@ -27,6 +27,8 @@ const (
 
 	KYCSessionStatusVerified KYCSessionStatus   = "verified"
 	VerificationStatusNotRun VerificationStatus = "not_run"
+	VerificationStatusPassed VerificationStatus = "passed"
+	VerificationStatusFailed VerificationStatus = "failed"
 )
 
 type Balance struct {
@@ -109,6 +111,26 @@ type KYCVerification struct {
 	FaceMatchScore      string
 	Provider            string
 	ProviderReferenceId string
+	LivenessScore       float64
+	Evidence            *KYCEvidence
+}
+
+// KYCEvidence describes actual model execution, not a client assertion.
+type KYCEvidence struct {
+	RequestID                string  `json:"request_id" bson:"request_id"`
+	ModelID                  string  `json:"model_id" bson:"model_id"`
+	ModelVersion             string  `json:"model_version" bson:"model_version"`
+	ModelSHA256              string  `json:"model_sha256" bson:"model_sha256"`
+	PipelineVersion          string  `json:"pipeline_version" bson:"pipeline_version"`
+	CalibrationVersion       string  `json:"calibration_version" bson:"calibration_version"`
+	MatchingStatus           string  `json:"matching_status" bson:"matching_status"`
+	LivenessStatus           string  `json:"liveness_status" bson:"liveness_status"`
+	SubjectConsistencyPassed bool    `json:"subject_consistency_passed" bson:"subject_consistency_passed"`
+	ChallengePassed          bool    `json:"challenge_passed" bson:"challenge_passed"`
+	SampledFrames            int     `json:"sampled_frames" bson:"sampled_frames"`
+	MatchedFrames            int     `json:"matched_frames" bson:"matched_frames"`
+	VideoDurationSeconds     float64 `json:"video_duration_seconds" bson:"video_duration_seconds"`
+	ProcessingMS             int     `json:"processing_ms" bson:"processing_ms"`
 }
 
 type KYCFailure struct {

@@ -17,6 +17,7 @@ import (
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/domain"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
@@ -79,7 +80,7 @@ func TestBankEventSourcing(t *testing.T) {
 		ids = append(ids, a.Id)
 	}
 	verify := commands.NewVerifyAccountCommandHandler(bank)
-	if _, err := verify.Handle(ctx, commands.VerifyAccountCommand{AccountID: ids[0], IdCardFrontUrl: "kyc/" + ids[0] + "/id-card-front/front", IdCardBackUrl: "kyc/" + ids[0] + "/id-card-back/back", LiveVideoUrl: "kyc/" + ids[0] + "/live-video/live"}); err != nil {
+	if _, err := verify.Handle(ctx, commands.VerifyAccountCommand{AccountID: ids[0], IdCardFrontUrl: "kyc/" + ids[0] + "/id-card-front/front", IdCardBackUrl: "kyc/" + ids[0] + "/id-card-back/back", LiveVideoUrl: "kyc/" + ids[0] + "/live-video/live", Evidence: &accountdomain.KYCEvidence{MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true, ModelVersion: "e2e-fixture"}, MatchScore: 0.9, LivenessScore: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := bank.SetSeedBalance(ctx, ids[0], 1000); err != nil {
@@ -263,6 +264,9 @@ func TestBankEventSourcing(t *testing.T) {
 	a, err := mongorepo.NewAccountAggregateRepository(client, db.Name()).FindByID(ctx, ids[0])
 	if err != nil || a == nil || !a.IsVerified() {
 		t.Fatalf("KYC replay = %+v/%v", a, err)
+	}
+	if len(a.KYCSessions) != 1 || a.KYCSessions[0].Verification.Evidence == nil || a.KYCSessions[0].Verification.Evidence.ModelVersion != "e2e-fixture" {
+		t.Fatal("canonical KYC evidence was lost during projection replay")
 	}
 
 	// Explicit offline import works into an empty canonical stream and does not

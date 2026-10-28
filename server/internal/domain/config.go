@@ -87,12 +87,29 @@ func (l *Loader) LoadAllConfig() *Config {
 }
 
 type KYCConfig struct {
-	ServiceURL string
+	ServiceURL            string
+	ServiceToken          string
+	MaxAttempts           int
+	AttemptWindow         time.Duration
+	AttemptTTL            time.Duration
+	MaxConcurrentAttempts int
+	StartsPerMinute       int
 }
 
 func (l *Loader) LoadKYCConfig() *KYCConfig {
 	l.logger().Info().Msg("Load KYC config")
-	return &KYCConfig{ServiceURL: l.LoadEnvOr("KYC_SERVICE_URL", "http://localhost:8090")}
+	positive := func(key string, fallback int) int {
+		value, err := strconv.Atoi(l.LoadEnvOr(key, strconv.Itoa(fallback)))
+		if err != nil || value < 1 {
+			return fallback
+		}
+		return value
+	}
+	return &KYCConfig{
+		ServiceURL: l.LoadEnvOr("KYC_SERVICE_URL", "http://localhost:8090"), ServiceToken: l.LoadEnvOr("KYC_SERVICE_TOKEN", ""),
+		MaxAttempts: positive("KYC_MAX_ATTEMPTS", 3), AttemptWindow: l.LoadEnvDuration("KYC_ATTEMPT_WINDOW", 24*time.Hour),
+		AttemptTTL: l.LoadEnvDuration("KYC_ATTEMPT_TTL", 2*time.Minute), MaxConcurrentAttempts: positive("KYC_MAX_CONCURRENT_ATTEMPTS", 8), StartsPerMinute: positive("KYC_STARTS_PER_MINUTE", 6),
+	}
 }
 
 type DocsConfig struct {
@@ -133,9 +150,11 @@ func (l *Loader) LoadEventStoreConfig() *EventStoreConfig {
 type KafkaConfig struct {
 	Brokers                []string
 	Topic                  string
+	RiskDecisionTopic      string
+	RiskDecisionGroup      string
+	RiskDecisionSigningKey string
 	ProducerID             string
 	EventStoreSubscription string
-	PayloadRedactionKey    string
 }
 
 func (l *Loader) LoadKafkaConfig() *KafkaConfig {
@@ -143,9 +162,11 @@ func (l *Loader) LoadKafkaConfig() *KafkaConfig {
 	return &KafkaConfig{
 		Brokers:                splitCSV(l.LoadEnvOr("KAFKA_BROKERS", "localhost:9092")),
 		Topic:                  l.LoadEnvOr("KAFKA_TOPIC", "anomaly.bank.events.v1"),
+		RiskDecisionTopic:      l.LoadEnvOr("KAFKA_RISK_DECISION_TOPIC", "anomaly.bank.risk-decisions.v1"),
+		RiskDecisionGroup:      l.LoadEnvOr("KAFKA_RISK_DECISION_GROUP", "anomaly-server-risk-decisions"),
+		RiskDecisionSigningKey: l.LoadEnvOr("KAFKA_RISK_DECISION_SIGNING_KEY", ""),
 		ProducerID:             l.LoadEnvOr("KAFKA_PRODUCER_ID", "anomaly-server"),
 		EventStoreSubscription: l.LoadEnvOr("KAFKA_EVENTSTORE_SUBSCRIPTION", "kafka-publisher"),
-		PayloadRedactionKey:    l.LoadEnvOr("KAFKA_PAYLOAD_REDACTION_KEY", ""),
 	}
 }
 

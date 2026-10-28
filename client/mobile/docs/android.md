@@ -146,11 +146,33 @@ chuyển tiếp cả hai cổng nên cấu hình localhost dùng được trên 
 HTTP KYC qua loopback chỉ dành cho development với dữ liệu giả;
 bản production cần endpoint HTTPS. Khởi động lại app sau khi đổi `.env`.
 
+### Chạy trên điện thoại USB
+
+`make android` mặc định chọn emulator. Với điện thoại thật, bật **Developer
+options → USB debugging**, cắm cáp dữ liệu, mở khóa máy và chấp nhận hộp
+thoại RSA. Lấy serial bằng:
+
+```bash
+nix develop .#android --command adb devices -l
+```
+
+Nếu serial là `ABC123`, chạy từ thư mục `client/`:
+
+```bash
+make android ANDROID_DEVICE=ABC123
+```
+
+Lệnh này chọn đúng điện thoại cho cả `adb reverse` và Tauri.
+
 Build APK riêng khi cần:
 
 ```bash
-nix develop .#android --command bash -c 'set -e; mkdir -p "$HOME/.local/bin"; corepack enable --install-directory "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; exec yarn workspace anomaly-mobile tauri android build --debug --target x86_64 --apk'
+nix develop .#android --command bash -c 'set -e; mkdir -p "$HOME/.local/bin"; corepack enable --install-directory "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; exec yarn workspace anomaly-mobile tauri android build --debug --target aarch64 --apk'
 ```
+
+`aarch64` dành cho hầu hết điện thoại Android thật hiện nay; `x86_64` dành
+cho emulator hiện tại (`pixel_33`). APK debug có thể cài trực tiếp để thử,
+còn bản phát hành cần cấu hình signing key.
 
 Kiểm tra frontend theo thứ tự: `yarn lint`, `yarn tsc --noEmit`, `yarn test`.
 Các kiểm tra này không thay thế việc nhìn UI trên emulator.

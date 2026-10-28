@@ -71,9 +71,15 @@ export function RegistrationStep({
     case "face":
       return (
         <FaceStep
+          attemptLimit={flow.attemptLimit}
           remaining={flow.remaining}
           heading={flow.heading}
           verifyVideo={flow.verifyVideo}
+          prepareCapture={flow.prepareCapture}
+          hasPendingCapture={flow.hasPendingCapture}
+          retryPendingCapture={flow.retryPendingCapture}
+          discardPendingCapture={flow.discardPendingCapture}
+          go={flow.go}
         />
       );
     case "processing":
@@ -105,6 +111,7 @@ export function RegistrationStep({
     case "error":
       return (
         <ErrorStep
+          attemptLimit={flow.attemptLimit}
           error={flow.error}
           remaining={flow.remaining}
           go={flow.go}
