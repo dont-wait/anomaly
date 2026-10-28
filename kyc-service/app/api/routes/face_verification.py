@@ -1,7 +1,7 @@
 from collections import deque
 from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -148,6 +148,7 @@ async def match_face(
 
 @router.post("/verify-face", response_model=VerifyFaceResponse)
 async def verify_face(
+    request: Request,
     cccd_front_image: UploadFile = File(...),
     live_video: UploadFile = File(...),
     challenge_type: str = Form(...),
@@ -164,8 +165,11 @@ async def verify_face(
         settings.max_video_bytes,
         "live_video_too_large",
     )
-    return await pipeline.verify_face(
+    result = await pipeline.verify_face(
         cccd_front_image=cccd_front_image,
         live_video=live_video,
         challenge_type=challenge_type,
     )
+    if result.analysis is not None:
+        result.analysis.request_id = request.headers.get("X-Request-ID", "")[:128]
+    return result

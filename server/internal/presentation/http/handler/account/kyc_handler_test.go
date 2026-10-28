@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,6 +60,10 @@ func TestCompleteKYCStoresOnlyVerifiedMedia(t *testing.T) {
 			repo.accounts[account.Id] = account
 			tokens := auth.NewTokenService("test-secret", time.Hour)
 			verifier := &verifierStub{result: &kycinfra.VerifyResult{Success: test.success, Decision: test.decision}}
+			if test.success {
+				verifier.result.QualityChecks = kycinfra.QualityChecks{Portrait: true, SingleFace: true, ImageQuality: true}
+				verifier.result.Analysis = &accountdomain.KYCEvidence{RequestID: "test-request", ModelID: "test", ModelVersion: "v1", ModelSHA256: strings.Repeat("a", 64), PipelineVersion: "v1", CalibrationVersion: "v1", MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true, SampledFrames: 100, MatchedFrames: 8, VideoDurationSeconds: 12}
+			}
 			store := &mediaStoreStub{}
 			handler := handleraccount.NewHandler(
 				zerolog.Nop(), commands.NewRegisterAccountCommandHandler(repo, repo), commands.NewVerifyAccountCommandHandler(repo),

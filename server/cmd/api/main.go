@@ -92,7 +92,13 @@ func main() {
 		}
 	}()
 
-	accountHandler := composition.NewAccountHandlerWithKYC(bank, tokenSvc, kyc.NewClient(config.KYCConfig.ServiceURL), mediaRepo, *logger)
+	accountHandler := composition.NewAccountHandlerWithKYC(bank, tokenSvc, kyc.NewClient(config.KYCConfig.ServiceURL, config.KYCConfig.ServiceToken), mediaRepo, *logger)
+	accountHandler.WithRealtime(&kyc.RealtimeStore{DB: rdb, Policy: kyc.Policy{
+		MaxAttempts: config.KYCConfig.MaxAttempts, Window: config.KYCConfig.AttemptWindow, AttemptTTL: config.KYCConfig.AttemptTTL,
+		MaxConcurrent: config.KYCConfig.MaxConcurrentAttempts, StartsPerMinute: config.KYCConfig.StartsPerMinute,
+	}}, helpers.SplitCSV(loader.LoadEnvOr(
+		"CORS_ALLOWED_ORIGINS", "http://localhost:1420,http://localhost:1422,http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost,https://tauri.localhost")))
+	go accountHandler.RunKYCStorageCleanup(ctx)
 	mediaHandler := composition.NewMediaHandler(mediaRepo, bank, *logger)
 	otpHandler := composition.NewOTPHandler(rdb, config.SMTPConfig, *logger)
 	transactionHandler := composition.NewTransactionHandler(bank, recipientContacts, rdb, config.SMTPConfig, *logger, receiptOutbox)
@@ -154,7 +160,7 @@ func main() {
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
 	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(
 		"CORS_ALLOWED_ORIGINS",
-		"http://localhost:1420,http://localhost:1422,http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost",
+		"http://localhost:1420,http://localhost:1422,http://localhost:5173,http://localhost:3000,tauri://localhost,http://tauri.localhost,https://tauri.localhost",
 	))
 	srv := &netHTTP.Server{
 		Addr:              ":8080",

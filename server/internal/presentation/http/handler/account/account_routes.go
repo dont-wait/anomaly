@@ -59,10 +59,24 @@ func RegisterRoutes(
 			Request:            completeKYCRequest{},
 			RequestContentType: "multipart/form-data",
 			Response:           httpx.SuccessResponse[KYCCompleteResponse]{},
-			FailureStatuses:    []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusBadGateway},
+			FailureStatuses:    []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusGone, http.StatusRequestEntityTooLarge, http.StatusBadGateway},
 			Auth:               true,
 			AuthScheme:         "kycBearerAuth",
+			Parameters:         []openapi.Parameter{{Name: "Idempotency-Key", In: "header", Required: true, Type: "string", Format: "uuid"}},
 		})
+	router.Handle("POST /api/kyc/realtime/attempts", middleware.RequireKYCAuth(tokenSvc)(http.HandlerFunc(h.CreateRealtimeAttempt)), openapi.Operation{
+		ID: "createRealtimeKYC", Summary: "Create a realtime KYC attempt", Tags: []string{"KYC"},
+		Request: createRealtimeRequest{}, RequestContentType: "multipart/form-data", Response: httpx.SuccessResponse[realtimeAttemptResponse]{},
+		Parameters:    []openapi.Parameter{{Name: "Idempotency-Key", In: "header", Required: true, Type: "string", Format: "uuid"}},
+		SuccessStatus: http.StatusCreated, FailureStatuses: []int{400, 401, 409, 429, 502}, Auth: true, AuthScheme: "kycBearerAuth",
+	})
+	router.Handle("DELETE /api/kyc/realtime/attempts/{attemptId}", middleware.RequireKYCAuth(tokenSvc)(http.HandlerFunc(h.CancelRealtimeAttempt)), openapi.Operation{
+		ID: "cancelRealtimeKYC", Summary: "Cancel realtime KYC", Tags: []string{"KYC"}, Auth: true, AuthScheme: "kycBearerAuth",
+		Response: httpx.SuccessResponse[map[string]bool]{}, FailureStatuses: []int{401, 404},
+	})
+	router.HandleFunc("GET /api/kyc/realtime/attempts/{attemptId}/stream", h.RealtimeStream, openapi.Operation{
+		ID: "streamRealtimeKYC", Summary: "Stream camera video over WebSocket; authenticate with one-use ticket in first message", Tags: []string{"KYC"}, FailureStatuses: []int{400, 403, 503},
+	})
 
 	adminOnly := func(handler http.Handler) http.Handler {
 		return middleware.RequireAuth(tokenSvc)(h.RequireCurrentAdmin(handler))
@@ -96,8 +110,15 @@ func RegisterRoutes(
 }
 
 type completeKYCRequest struct {
+	IDCardFront       string `json:"idCardFront" form:"idCardFront" format:"binary"`
+	IDCardBack        string `json:"idCardBack" form:"idCardBack" format:"binary"`
+	LiveVideo         string `json:"liveVideo" form:"liveVideo" format:"binary"`
+	ChallengeType     string `json:"challengeType" form:"challengeType"`
+	RealtimeAttemptID string `json:"realtimeAttemptId" form:"realtimeAttemptId"`
+}
+
+type createRealtimeRequest struct {
 	IDCardFront   string `json:"idCardFront" form:"idCardFront" format:"binary"`
 	IDCardBack    string `json:"idCardBack" form:"idCardBack" format:"binary"`
-	LiveVideo     string `json:"liveVideo" form:"liveVideo" format:"binary"`
 	ChallengeType string `json:"challengeType" form:"challengeType"`
 }

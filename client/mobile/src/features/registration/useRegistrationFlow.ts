@@ -1,6 +1,6 @@
 import { toast } from "@/shared/notifications/toast";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
-import { ApiError } from "@/shared/lib/http";
+import { ApiError, requestApi } from "@/shared/lib/http";
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import { navigate, routes } from "@/app/routes";
 import { stages, passwordRules, OTP_LENGTH, type Screen } from "./model";
@@ -11,7 +11,9 @@ import {
   requestOtp,
   verifyOtp,
   otpError,
+  openRealtimeKyc,
 } from "./api";
+import type { CaptureIdentity, CaptureProgress } from "./api/realtime";
 import type { AuthUser } from "@/features/auth/api";
 import {
   clearKycResumeSession,
@@ -56,20 +58,26 @@ export function useRegistrationFlow() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [remaining, setRemaining] = useState(3);
+  const [attemptLimit, setAttemptLimit] = useState(3);
+  const [hasPendingCapture, setHasPendingCapture] = useState(false);
+  const pendingCapture = useRef<{
+    video: File;
+    capture: CaptureIdentity;
+  } | null>(null);
   const [dialog, setDialog] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
-  const [createdAccount, setCreatedAccount] = useState<
-    Pick<AuthUser, "id" | "isVerify"> | null
-  >(
-    restoredSession?.user ?? null,
-  );
+  const [createdAccount, setCreatedAccount] = useState<Pick<
+    AuthUser,
+    "id" | "isVerify"
+  > | null>(restoredSession?.user ?? null);
   const heading = useRef<HTMLHeadingElement>(null);
   const operation = useRef<AbortController | null>(null);
   const kycToken = useRef(restoredSession?.kycToken ?? "");
   const kycExpiresAt = useRef(
     restoredSession ? Date.parse(restoredSession.kycExpiresAt) : 0,
   );
+  const kycAttemptKey = useRef(crypto.randomUUID());
   const registrationKey = useRef("");
   const step =
     screen === "processing" || screen === "error"
@@ -188,7 +196,45 @@ export function useRegistrationFlow() {
       go("document");
     }
   }
-  async function verifyVideo(video: File) {
+  async function prepareCapture(
+    onProgress: (progress: CaptureProgress) => void,
+    onError: (error: Error) => void,
+    signal: AbortSignal,
+  ) {
+    if (
+      !documents.front ||
+      !documents.back ||
+      !kycToken.current ||
+      Date.now() >= kycExpiresAt.current - 30000
+    )
+      throw new Error("Phiên xác thực đã hết hạn. Vui lòng đăng nhập lại.");
+    try {
+      const capture = await openRealtimeKyc(
+        documents.front,
+        documents.back,
+        kycToken.current,
+        onProgress,
+        onError,
+        signal,
+        kycAttemptKey.current,
+      );
+      if (capture.attemptLimit !== undefined)
+        setAttemptLimit(capture.attemptLimit);
+      if (capture.attemptsRemaining !== undefined)
+        setRemaining(capture.attemptsRemaining);
+      return capture;
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.hasCode("KYC_ATTEMPTS_EXCEEDED")) {
+        setRemaining(0);
+        setError(
+          "Đã hết lượt xác thực trong thời gian hiện tại. Vui lòng thử lại sau.",
+        );
+        setScreen("error");
+      }
+      throw cause;
+    }
+  }
+  async function verifyVideo(video: File, capture?: CaptureIdentity) {
     if (
       operation.current ||
       remaining === 0 ||
@@ -200,11 +246,15 @@ export function useRegistrationFlow() {
       return;
     const controller = new AbortController();
     operation.current = controller;
+    if (capture) {
+      pendingCapture.current = { video, capture };
+      setHasPendingCapture(true);
+    }
     setBusy(true);
     setError("");
-      toast.dismiss();
-      setScreen("processing");
-      setProgress("Đang kiểm tra ảnh CCCD, liveness và đối chiếu khuôn mặt…");
+    toast.dismiss();
+    setScreen("processing");
+    setProgress("Đang kiểm tra ảnh CCCD, liveness và đối chiếu khuôn mặt…");
     try {
       if (Date.now() >= kycExpiresAt.current - 30_000) {
         clearKycResumeSession();
@@ -222,9 +272,15 @@ export function useRegistrationFlow() {
         video,
         kycToken.current,
         controller.signal,
+        capture,
       );
       if (controller.signal.aborted) return;
+      if (result.attemptLimit !== undefined)
+        setAttemptLimit(result.attemptLimit);
       if (result.decision === "VERIFIED") {
+        kycAttemptKey.current = crypto.randomUUID();
+        pendingCapture.current = null;
+        setHasPendingCapture(false);
         if (result.user!.id !== createdAccount.id)
           throw new Error("Tài khoản xác thực không khớp hồ sơ vừa tạo.");
         setPassword("");
@@ -241,8 +297,13 @@ export function useRegistrationFlow() {
         );
         setScreen("face");
       } else {
+        kycAttemptKey.current = crypto.randomUUID();
+        pendingCapture.current = null;
+        setHasPendingCapture(false);
         if (result.decision === "FAILED_FINAL") setRemaining(0);
-        if (result.decision === "RETRY_ALLOWED")
+        if (result.attemptsRemaining !== undefined)
+          setRemaining(result.attemptsRemaining);
+        else if (result.decision === "RETRY_ALLOWED")
           setRemaining((r) => Math.max(0, r - 1));
         setError(
           result.reasonMessage ||
@@ -258,6 +319,33 @@ export function useRegistrationFlow() {
     } finally {
       if (!controller.signal.aborted) setBusy(false);
       if (operation.current === controller) operation.current = null;
+    }
+  }
+  function retryPendingCapture() {
+    const pending = pendingCapture.current;
+    if (pending) void verifyVideo(pending.video, pending.capture);
+  }
+  async function discardPendingCapture() {
+    const pending = pendingCapture.current;
+    if (!pending || operation.current) return;
+    try {
+      await requestApi(
+        `/api/kyc/realtime/attempts/${encodeURIComponent(pending.capture.attemptId)}`,
+        {
+          method: "DELETE",
+          token: kycToken.current,
+        },
+      );
+      pendingCapture.current = null;
+      setHasPendingCapture(false);
+    } catch (cause) {
+      if (
+        cause instanceof ApiError &&
+        (cause.status === 404 || cause.status === 410)
+      ) {
+        pendingCapture.current = null;
+        setHasPendingCapture(false);
+      } else toast.error("Chưa hủy được phiên cũ. Vui lòng thử lại.");
     }
   }
   function registrationInput() {
@@ -371,6 +459,7 @@ export function useRegistrationFlow() {
     confirm,
     setConfirm,
     remaining,
+    attemptLimit,
     dialog,
     setDialog,
     heading,
@@ -379,6 +468,10 @@ export function useRegistrationFlow() {
     submit,
     retry,
     verifyVideo,
+    prepareCapture,
+    hasPendingCapture,
+    retryPendingCapture,
+    discardPendingCapture,
     busy,
     progress,
     createdAccount,

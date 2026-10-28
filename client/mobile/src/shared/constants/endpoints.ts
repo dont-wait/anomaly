@@ -10,6 +10,7 @@ export const API_ENDPOINTS = {
   KYC: {
     SESSION: "/api/kyc/session",
     COMPLETE: "/api/kyc/complete",
+    REALTIME: "/api/kyc/realtime/attempts",
   },
   TRANSFERS: {
     CREATE: "/api/transfers",

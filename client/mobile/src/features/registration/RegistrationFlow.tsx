@@ -14,7 +14,7 @@ export function RegistrationFlow({ onLogin }: { onLogin: () => void }) {
   const flow = useRegistrationFlow();
   const { screen, busy, createdAccount, dialog, setDialog, step, go } = flow;
   return (
-    <div className="auth-app">
+    <div className={`auth-app${screen === "face" ? " auth-app-capture" : ""}`}>
       <aside className="brand-panel">
         <a
           className="brand"
@@ -74,7 +74,11 @@ export function RegistrationFlow({ onLogin }: { onLogin: () => void }) {
             <FontAwesomeIcon icon={faArrowLeft} />
           </button>
           <span>
-            {step >= 0 ? `BƯỚC ${step + 1}/${stages.length}` : "AnomalyBank"}
+            {screen === "face"
+              ? "Xác thực khuôn mặt"
+              : step >= 0
+                ? `BƯỚC ${step + 1}/${stages.length}`
+                : "AnomalyBank"}
           </span>
           <button className="help-button" onClick={() => setDialog("Hỗ trợ")}>
             Trợ giúp
