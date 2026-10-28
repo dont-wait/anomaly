@@ -1,385 +1,117 @@
-# Anomaly Python Service
+# Anomaly KYC service
 
-Python service for stateless face verification processing using a clear front image of a Vietnamese CCCD and a live video with active liveness.
+Face verification 1:1 giữa chân dung trên ảnh căn cước và video camera. Luồng realtime là `mobile → Go → Python → Go → mobile`; Python nằm sau Go, không nhận JWT người dùng.
 
-## Purpose
+Backend `real` đã có adapter ONNX, MediaPipe Face Landmarker, tách chân dung theo ROI của layout thẻ, giải mã video bằng FFmpeg, kiểm tra chuỗi quay đầu/chớp mắt và tổng hợp embedding nhiều frame. **Repo không cung cấp weights hoặc ngưỡng đã hiệu chuẩn.** Phải cấp artifact/cấu hình đúng model trước khi chạy thực tế. Không có fallback từ real sang stub.
 
-This service implements the CV/ML side of `specs/Face-Verification-Design-Plan.md`.
+Spec chi tiết: [Face-Verification-Design-Plan](../specs/Face-Verification-Design-Plan.md).
 
-Its responsibility is limited to:
+## Chuẩn bị mô hình
 
-- receiving a CCCD front image and live video from `server/`
-- extracting the portrait from the CCCD image
-- evaluating active liveness from the video
-- matching the live face against the CCCD portrait
-- returning machine-readable scores, codes, and fallback messages
+Tạo thư mục riêng, ví dụ `kyc-service/models/`, chứa:
 
-It does not own session policy, retry counting, duplicate checks, or persistence. Those business rules belong in `server/`.
-
-## Scope
-
-In scope:
-
-- CCCD front image validation
-- card detection and alignment
-- portrait extraction
-- live video preprocessing
-- active liveness checks
-- face embedding and 1:1 verification
-- decision scoring and fallback reason messages
-
-Out of scope:
-
-- verification session storage
-- duplicate/existence checks across users
-- Mongo persistence
-- full CCCD OCR
-- passive-only liveness flows
-
-## Architecture
-
-```mermaid
-flowchart LR
-    Client[Client App] --> Gateway[Server / Go API]
-    Gateway --> Py[Python Service]
-    Py --> Gateway
+```text
+models/
+  manifest.json
+  vision.toml
+  face.onnx
+  face_landmarker.task
 ```
 
-Responsibilities by component:
+1. Cung cấp model embedding ONNX có quyền sử dụng phù hợp và MediaPipe Face Landmarker task.
+2. Điền [manifest.example.json](config/manifest.example.json): input/output names, shape, RGB/BGR, tensor layout, normalization và 5 landmark đích phải đúng preprocessing của model. Các số trong mẫu chỉ minh họa, không phải cấu hình dùng chung cho mọi model.
+3. Tính SHA-256 của cả hai artifact, điền manifest. Model load một lần, kiểm tra input/output, warm-up và kiểm tra embedding hữu hạn/chuẩn hóa L2.
+4. Sao chép [vision.example.toml](config/vision.example.toml) thành `vision.toml`, hiệu chuẩn matching/consistency/quality/liveness trên dữ liệu thực. Chỉ đặt `calibrated=true` khi đã có báo cáo tương ứng. Mẫu cố ý không chạy được mặc định.
+5. Xác nhận `left_yaw_sign` trên video gốc chưa mirror. Xác nhận layout thẻ và `portrait_roi`; hiện hỗ trợ một ROI được cấu hình trên thẻ ngang đã căn phối cảnh. Chưa có bộ phân loại tự động nhiều thế hệ căn cước hoặc kiểm định thẻ thật/giả.
 
-- `client/mobile/`: captures CCCD front image and live video
-- `server/`: owns auth, rate limiting, retry policy, duplicate checks, persistence, and orchestration
-- `kyc-service/`: runs image/video processing and returns analysis results only
+Adapter dùng cùng model embedding cho ảnh thẻ và frame video. Score là cosine similarity được ánh xạ sang [0,1], tổng hợp bằng median + tỉ lệ frame đạt; không phải xác suất danh tính. Mô hình/cấu hình không hợp lệ làm startup real thất bại.
 
-## Processing Pipeline
+## Chạy local
 
-### 1. CCCD processing
-1. Validate uploaded image format and file constraints.
-   - Libraries:
-     - `FastAPI` + `python-multipart`: nhận file upload multipart từ `server/`.
-     - `app.files.read_limited_bytes`: chặn ảnh vượt kích thước cấu hình trước khi đi vào pipeline.
-2. Detect the CCCD in the image.
-   - Planned library:
-     - `OpenCV`: phát hiện viền/thân thẻ CCCD trong ảnh đầu vào.
-3. Align the card to a normalized perspective.
-   - Planned library:
-     - `OpenCV`: sửa phối cảnh, xoay và chuẩn hóa khung thẻ về cùng layout.
-4. Crop the portrait region using a template-based layout.
-   - Planned library:
-     - `OpenCV`: crop vùng chân dung theo template sau khi thẻ đã được align.
-5. Confirm a face exists in the cropped portrait.
-   - Planned libraries:
-     - `MediaPipe`: xác nhận có khuôn mặt trong vùng chân dung đã crop.
-6. Run quality checks:
-   - blur
-   - brightness
-   - glare
-   - occlusion
-   - face size
-   - Planned libraries:
-     - `OpenCV`: blur, brightness, glare và các chỉ số chất lượng ảnh cơ bản.
-     - `MediaPipe`: ước lượng kích thước mặt, landmark và dấu hiệu che khuất.
-
-### 2. Live video processing
-1. Validate video format, duration, and size constraints.
-   - Libraries:
-     - `FastAPI` + `python-multipart`: nhận video upload multipart.
-     - `app.files.read_limited_bytes`: chặn video vượt giới hạn dung lượng.
-2. Extract candidate frames.
-   - Planned library:
-     - `OpenCV`: đọc video và trích các frame đại diện để đánh giá.
-3. Detect the face across frames.
-   - Planned libraries:
-     - `MediaPipe`: phát hiện khuôn mặt và landmark theo từng frame.
-4. Ensure a single consistent subject is present.
-   - Planned libraries:
-     - `MediaPipe`: kiểm tra số lượng khuôn mặt theo frame.
-     - face embedding model: so khớp embedding giữa các frame để xác nhận cùng một người.
-5. Evaluate active liveness challenges:
-   - blink
-   - turn left
-   - turn right
-   - Planned libraries:
-     - `MediaPipe`: dùng eye landmarks cho blink và head pose/face landmarks cho quay trái, quay phải.
-6. Select the best valid live frames for matching.
-   - Planned libraries:
-     - `OpenCV`: chọn frame đủ sáng, ít mờ, ít nhiễu.
-     - `MediaPipe`: giữ lại frame có mặt rõ và landmark ổn định.
-
-### 3. Face verification
-1. Generate an embedding from the CCCD portrait.
-   - Planned libraries:
-     - face embedding model (`face_recognition` hoặc model license-safe tương đương): sinh vector đặc trưng từ ảnh CCCD.
-2. Generate embeddings from the best live frames.
-   - Planned libraries:
-     - face embedding model (`face_recognition` hoặc model license-safe tương đương): sinh vector đặc trưng từ frame video hợp lệ.
-3. Compute similarity scores.
-   - Planned libraries:
-     - face embedding model: tính khoảng cách/similarity giữa embedding ảnh CCCD và ảnh live.
-4. Combine:
-   - match score
-   - liveness score
-   - quality checks
-   - Libraries:
-     - `Pydantic`: chuẩn hóa response schema, score fields, reason codes và fallback messages.
-     - `pydantic-settings`: nạp threshold cấu hình để ra quyết định nhất quán theo môi trường.
-5. Return an analysis result to `server/`.
-   - Libraries:
-     - `FastAPI`: expose endpoint stateless cho `server/`.
-     - `Pydantic`: serialize response JSON machine-readable.
-
-## Libraries By Responsibility
-
-### Current runtime and service libraries
-
-- `FastAPI`: API layer cho các endpoint `/health`, `/extract-id-face`, `/run-liveness`, `/match-face`, `/verify-face`.
-- `python-multipart`: parse file upload multipart cho ảnh CCCD và live video.
-- `Pydantic`: định nghĩa request/response schema, decision, reason code và quality checks.
-- `pydantic-settings`: quản lý cấu hình môi trường như file limits, thresholds và backend selection.
-- `uvicorn`: ASGI server để chạy service cục bộ hoặc trong container.
-- `httpx`: HTTP client support cho integration/test flows khi cần gọi service bất đồng bộ.
-- `boto3`: phục vụ test fixtures upload/download media qua RustFS (S3-compatible).
-- `pytest`: test framework cho API contract và integration tests.
-- `ruff`: lint và format checks.
-
-### Planned CV/ML libraries
-
-- `OpenCV`: card detection, alignment, and basic image quality checks
-- `MediaPipe`: landmarks, blink detection, head turn checks, and active liveness signals
-- `face_recognition` or another license-safe embedding model: face embedding and comparison
-
-Notes:
-
-- Hiện tại pipeline trong `app/services/pipeline.py` vẫn là stub để giữ ổn định HTTP contract.
-- Các thư viện CV/ML ở trên là mapping mục tiêu cho từng tính năng khi tích hợp backend xử lý thật.
-
-## API Role
-
-This service sits behind `server/`. It exposes stateless processing endpoints. `server/` is responsible for deciding whether a result becomes retryable, final, persisted, or reused.
-
-Current implemented endpoints:
-
-- `GET /health`
-- `POST /v1/kyc/extract-id-face`
-- `POST /v1/kyc/run-liveness`
-- `POST /v1/kyc/match-face`
-- `POST /v1/kyc/verify-face`
-
-Response design notes:
-
-- analysis responses include both `reason_code` and fallback `reason_message`
-- no endpoint stores sessions or attempts
-- the contract is designed so `server/` can add business rules without changing the CV boundary
-
-## Decision Model
-
-The combined verification endpoint returns one of:
-
-- `VERIFIED`
-- `RETRY_ALLOWED`
-
-Common reason codes include:
-
-- `CCCD_IMAGE_QUALITY_LOW`
-- `CCCD_PORTRAIT_NOT_FOUND`
-- `LIVE_FACE_NOT_FOUND`
-- `MULTIPLE_FACES_DETECTED`
-- `LIVE_VIDEO_QUALITY_LOW`
-- `FACE_OCCLUDED`
-- `LIVENESS_CHALLENGE_FAILED`
-- `LIVENESS_NOT_CONFIDENT`
-- `FACE_MISMATCH`
-- `INTERNAL_ERROR`
-
-## Security and Privacy
-
-- treat CCCD portraits, live video, and embeddings as sensitive biometric data
-- do not log raw image or video payloads in application logs
-- keep thresholds and anti-spoof logic server-side
-- assume all client traffic arrives through `server/`, not directly
-
-## Implementation Notes
-
-- Start with clear CCCD images only. Reject poor inputs early instead of trying to recover low-quality captures.
-- Prefer template-based portrait extraction for MVP after alignment.
-- Use active liveness as the primary anti-spoof layer for MVP.
-- Keep thresholds configurable so they can be calibrated later with real test data.
-- Keep the pipeline behind interfaces so OpenCV, MediaPipe, and embedding models can be swapped without changing route handlers.
-
-## Reference
-
-- internal specs: `specs/Face-Verification-Design-Plan.md`
-
-## Local Development
-
-### Start Locally
-
-From `kyc-service/`:
+Dùng Python 3.11 và FFmpeg. Với Nix:
 
 ```bash
-python -m venv .venv
-. .venv/bin/activate
-pip install -e .[dev]
-cp .env.example .env
-export APP_ENV=development
-export VISION_PIPELINE_BACKEND=stub
-export ALLOW_STUB_VISION_PIPELINE=true
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
-```
-
-This runs in the foreground, so logs are printed directly in the terminal.
-
-If you want to keep a copy of the logs, run this in the same shell after exporting the stub settings above:
-
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8090 2>&1 | tee kyc-service.log
-```
-
-### Start With Nix
-
-From `kyc-service/`:
-
-```bash
+cd kyc-service
 nix develop
 python -m venv .venv
-. .venv/bin/activate
-pip install -e .[dev]
+.venv/bin/python -m pip install -e '.[vision,dev]'
 cp .env.example .env
-export APP_ENV=development
-export VISION_PIPELINE_BACKEND=stub
-export ALLOW_STUB_VISION_PIPELINE=true
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
 ```
 
-This also runs in the foreground, so logs are visible immediately.
+Điền trong `.env`:
 
-### Start With Docker
+```dotenv
+APP_ENV=development
+VISION_PIPELINE_BACKEND=real
+ALLOW_STUB_VISION_PIPELINE=false
+KYC_SERVICE_TOKEN=<secret-ngau-nhien-it-nhat-32-ky-tu>
+VISION_CONFIG_PATH=models/vision.toml
+FACE_MODEL_MANIFEST_PATH=models/manifest.json
+```
 
-From `kyc-service/`:
+Đặt cùng `KYC_SERVICE_TOKEN` trong `server/.env`, giữ `KYC_SERVICE_URL=http://localhost:8090`. Khởi động Python bằng `make start` hoặc:
 
 ```bash
-docker build -t anomaly-kyc-service .
-docker run --rm -p 8090:8090 anomaly-kyc-service
+.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8090
 ```
 
-Logs are printed in the current terminal because the container runs in the foreground.
+`make start` đọc cấu hình từ `.env`, không ép dùng stub. Nix shell cung cấp FFmpeg và shared libraries cho wheels CV. Nếu thay đổi dependency, dùng môi trường ảo sạch; tránh cài đồng thời nhiều package OpenCV cùng cung cấp namespace `cv2`.
 
-If you want to run detached and inspect logs separately:
+`GET /health` phản ánh tiến trình; `GET /ready` kiểm tra pipeline. Default `disabled` phục vụ health/docs nhưng từ chối phân tích. `stub` chỉ dành cho test hoặc override development có chủ ý; staging/production từ chối stub. Mobile/Go cũng từ chối kết quả verified không có evidence thực, vì vậy không dùng stub để mở tài khoản.
+
+## Realtime và kết quả cuối
+
+Go tạo attempt sau KYC auth, giữ ảnh tạm trong Redis theo TTL, cấp ticket một lần rồi kiểm tra Origin trước upgrade WebSocket. Mobile quay 12 giây, gửi binary WebM/VP8 khoảng mỗi 250 ms từ một recorder. MIME khác, gồm MP4 trên thiết bị chưa được kiểm chứng decode incremental, bị từ chối rõ ràng.
+
+Python giữ context tạm theo socket, tách chân dung một lần, decode liên tục (15 FPS), chạy landmark/liveness và embedding khoảng 5 Hz; không dùng tên file hoặc timer UI để ra kết quả. Client chỉ cập nhật động tác theo progress server và giữ preview camera trực tiếp.
+
+- Nén video không bị bỏ chunk khi mạng chậm. Client kiểm tra buffer/ACK, giới hạn dung lượng và hủy attempt khi vượt ngân sách.
+- `progress` chỉ là bằng chứng tạm. `stream_finished` xác nhận đã kết thúc luồng, chưa xác minh tài khoản.
+- Go chốt SHA-256 chuỗi chunk, xóa bytes ảnh khỏi record tạm và ràng buộc ảnh/video với request complete.
+- Complete chạy lại pipeline thật trên đúng video hoàn chỉnh; Go kiểm tra quality checks, trạng thái, score, request ID và provenance trước khi lưu.
+- Media verified vào object storage riêng tư. Mongo lưu điểm, evidence/version, metadata/hash; OCR vẫn `not_run`.
+- Lỗi mạng khi complete cho gửi lại cùng video và idempotency key. Video chỉ giữ trong RAM của phiên UI, không ghi localStorage.
+
+Trước khi upload, Go ghi kế hoạch reconciliation vào Redis. Worker chạy mỗi phút, kiểm tra các upload sau khoảng chờ 5 phút với hồ sơ canonical rồi chỉ xóa object chưa được session nào tham chiếu. Lỗi đọc hồ sơ hoặc xóa object giữ nguyên công việc để thử lại; kế hoạch này tồn tại qua API restart và xử lý cả upload/commit có kết quả không rõ do timeout.
+
+Go mặc định giới hạn 3 lần không đạt/24 giờ theo tài khoản. Lỗi hệ thống không trừ lượt. Policy, idempotency và ticket lưu Redis dùng chung giữa replica. Các biến phía Go: `KYC_MAX_ATTEMPTS`, `KYC_ATTEMPT_WINDOW`, `KYC_ATTEMPT_TTL`, `KYC_MAX_CONCURRENT_ATTEMPTS`, `KYC_STARTS_PER_MINUTE`. Attempt đang hoạt động có lease, giới hạn số ảnh tạm toàn cục; Redis phải được bảo vệ như dữ liệu sinh trắc học. TTL là thời hạn đọc logic; retention của Redis AOF/backup cần quản lý ở hạ tầng.
+
+Chạy migration Mongo `000012_real_kyc_evidence` trước phiên bản Go mới để cho phép `passed/failed`, score và evidence. Hồ sơ cũ giữ nguyên `not_run`. Rollback migration gỡ validator để không làm mất evidence đã ghi; cần xét lại validator trước khi đưa bản cũ vào vận hành.
+
+## Docker Compose
+
+Image cài `.[vision]` cùng FFmpeg/system libraries. Compose mount thư mục model read-only:
+
+```dotenv
+KYC_MODEL_DIR=/duong-dan-tuyet-doi/models
+KYC_SERVICE_TOKEN=<cung-secret-voi-Go>
+VISION_PIPELINE_BACKEND=real
+```
+
+Trong `server/`:
 
 ```bash
-docker run -d --name anomaly-kyc-service -p 8090:8090 anomaly-kyc-service
-docker logs -f anomaly-kyc-service
+docker compose --profile app up --build anomaly-kyc-service
 ```
 
-### Start With Docker Compose
+Model directory phải có `manifest.json`, `vision.toml` và các artifact tham chiếu. Không commit media hoặc weights. Reverse proxy của Go cần hỗ trợ WebSocket upgrade và timeout cho attempt; không bật buffering luồng này. Mở dịch vụ Python chỉ cho Go/mạng nội bộ.
 
-From `server/`:
-
-```bash
-docker compose --profile app up --build anomaly-kyc-service rustfs
-```
-
-This keeps the compose stack attached, so logs stream in the current terminal.
-
-If you want compose in the background and read logs separately:
-
-```bash
-docker compose --profile app up -d --build anomaly-kyc-service rustfs
-docker compose logs -f anomaly-kyc-service
-```
-
-To also watch RustFS logs:
-
-```bash
-docker compose logs -f anomaly-kyc-service rustfs
-```
-
-### Nix
-
-The shell includes:
-
-- `python3.11`
-- `pip`
-- `virtualenv`
-- `docker` client
-- `ruff`
-
-### Stub Mode For Local Testing
-
-The service fails closed by default if no real vision backend is configured.
-
-For local testing with the stub pipeline:
-
-```bash
-export APP_ENV=development
-export VISION_PIPELINE_BACKEND=stub
-export ALLOW_STUB_VISION_PIPELINE=true
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
-```
-
-### Lint And Format Checks
-
-Use `ruff` locally to catch issues before CI:
+## Kiểm chứng
 
 ```bash
 ruff check .
 ruff format --check .
+pytest tests/test_real_vision.py tests/test_cors.py
 ```
 
-These commands only report issues. They do not auto-format unless you run `ruff format .` yourself.
+`test_real_vision.py` kiểm tra fail-closed, checksum/config, thứ tự động tác, blink nhiều frame, coverage, tổng hợp điểm và decoder WebM thật phát frame trước EOF. Đây là kiểm tra kỹ thuật, không phải đánh giá nhận dạng người thật.
 
-## Tests
+Test API cũ dùng stub và có fixture RustFS/Docker cho một số trường hợp. Chạy `pytest` toàn bộ khi Docker sẵn sàng. Phía Go có test Redis thực (đặt `KYC_TEST_REDIS_SERVER` hoặc có `redis-server` trên PATH) và có thể chạy `go test -race ./internal/infrastructure/kyc`.
 
-Run the test suite from `kyc-service/`:
+Trước khi triển khai cần nghiệm thu model trên căn cước/video thật, đo FMR/FNMR, preview FPS, latency, thiết bị/codec, ánh sáng và mạng yếu theo spec. Chưa có dữ liệu để xác nhận các ngưỡng hoặc mục tiêu hiệu năng đạt.
 
-```bash
-pytest
-```
+## Giới hạn
 
-Test setup notes:
+Kiểm tra động tác là active challenge checking, chưa phải PAD chống ảnh màn hình, replay hoặc deepfake có đánh giá chuyên biệt. Challenge cố định có thể bị phát lại. Kết nối realtime không tự chứng minh video quay mới; cần nonce/challenge ngẫu nhiên và giải pháp chống injection nếu mở rộng yêu cầu đó.
 
-- tests use `boto3` against a temporary local `RustFS` Docker container
-- fixtures upload generated test media objects into a bucket
-- tests download those objects and submit them to the FastAPI endpoints
-- teardown removes uploaded objects, deletes the bucket, and stops RustFS
-
-Requirements:
-
-- Docker daemon available on the host
-- optional override for image: `RUSTFS_DOCKER_IMAGE`
-
-This keeps test data lifecycle explicit without introducing persistence responsibilities into the service itself.
-
-## Swagger
-
-FastAPI Swagger UI is available at:
-
-- `/docs`
-- `/redoc`
-- `/openapi.json`
-
-## Current Implementation Status
-
-- FastAPI application scaffolded
-- Stateless analysis endpoints implemented
-- Configurable thresholds and file limits via environment variables
-- Vision pipeline abstracted behind an interface for later OpenCV, MediaPipe, and embedding integration
-- Pytest suite added with RustFS-backed test fixtures
-- Nix flake added for local development and test tooling
-- Ruff lint and format checks configured through `pyproject.toml`
-
-The current pipeline implementation is intentionally a stub so the HTTP contract and service boundary stay stable while the actual CV/ML layers are integrated.
-
-## Client CORS
-
-`CORS_ALLOWED_ORIGINS` là JSON array các origin được phép gọi KYC bằng fetch.
-Mặc định cho phép `http://localhost:1420`, `http://127.0.0.1:1420`,
-`tauri://localhost`, `http://tauri.localhost`, `https://tauri.localhost`.
-Nếu dùng Vite trên IP LAN, thêm origin đầy đủ (gồm port) vào `.env`, ví dụ:
-
-```dotenv
-CORS_ALLOWED_ORIGINS=["http://localhost:1420","http://192.168.1.10:1420","http://tauri.localhost"]
-```
-
-Client gửi multipart tới `/v1/kyc/verify-face`. Token đăng nhập của server không gửi sang KYC.
-CORS không bật pipeline: cấu hình mặc định vẫn trả 503 khi chưa có backend thị giác.
+Face match chứng minh độ tương đồng khuôn mặt trong media. Chưa có OCR đối chiếu thông tin, NFC/chip hoặc truy vấn cơ quan cấp; không được mô tả là xác thực pháp lý của căn cước. Không lưu embedding mặc định hoặc dùng dữ liệu người dùng để huấn luyện.

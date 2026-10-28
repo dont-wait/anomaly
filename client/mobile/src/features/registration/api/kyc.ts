@@ -1,6 +1,7 @@
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { ApiError, requestApi } from "@/shared/lib/http";
 import type { AuthUser } from "@/features/auth/api";
+import type { CaptureIdentity } from "./realtime";
 export const LIVENESS_CHALLENGE = "TURN_HEAD_LEFT_RIGHT_BLINK";
 export type KycDecision =
   "VERIFIED" | "RETRY_ALLOWED" | "FAILED_FINAL" | "SYSTEM_ERROR";
@@ -9,6 +10,9 @@ export interface KycResult {
   reasonCode?: string;
   reasonMessage?: string;
   user?: AuthUser;
+  attemptsRemaining?: number;
+  attemptLimit?: number;
+  retryAfter?: string;
 }
 const decisions: KycDecision[] = [
   "VERIFIED",
@@ -23,7 +27,16 @@ function validateResult(value: unknown): KycResult {
   const result = value as KycResult;
   if (
     !decisions.includes(result.decision) ||
-    (result.reasonCode !== undefined && typeof result.reasonCode !== "string") ||
+    (result.attemptsRemaining !== undefined &&
+      (!Number.isInteger(result.attemptsRemaining) ||
+        result.attemptsRemaining < 0)) ||
+    (result.attemptLimit !== undefined &&
+      (!Number.isInteger(result.attemptLimit) ||
+        result.attemptLimit < 1 ||
+        (result.attemptsRemaining !== undefined &&
+          result.attemptsRemaining > result.attemptLimit))) ||
+    (result.reasonCode !== undefined &&
+      typeof result.reasonCode !== "string") ||
     (result.reasonMessage !== undefined &&
       typeof result.reasonMessage !== "string") ||
     (result.decision === "VERIFIED"
@@ -46,12 +59,14 @@ export async function completeKyc(
   video: File,
   token: string,
   signal?: AbortSignal,
+  capture?: CaptureIdentity,
 ): Promise<KycResult> {
   const body = new FormData();
   body.append("idCardFront", front);
   body.append("idCardBack", back);
   body.append("liveVideo", video);
   body.append("challengeType", LIVENESS_CHALLENGE);
+  if (capture) body.append("realtimeAttemptId", capture.attemptId);
   try {
     return validateResult(
       await requestApi<KycResult>(API_ENDPOINTS.KYC.COMPLETE, {
@@ -60,6 +75,9 @@ export async function completeKyc(
         token,
         signal,
         timeoutMs: 120000,
+        headers: capture
+          ? { "Idempotency-Key": capture.idempotencyKey }
+          : undefined,
       }),
     );
   } catch (error) {

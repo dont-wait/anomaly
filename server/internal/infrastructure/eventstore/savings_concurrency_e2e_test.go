@@ -11,6 +11,7 @@ import (
 	"time"
 
 	accountcommands "github.com/dont-wait/anomaly/internal/application/account/commands"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	"github.com/dont-wait/anomaly/internal/domain/savings"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
@@ -40,6 +41,10 @@ func TestSavingsCommandsExactlyOnceWithEventStoreDB(t *testing.T) {
 		IdCardFrontUrl: "kyc/" + actor.Id + "/id-card-front/front",
 		IdCardBackUrl:  "kyc/" + actor.Id + "/id-card-back/back",
 		LiveVideoUrl:   "kyc/" + actor.Id + "/live-video/live",
+		Evidence: &accountdomain.KYCEvidence{
+			MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true,
+		},
+		MatchScore: 0.9, LivenessScore: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}

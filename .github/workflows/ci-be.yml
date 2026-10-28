@@ -85,6 +85,9 @@ jobs:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
+      - name: Install Redis test runtime
+        run: sudo apt-get update && sudo apt-get install -y redis-server
+
       - name: Test
         run: go test ./...
 
@@ -107,8 +110,11 @@ jobs:
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Install video runtime
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libgl1 libglib2.0-0 libportaudio2
+
       - name: Install dependencies
-        run: python -m pip install -e .
+        run: python -m pip install -e '.[vision]'
 
       - name: Run tests
         run: pytest

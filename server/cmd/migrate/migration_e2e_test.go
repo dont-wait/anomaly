@@ -6,16 +6,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/domain"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 )
 
@@ -57,8 +60,20 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read migration version: %v", err)
 	}
-	if version != 4 || dirty {
-		t.Fatalf("migration state = version %d dirty %t, want version 4 dirty false", version, dirty)
+	migrationSource, err := iofs.New(os.DirFS("../../migrations"), ".")
+	if err != nil {
+		t.Fatalf("open migrations: %v", err)
+	}
+	entries, err := listMigrations(migrationSource)
+	if closeErr := migrationSource.Close(); closeErr != nil {
+		t.Fatalf("close migrations: %v", closeErr)
+	}
+	if err != nil {
+		t.Fatalf("list migrations: %v", err)
+	}
+	expectedVersion := entries[len(entries)-1].version
+	if version != expectedVersion || dirty {
+		t.Fatalf("migration state = version %d dirty %t, want latest version %d dirty false", version, dirty, expectedVersion)
 	}
 
 	mongoConfig := &domain.MongoConfig{MongoURI: mongoURI, MongoDBName: databaseName}
@@ -100,11 +115,13 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 		IdCardFrontUrl: "kyc/" + account.Id + "/id-card-front/migration-front",
 		IdCardBackUrl:  "kyc/" + account.Id + "/id-card-back/migration-back",
 		LiveVideoUrl:   "kyc/" + account.Id + "/live-video/migration-live",
+		// Persistence fixture; biometric inference is tested separately with actual weights.
+		Evidence: &accountdomain.KYCEvidence{MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true}, MatchScore: 0.9, LivenessScore: 1,
 	}); err != nil {
 		t.Fatalf("verify account against migrated schema: %v", err)
 	}
 
-	if err := runner.Steps(-4); err != nil {
+	if err := runner.Steps(-int(version)); err != nil {
 		t.Fatalf("migrate down: %v", err)
 	}
 	if _, _, err := runner.Version(); !errors.Is(err, migrate.ErrNilVersion) {

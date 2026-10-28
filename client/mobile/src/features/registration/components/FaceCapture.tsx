@@ -1,211 +1,343 @@
-import { toast } from "@/shared/notifications/toast";
 import { useEffect, useRef, useState } from "react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFingerprint, faCamera } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "@/shared/ui";
+import type {
+  CaptureIdentity,
+  CaptureProgress,
+  RealtimeCapture,
+} from "../api/realtime";
+
 const instructions = [
   "Nhìn thẳng vào camera",
   "Từ từ quay đầu sang trái",
   "Từ từ quay đầu sang phải",
   "Chớp mắt và giữ yên",
 ];
-const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
+type PrepareCapture = (
+  onProgress: (p: CaptureProgress) => void,
+  onError: (e: Error) => void,
+  signal: AbortSignal,
+) => Promise<RealtimeCapture>;
 
 export function FaceCapture({
   onComplete,
+  prepareCapture,
 }: {
-  onComplete: (file: File) => void;
+  onComplete: (file: File, capture?: CaptureIdentity) => void;
+  prepareCapture?: PrepareCapture;
 }) {
   const video = useRef<HTMLVideoElement>(null);
+  const preview = useRef<HTMLDivElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
+  const session = useRef<RealtimeCapture | null>(null);
+  const controller = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const mounted = useRef(true);
   const opening = useRef(false);
+  const failed = useRef(false);
+  const delivered = useRef(false);
+  const recordingNow = useRef(false);
+  const liveProgressSeen = useRef(false);
   const [active, setActive] = useState(false);
-  const [isOpening, setIsOpening] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [progress, setProgress] = useState<CaptureProgress | null>(null);
   const [error, setError] = useState("");
+
+  function fitGuide() {
+    const element = preview.current,
+      camera = video.current;
+    if (!element || !camera?.videoWidth || !camera.videoHeight) return;
+    const scale = Math.min(
+      element.clientWidth / camera.videoWidth,
+      element.clientHeight / camera.videoHeight,
+    );
+    const width = Math.min(
+      camera.videoWidth * scale * 0.52,
+      camera.videoHeight * scale * 0.5,
+    );
+    element.style.setProperty("--guide-width", `${width}px`);
+  }
+
+  function stopCamera() {
+    recordingNow.current = false;
+    if (timer.current) clearInterval(timer.current);
+    stream.current?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
+    stream.current = null;
+  }
+  function fail(reason: Error) {
+    if (failed.current || !mounted.current) return;
+    failed.current = true;
+    const capture = recorder.current;
+    if (capture && capture.state !== "inactive") {
+      capture.onstop = null;
+      capture.stop();
+    }
+    stopCamera();
+    session.current?.dispose();
+    controller.current?.abort();
+    setRecording(false);
+    setActive(false);
+    setPreparing(false);
+    setFinishing(false);
+    setProgress(null);
+    setError(reason.message);
+  }
   useEffect(() => {
     mounted.current = true;
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(fitGuide)
+        : null;
+    if (preview.current) observer?.observe(preview.current);
+    window.addEventListener("resize", fitGuide);
     return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", fitGuide);
       mounted.current = false;
-      if (timer.current) clearInterval(timer.current);
+      session.current?.dispose(!delivered.current);
+      controller.current?.abort();
       if (recorder.current) {
         recorder.current.onstop = null;
         recorder.current.ondataavailable = null;
+        recorder.current.onerror = null;
         if (recorder.current.state !== "inactive") recorder.current.stop();
       }
-      stream.current?.getTracks().forEach((track) => track.stop());
+      stopCamera();
     };
   }, []);
+
   async function openCamera() {
     if (opening.current) return;
     opening.current = true;
-    setIsOpening(true);
+    failed.current = false;
+    delivered.current = false;
+    liveProgressSeen.current = false;
+    setPreparing(true);
     setError("");
+    setElapsed(0);
+    setProgress(null);
+    const abort = new AbortController();
+    controller.current = abort;
     try {
       if (
         !navigator.mediaDevices?.getUserMedia ||
         typeof MediaRecorder === "undefined"
       )
-        throw new Error("unsupported");
+        throw new Error(
+          "Thiết bị chưa hỗ trợ quay video. Vui lòng kiểm tra quyền camera.",
+        );
       const media = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "user",
-          width: { ideal: 640 },
-          height: { ideal: 480 },
+          width: { ideal: 480 },
+          height: { ideal: 640 },
+          frameRate: { ideal: 30, max: 30 },
         },
         audio: false,
       });
-      if (!mounted.current) {
-        media.getTracks().forEach((track) => track.stop());
+      if (!mounted.current || abort.signal.aborted) {
+        media.getTracks().forEach((t) => t.stop());
         return;
       }
       stream.current = media;
       if (video.current) video.current.srcObject = media;
+      media.getVideoTracks()[0].onended = () =>
+        fail(new Error("Camera đã ngắt kết nối. Vui lòng mở lại camera."));
       setActive(true);
-      media.getVideoTracks()[0].onended = () => {
-        if (!mounted.current) return;
-        if (timer.current) clearInterval(timer.current);
-        if (recorder.current && recorder.current.state !== "inactive") {
-          recorder.current.onstop = null;
-          recorder.current.stop();
-        }
-        setRecording(false);
-        setActive(false);
-        toast.error("Camera đã ngắt kết nối. Vui lòng mở lại camera.");
-      };
-    } catch {
-      if (mounted.current)
-        toast.error(
-          "Không thể mở hoặc ghi hình camera. Kiểm tra quyền camera và sử dụng WebView/trình duyệt hỗ trợ ghi video.",
-        );
+      if (!prepareCapture)
+        throw new Error("Dịch vụ xác thực trực tiếp chưa được cấu hình.");
+      const realtime = await prepareCapture(
+        (value) => {
+          if (
+            !mounted.current ||
+            failed.current ||
+            abort.signal.aborted ||
+            controller.current !== abort
+          )
+            return;
+          if (recordingNow.current) liveProgressSeen.current = true;
+          setProgress(value);
+        },
+        fail,
+        abort.signal,
+      );
+      if (!mounted.current || abort.signal.aborted || failed.current) {
+        realtime.dispose();
+        return;
+      }
+      session.current = realtime;
+    } catch (cause) {
+      fail(
+        cause instanceof Error
+          ? cause
+          : new Error("Không thể mở camera xác thực."),
+      );
     } finally {
       opening.current = false;
-      if (mounted.current) setIsOpening(false);
+      if (mounted.current) setPreparing(false);
     }
   }
-  function record() {
-    if (!stream.current || recorder.current?.state === "recording") return;
-    const mimeType = ["video/webm;codecs=vp8", "video/webm", "video/mp4"].find(
-      (type) => MediaRecorder.isTypeSupported(type),
+
+  async function record() {
+    const media = stream.current,
+      realtime = session.current;
+    if (!media || !realtime || preparing || recording || finishing) return;
+    const mimeType = realtime.mimeTypes.find((type) =>
+      MediaRecorder.isTypeSupported(type),
     );
     if (!mimeType) {
-      toast.error("Thiết bị chưa hỗ trợ định dạng ghi video phù hợp.");
+      fail(
+        new Error(
+          "Thiết bị chưa hỗ trợ định dạng video realtime. Vui lòng dùng thiết bị khác.",
+        ),
+      );
       return;
     }
+    setPreparing(true);
     try {
-      const capture = new MediaRecorder(stream.current, {
+      await realtime.start(mimeType);
+      if (!mounted.current || failed.current) return;
+      const capture = new MediaRecorder(media, {
         mimeType,
         videoBitsPerSecond: 1200000,
       });
       recorder.current = capture;
       const chunks: Blob[] = [];
       let size = 0;
-      let failed = false;
       capture.ondataavailable = (event) => {
-        if (event.data.size) {
-          chunks.push(event.data);
-          size += event.data.size;
-        }
-        if (size > MAX_VIDEO_BYTES && capture.state !== "inactive") {
-          failed = true;
-          capture.stop();
-        }
-      };
-      capture.onerror = () => {
-        failed = true;
-        if (timer.current) clearInterval(timer.current);
-        if (capture.state !== "inactive") capture.stop();
-        if (mounted.current) {
-          setRecording(false);
-          toast.error("Ghi hình thất bại. Vui lòng quay lại.");
-        }
-      };
-      capture.onstop = () => {
-        if (timer.current) clearInterval(timer.current);
-        if (!mounted.current) return;
-        setRecording(false);
-        if (failed || !size || size > MAX_VIDEO_BYTES) {
-          setError(
-            "Không thể dùng video này. Vui lòng quay lại video dưới 25 MB.",
-          );
+        if (!event.data.size || failed.current) return;
+        size += event.data.size;
+        if (size > 25 * 1024 * 1024) {
+          fail(new Error("Video vượt quá 25 MB. Vui lòng quay lại."));
           return;
         }
-        const type = mimeType.split(";")[0];
-        onComplete(
-          new File(
-            chunks,
-            `live-${Date.now()}.${type === "video/mp4" ? "mp4" : "webm"}`,
-            { type },
-          ),
-        );
+        chunks.push(event.data);
+        realtime.send(event.data);
       };
-      capture.start(1000);
-      setElapsed(0);
+      capture.onerror = () =>
+        fail(new Error("Ghi hình thất bại. Vui lòng quay lại."));
+      capture.onstop = async () => {
+        stopCamera();
+        if (!mounted.current || failed.current) return;
+        setRecording(false);
+        setActive(false);
+        setFinishing(true);
+        try {
+          if (!size || !liveProgressSeen.current)
+            throw new Error(
+              "Chưa nhận được phản hồi trực tiếp khi quay. Vui lòng thử lại.",
+            );
+          await realtime.finish();
+          if (!mounted.current || failed.current) return;
+          const type = mimeType.split(";")[0];
+          const file = new File(chunks, `live-${Date.now()}.webm`, { type });
+          delivered.current = true;
+          realtime.dispose(false);
+          setFinishing(false);
+          onComplete(file, {
+            attemptId: realtime.attemptId,
+            idempotencyKey: realtime.idempotencyKey,
+          });
+        } catch (cause) {
+          fail(
+            cause instanceof Error ? cause : new Error("Xử lý video thất bại."),
+          );
+        }
+      };
+      capture.start(250);
+      recordingNow.current = true;
       setRecording(true);
+      setElapsed(0);
       setError("");
-      const started = Date.now();
+      const started = performance.now();
       timer.current = setInterval(() => {
-        const seconds = Math.floor((Date.now() - started) / 1000);
+        const seconds = Math.floor((performance.now() - started) / 1000);
         setElapsed(seconds);
-        if (seconds >= 12) {
+        if (document.hidden) {
+          fail(new Error("Ứng dụng đã xuống nền. Vui lòng quay lại video."));
+          return;
+        }
+        if (seconds >= 12 && capture.state !== "inactive") {
+          recordingNow.current = false;
           if (timer.current) clearInterval(timer.current);
-          if (capture.state !== "inactive") capture.stop();
+          capture.stop();
         }
       }, 250);
-    } catch {
-      toast.error("Không thể ghi hình. Vui lòng kiểm tra camera và thử lại.");
+    } catch (cause) {
+      fail(cause instanceof Error ? cause : new Error("Không thể ghi hình."));
+    } finally {
+      if (mounted.current) setPreparing(false);
     }
   }
-  const challenge = Math.min(3, Math.floor(elapsed / 3));
+  const step = progress?.challengeStep ?? 0;
+  const feedback =
+    progress?.faceState === "multiple"
+      ? "Chỉ một người trong khung hình"
+      : progress?.faceState === "not_found"
+        ? "Đưa khuôn mặt vào khung hình"
+        : progress?.qualityState === "low"
+          ? "Giữ mặt rõ và đủ sáng"
+          : progress?.matchingState === "candidate_match"
+            ? "Đã thu đủ bằng chứng, tiếp tục giữ camera"
+            : progress?.challengePassed
+              ? "Giữ yên để hoàn tất đối chiếu"
+              : instructions[step];
   return (
-    <div className="form-card">
-      <div className="camera-frame">
+    <div className="face-capture">
+      <div className="camera-frame" ref={preview}>
         <video
           ref={video}
           autoPlay
           muted
           playsInline
           aria-label="Camera xác thực khuôn mặt"
+          onLoadedMetadata={fitGuide}
         />
-        <div className="face-oval">
-          {!active && <FontAwesomeIcon icon={faFingerprint} />}
-        </div>
+        <div className="face-oval" aria-hidden="true" />
         <span className="camera-tag">
           {recording
-            ? `ĐANG GHI HÌNH · ${Math.min(elapsed, 12)}/12 GIÂY`
-            : "CAMERA TRỰC TIẾP"}
+            ? `ĐANG QUAY · ${elapsed}/12 GIÂY`
+            : preparing
+              ? "ĐANG KẾT NỐI"
+              : finishing
+                ? "ĐANG ĐỐI CHIẾU"
+                : "CAMERA TRỰC TIẾP"}
         </span>
-      </div>
-      <p className="challenge" aria-live="polite">
-        {instructions[challenge]}
-      </p>
-      <div className="challenge-dots">
-        {instructions.map((text, i) => (
-          <span key={text} className={challenge >= i ? "done" : ""} />
-        ))}
-      </div>
-      {error && (
-        <p role="alert" className="error-text">
-          {error}
+        <span className="capture-stage">
+          {progress?.challengePassed ? "Đủ động tác" : `Động tác ${step + 1}/4`}
+        </span>
+        <p className="camera-instruction" aria-live="polite">
+          {finishing ? "Đang hoàn tất video…" : feedback}
         </p>
-      )}
-      {!active ? (
-        <Button className="w-full" disabled={isOpening} onClick={openCamera}>
-          <FontAwesomeIcon icon={faCamera} />
-          {isOpening ? "Đang mở camera…" : "Mở camera"}
+      </div>
+      <div className="capture-controls">
+        {error && (
+          <p role="alert" className="error-text">
+            {error}
+          </p>
+        )}
+        <Button
+          className="w-full"
+          disabled={preparing || recording || finishing}
+          onClick={active ? record : openCamera}
+        >
+          {preparing
+            ? "Đang chuẩn bị…"
+            : recording
+              ? "Làm theo hướng dẫn…"
+              : finishing
+                ? "Đang hoàn tất…"
+                : active
+                  ? "Bắt đầu quay và xác thực"
+                  : "Mở camera"}
         </Button>
-      ) : (
-        <Button className="w-full" disabled={recording} onClick={record}>
-          {recording ? "Làm theo hướng dẫn…" : "Bắt đầu quay và xác thực"}
-        </Button>
-      )}
-      <p className="field-hint centered" style={{ marginTop: 16 }}>
-        Video 12 giây sẽ được gửi để xác thực khi quay xong.
-      </p>
+      </div>
     </div>
   );
 }

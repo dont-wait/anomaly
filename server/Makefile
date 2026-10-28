@@ -51,7 +51,6 @@ migrate-up-one:
 	$(MIGRATE_CMD) up-by-one
 
 # Pass NAME through the environment so the shell never re-parses it.
-migrate-new: export MIGRATION_NAME := $(NAME)
 migrate-new:
 	$(if $(strip $(MIGRATION_NAME)),,$(error Usage: make migrate-new NAME=<name>))
 	$(MIGRATE_CMD) new "$$MIGRATION_NAME"
@@ -81,7 +80,7 @@ start-relay:
 	go run ./cmd/relay
 
 start-api:
-	go run ./cmd/api/main.go
+	go run ./cmd/api
 
 seed:
 	go run ./cmd/seed

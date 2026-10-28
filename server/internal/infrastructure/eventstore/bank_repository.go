@@ -16,6 +16,7 @@ import (
 	"time"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+	"github.com/dont-wait/anomaly/internal/domain/risk"
 	savingsdomain "github.com/dont-wait/anomaly/internal/domain/savings"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
@@ -530,7 +531,7 @@ func (r *BankRepository) AccountObjectID(ctx context.Context, id string) (bson.O
 func eventFor(tx mongorepo.TransferDocument, eventType string, sequence int64, at time.Time) journal.Event {
 	return journal.Event{
 		ID: journal.EventID(tx.ID, eventType), TransactionID: tx.ID, Type: eventType, SchemaVersion: journal.SchemaVersion, Sequence: sequence, OccurredAt: at,
-		Payload: journal.Payload{SourceAccountID: tx.Source.AccountID.Hex(), DestinationAccountID: tx.Destination.AccountID.Hex(), Amount: tx.Amount, Fee: tx.Fee, Currency: tx.Currency, Channel: tx.Channel, Status: tx.Status},
+		Payload: journal.Payload{SourceAccountID: tx.Source.AccountID.Hex(), DestinationAccountID: tx.Destination.AccountID.Hex(), Amount: tx.Amount, Fee: tx.Fee, Currency: tx.Currency, Channel: tx.Channel, Status: tx.Status, FailureReason: tx.FailureReason, RiskAssessment: tx.RiskAssessment},
 	}
 }
 
@@ -618,12 +619,16 @@ func (s *bankState) transferByIdempotencyKey(key, owner string) (mongorepo.Trans
 }
 
 func (r *BankRepository) ConfirmTransfer(ctx context.Context, id, owner string) (mongorepo.TransferDocument, error) {
+	return r.ConfirmTransferWithRisk(ctx, id, owner, nil)
+}
+
+func (r *BankRepository) ConfirmTransferWithRisk(ctx context.Context, id, owner string, assessment *risk.Assessment) (mongorepo.TransferDocument, error) {
 	result, err := r.mutate(ctx, func(s *bankState) (*journal.Record, any, error) {
 		state, ok := s.Transfers[id]
-		tx := state.Tx
-		if !ok || s.Accounts[owner] == nil || tx.Source.AccountID != financialID(owner) {
+		if !ok || s.Accounts[owner] == nil || state.Tx.Source.AccountID != financialID(owner) {
 			return nil, nil, mongorepo.ErrTransactionAccountNotFound
 		}
+		tx := state.Tx
 		if tx.Status == "success" {
 			return nil, tx, nil
 		}
@@ -643,10 +648,43 @@ func (r *BankRepository) ConfirmTransfer(ctx context.Context, id, owner string) 
 		newSource, newDestination := source-tx.Amount-tx.Fee, destination+tx.Amount
 		tx.Status, tx.PostedAt = "success", time.Now().UTC()
 		tx.Authentication.Method, tx.Authentication.Verified = "email_otp", true
+		tx.FailureReason = ""
+		tx.RiskAssessment = assessment
 		e := eventFor(tx, journal.Completed, state.Event.Sequence+1, tx.PostedAt)
 		e.Payload.SourceBalanceBefore, e.Payload.SourceBalanceAfter = &source, &newSource
 		e.Payload.DestinationBalanceBefore, e.Payload.DestinationBalanceAfter = &destination, &newDestination
 		record, err := transferRecord(tx, e)
+		return record, tx, err
+	})
+	if err != nil {
+		return mongorepo.TransferDocument{}, err
+	}
+	return result.(mongorepo.TransferDocument), nil
+}
+
+func (r *BankRepository) FailTransfer(ctx context.Context, id, owner string, assessment risk.Assessment) (mongorepo.TransferDocument, error) {
+	result, err := r.mutate(ctx, func(s *bankState) (*journal.Record, any, error) {
+		state, ok := s.Transfers[id]
+		if !ok || s.Accounts[owner] == nil || state.Tx.Source.AccountID != financialID(owner) {
+			return nil, nil, mongorepo.ErrTransactionAccountNotFound
+		}
+		if state.Tx.Status == "failed" {
+			return nil, state.Tx, nil
+		}
+		if state.Tx.Status == "success" {
+			return nil, nil, mongorepo.ErrTransactionConflict
+		}
+		if state.Tx.Status != "awaiting_otp" {
+			return nil, nil, mongorepo.ErrTransactionConflict
+		}
+		if err := assessment.Validate(); err != nil {
+			return nil, nil, err
+		}
+		tx := state.Tx
+		tx.Status = "failed"
+		tx.FailureReason = "anomalous_transfer"
+		tx.RiskAssessment = &assessment
+		record, err := transferRecord(tx, eventFor(tx, journal.Failed, state.Event.Sequence+1, time.Now().UTC()))
 		return record, tx, err
 	})
 	if err != nil {
@@ -698,7 +736,7 @@ func (r *BankRepository) GetFeed(ctx context.Context, accountID bson.ObjectID, i
 	}
 	state, ok := s.Transfers[id]
 	tx := state.Tx
-	if !ok || (tx.Source.AccountID != accountID && tx.Destination.AccountID != accountID) || (tx.Status != "success" && tx.Status != "cancelled") || (tx.Status == "cancelled" && tx.Source.AccountID != accountID) {
+	if !ok || (tx.Source.AccountID != accountID && tx.Destination.AccountID != accountID) || (tx.Status != "success" && tx.Status != "failed" && tx.Status != "cancelled") || ((tx.Status == "cancelled" || tx.Status == "failed") && tx.Source.AccountID != accountID) {
 		return mongorepo.FeedDocument{}, mongorepo.ErrTransactionAccountNotFound
 	}
 	feed := mongorepo.FeedDocument{AccountID: accountID, TransactionID: id, Direction: "OUT", Type: tx.Type, Amount: tx.Amount, Fee: tx.Fee, Status: tx.Status, Note: tx.Note, Reference: tx.Reference, OccurredAt: state.Event.OccurredAt}

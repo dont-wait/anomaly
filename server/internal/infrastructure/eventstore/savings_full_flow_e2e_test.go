@@ -17,6 +17,7 @@ import (
 	savingsqueries "github.com/dont-wait/anomaly/internal/application/savings/queries"
 	"github.com/dont-wait/anomaly/internal/composition"
 	"github.com/dont-wait/anomaly/internal/domain"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	"github.com/dont-wait/anomaly/internal/domain/savings"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
@@ -130,6 +131,10 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 			AccountID: a.Id, IdCardFrontUrl: "kyc/" + a.Id + "/id-card-front/test",
 			IdCardBackUrl: "kyc/" + a.Id + "/id-card-back/test",
 			LiveVideoUrl:  "kyc/" + a.Id + "/live-video/test",
+			Evidence: &accountdomain.KYCEvidence{
+				MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true,
+			},
+			MatchScore: 0.9, LivenessScore: 1,
 		}); err != nil {
 			t.Fatal(err)
 		}

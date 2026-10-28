@@ -18,6 +18,8 @@ import (
 
 	apptransaction "github.com/dont-wait/anomaly/internal/application/transaction"
 	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
+	"github.com/dont-wait/anomaly/internal/domain/risk"
+	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/infrastructure/otp"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
@@ -33,6 +35,8 @@ type Repository interface {
 	CreatePending(context.Context, mongorepo.TransferDocument) (mongorepo.TransferDocument, bool, error)
 	FindTransfer(context.Context, string, string) (mongorepo.TransferDocument, error)
 	ConfirmTransfer(context.Context, string, string) (mongorepo.TransferDocument, error)
+	ConfirmTransferWithRisk(context.Context, string, string, *risk.Assessment) (mongorepo.TransferDocument, error)
+	FailTransfer(context.Context, string, string, risk.Assessment) (mongorepo.TransferDocument, error)
 	CancelPending(context.Context, string) error
 	SetOTPMetadata(context.Context, string, time.Time, time.Time) error
 	GetFeed(context.Context, bson.ObjectID, string) (mongorepo.FeedDocument, error)
@@ -54,6 +58,11 @@ type ReceiptOutbox interface {
 	Enqueue(context.Context, string, maildomain.MailMessage) error
 }
 
+type RiskDecisionStore interface {
+	Find(context.Context, string) (risk.Decision, bool, error)
+	Finalize(context.Context, string) error
+}
+
 type Handler struct {
 	logger   zerolog.Logger
 	repo     Repository
@@ -61,6 +70,11 @@ type Handler struct {
 	receipt  ReceiptSender
 	outbox   ReceiptOutbox
 	contacts ContactRepository
+	risk     RiskDecisionStore
+}
+
+func (h *Handler) SetRiskDecisionStore(store RiskDecisionStore) {
+	h.risk = store
 }
 
 func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOTPStore, receiptSender ReceiptSender, contacts ContactRepository, receiptOutbox ...ReceiptOutbox) *Handler {
@@ -368,12 +382,9 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		h.writeRepoError(w, err)
 		return
 	}
-	if tx.Status == "success" {
-		// Re-enqueue on an idempotent confirm retry. If the original request
-		// completed the transfer but could not persist the receipt, a later
-		// retry can recover it without debiting the account again. Enqueue is
-		// keyed by transfer ID, so already queued/sent receipts are unchanged.
-		if h.outbox != nil {
+	if tx.Status == "success" || tx.Status == "failed" || tx.Status == "cancelled" {
+		h.finalizeRiskDecision(r.Context(), id)
+		if tx.Status == "success" && h.outbox != nil {
 			h.sendTransferReceipt(r.Context(), owner, tx)
 		}
 		feed, err := h.repo.GetFeed(r.Context(), owner.ID, tx.ID)
@@ -388,6 +399,43 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
 		return
+	}
+
+	var assessment *risk.Assessment
+	if h.risk != nil {
+		decision, found, err := h.risk.Find(r.Context(), id)
+		if err != nil {
+			h.writeRepoError(w, err)
+			return
+		}
+		if !found {
+			httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "RISK_CHECK_PENDING", "transferId": id})
+			return
+		}
+		if decision.SourceEventID != journal.EventID(id, journal.Created) {
+			httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "RISK_CHECK_PENDING", "transferId": id})
+			return
+		}
+		if decision.Decision == risk.DecisionPending {
+			httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "RISK_CHECK_PENDING", "transferId": id})
+			return
+		}
+		assessment = &decision.Assessment
+		if decision.Decision == risk.DecisionBlock {
+			failed, err := h.repo.FailTransfer(r.Context(), id, claims.UserID, decision.Assessment)
+			if err != nil {
+				h.writeRepoError(w, err)
+				return
+			}
+			h.finalizeRiskDecision(r.Context(), id)
+			feed, err := h.repo.GetFeed(r.Context(), owner.ID, failed.ID)
+			if err != nil {
+				h.writeRepoError(w, err)
+				return
+			}
+			httpx.WriteJSON(w, http.StatusOK, transactionResponse(feed))
+			return
+		}
 	}
 	attemptsLeft, err := h.otp.Verify(r.Context(), id, req.OTP)
 	if errors.Is(err, otp.ErrTransferOTPInvalid) {
@@ -414,7 +462,12 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		h.writeRepoError(w, err)
 		return
 	}
-	confirmed, err := h.repo.ConfirmTransfer(r.Context(), id, claims.UserID)
+	var confirmed mongorepo.TransferDocument
+	if assessment != nil {
+		confirmed, err = h.repo.ConfirmTransferWithRisk(r.Context(), id, claims.UserID, assessment)
+	} else {
+		confirmed, err = h.repo.ConfirmTransfer(r.Context(), id, claims.UserID)
+	}
 	if errors.Is(err, mongorepo.ErrTransactionInsufficient) {
 		writeAPIError(w, http.StatusBadRequest, "INSUFFICIENT_FUNDS", "insufficient funds")
 		return
@@ -435,6 +488,7 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		h.writeRepoError(w, err)
 		return
 	}
+	h.finalizeRiskDecision(r.Context(), id)
 	_ = h.otp.Consume(r.Context(), id)
 	h.sendTransferReceipt(r.Context(), owner, confirmed)
 	feed, err := h.repo.GetFeed(r.Context(), owner.ID, confirmed.ID)
@@ -443,6 +497,17 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, transactionResponse(feed))
+}
+
+func (h *Handler) finalizeRiskDecision(ctx context.Context, id string) {
+	if h.risk == nil {
+		return
+	}
+	if err := h.risk.Finalize(ctx, id); err != nil {
+		// The canonical outcome has committed. HTTP retries and the durable
+		// banking projector both retry this cleanup without reapplying money.
+		h.logger.Warn().Err(err).Str("transferId", id).Msg("finalize risk decision failed")
+	}
 }
 
 func (h *Handler) sendTransferReceipt(ctx context.Context, owner mongorepo.TransferAccount, tx mongorepo.TransferDocument) {
@@ -845,6 +910,9 @@ func transactionResponse(row mongorepo.FeedDocument) map[string]any {
 		counterparty["bank"] = "AnomalyBank"
 	}
 	result := map[string]any{"id": row.TransactionID, "reference": row.Reference, "direction": direction, "status": status, "kind": row.Type, "amount": row.Amount, "fee": row.Fee, "note": row.Note, "counterparty": counterparty, "createdAt": row.OccurredAt}
+	if row.FailureReason != "" {
+		result["failure_reason"] = row.FailureReason
+	}
 	if row.BalanceAfter != nil {
 		result["balanceAfter"] = *row.BalanceAfter
 	}

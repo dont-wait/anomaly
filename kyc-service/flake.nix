@@ -21,7 +21,18 @@
             pkgs.python311Packages.pip
             pkgs.python311Packages.virtualenv
             pkgs.ruff
+            pkgs.ffmpeg-headless
             python
+            python.pkgs.pytest
+          ];
+
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+            pkgs.stdenv.cc.cc.lib
+            pkgs.zlib
+            pkgs.glib
+            pkgs.libglvnd
+            pkgs.portaudio
+            pkgs.libxcb
           ];
 
           shellHook = ''

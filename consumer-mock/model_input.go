@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const completedEventType = "TransferCompleted"
+const modelEventType = "TransferCreated"
 
 type bankEventEnvelope struct {
 	EventType     string          `json:"event_type"`
@@ -73,14 +73,14 @@ func selectModelInput(data []byte) (modelInput, bool, error) {
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return modelInput{}, false, nil
 	}
-	if envelope.EventType != completedEventType {
+	if envelope.EventType != modelEventType {
 		return modelInput{}, false, nil
 	}
 	if envelope.ModelFeatures == nil {
-		return modelInput{}, true, fmt.Errorf("completed event model features are missing")
+		return modelInput{}, true, fmt.Errorf("created event model features are missing")
 	}
 	if len(envelope.Payload) == 0 {
-		return modelInput{}, true, fmt.Errorf("completed event payload is missing")
+		return modelInput{}, true, fmt.Errorf("created event payload is missing")
 	}
 
 	var record bankRecord
@@ -88,7 +88,7 @@ func selectModelInput(data []byte) (modelInput, bool, error) {
 		return modelInput{}, true, fmt.Errorf("decode banking record: %w", err)
 	}
 	if len(record.Transfer) == 0 {
-		return modelInput{}, true, fmt.Errorf("completed transfer snapshot is missing")
+		return modelInput{}, true, fmt.Errorf("created transfer snapshot is missing")
 	}
 
 	var transfer transferSnapshot

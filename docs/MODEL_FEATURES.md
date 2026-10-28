@@ -108,16 +108,16 @@ Producer kiểm tra sự tồn tại tại thời điểm `occurred_at` trước
 
 ## Kafka event contract
 
-Giữ cấu trúc payload banking cần thiết và thêm `model_features` ở cấp envelope.
-Payload trước khi publish được redact các profile/KYC/contact/media/credential
-fields; account number, account ID và device ID được pseudonymize bằng
-`KAFKA_PAYLOAD_REDACTION_KEY` (hoặc SHA-256 khi chạy local không cấu hình key).
+`payload` giữ nguyên toàn bộ field và giá trị trong event banking từ EventStoreDB,
+bao gồm số tài khoản, account ID và device ID. Relay không hash, xóa field hay
+thay đổi giá trị; `model_features` được thêm riêng ở cấp envelope.
+Payload có thể chứa dữ liệu nhạy cảm: giới hạn quyền truy cập Kafka/model.
 Consumer mock không log raw payload.
 
 ```json
 {
   "event_id": "event-123",
-  "event_type": "TransferCompleted",
+  "event_type": "TransferCreated",
   "stream": "banking",
   "stream_revision": 123,
   "occurred_at": "2026-10-19T10:30:00Z",
@@ -136,23 +136,48 @@ Consumer mock không log raw payload.
 }
 ```
 
-`model_features` chỉ cần có giá trị cho `TransferCompleted`. Các event khác có
-thể bỏ field hoặc để `null`.
+`model_features` được enrich cho `TransferCreated`, trước khi giao dịch được OTP
+confirm. `TransferCompleted` không được publish lại cho model; nó chỉ dùng để
+commit rolling feature state sau khi debit/credit thành công.
 
 ## Quy trình xử lý
 
 ### Event mới
 
-1. Relay nhận event từ persistent subscription của EventStoreDB.
+1. Relay nhận `TransferCreated` từ persistent subscription của EventStoreDB.
 2. Relay decode transfer và xác định source account, receiver, device.
 3. Đọc `model_feature_states` và kiểm tra receiver/device history.
 4. Tính sáu feature từ state hiện tại.
 5. Tạo envelope có `model_features`.
 6. Publish envelope vào `anomaly.bank.events.v1`.
-7. Sau khi Kafka xác nhận, cập nhật rolling state và receiver/device history.
-8. ACK event trong EventStoreDB.
+7. ACK `TransferCreated` sau khi Kafka xác nhận.
+8. Model publish risk decision vào `anomaly.bank.risk-decisions.v1`.
+9. API server lưu decision tạm thời; confirm dùng decision để trả `PENDING`,
+   `ALLOW` hoặc `BLOCK`.
+10. `ALLOW` tạo `TransferCompleted`; `BLOCK` tạo `TransferFailed`.
+11. Chỉ sau `TransferCompleted`, relay cập nhật rolling state và receiver/device
+    history.
 
-### Event không phải `TransferCompleted`
+### Risk decision retention và recovery
+
+- API chỉ sử dụng decision chưa finalized và `expires_at > now`; không chờ MongoDB
+  TTL xóa record mới coi là hết hạn.
+- Response được lưu lần đầu theo `transfer_id`. Chỉ cho phép `PENDING` tiến tới
+  `ALLOW`/`BLOCK` với cùng `source_event_id`; terminal decision và finalized record
+  không bị ghi đè hoặc gia hạn bởi redelivery. Terminal response đầu tiên được giữ
+  nguyên, response mâu thuẫn đến sau không thay đổi kết quả đã nhận.
+- Finalize là idempotent và giữ audit thêm 24 giờ từ lần finalize đầu tiên.
+  Confirm retry thử cleanup lại; banking projector cũng finalize khi project event
+  terminal, cùng MongoDB transaction với checkpoint, để khôi phục khi API crash.
+- Response JSON/validation/correlation lỗi được park trong MongoDB collection
+  `risk_decision_rejections` (TTL 7 ngày), định danh bằng Kafka topic/partition/offset.
+  Chỉ commit Kafka offset sau khi park thành công. Lỗi storage vẫn được retry;
+  rejection chỉ giữ sample giới hạn và SHA-256 digest, raw payload không được log.
+  Risk response phải có HMAC hợp lệ bằng `KAFKA_RISK_DECISION_SIGNING_KEY`.
+  Collection này phục vụ điều tra/replay thủ công,
+  không tự động replay response lỗi.
+
+### Event không phải `TransferCreated` hoặc `TransferCompleted`
 
 Các event khác không được publish vào Kafka. Relay chỉ cập nhật progress và ACK
 EventStoreDB để tiếp tục xử lý stream.
