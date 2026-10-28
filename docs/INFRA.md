@@ -178,8 +178,9 @@ docker stack deploy -c ml-stack.yml ml
 
 The ML image must also contain the compatible `GATv2/src` package at
 `/opt/GATv2/src`; provide that source in the image build context or publish a
-prebuilt image as `ML_SERVICE_IMAGE`. Set `ML_SERVICE_NAME` to the actual Swarm
-service name (for example `ml_ml-service`) if the stack name is not `anomaly`.
+prebuilt image as `ML_SERVICE_IMAGE`. The default `ML_SERVICE_NAME` is
+`ml_ml-service` matching stack name `ml`; override `ML_SERVICE_NAME` if deploying
+under a different stack name.
 
 Scaling is driven by Kafka consumer lag. Defaults are one to four replicas,
 scale up above 1,000 messages, scale down below 100, and a two-minute
@@ -192,8 +193,8 @@ Swarm and load-test commands are available from `deploy/swarm/`:
 ```bash
 make -C deploy/swarm services
 make -C deploy/swarm run-autoscaler
-make -C deploy/swarm scale-up SCALE_TO=3
-make -C deploy/swarm scale-down SCALE_TO=1
+make -C deploy/swarm scale-up SCALE_UP_TO=3
+make -C deploy/swarm scale-down SCALE_DOWN_TO=1
 make -C deploy/swarm test-request TARGET_URL=http://localhost:19100/metrics
 ```
 

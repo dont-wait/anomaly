@@ -41,7 +41,9 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.55.1
-    configs: [prometheus-config]
+    configs:
+      - source: prometheus-config
+        target: /etc/prometheus/prometheus.yml
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=7d
@@ -51,7 +53,7 @@ services:
     image: ${ML_AUTOSCALER_IMAGE:-anomaly-ml-autoscaler:swarm}
     environment:
       PROMETHEUS_URL: http://prometheus:9090
-      ML_SERVICE_NAME: ${ML_SERVICE_NAME:-anomaly_ml-service}
+      ML_SERVICE_NAME: ${ML_SERVICE_NAME:-ml_ml-service}
       KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-ml-pipeline}
       KAFKA_INPUT_TOPIC: ${KAFKA_INPUT_TOPIC:-anomaly.bank.events.v1}
       ML_MIN_REPLICAS: ${ML_MIN_REPLICAS:-1}

@@ -4,7 +4,7 @@ global:
 scrape_configs:
   - job_name: ml-service
     dns_sd_configs:
-      - names: ["tasks.ml-service"]
+      - names: ["tasks.ml_ml-service", "tasks.ml-service"]
         type: A
         port: 9100
 

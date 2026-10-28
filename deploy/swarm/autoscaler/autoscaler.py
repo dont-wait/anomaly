@@ -8,7 +8,7 @@ import docker
 
 
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
-SERVICE_NAME = os.environ["ML_SERVICE_NAME"]
+SERVICE_NAME = os.getenv("ML_SERVICE_NAME", "ml_ml-service")
 GROUP = os.getenv("KAFKA_CONSUMER_GROUP", "ml-pipeline")
 TOPIC = os.getenv("KAFKA_INPUT_TOPIC", "anomaly.bank.events.v1")
 MIN_REPLICAS = int(os.getenv("ML_MIN_REPLICAS", "1"))
@@ -54,9 +54,12 @@ def main():
             elif current_lag < SCALE_DOWN_LAG:
                 desired = max(MIN_REPLICAS, current - 1)
             if desired != current:
-                service.scale(desired)
-                last_scale = time.time()
-                print(f"scaled {SERVICE_NAME}: lag={current_lag:.0f} replicas={current}->{desired}", flush=True)
+                service.reload()
+                current = int(service.attrs["Spec"]["Mode"]["Replicated"]["Replicas"])
+                if desired != current:
+                    service.scale(desired)
+                    last_scale = time.time()
+                    print(f"scaled {SERVICE_NAME}: lag={current_lag:.0f} replicas={current}->{desired}", flush=True)
         except Exception as error:
             print(f"autoscaler check failed: {error}", flush=True)
         time.sleep(POLL_SECONDS)
