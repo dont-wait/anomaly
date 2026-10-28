@@ -82,8 +82,8 @@ func (h *Handler) SetRiskDecisionStore(store RiskDecisionStore) {
 }
 
 // SetTrustedProxyCIDRs configures the proxy addresses allowed to provide the
-// client IP through X-Real-IP or CF-Connecting-IP. An empty list keeps the
-// handler in direct-connection mode and ignores proxy headers.
+// client IP through X-Real-IP. An empty list keeps the handler in
+// direct-connection mode and ignores proxy headers.
 func (h *Handler) SetTrustedProxyCIDRs(values []string) error {
 	prefixes := make([]netip.Prefix, 0, len(values))
 	for _, value := range values {
@@ -381,10 +381,8 @@ func clientIPFromRequest(r *http.Request, trustedProxyCIDRs []netip.Prefix) stri
 		return address.String()
 	}
 
-	for _, header := range []string{"CF-Connecting-IP", "X-Real-IP"} {
-		if forwarded := parseForwardedIP(r.Header.Get(header)); forwarded.IsValid() {
-			return forwarded.String()
-		}
+	if forwarded := parseForwardedIP(r.Header.Get("X-Real-IP")); forwarded.IsValid() {
+		return forwarded.String()
 	}
 	return address.String()
 }

@@ -30,6 +30,7 @@ real_ip_recursive on;
 
 location / {
     proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header CF-Connecting-IP $remote_addr;
     proxy_pass http://127.0.0.1:8080;
 }
 ```
@@ -39,6 +40,7 @@ they belong in Nginx's `set_real_ip_from` configuration. Do not expose the Go
 port directly to the Internet, because a client that can reach Go directly
 could otherwise send trusted proxy headers.
 
-The API trusts `CF-Connecting-IP` first and `X-Real-IP` as fallback only when
-the TCP peer belongs to `TRUSTED_PROXY_CIDRS`. Requests from other peers ignore
-both headers and use `RemoteAddr`.
+The API trusts only `X-Real-IP` when the TCP peer belongs to
+`TRUSTED_PROXY_CIDRS`. Requests from other peers ignore the header and use
+`RemoteAddr`. Nginx overwrites `CF-Connecting-IP` as well so that the original
+Cloudflare header cannot be forwarded as an untrusted client-supplied value.

@@ -182,8 +182,8 @@ func TestClientIPFromRequestTrustsForwardedHeadersOnlyFromTrustedProxy(t *testin
 	trusted.RemoteAddr = "127.0.0.1:8080"
 	trusted.Header.Set("CF-Connecting-IP", "198.51.100.20")
 	trusted.Header.Set("X-Real-IP", "198.51.100.21")
-	if got := clientIPFromRequest(trusted, trustedProxy); got != "198.51.100.20" {
-		t.Fatalf("trusted proxy IP = %q, want %q", got, "198.51.100.20")
+	if got := clientIPFromRequest(trusted, trustedProxy); got != "198.51.100.21" {
+		t.Fatalf("trusted proxy IP = %q, want %q", got, "198.51.100.21")
 	}
 
 	untrusted := httptest.NewRequest(http.MethodPost, "/api/transfers", nil)
