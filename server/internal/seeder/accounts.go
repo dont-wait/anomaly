@@ -158,7 +158,7 @@ func markSeedAdminVerified(account *accountdomain.UserAccount, seed accountSeed)
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	sessionID := "seed-kyc-" + account.Id
+	sessionID := accountdomain.CanonicalKYCSessionID("seed-kyc-" + account.Id)
 	var session *accountdomain.KYCSession
 	for _, existing := range account.KYCSessions {
 		if existing != nil && existing.Id == sessionID {

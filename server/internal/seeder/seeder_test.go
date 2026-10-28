@@ -2,6 +2,7 @@ package seeder
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -111,6 +112,12 @@ func TestRunCreatesHashedDemoAndCanRepeat(t *testing.T) {
 	}
 	if admin.VerifiedKYCSession() == nil {
 		t.Fatal("admin should have a verified KYC session")
+	}
+	if len(admin.VerifiedKYCSession().Id) != 24 {
+		t.Fatalf("admin KYC session ID = %q, want a Mongo ObjectID", admin.VerifiedKYCSession().Id)
+	}
+	if _, err := hex.DecodeString(admin.VerifiedKYCSession().Id); err != nil {
+		t.Fatalf("admin KYC session ID = %q, want a Mongo ObjectID: %v", admin.VerifiedKYCSession().Id, err)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(adminSeed.Password)); err != nil {
 		t.Fatalf("admin password hash: %v", err)
