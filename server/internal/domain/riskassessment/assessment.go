@@ -70,6 +70,9 @@ func NewAssessment(response ModelResponse, receivedAt time.Time, topic string, p
 	if receivedAt.IsZero() {
 		receivedAt = time.Now().UTC()
 	}
+	// MongoDB DateTime has millisecond precision. Normalize before persisting
+	// and publishing so cursor comparisons use the same value everywhere.
+	receivedAt = receivedAt.UTC().Truncate(time.Millisecond)
 	return Assessment{
 		ID:             id,
 		TransactionID:  response.TransactionID,
@@ -78,7 +81,7 @@ func NewAssessment(response ModelResponse, receivedAt time.Time, topic string, p
 		Threshold:      response.Threshold,
 		ModelVersion:   response.ModelVersion,
 		FeatureVersion: response.FeatureVersion,
-		ReceivedAt:     receivedAt.UTC(),
+		ReceivedAt:     receivedAt,
 		KafkaTopic:     topic,
 		KafkaPartition: partition,
 		KafkaOffset:    offset,

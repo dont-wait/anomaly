@@ -10,7 +10,7 @@ import {
   Tooltip,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
-import type { RiskSeriesPoint } from "../mock/monitorData";
+import type { RiskSeriesPoint, TimeRange } from "../model";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
@@ -85,13 +85,14 @@ function createRiskMarkerPlugin(peakIndex: number): Plugin<"line"> {
 
 interface RiskTrendChartProps {
   series: RiskSeriesPoint[];
+  range?: TimeRange;
 }
 
-export function RiskTrendChart({ series }: RiskTrendChartProps) {
+export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
   const [hoverTooltip, setHoverTooltip] = useState<TooltipState | null>(null);
   const tooltipRef = useRef<TooltipState | null>(null);
   const hasData = series.length > 0;
-  const values = series.map((point) => point.riskScoreAverage);
+  const values = series.map((point) => point.averageRiskScore * 100);
   const peakIndex = hasData ? values.indexOf(Math.max(...values)) : -1;
   const peakPoint = series[peakIndex];
   const labels = series.map((point) => formatTime(point.timestamp));
@@ -154,9 +155,9 @@ export function RiskTrendChart({ series }: RiskTrendChartProps) {
             left: Math.min(86, Math.max(14, (tooltip.caretX / chart.width) * 100)),
             top: Math.max(20, (tooltip.caretY / chart.height) * 100 - 8),
             timestamp: formatTime(point.timestamp),
-            riskScore: point.riskScoreAverage,
-            alertCount: point.alertCount,
-            highRiskCount: point.highRiskCount,
+            riskScore: point.averageRiskScore * 100,
+            alertCount: point.assessmentCount,
+            highRiskCount: point.anomalousCount,
           });
         },
       },
@@ -187,12 +188,12 @@ export function RiskTrendChart({ series }: RiskTrendChartProps) {
     <section className="bg-(--admin-surface-subtle) flex min-h-75 flex-col justify-between rounded-(--admin-radius-md) p-3" data-testid="risk-trend-chart">
       <div className="flex flex-col justify-between gap-2 pb-2 md:flex-row md:items-center">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">Risk Trend Timeline (24h)</h2>
+          <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">Risk Trend Timeline ({range})</h2>
           <span className="font-(family-name:--admin-font-mono) text-[10px] tracking-[0.03em] text-(--admin-text-muted)">ANOMALY INDEX / 30m BINS</span>
         </div>
         <div className="font-(family-name:--admin-font-mono) flex flex-wrap items-center gap-2 text-[10px] text-(--admin-text-muted)">
-          {peakPoint && <span className="rounded-sm bg-[#3b2930] px-1.5 py-1 text-[#ffb4ab]">PEAK {peakPoint.riskScoreAverage}pt · {formatTime(peakPoint.timestamp)} UTC+7</span>}
-          {hasData && <><span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-(--admin-primary)" />Thể tích rủi ro</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-(--admin-danger)" />Ngưỡng cực đại</span></>}
+          {peakPoint && <span className="rounded-sm bg-[#3b2930] px-1.5 py-1 text-[#ffb4ab]">PEAK {(peakPoint.averageRiskScore * 100).toFixed(2)}pt · {formatTime(peakPoint.timestamp)} UTC+7</span>}
+          {hasData && <><span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-(--admin-primary)" />Điểm rủi ro trung bình</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-(--admin-danger)" />Assessment bất thường</span></>}
         </div>
       </div>
       <div className="relative my-2 h-50 w-full">
@@ -216,7 +217,7 @@ export function RiskTrendChart({ series }: RiskTrendChartProps) {
           >
             <strong className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[10px] text-(--admin-primary)">{hoverTooltip.timestamp} UTC+7</strong>
             <span className="font-(family-name:--admin-font-mono) mt-1 block whitespace-nowrap text-[10px] text-(--admin-text)">Risk score: {hoverTooltip.riskScore}pt</span>
-            <span className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[9px] text-(--admin-text-muted)">{hoverTooltip.alertCount} alerts · {hoverTooltip.highRiskCount} high-risk</span>
+            <span className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[9px] text-(--admin-text-muted)">{hoverTooltip.alertCount} assessments · {hoverTooltip.highRiskCount} anomalous</span>
           </div>
         )}
       </div>

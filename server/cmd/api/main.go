@@ -8,8 +8,10 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"github.com/dont-wait/anomaly/internal/application/riskstream"
 	"github.com/dont-wait/anomaly/internal/composition"
 	"github.com/dont-wait/anomaly/internal/domain"
+	"github.com/dont-wait/anomaly/internal/domain/riskassessment"
 	"github.com/dont-wait/anomaly/internal/helpers"
 	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
@@ -19,6 +21,7 @@ import (
 	rustfs "github.com/dont-wait/anomaly/internal/infrastructure/rustfs"
 	"github.com/dont-wait/anomaly/internal/logger"
 	presentation "github.com/dont-wait/anomaly/internal/presentation/http"
+	adminhandler "github.com/dont-wait/anomaly/internal/presentation/http/handler/admin"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/rs/zerolog"
 )
@@ -65,6 +68,26 @@ func main() {
 	if err := riskAssessments.EnsureIndexes(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("ensure risk assessment indexes failed")
 	}
+	riskHub := riskstream.NewHub()
+	adminMonitorHandler := adminhandler.NewMonitorHandler(riskAssessments, riskHub)
+	go func() {
+		for ctx.Err() == nil {
+			err := riskAssessments.Watch(ctx, func(assessment riskassessment.Assessment) {
+				riskHub.Publish(riskstream.Event{ID: assessment.ID, Assessment: assessment})
+			})
+			if ctx.Err() != nil {
+				return
+			}
+			logger.Error().Err(err).Msg("risk assessment change stream stopped; retrying")
+			timer := time.NewTimer(2 * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+	}()
 
 	esClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
 	if err != nil {
@@ -159,7 +182,7 @@ func main() {
 	)
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled, loanHandler)
+	mux = presentation.NewRouterWithAdminMonitor(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled, adminMonitorHandler, loanHandler)
 
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
 	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(

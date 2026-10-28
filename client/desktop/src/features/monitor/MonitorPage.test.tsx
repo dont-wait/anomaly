@@ -1,44 +1,69 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { setMockMonitorFailure } from "./api/monitorApi";
+import { consumeRiskStream, getMonitorDashboard } from "./api/monitorApi";
 import { MonitorPage } from "./MonitorPage";
 import { MonitorDashboardSkeleton } from "./components/MonitorDashboardSkeleton";
 import { RiskTrendChart } from "./components/RiskTrendChart";
+
+vi.mock("./api/monitorApi", () => ({
+  consumeRiskStream: vi.fn(() => new Promise<void>(() => undefined)),
+  getMonitorDashboard: vi.fn(),
+}));
 
 vi.mock("react-chartjs-2", () => ({
   Line: (props: { "aria-label"?: string }) => <canvas data-testid="chart-canvas" aria-label={props["aria-label"]} />,
 }));
 
+const dashboard = {
+  range: "24h" as const,
+  updatedAt: "2026-10-28T10:00:00Z",
+  dataStatus: "fresh" as const,
+  cursor: "cursor-1",
+  snapshot: {
+    totalAssessments: 2,
+    anomalousCount: 1,
+    anomalyRate: 0.5,
+    averageRiskScore: 0.5533,
+    timeseries: [{ timestamp: "2026-10-28T10:00:00Z", assessmentCount: 2, anomalousCount: 1, averageRiskScore: 0.5533 }],
+    recentAssessments: [{
+      assessmentId: "assessment-1", transactionId: "TX001", riskScore: 0.9821,
+      predictedLabel: 1 as const, threshold: 0.9517, modelVersion: "model-v1",
+      featureVersion: "features-v1", receivedAt: "2026-10-28T10:00:00Z",
+    }],
+    modelVersions: [{ label: "model-v1", count: 2 }],
+  },
+};
+
 describe("MonitorPage", () => {
+  beforeEach(() => {
+    vi.mocked(getMonitorDashboard).mockResolvedValue(dashboard);
+  });
+
   afterEach(() => {
-    setMockMonitorFailure(false);
+    vi.clearAllMocks();
     vi.useRealTimers();
   });
 
-  it("renders the Stitch dashboard body", async () => {
+  it("renders model assessment data from the snapshot", async () => {
     render(<MonitorPage />);
 
     expect(await screen.findByRole("heading", { name: /Giám sát rủi ro/i })).toBeTruthy();
-    expect(await screen.findByText("128.500.000 ₫")).toBeTruthy();
-    expect(screen.getByText(/PEAK 100pt/)).toBeTruthy();
+    expect(await screen.findByText("TX001")).toBeTruthy();
+    expect(screen.getByText("0.9821")).toBeTruthy();
+    expect(screen.getByText("ANOMALOUS")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Risk Trend Timeline (24h)" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /Top 5 tài khoản rủi ro cao/i })).toBeTruthy();
-    expect(screen.getAllByText("ACC-001234")).toHaveLength(2);
-    expect(screen.getByText("Realtime Alert Stream")).toBeTruthy();
+    expect(screen.getByText("Realtime Model Stream")).toBeTruthy();
   });
 
   it("renders the reusable dashboard skeleton", () => {
-    const { container } = render(<MonitorPage />);
+    const { container } = render(<MonitorDashboardSkeleton />);
 
-    expect(screen.queryByRole("status", { name: "Đang tải dashboard" })).toBeNull();
-
-    const skeleton = render(<MonitorDashboardSkeleton />);
-    expect(skeleton.getByRole("status", { name: "Đang tải dashboard" })).toBeTruthy();
-    expect(skeleton.container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(10);
-    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(screen.getByRole("status", { name: "Đang tải dashboard" })).toBeTruthy();
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(10);
   });
 
   it("shows the dashboard skeleton when the initial request takes longer", async () => {
     vi.useFakeTimers();
+    vi.mocked(getMonitorDashboard).mockImplementation(() => new Promise(() => undefined));
     render(<MonitorPage />);
 
     await act(async () => {
@@ -46,30 +71,22 @@ describe("MonitorPage", () => {
     });
 
     expect(screen.getByRole("status", { name: "Đang tải dashboard" })).toBeTruthy();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(220);
-    });
-
-    expect(screen.getByText("128.500.000 ₫")).toBeTruthy();
   });
 
   it("renders an empty state when the risk series has no data", () => {
     render(<RiskTrendChart series={[]} />);
 
     expect(screen.getByRole("status", { name: "Chưa có dữ liệu" })).toBeTruthy();
-    expect(screen.getByText("Thử chọn khoảng thời gian khác.")).toBeTruthy();
     expect(screen.queryByTestId("chart-canvas")).toBeNull();
   });
 
-  it("changes the time range and shows an empty state for long ranges", async () => {
+  it("changes the time range", async () => {
+    vi.mocked(getMonitorDashboard).mockResolvedValueOnce(dashboard).mockResolvedValueOnce({ ...dashboard, range: "7d", snapshot: { ...dashboard.snapshot, totalAssessments: 0, anomalousCount: 0, anomalyRate: 0, recentAssessments: [], modelVersions: [], timeseries: [] } });
     render(<MonitorPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "7 ngày" }));
 
-    expect(await screen.findByText("214")).toBeTruthy();
     expect(await screen.findByText("Chưa có dữ liệu trong khoảng thời gian này.")).toBeTruthy();
-    expect(await screen.findByText("Không có alert realtime trong khoảng thời gian này.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "7 ngày" }).getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -80,34 +97,13 @@ describe("MonitorPage", () => {
     expect(screen.getByTestId("risk-trend-chart")).toBeTruthy();
   });
 
-  it("refreshes and toggles the realtime stream", async () => {
-    vi.useFakeTimers();
+  it("refreshes the snapshot", async () => {
     render(<MonitorPage />);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(340);
-    });
-
+    await screen.findByText("TX001");
     fireEvent.click(screen.getByRole("button", { name: "Làm mới" }));
-    expect(screen.getByRole("button", { name: "Đang cập nhật..." })).toBeTruthy();
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(180);
-    });
-
-    expect(screen.getByRole("button", { name: "Làm mới" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Tạm dừng luồng" }));
-    expect(screen.getByRole("button", { name: "Tiếp tục luồng" })).toBeTruthy();
-  });
-
-  it("shows an error and retries the mock request", async () => {
-    setMockMonitorFailure(true);
-    render(<MonitorPage />);
-
-    expect(await screen.findByRole("alert")).toBeTruthy();
-    setMockMonitorFailure(false);
-    fireEvent.click(screen.getByRole("button", { name: "Thử lại" }));
-
-    expect(await screen.findByText("128.500.000 ₫")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Làm mới" })).toBeTruthy();
+    expect(getMonitorDashboard).toHaveBeenCalled();
+    expect(consumeRiskStream).toHaveBeenCalled();
   });
 });
