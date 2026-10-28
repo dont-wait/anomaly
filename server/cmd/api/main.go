@@ -61,6 +61,10 @@ func main() {
 	if err := riskDecisions.EnsureIndexes(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("ensure risk decision indexes failed")
 	}
+	riskAssessments := mongo.NewRiskAssessmentRepository(mongoClient, config.MongoConfig.MongoDBName)
+	if err := riskAssessments.EnsureIndexes(ctx); err != nil {
+		logger.Fatal().Err(err).Msg("ensure risk assessment indexes failed")
+	}
 
 	esClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
 	if err != nil {
@@ -104,7 +108,7 @@ func main() {
 	transactionHandler := composition.NewTransactionHandler(bank, recipientContacts, rdb, config.SMTPConfig, *logger, receiptOutbox)
 	transactionHandler.SetRiskDecisionStore(riskDecisions)
 	go composition.NewReceiptWorker(receiptOutbox, config.SMTPConfig, *logger).Run(ctx)
-	go runRiskDecisionConsumer(ctx, config.KafkaConfig, riskDecisions, *logger)
+	go runRiskDecisionConsumer(ctx, config.KafkaConfig, riskDecisions, riskAssessments, *logger)
 
 	// Loan Application Repository - EventStoreDB.
 	loanRepo := eventstore.NewLoanRepository(esClient)
