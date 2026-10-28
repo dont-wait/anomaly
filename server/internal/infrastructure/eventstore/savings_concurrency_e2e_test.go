@@ -193,3 +193,89 @@ func countSavingsEvents(records []journal.Record, eventType string) int {
 	}
 	return count
 }
+
+// A repeated EventID with a different payload must never return the locally
+// constructed opening as success for a losing request.
+func TestSavingsConcurrentOpeningDifferentPayloadWithEventStoreDB(t *testing.T) {
+	t.Setenv("SAVINGS_EVENT_WRITE_ENABLED", "true")
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	es := startEventStore(t, ctx)
+	bank := eventstore.NewBankRepository(es, nil)
+	register := accountcommands.NewRegisterAccountCommandHandler(bank, bank)
+	actor, err := register.Handle(ctx, accountcommands.RegisterAccountCommand{
+		IdempotencyKey: uuid.NewString(), Username: "savings-conflict-e2e", Email: "savings-conflict-e2e@example.test",
+		Password: "TestBank@123", CCCDNumber: "012345678910", CCCDIssuedDate: time.Now().Add(-24 * time.Hour), DOB: time.Now().AddDate(-25, 0, 0),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := accountcommands.NewVerifyAccountCommandHandler(bank).Handle(ctx, accountcommands.VerifyAccountCommand{
+		AccountID:      actor.Id,
+		IdCardFrontUrl: "kyc/" + actor.Id + "/id-card-front/front",
+		IdCardBackUrl:  "kyc/" + actor.Id + "/id-card-back/back",
+		LiveVideoUrl:   "kyc/" + actor.Id + "/live-video/live",
+		Evidence: &accountdomain.KYCEvidence{
+			MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true,
+		},
+		MatchScore: 0.9, LivenessScore: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const initial int64 = 5_000_000
+	if err := bank.SetSeedBalance(ctx, actor.Id, initial); err != nil {
+		t.Fatal(err)
+	}
+	owner, err := bank.FindByID(ctx, actor.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := uuid.NewString()
+	request := journal.SavingsOpenInput{
+		ActorID: actor.Id, CustomerID: owner.CustomerId, SourceAccountID: actor.Id,
+		QuoteID: uuid.NewString(), IdempotencyKey: key, PackageID: "savings_standard",
+		Principal: 1_000_000, TermMonths: 3, AnnualRateBps: 450, ExpiresAt: time.Now().Add(5 * time.Minute),
+	}
+	other := request
+	other.QuoteID = uuid.NewString()
+	other.Principal = 2_000_000
+	requests := []journal.SavingsOpenInput{request, other}
+	var wg sync.WaitGroup
+	results := make([]journal.SavingsMovement, 2)
+	errs := make([]error, 2)
+	for i := range requests {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i], errs[i] = eventstore.NewBankRepository(es, nil).OpenSavings(ctx, requests[i])
+		}(i)
+	}
+	wg.Wait()
+	winner := -1
+	for i, err := range errs {
+		if err == nil {
+			if winner != -1 {
+				t.Fatalf("both conflicting openings reported success: %+v", results)
+			}
+			winner = i
+		} else if !errors.Is(err, eventstore.ErrSavingsIdempotencyConflict) {
+			t.Fatalf("unexpected error for conflicting opening %d: %v", i, err)
+		}
+	}
+	if winner == -1 {
+		t.Fatalf("neither opening succeeded: %v", errs)
+	}
+	persisted, found, err := bank.FindSavingsOpening(ctx, actor.Id, key)
+	if err != nil || !found || persisted.OpeningQuoteID != requests[winner].QuoteID || persisted.Contract.Principal != requests[winner].Principal {
+		t.Fatalf("wrong persisted winner: persisted=%+v found=%v err=%v", persisted, found, err)
+	}
+	assertBankBalance(t, ctx, bank, actor.Id, initial-requests[winner].Principal)
+	if got := countSavingsEvents(readBank(t, ctx, es), journal.SavingsOpened); got != 1 {
+		t.Fatalf("conflicting opening debit events=%d, want=1", got)
+	}
+	// Verify that an identical retry returns the actual persisted opening.
+	again, err := eventstore.NewBankRepository(es, nil).OpenSavings(ctx, requests[winner])
+	if err != nil || again.Contract.ID != persisted.Contract.ID || !again.Contract.OpenedAt.Equal(persisted.Contract.OpenedAt) {
+		t.Fatalf("same-key retry did not return persisted opening: movement=%+v err=%v", again, err)
+	}
+}

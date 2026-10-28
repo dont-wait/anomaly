@@ -26,6 +26,7 @@ var (
 	ErrSavingsSourceUnavailable     = errors.New("savings source account unavailable")
 	ErrSavingsInsufficientFunds     = errors.New("savings insufficient funds")
 	ErrSavingsWritesDisabled        = errors.New("savings event writes not enabled")
+	ErrSavingsOpeningUnconfirmed    = errors.New("savings opening outcome unconfirmed")
 	ErrSavingsSettlementUnconfirmed = errors.New("savings settlement outcome unconfirmed")
 )
 

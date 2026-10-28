@@ -28,6 +28,8 @@ func savingsCommandError(err error) error {
 		return savingscommands.ErrWithdrawalQuoteExpired
 	case errors.Is(err, eventstore.ErrSavingsWritesDisabled):
 		return savingscommands.ErrSavingsWritesDisabled
+	case errors.Is(err, eventstore.ErrSavingsOpeningUnconfirmed):
+		return savingscommands.ErrSavingsOpeningUnconfirmed
 	case errors.Is(err, eventstore.ErrSavingsSettlementUnconfirmed):
 		return savingscommands.ErrSavingsSettlementUnconfirmed
 	default:

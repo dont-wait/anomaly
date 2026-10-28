@@ -40,6 +40,11 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, operation string,
 	case errors.Is(err, savingscommands.ErrSavingsNotSettled):
 		replyError(w, 409, "SAVINGS_NOT_SETTLED", "savings contract not settled")
 
+	case errors.Is(err, savingscommands.ErrSavingsOpeningUnconfirmed):
+		slog.WarnContext(r.Context(), "savings opening confirmation unavailable", "operation", operation, "error", err)
+		w.Header().Set("Retry-After", "2")
+		replyError(w, 503, "SAVINGS_OPENING_UNAVAILABLE", "opening outcome is unknown; retry with the same idempotency key")
+
 	case errors.Is(err, savingscommands.ErrSavingsSettlementUnconfirmed):
 		slog.WarnContext(r.Context(), "savings withdrawal confirmation unavailable", "operation", operation, "error", err)
 		w.Header().Set("Retry-After", "2")

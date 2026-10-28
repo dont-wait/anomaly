@@ -23,6 +23,7 @@ var (
 	ErrSavingsSourceUnavailable     = errors.New("savings payment account unavailable")
 	ErrSavingsInsufficientFunds     = errors.New("savings source balance insufficient")
 	ErrSavingsWritesDisabled        = errors.New("savings event writes disabled until consumers are upgraded")
+	ErrSavingsOpeningUnconfirmed    = errors.New("savings opening outcome unconfirmed")
 	ErrSavingsSettlementUnconfirmed = errors.New("savings settlement outcome unconfirmed")
 )
 
@@ -80,7 +81,7 @@ func (r *BankRepository) OpenSavings(ctx context.Context, in journal.SavingsOpen
 	result, err := r.mutateSavings(ctx, func(s *bankState) (*journal.Record, any, error) {
 		if id := s.SavingsKeys[key]; id != "" {
 			existing := s.Savings[id]
-			if existing.OpeningQuoteID != in.QuoteID || existing.Contract.SourceAccountID != in.SourceAccountID || existing.Contract.Principal != in.Principal || existing.Contract.TermMonths != in.TermMonths {
+			if !savingsOpeningMatchesInput(existing, in) {
 				return nil, nil, ErrSavingsIdempotencyConflict
 			}
 			return nil, existing, nil
@@ -125,13 +126,21 @@ func (r *BankRepository) OpenSavings(ctx context.Context, in journal.SavingsOpen
 		return record, m, nil
 	})
 	if err != nil {
+		// A cancelled request or EventStoreDB commit timeout can have persisted
+		// the event. Never assume rollback, and never retry with a new key.
+		var esErr *esdb.Error
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+			(errors.As(err, &esErr) && esErr.Code() == esdb.ErrorAborted) {
+			return confirmSavingsOpeningWithRecovery(ctx, r.load, in)
+		}
 		return journal.SavingsMovement{}, err
 	}
-	m, ok := result.(journal.SavingsMovement)
-	if !ok {
+	if _, ok := result.(journal.SavingsMovement); !ok {
 		return journal.SavingsMovement{}, fmt.Errorf("unexpected savings opening result")
 	}
-	return m, nil
+	// EventStoreDB can acknowledge a duplicate EventID as an idempotent append.
+	// Only the authoritative stored movement determines which payload won.
+	return confirmSavingsOpeningWithRecovery(ctx, r.load, in)
 }
 
 var ErrSavingsQuoteExpired = errors.New("savings quote expired")
