@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "model_version": "gatv2-1m-baseline-v1",
+  "feature_version": "schema-3-bb68f6c99a1c",
+  "feature_manifest_sha256": "bb68f6c99a1c95fbf1f2c5662ee37338c3f463838197260e86d74c52993889bb",
+  "threshold": 0.9779161810874939,
+  "snapshot_seconds": 3600,
+  "files": {
+    "preprocessing.json": "1bb1fc97df5248d0836ff4b8f3a79bfbf4c3e84eb8177028af87ce76decfa42f",
+    "nodes.json": "ddbad6c528db92d39a54e5bc7fec007214889deaefe4133982abaa5e290d5f62",
+    "selection.json": "981ecce4a7876c785de97b84baa99a3a0dc0a4d5d499fa332aa473a5f97e4dd9",
+    "node_preprocessing.json": "fb14af4a13aaf42195640c254aa4cb426bbae4e9bb6ff2ed92b8b752dd32a017",
+    "manifest.json": "bb68f6c99a1c95fbf1f2c5662ee37338c3f463838197260e86d74c52993889bb",
+    "model.pt": "6069d8ad59ecbee3b4db4876532dd6adc6185788e3a35937445e79c8ab3fab30"
+  },
+  "context_policy": "First request in each epoch-aligned snapshot bucket; strict prior events only.",
+  "score_policy": "Sigmoid of weighted-BCE logit; not a calibrated fraud probability."
+}
