@@ -92,7 +92,6 @@ func (r *RiskAssessmentRepository) Save(ctx context.Context, assessment riskasse
 	}
 	return false, err
 }
-
 func (r *RiskAssessmentRepository) List(ctx context.Context, from, to time.Time, limit int64) ([]riskassessment.Assessment, error) {
 	if limit <= 0 {
 		limit = 1000

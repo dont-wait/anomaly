@@ -3,8 +3,11 @@ package transaction
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/mail"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -64,17 +67,38 @@ type RiskDecisionStore interface {
 }
 
 type Handler struct {
-	logger   zerolog.Logger
-	repo     Repository
-	otp      *otp.TransferOTPStore
-	receipt  ReceiptSender
-	outbox   ReceiptOutbox
-	contacts ContactRepository
-	risk     RiskDecisionStore
+	logger            zerolog.Logger
+	repo              Repository
+	otp               *otp.TransferOTPStore
+	receipt           ReceiptSender
+	outbox            ReceiptOutbox
+	contacts          ContactRepository
+	risk              RiskDecisionStore
+	trustedProxyCIDRs []netip.Prefix
 }
 
 func (h *Handler) SetRiskDecisionStore(store RiskDecisionStore) {
 	h.risk = store
+}
+
+// SetTrustedProxyCIDRs configures the proxy addresses allowed to provide the
+// client IP through X-Real-IP. An empty list keeps the handler in
+// direct-connection mode and ignores proxy headers.
+func (h *Handler) SetTrustedProxyCIDRs(values []string) error {
+	prefixes := make([]netip.Prefix, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil {
+			return fmt.Errorf("invalid trusted proxy CIDR %q: %w", value, err)
+		}
+		prefixes = append(prefixes, prefix)
+	}
+	h.trustedProxyCIDRs = prefixes
+	return nil
 }
 
 func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOTPStore, receiptSender ReceiptSender, contacts ContactRepository, receiptOutbox ...ReceiptOutbox) *Handler {
@@ -278,7 +302,7 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 	}
 	id := uuid.NewString()
 	platform := normalizePlatform(r.Header.Get("X-Platform"))
-	tx := mongorepo.TransferDocument{ID: id, Reference: transferReference(id), Type: "transfer", Amount: req.Amount, Fee: 0, Currency: "VND", Channel: channelForPlatform(platform), DeviceID: normalizeDeviceID(r.Header.Get("X-Device-ID")), Platform: platform, Status: "awaiting_otp", Note: req.Note, IdempotencyKey: key, CreatedAt: time.Now().UTC(), OTPExpiresAt: time.Now().UTC().Add(5 * time.Minute), OTPResendAt: time.Now().UTC().Add(30 * time.Second)}
+	tx := mongorepo.TransferDocument{ID: id, Reference: transferReference(id), Type: "transfer", Amount: req.Amount, Fee: 0, Currency: "VND", Channel: channelForPlatform(platform), DeviceID: normalizeDeviceID(r.Header.Get("X-Device-ID")), ClientIP: clientIPFromRequest(r, h.trustedProxyCIDRs), Platform: platform, Status: "awaiting_otp", Note: req.Note, IdempotencyKey: key, CreatedAt: time.Now().UTC(), OTPExpiresAt: time.Now().UTC().Add(5 * time.Minute), OTPResendAt: time.Now().UTC().Add(30 * time.Second)}
 	tx.Source.AccountID, tx.Source.AccountNo, tx.Source.Name = source.ID, source.AccountNo, source.Name
 	tx.Destination.Type, tx.Destination.AccountID, tx.Destination.AccountNo = "internal", recipient.ID, recipient.AccountNo
 	tx.Destination.BankCode, tx.Destination.Name = "ANOMALY", recipient.Name
@@ -329,6 +353,55 @@ func normalizeDeviceID(value string) string {
 		return ""
 	}
 	return parsed.String()
+}
+
+// requestClientIP returns the address observed by the API server. It is kept
+// as the direct-connection helper for local callers and tests.
+func requestClientIP(r *http.Request) string {
+	return clientIPFromRequest(r, nil)
+}
+
+func clientIPFromRequest(r *http.Request, trustedProxyCIDRs []netip.Prefix) string {
+	if r == nil {
+		return ""
+	}
+
+	remote := strings.TrimSpace(r.RemoteAddr)
+	if host, _, err := net.SplitHostPort(remote); err == nil {
+		remote = host
+	} else if strings.HasPrefix(remote, "[") && strings.HasSuffix(remote, "]") {
+		remote = strings.TrimSuffix(strings.TrimPrefix(remote, "["), "]")
+	}
+
+	address, err := netip.ParseAddr(remote)
+	if err != nil {
+		return ""
+	}
+	if !isTrustedProxy(address, trustedProxyCIDRs) {
+		return address.String()
+	}
+
+	if forwarded := parseForwardedIP(r.Header.Get("X-Real-IP")); forwarded.IsValid() {
+		return forwarded.String()
+	}
+	return address.String()
+}
+
+func isTrustedProxy(address netip.Addr, prefixes []netip.Prefix) bool {
+	for _, prefix := range prefixes {
+		if prefix.Contains(address) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseForwardedIP(value string) netip.Addr {
+	address, err := netip.ParseAddr(strings.TrimSpace(value))
+	if err != nil {
+		return netip.Addr{}
+	}
+	return address
 }
 
 func normalizePlatform(value string) string {

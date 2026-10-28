@@ -41,6 +41,7 @@ type transferSnapshot struct {
 	Channel        string    `json:"Channel"`
 	CreatedAt      time.Time `json:"CreatedAt"`
 	DeviceID       string    `json:"DeviceID"`
+	ClientIP       string    `json:"ClientIP"`
 	Platform       string    `json:"Platform"`
 	Authentication struct {
 		Method   string `json:"Method"`
@@ -58,6 +59,7 @@ type modelInput struct {
 	AuthenticationMethod   string     `json:"authentication_method"`
 	AuthenticationVerified bool       `json:"authentication_verified"`
 	DeviceID               string     `json:"device_id"`
+	IPAddress              string     `json:"ip_address"`
 	Platform               string     `json:"platform"`
 	CreatedAt              time.Time  `json:"created_at"`
 	AvgAmount7d            int64      `json:"avg_amount_7d"`
@@ -112,6 +114,7 @@ func selectModelInput(data []byte) (modelInput, bool, error) {
 		AuthenticationMethod:   normalizeAuthenticationMethod(transfer.Authentication.Method),
 		AuthenticationVerified: transfer.Authentication.Verified,
 		DeviceID:               normalizeValue(transfer.DeviceID),
+		IPAddress:              normalizeValue(transfer.ClientIP),
 		Platform:               normalizeEnum(transfer.Platform, "UNKNOWN"),
 		CreatedAt:              transfer.CreatedAt,
 		AvgAmount7d:            envelope.ModelFeatures.AvgAmount7d,
