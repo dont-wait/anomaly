@@ -13,6 +13,7 @@ import (
 
 	savingscommands "github.com/dont-wait/anomaly/internal/application/savings/commands"
 	savingsqueries "github.com/dont-wait/anomaly/internal/application/savings/queries"
+	savingsdomain "github.com/dont-wait/anomaly/internal/domain/savings"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 )
 
@@ -24,6 +25,17 @@ func TestSavingsCommandErrorResponses(t *testing.T) {
 		wantLog    bool
 	}{
 		{name: "not settled", err: savingscommands.ErrSavingsNotSettled, status: http.StatusConflict, code: "SAVINGS_NOT_SETTLED"},
+		{name: "confirmation required", err: savingscommands.ErrConfirmationRequired, status: http.StatusBadRequest, code: "CONFIRMATION_REQUIRED"},
+		{name: "invalid idempotency key", err: savingscommands.ErrInvalidKey, status: http.StatusBadRequest, code: "INVALID_IDEMPOTENCY_KEY"},
+		{name: "unsupported withdrawal type", err: savingscommands.ErrUnsupportedWithdrawalType, status: http.StatusBadRequest, code: "UNSUPPORTED_WITHDRAWAL_TYPE"},
+		{name: "invalid withdrawal quote", err: savingscommands.ErrInvalidWithdrawalQuote, status: http.StatusBadRequest, code: "INVALID_QUOTE"},
+		{name: "missing withdrawal quote", err: savingsqueries.ErrQuoteNotFound, status: http.StatusNotFound, code: "QUOTE_NOT_FOUND"},
+		{name: "expired withdrawal quote", err: savingscommands.ErrWithdrawalQuoteExpired, status: http.StatusGone, code: "QUOTE_EXPIRED"},
+		{name: "not owned", err: savingscommands.ErrSavingsNotFound, status: http.StatusNotFound, code: "SAVINGS_NOT_FOUND"},
+		{name: "already settled", err: savingsdomain.ErrAlreadySettled, status: http.StatusConflict, code: "SAVINGS_ALREADY_SETTLED"},
+		{name: "not matured", err: savingsdomain.ErrNotMatured, status: http.StatusUnprocessableEntity, code: "SAVINGS_NOT_MATURED"},
+		{name: "locked", err: savingsdomain.ErrContractLocked, status: http.StatusLocked, code: "SAVINGS_LOCKED"},
+		{name: "payment account unavailable", err: savingscommands.ErrDestinationUnavailable, status: http.StatusUnprocessableEntity, code: "DESTINATION_ACCOUNT_UNAVAILABLE"},
 		{name: "settlement unconfirmed", err: savingscommands.ErrSavingsSettlementUnconfirmed, status: http.StatusServiceUnavailable, code: "SETTLEMENT_UNAVAILABLE", wantLog: true},
 		{name: "writes disabled", err: savingscommands.ErrSavingsWritesDisabled, status: http.StatusServiceUnavailable, code: "SAVINGS_WRITES_DISABLED", wantLog: true},
 		{name: "idempotency conflict", err: savingscommands.ErrIdempotencyConflict, status: http.StatusConflict, code: "IDEMPOTENCY_CONFLICT"},

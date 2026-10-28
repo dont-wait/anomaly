@@ -23,6 +23,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	savingshttp "github.com/dont-wait/anomaly/internal/presentation/http/handler/savings"
+	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 	"github.com/google/uuid"
 	esdb "github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
@@ -192,7 +193,13 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 	if len(listing.Items) != 1 || listing.Items[0].SavingsID != opened.SavingsID {
 		t.Fatalf("unexpected active list: %+v", listing)
 	}
-	api.json(t, "POST", activeDetail+"/withdrawal-quotes", ownerToken, map[string]string{"withdrawalType": "full"}, nil, http.StatusUnprocessableEntity)
+	// UC-11 API contract: early withdrawal and settlement receipt both fail
+	// before maturity. An HTTP error must not change any account balance.
+	assertSavingsE2EError(t, api.json(t, "POST", activeDetail+"/withdrawal-quotes", ownerToken,
+		map[string]string{"withdrawalType": "full"}, nil, http.StatusUnprocessableEntity), "SAVINGS_NOT_MATURED")
+	assertSavingsE2EError(t, api.json(t, "GET", activeDetail+"/settlement", ownerToken,
+		nil, nil, http.StatusConflict), "SAVINGS_NOT_SETTLED")
+	assertBankBalance(t, ctx, bank, ownerID, initial-1_000_000)
 
 	// Test maturity without altering domain policy: append a six-month-old
 	// opening to the isolated authoritative stream, as in existing GĐ3 E2E.
@@ -253,22 +260,76 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 	if len(notifications.Items) != 1 || notifications.Items[0].SavingsID != oldContract.ID || !notifications.Items[0].CanWithdraw {
 		t.Fatalf("maturity notice must offer withdrawal before settlement: %+v", notifications)
 	}
+	foreignNotices := decodeLoanE2E[savingsqueries.SavingsNotices](t, api.json(t,
+		"GET", "/api/savings/notifications", foreignToken, nil, nil, http.StatusOK))
+	if len(foreignNotices.Items) != 0 {
+		t.Fatalf("maturity notification leaked to another customer: %+v", foreignNotices)
+	}
+
+	// Validate all three UC-11 routes through real JWT middleware. Error
+	// responses must not modify the canonical EventStoreDB balance.
+	assertSavingsE2EAuthError(t, api.json(t, "POST", maturedPath+"/withdrawal-quotes", "",
+		map[string]string{"withdrawalType": "full"}, nil, http.StatusUnauthorized))
+	assertSavingsE2EError(t, api.json(t, "POST", maturedPath+"/withdrawal-quotes", foreignToken,
+		map[string]string{"withdrawalType": "full"}, nil, http.StatusNotFound), "SAVINGS_NOT_FOUND")
+	assertSavingsE2EError(t, api.json(t, "POST", maturedPath+"/withdrawal-quotes", ownerToken,
+		map[string]string{"withdrawalType": "partial"}, nil, http.StatusBadRequest), "UNSUPPORTED_WITHDRAWAL_TYPE")
+	assertSavingsE2EError(t, api.json(t, "GET", maturedPath+"/settlement", ownerToken,
+		nil, nil, http.StatusConflict), "SAVINGS_NOT_SETTLED")
+	assertSavingsE2EError(t, api.json(t, "GET", maturedPath+"/settlement", foreignToken,
+		nil, nil, http.StatusNotFound), "SAVINGS_NOT_FOUND")
+	assertBankBalance(t, ctx, bank, ownerID, after)
 
 	preview := decodeLoanE2E[savingscommands.WithdrawalPreviewResponse](t, api.json(t, "POST", maturedPath+"/withdrawal-quotes", ownerToken,
 		map[string]string{"withdrawalType": "full"}, nil, http.StatusOK))
-	if preview.QuoteID == "" || preview.TotalPayout != preview.Principal+preview.InterestAmount || preview.InterestAmount <= 0 {
-		t.Fatalf("invalid withdrawal quote: %+v", preview)
+	// Independently verify day-count / 365 and HALF_UP rounding using only
+	// the contract's maturity date, not the (months-later) withdrawal time.
+	const annualBasis int64 = 365 * 10_000 // interest rate in basis points
+	actualDays := int64(oldContract.MaturityAt.Sub(oldContract.OpenedAt) / (24 * time.Hour))
+	expectedInterest := (oldContract.Principal*oldContract.AnnualRateBps*actualDays + annualBasis/2) / annualBasis
+	if preview.QuoteID == "" || preview.Principal != oldContract.Principal ||
+		preview.InterestAmount != expectedInterest || preview.TotalPayout != preview.Principal+expectedInterest ||
+		preview.DestinationAccountID != ownerID || !preview.MaturityAt.Equal(oldContract.MaturityAt) ||
+		preview.SettlementType != "at_maturity" || preview.WithdrawalType != "full" {
+		t.Fatalf("invalid or post-maturity-accrued withdrawal quote: %+v; expectedInterest=%d", preview, expectedInterest)
 	}
+	withdrawPath := maturedPath + "/withdrawals"
 	withdrawInput := savingscommands.WithdrawInput{QuoteID: preview.QuoteID, Confirm: true}
 	withdrawHeaders := map[string]string{"Idempotency-Key": uuid.NewString()}
-	api.json(t, "POST", maturedPath+"/withdrawals", foreignToken, withdrawInput, withdrawHeaders, http.StatusNotFound)
-	withdrawn := decodeLoanE2E[savingscommands.WithdrawResponse](t, api.json(t, "POST", maturedPath+"/withdrawals", ownerToken, withdrawInput, withdrawHeaders, http.StatusOK))
-	retried := decodeLoanE2E[savingscommands.WithdrawResponse](t, api.json(t, "POST", maturedPath+"/withdrawals", ownerToken, withdrawInput, withdrawHeaders, http.StatusOK))
+	assertSavingsE2EAuthError(t, api.json(t, "POST", withdrawPath, "", withdrawInput,
+		withdrawHeaders, http.StatusUnauthorized))
+	assertSavingsE2EError(t, api.json(t, "POST", withdrawPath, foreignToken, withdrawInput,
+		withdrawHeaders, http.StatusNotFound), "SAVINGS_NOT_FOUND")
+	assertSavingsE2EError(t, api.json(t, "POST", withdrawPath, ownerToken,
+		savingscommands.WithdrawInput{QuoteID: preview.QuoteID}, withdrawHeaders, http.StatusBadRequest), "CONFIRMATION_REQUIRED")
+	assertSavingsE2EError(t, api.json(t, "POST", withdrawPath, ownerToken, withdrawInput,
+		nil, http.StatusBadRequest), "INVALID_IDEMPOTENCY_KEY")
+	assertSavingsE2EError(t, api.json(t, "POST", withdrawPath, ownerToken, withdrawInput,
+		map[string]string{"Idempotency-Key": "not-uuid-v4"}, http.StatusBadRequest), "INVALID_IDEMPOTENCY_KEY")
+	assertSavingsE2EError(t, api.json(t, "POST", withdrawPath, ownerToken,
+		savingscommands.WithdrawInput{QuoteID: uuid.NewString(), Confirm: true},
+		map[string]string{"Idempotency-Key": uuid.NewString()}, http.StatusNotFound), "QUOTE_NOT_FOUND")
+	assertBankBalance(t, ctx, bank, ownerID, after)
+	if got := countSavingsEvents(readBank(t, ctx, es), journal.SavingsSettled); got != 0 {
+		t.Fatalf("rejected withdrawal requests wrote %d settlement credits", got)
+	}
+	withdrawn := decodeLoanE2E[savingscommands.WithdrawResponse](t, api.json(t, "POST", withdrawPath, ownerToken, withdrawInput, withdrawHeaders, http.StatusOK))
+	// Simulate quote eviction/expiry after successful settlement. An exact
+	// same-key retry must be resolved from EventStoreDB, not Redis quote state.
+	if err := rdb.FlushDB(ctx).Err(); err != nil {
+		t.Fatal(err)
+	}
+	retried := decodeLoanE2E[savingscommands.WithdrawResponse](t, api.json(t, "POST", withdrawPath, ownerToken, withdrawInput, withdrawHeaders, http.StatusOK))
 	if withdrawn.TransactionID == "" || withdrawn.TransactionID != retried.TransactionID || withdrawn.TotalPayout != preview.TotalPayout {
 		t.Fatalf("withdrawal retry changed receipt: first=%+v again=%+v", withdrawn, retried)
 	}
-	api.json(t, "POST", maturedPath+"/withdrawals", ownerToken, withdrawInput,
-		map[string]string{"Idempotency-Key": uuid.NewString()}, http.StatusConflict)
+	assertSavingsE2EError(t, api.json(t, "POST", withdrawPath, ownerToken,
+		savingscommands.WithdrawInput{QuoteID: uuid.NewString(), Confirm: true},
+		withdrawHeaders, http.StatusConflict), "IDEMPOTENCY_CONFLICT")
+	assertSavingsE2EError(t, api.json(t, "POST", withdrawPath, ownerToken, withdrawInput,
+		map[string]string{"Idempotency-Key": uuid.NewString()}, http.StatusConflict), "SAVINGS_ALREADY_SETTLED")
+	assertSavingsE2EError(t, api.json(t, "POST", maturedPath+"/withdrawal-quotes", ownerToken,
+		map[string]string{"withdrawalType": "full"}, nil, http.StatusConflict), "SAVINGS_ALREADY_SETTLED")
 	assertBankBalance(t, ctx, eventstore.NewBankRepository(es, nil), ownerID, after+preview.TotalPayout)
 	if got := countSavingsEvents(readBank(t, ctx, es), journal.SavingsSettled); got != 1 {
 		t.Fatalf("settlement recorded %d credits, want exactly one", got)
@@ -295,9 +356,12 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 		t.Fatalf("settlement not projected: %+v", finalDetail)
 	}
 	receipt := decodeLoanE2E[savingscommands.SettlementReceipt](t, api.json(t, "GET", maturedPath+"/settlement", ownerToken, nil, nil, http.StatusOK))
-	if receipt.Settlement.TransactionID != withdrawn.TransactionID {
+	if receipt.Settlement.TransactionID != withdrawn.TransactionID ||
+		receipt.Settlement.TotalAmount != withdrawn.TotalPayout || receipt.Status != savings.ContractSettled {
 		t.Fatalf("authoritative receipt mismatch: %+v", receipt)
 	}
+	assertSavingsE2EError(t, api.json(t, "GET", maturedPath+"/settlement", foreignToken,
+		nil, nil, http.StatusNotFound), "SAVINGS_NOT_FOUND")
 	history := decodeLoanE2E[savingsqueries.SavingsHistory](t, api.json(t, "GET", maturedPath+"/history", ownerToken, nil, nil, http.StatusOK))
 	if len(history.Items) != 2 || history.Items[0].Direction != "DEBIT" || history.Items[1].Direction != "CREDIT" {
 		t.Fatalf("ledger projection should contain one debit and one credit: %+v", history)
@@ -316,5 +380,36 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 	degraded := decodeLoanE2E[savingsqueries.SavingsContract](t, api.json(t, "GET", maturedPath, ownerToken, nil, nil, http.StatusOK))
 	if degraded.Status != savings.ContractSettled || degraded.SavingsID != oldContract.ID {
 		t.Fatalf("Mongo fallback during Redis outage failed: %+v", degraded)
+	}
+}
+
+// assertSavingsE2EAuthError checks the shared JWT middleware's response format.
+// Unlike savings handler business errors, auth failures are wrapped in an
+// httpx.ErrorResponse with an errors[] array and a specific middleware code.
+func assertSavingsE2EAuthError(t *testing.T, body []byte) {
+	t.Helper()
+	var response httpx.ErrorResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		t.Fatalf("decode UC-11 JWT middleware error: %v; body=%s", err, body)
+	}
+	if response.Status != http.StatusUnauthorized || len(response.Errors) != 1 ||
+		response.Errors[0].Code != httpx.ErrorCodeMissingAuthHeader || response.Errors[0].Detail == "" {
+		t.Fatalf("wrong UC-11 JWT middleware error response: %+v; body=%s", response, body)
+	}
+}
+
+// assertSavingsE2EError verifies the exact documented error code, not only its
+// HTTP status. A 4xx response must never silently change the banking ledger.
+func assertSavingsE2EError(t *testing.T, body []byte, wantCode string) {
+	t.Helper()
+	var response struct {
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		t.Fatalf("decode UC-11 error response: %v; body=%s", err, body)
+	}
+	if response.Code != wantCode || response.Error == "" {
+		t.Fatalf("UC-11 error code=%q message=%q, want code=%q", response.Code, response.Error, wantCode)
 	}
 }

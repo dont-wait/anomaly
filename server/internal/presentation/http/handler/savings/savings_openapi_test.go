@@ -48,4 +48,25 @@ func TestSavingsOpenAPIDeclaresCommandHeadersAndCreationStatus(t *testing.T) {
 	if _, ok := spec.Paths["/api/savings/contracts"]["post"].Responses["201"]; !ok {
 		t.Fatal("opening API lacks 201 Created OpenAPI response")
 	}
+	// UC-11 must expose all three command/read endpoints and document the
+	// business error statuses through the same OpenAPI registry as cmd/api.
+	for _, tc := range []struct {
+		path, method string
+		statuses     []string
+	}{
+		{path: "/api/savings/contracts/{id}/withdrawal-quotes", method: "post", statuses: []string{"200", "400", "401", "404", "409", "422", "423", "503"}},
+		{path: "/api/savings/contracts/{id}/withdrawals", method: "post", statuses: []string{"200", "400", "401", "404", "409", "410", "422", "423", "503"}},
+		{path: "/api/savings/contracts/{id}/settlement", method: "get", statuses: []string{"200", "401", "404", "409", "503"}},
+	} {
+		op, ok := spec.Paths[tc.path][tc.method]
+		if !ok {
+			t.Errorf("missing UC-11 %s %s OpenAPI operation", tc.method, tc.path)
+			continue
+		}
+		for _, status := range tc.statuses {
+			if _, ok := op.Responses[status]; !ok {
+				t.Errorf("%s %s lacks documented HTTP %s", tc.method, tc.path, status)
+			}
+		}
+	}
 }
