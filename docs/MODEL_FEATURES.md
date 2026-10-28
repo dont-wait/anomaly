@@ -18,6 +18,9 @@ Các feature cần gửi:
 - `new_receiver`: người nhận có phải người nhận mới không
 - `new_device`: thiết bị có phải thiết bị mới không
 
+Ngoài `model_features`, model input có `ip_address` là IP nguồn do API quan sát
+lúc tạo giao dịch; nếu không xác định được thì dùng `UNKNOWN`.
+
 `last_tx_at` dùng timestamp RFC3339, thống nhất với `occurred_at` trong event
 envelope. Nếu chưa có giao dịch trước đó thì giá trị là `null`.
 
@@ -109,7 +112,7 @@ Producer kiểm tra sự tồn tại tại thời điểm `occurred_at` trước
 ## Kafka event contract
 
 `payload` giữ nguyên toàn bộ field và giá trị trong event banking từ EventStoreDB,
-bao gồm số tài khoản, account ID và device ID. Relay không hash, xóa field hay
+bao gồm số tài khoản, account ID, device ID và IP nguồn. Relay không hash, xóa field hay
 thay đổi giá trị; `model_features` được thêm riêng ở cấp envelope.
 Payload có thể chứa dữ liệu nhạy cảm: giới hạn quyền truy cập Kafka/model.
 Consumer mock không log raw payload.

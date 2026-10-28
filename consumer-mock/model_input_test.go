@@ -25,6 +25,7 @@ func TestSelectModelInputFromBankEvent(t *testing.T) {
           "Channel":"mobile",
           "CreatedAt":"2026-10-17T00:50:00+07:00",
           "DeviceID":"DEVICE01",
+          "ClientIP":"203.0.113.10",
           "Platform":"android",
           "Authentication":{"Method":"email_otp","Verified":true}
         }
@@ -33,7 +34,7 @@ func TestSelectModelInputFromBankEvent(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("selectModelInput() = %#v/%v/%v, want selected input", input, ok, err)
 	}
-	if input.TransactionID != "TX001" || input.SourceAccount != "ACC001" || input.DestinationAccount != "ACC002" || input.Amount != 50000000 || input.TransactionType != "TRANSFER" || input.Channel != "MOBILE" || input.AuthenticationMethod != "OTP" || !input.AuthenticationVerified || input.DeviceID != "DEVICE01" || input.Platform != "ANDROID" || input.AvgAmount7d != 12500000 || input.TxCount1h != 3 || input.TxCount24h != 12 || !input.NewReceiver || input.NewDevice {
+	if input.TransactionID != "TX001" || input.SourceAccount != "ACC001" || input.DestinationAccount != "ACC002" || input.Amount != 50000000 || input.TransactionType != "TRANSFER" || input.Channel != "MOBILE" || input.AuthenticationMethod != "OTP" || !input.AuthenticationVerified || input.DeviceID != "DEVICE01" || input.IPAddress != "203.0.113.10" || input.Platform != "ANDROID" || input.AvgAmount7d != 12500000 || input.TxCount1h != 3 || input.TxCount24h != 12 || !input.NewReceiver || input.NewDevice {
 		t.Fatalf("selected model input = %#v", input)
 	}
 }
@@ -57,7 +58,7 @@ func TestSelectModelInputUsesUnknownMetadata(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("selectModelInput() = %#v/%v/%v, want selected input", input, ok, err)
 	}
-	if input.DeviceID != "UNKNOWN" || input.Platform != "UNKNOWN" || input.AuthenticationMethod != "UNKNOWN" {
+	if input.DeviceID != "UNKNOWN" || input.IPAddress != "UNKNOWN" || input.Platform != "UNKNOWN" || input.AuthenticationMethod != "UNKNOWN" {
 		t.Fatalf("unknown metadata = %#v", input)
 	}
 }
