@@ -23,6 +23,7 @@ class Config:
     eventstore_stream: str
     training_data_path: str
     training_data_fsync: bool
+    metrics_port: int
 
 
 def split_csv(value):
@@ -72,6 +73,7 @@ def load_config():
     eventstore_uri = env("EVENTSTORE_URI", "esdb://localhost:2113?tls=false").strip()
     eventstore_stream = env("EVENTSTORE_STREAM", "banking").strip()
     training_data_path = env("TRAINING_DATA_PATH", "./data/training/predictions.jsonl").strip()
+    metrics_port = env_number("METRICS_PORT", 9100, int)
 
     if not brokers:
         raise ConfigError("KAFKA_BROKERS is required")
@@ -96,6 +98,8 @@ def load_config():
     delivery_timeout = env_number("KAFKA_DELIVERY_TIMEOUT_SECONDS", 30.0, float)
     if delivery_timeout <= 0:
         raise ConfigError("KAFKA_DELIVERY_TIMEOUT_SECONDS must be positive")
+    if not 1 <= metrics_port <= 65535:
+        raise ConfigError("METRICS_PORT must be between 1 and 65535")
 
     return Config(
         kafka_brokers=brokers,
@@ -112,4 +116,5 @@ def load_config():
         eventstore_stream=eventstore_stream,
         training_data_path=training_data_path,
         training_data_fsync=env_bool("TRAINING_DATA_FSYNC", True),
+        metrics_port=metrics_port,
     )

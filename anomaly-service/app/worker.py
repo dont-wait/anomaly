@@ -1,5 +1,9 @@
 """Kafka worker: TransferCreated -> EventStoreDB history -> GATv2 -> output + training."""
 import logging
+import time
+from datetime import datetime, timezone
+
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
 
 from .contracts import ContractError, build_risk_event
 from .events import select_trigger_event
@@ -9,6 +13,11 @@ from .publisher import KafkaOutputPublisher
 from .training import TrainingDataSink
 
 log = logging.getLogger(__name__)
+
+MESSAGES_TOTAL = Counter("ml_messages_total", "Kafka messages received", ["result"])
+PREDICTIONS_TOTAL = Counter("ml_predictions_total", "Predictions published")
+PROCESSING_SECONDS = Histogram("ml_processing_seconds", "Message processing time")
+LAST_SUCCESS = Gauge("ml_last_success_timestamp_seconds", "Unix time of last successful message")
 
 
 def handle_message(raw, predictor, output_publisher, training_sink):
@@ -61,17 +70,29 @@ def run(config):
         producer=producer,
         timeout=config.delivery_timeout_seconds,
     )
+    start_http_server(config.metrics_port)
+    log.info("ML metrics listening on :%s", config.metrics_port)
     log.info("ML publisher started brokers=%s input=%s output=%s training=%s bundle=%s",
              config.kafka_brokers, config.input_topic, config.output_topic,
              config.training_topic, config.model_bundle_path)
     try:
         for message in consumer:
-            result = handle_message(message.value, predictor, output, training)
-            consumer.commit()
-            if result is not None:
-                log.info("prediction published event_id=%s transaction_id=%s score=%.6f label=%d",
-                         result["event_id"], result["transaction_id"],
-                         result["risk_score"], result["predicted_label"])
+            started = time.monotonic()
+            try:
+                result = handle_message(message.value, predictor, output, training)
+                consumer.commit()
+                MESSAGES_TOTAL.labels("predicted" if result is not None else "ignored").inc()
+                if result is not None:
+                    PREDICTIONS_TOTAL.inc()
+                    log.info("prediction published event_id=%s transaction_id=%s score=%.6f label=%d",
+                             result["event_id"], result["transaction_id"],
+                             result["risk_score"], result["predicted_label"])
+                LAST_SUCCESS.set(datetime.now(timezone.utc).timestamp())
+            except Exception:
+                MESSAGES_TOTAL.labels("failed").inc()
+                raise
+            finally:
+                PROCESSING_SECONDS.observe(time.monotonic() - started)
     finally:
         consumer.close()
         producer.close()

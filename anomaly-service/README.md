@@ -86,6 +86,7 @@ EVENTSTORE_STREAM=banking
 
 TRAINING_DATA_PATH=./data/training/predictions.jsonl
 TRAINING_DATA_FSYNC=true
+METRICS_PORT=9100
 ```
 
 Khi chạy trong Docker Compose của `server/`, dùng:
@@ -98,7 +99,7 @@ EVENTSTORE_URI=esdb://eventstore:2113?tls=false
 ## Chạy
 
 ```bash
-cd server/ml-pipeline
+cd anomaly-service
 cp .env.example .env
 python -m venv .venv
 . .venv/bin/activate
@@ -114,6 +115,10 @@ Hoặc:
 ```bash
 python -m app
 ```
+
+`METRICS_PORT` exposes Prometheus metrics. The Swarm deployment uses
+`ml_messages_total`, `ml_predictions_total`, and the Kafka exporter consumer
+lag as autoscaling inputs.
 
 Yêu cầu: Kafka, EventStoreDB và bundle GATv2 đã sẵn sàng. Không cần model HTTP
 service.

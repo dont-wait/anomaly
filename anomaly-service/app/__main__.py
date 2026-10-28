@@ -1,16 +1,21 @@
 """Console entry point for the Anomaly ML publisher."""
 import logging
 import sys
+import time
 
 from .config import ConfigError, load_config
 from .worker import run
 
 
 def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    formatter = logging.Formatter(
+        fmt="%(asctime)sZ %(levelname)s %(name)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
     )
+    formatter.converter = time.gmtime
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
     log = logging.getLogger("app")
     try:
         from dotenv import load_dotenv
