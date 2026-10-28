@@ -55,12 +55,10 @@ func (p *BankProjection) savingsMovement(ctx context.Context, record journal.Rec
 	if err := p.saveSavingsContract(ctx, c, *m, sequence, record.At); err != nil {
 		return err
 	}
-	if record.Type == journal.SavingsSettled {
-		// In the same Mongo projection transaction, revoke a notice that
-		// could have been created while settlement projection was lagging.
-		_, err := p.db.Collection("savings_notifications").DeleteOne(ctx, bson.M{"_id": "savings-maturity:" + c.ID})
-		return err
-	}
+	// Keep the original maturity notice for in-app history after settlement.
+	// Notification reads join savings_contracts and derive canWithdraw from the
+	// current projected status, so a settled contract has no available action.
+	// The Mongo status follows the canonical bank stream asynchronously.
 	return nil
 }
 

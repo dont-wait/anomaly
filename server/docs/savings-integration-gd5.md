@@ -91,13 +91,15 @@ On **isolated local/test** infrastructure only:
   infer transaction failure from an absent read model; command idempotency and
   authoritative receipts live in EventStoreDB.
 - The maturity worker fails closed unless it can verify each candidate against
-  EventStoreDB. Projecting SavingsSettled removes earlier Mongo notices in the
-  same transaction; notice queries exclude contracts projected as settled.
-- The EventStoreDB guard and the MongoDB write are not an atomic cross-store
-  transaction: a concurrent settlement may occur just after verification.
-  The projector compensates by removing the notice, but a transient stale
-  notice remains possible until projection catches up. Do not describe this
-  as strict linearizable notification delivery.
+  EventStoreDB; it does not create notices for contracts already known settled.
+  Delivered in-app maturity notices are retained as history, even after the
+  customer withdraws. The notification API joins the customer's contract
+  projection and exposes `canWithdraw=false` for settled contracts. The
+  withdrawal command always rechecks the canonical Banking Stream.
+- EventStoreDB verification and MongoDB notice creation are not one atomic
+  cross-store transaction. A concurrent settlement may occur after verification;
+  the notice and its action can appear briefly stale until the settlement
+  projection catches up. A notice is never authorization for a withdrawal.
 - Full process startup, real subscription/restart and Kafka consumers are **not**
   automatically tested here. No Kafka code is modified in this phase.
 - Race detector and load/concurrency soak testing remain separate; the

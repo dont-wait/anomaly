@@ -250,8 +250,8 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 	}
 	assertBankBalance(t, ctx, bank, ownerID, after) // Scheduler never credits.
 	notifications := decodeLoanE2E[savingsqueries.SavingsNotices](t, api.json(t, "GET", "/api/savings/notifications", ownerToken, nil, nil, http.StatusOK))
-	if len(notifications.Items) != 1 || notifications.Items[0].SavingsID != oldContract.ID {
-		t.Fatalf("maturity notice missing or duplicated: %+v", notifications)
+	if len(notifications.Items) != 1 || notifications.Items[0].SavingsID != oldContract.ID || !notifications.Items[0].CanWithdraw {
+		t.Fatalf("maturity notice must offer withdrawal before settlement: %+v", notifications)
 	}
 
 	preview := decodeLoanE2E[savingscommands.WithdrawalPreviewResponse](t, api.json(t, "POST", maturedPath+"/withdrawal-quotes", ownerToken,
@@ -273,12 +273,9 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 	if got := countSavingsEvents(readBank(t, ctx, es), journal.SavingsSettled); got != 1 {
 		t.Fatalf("settlement recorded %d credits, want exactly one", got)
 	}
-	// Recreate the exact projection-lag race: EventStoreDB already settled,
-	// but Mongo still says active and has not claimed any maturity notice.
+	// Recreate projection lag: EventStoreDB has settled while Mongo still says
+	// active. Unset the claim, but keep the already delivered notice for history.
 	if _, err := db.Collection("savings_contracts").UpdateOne(ctx, bson.M{"_id": oldContract.ID}, bson.M{"$unset": bson.M{"maturity_notice_at": ""}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Collection("savings_notifications").DeleteOne(ctx, bson.M{"_id": "savings-maturity:" + oldContract.ID}); err != nil {
 		t.Fatal(err)
 	}
 	// The worker must verify the bank stream instead of trusting stale Mongo.
@@ -287,8 +284,11 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 	}
 	projectNew()
 	remaining := decodeLoanE2E[savingsqueries.SavingsNotices](t, api.json(t, "GET", "/api/savings/notifications", ownerToken, nil, nil, http.StatusOK))
-	if len(remaining.Items) != 0 {
-		t.Fatalf("settlement projection did not revoke obsolete notices: %+v", remaining)
+	if len(remaining.Items) != 1 || remaining.Items[0].SavingsID != oldContract.ID || remaining.Items[0].CanWithdraw {
+		t.Fatalf("settlement must retain history but revoke withdrawal action: %+v", remaining)
+	}
+	if n, err := db.Collection("savings_notifications").CountDocuments(ctx, bson.M{"savings_id": oldContract.ID}); err != nil || n != 1 {
+		t.Fatalf("maturity notice should remain exactly once after settlement: n=%d err=%v", n, err)
 	}
 	finalDetail := decodeLoanE2E[savingsqueries.SavingsContract](t, api.json(t, "GET", maturedPath, ownerToken, nil, nil, http.StatusOK))
 	if finalDetail.Status != savings.ContractSettled || finalDetail.Settlement == nil || finalDetail.Settlement.TotalAmount != withdrawn.TotalPayout {

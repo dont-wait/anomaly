@@ -134,12 +134,16 @@ func (r *SavingsRead) History(ctx context.Context, customer, id string) ([]savin
 }
 
 func (r *SavingsRead) Notifications(ctx context.Context, customer string, limit int) ([]savingsqueries.SavingsNotice, error) {
-	// Never return a maturity notice for a contract already projected as
-	// settled. The settlement projection also deletes the notice.
+	// Preserve previously delivered notices in history even after settlement.
+	// The customer ownership check also rejects orphan/foreign contract IDs.
+	// canWithdraw is a projection-aware UI hint, NOT permission to withdraw:
+	// the command checks the authoritative Banking Stream again.
 	pipeline := mongodrv.Pipeline{
 		{{Key: "$match", Value: bson.M{"customer_id": customer}}},
 		{{Key: "$lookup", Value: bson.M{"from": "savings_contracts", "localField": "savings_id", "foreignField": "_id", "as": "contract"}}},
-		{{Key: "$match", Value: bson.M{"contract": bson.M{"$elemMatch": bson.M{"customer_id": customer, "status": bson.M{"$in": bson.A{"active", "matured"}}}}}}},
+		{{Key: "$unwind", Value: "$contract"}},
+		{{Key: "$match", Value: bson.M{"contract.customer_id": customer}}},
+		{{Key: "$addFields", Value: bson.M{"can_withdraw": bson.M{"$in": bson.A{"$contract.status", bson.A{"active", "matured"}}}}}},
 		{{Key: "$sort", Value: bson.D{{Key: "created_at", Value: -1}, {Key: "_id", Value: -1}}}},
 		{{Key: "$limit", Value: int64(limit)}},
 		{{Key: "$project", Value: bson.M{"contract": 0}}},
