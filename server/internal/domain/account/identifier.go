@@ -3,6 +3,7 @@ package account
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 )
 
@@ -46,4 +47,18 @@ func NormalizeKYCSessionIdentifiers(account *UserAccount) {
 	if account.Customer != nil {
 		account.Customer.VerifiedKYCSessionId = CanonicalKYCSessionID(account.Customer.VerifiedKYCSessionId)
 	}
+}
+
+// ValidateKYCSessionIdentifiers rejects a verified-session reference that does
+// not resolve to one of the account's sessions before it reaches a projection.
+func ValidateKYCSessionIdentifiers(account *UserAccount) error {
+	if account == nil || account.Customer == nil || account.Customer.VerifiedKYCSessionId == "" {
+		return nil
+	}
+	for _, session := range account.KYCSessions {
+		if session != nil && session.Id == account.Customer.VerifiedKYCSessionId {
+			return nil
+		}
+	}
+	return fmt.Errorf("verified KYC session %q does not exist in account sessions", account.Customer.VerifiedKYCSessionId)
 }

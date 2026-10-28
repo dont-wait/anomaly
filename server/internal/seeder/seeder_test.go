@@ -190,6 +190,31 @@ func TestRunReconcilesAdminRole(t *testing.T) {
 	}
 }
 
+func TestMarkSeedAdminVerifiedReusesLegacySession(t *testing.T) {
+	const legacyID = "seed-kyc-507f1f77bcf86cd799439011"
+	account := &accountdomain.UserAccount{
+		Id: "507f1f77bcf86cd799439011",
+		Customer: &accountdomain.Customer{
+			KYCStatus:            accountdomain.KYCStatusNotStarted,
+			VerifiedKYCSessionId: "different-reference",
+		},
+		KYCSessions: []*accountdomain.KYCSession{{
+			Id:     legacyID,
+			Status: accountdomain.KYCSessionStatusVerified,
+		}},
+	}
+	seed := accountSeed{Role: accountdomain.AccountRoleAdmin}
+
+	markSeedAdminVerified(account, seed)
+
+	if len(account.KYCSessions) != 1 {
+		t.Fatalf("KYC session count = %d, want 1", len(account.KYCSessions))
+	}
+	if account.Customer.VerifiedKYCSessionId != account.KYCSessions[0].Id || !account.IsVerified() {
+		t.Fatalf("legacy session was not reused and linked: customer=%q session=%q status=%q", account.Customer.VerifiedKYCSessionId, account.KYCSessions[0].Id, account.Customer.KYCStatus)
+	}
+}
+
 func TestRunDoesNotReconcileNonAdminKYCState(t *testing.T) {
 	t.Setenv("ANOMALY_DEMO_ADMIN_PASSWORD", "")
 	repo := &memoryRepository{}

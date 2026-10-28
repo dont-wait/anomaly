@@ -130,12 +130,14 @@ func (s *bankState) apply(record journal.Record) error {
 		if _, exists := s.Accounts[record.Account.Id]; exists {
 			return fmt.Errorf("duplicate account creation")
 		}
+		accountdomain.NormalizeKYCSessionIdentifiers(record.Account)
 		s.Accounts[record.Account.Id] = record.Account
 		s.Balances[financialID(record.Account.Id).Hex()] = record.Account.Balance.Current
 	case journal.AccountUpdated:
 		if s.Accounts[record.Account.Id] == nil {
 			return accountdomain.ErrAccountNotFound
 		}
+		accountdomain.NormalizeKYCSessionIdentifiers(record.Account)
 		s.Accounts[record.Account.Id] = record.Account
 	case journal.BalanceSeeded:
 		if s.Accounts[record.AccountID] == nil {
@@ -147,6 +149,7 @@ func (s *bankState) apply(record journal.Record) error {
 			return fmt.Errorf("bank import must be the first record")
 		}
 		for _, a := range record.Accounts {
+			accountdomain.NormalizeKYCSessionIdentifiers(a)
 			s.Accounts[a.Id] = a
 			s.Balances[financialID(a.Id).Hex()] = a.Balance.Current
 		}

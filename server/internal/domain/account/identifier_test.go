@@ -35,3 +35,13 @@ func TestNormalizeKYCSessionIdentifiersKeepsCustomerReferenceAligned(t *testing.
 		t.Fatalf("legacy identifiers were not normalized: session=%q customer=%q", account.KYCSessions[0].Id, account.Customer.VerifiedKYCSessionId)
 	}
 }
+
+func TestValidateKYCSessionIdentifiersRejectsDanglingReference(t *testing.T) {
+	account := &UserAccount{
+		Customer: &Customer{VerifiedKYCSessionId: "507f1f77bcf86cd799439011"},
+	}
+
+	if err := ValidateKYCSessionIdentifiers(account); err == nil {
+		t.Fatal("expected dangling verified KYC reference to be rejected")
+	}
+}
