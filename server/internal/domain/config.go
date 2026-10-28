@@ -70,6 +70,7 @@ type Config struct {
 	SMTPConfig       *SMTPConfig
 	DocsConfig       *DocsConfig
 	KYCConfig        *KYCConfig
+	HTTPConfig       *HTTPConfig
 }
 
 func (l *Loader) LoadAllConfig() *Config {
@@ -83,6 +84,18 @@ func (l *Loader) LoadAllConfig() *Config {
 		SMTPConfig:       l.LoadSMTPConfig(),
 		DocsConfig:       l.LoadDocsConfig(),
 		KYCConfig:        l.LoadKYCConfig(),
+		HTTPConfig:       l.LoadHTTPConfig(),
+	}
+}
+
+type HTTPConfig struct {
+	TrustedProxyCIDRs []string
+}
+
+func (l *Loader) LoadHTTPConfig() *HTTPConfig {
+	l.logger().Info().Msg("Load HTTP config")
+	return &HTTPConfig{
+		TrustedProxyCIDRs: splitCSV(l.LoadEnvOr("TRUSTED_PROXY_CIDRS", "")),
 	}
 }
 
