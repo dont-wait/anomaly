@@ -139,3 +139,65 @@ checkpoint để replay. Pipeline training thuộc repo riêng. EventStoreDB có
 khi recreate.
 
 [Lệnh migration, cutover và replay](../server/README.md#eventstore-first-banking).
+
+## Local development
+
+Development uses `docker-compose.yml` only. No Swarm initialization or remote
+deployment is required. `dev-up.sh` detects the first address of the current
+machine and uses it for Kafka's external listener; set
+`KAFKA_ADVERTISED_HOST` in `.env` when a specific address is needed.
+
+```bash
+cd server
+cp .env.example .env
+# Set JWT_SECRET, MONGO_ROOT_PASSWORD, REDIS_PASSWORD and RustFS credentials.
+./dev-up.sh
+```
+
+The default remains `localhost` when no non-loopback address can be detected.
+
+## ML prediction service on Docker Swarm
+
+The ML worker is deployed separately from the local API stack. It consumes
+`anomaly.bank.events.v1` with the `ml-pipeline` consumer group, reads the
+canonical history from EventStoreDB, and publishes risk results. The Swarm
+stack includes Prometheus, a Kafka lag exporter, and an autoscaler.
+
+Build the ML image and autoscaler image from the repository parent:
+
+```bash
+cd deploy/swarm
+export ML_KAFKA_BROKERS='<manager-or-broker-ip>:9092'
+export ML_KAFKA_EXPORTER_SERVER='<manager-or-broker-ip>:9092'
+export ML_EVENTSTORE_URI='esdb://<manager-or-eventstore-ip>:2113?tls=false'
+make build-ml
+make build-autoscaler
+docker swarm init --advertise-addr <manager-ip>
+docker stack deploy -c ml-stack.yml ml
+```
+
+The ML image must also contain the compatible `GATv2/src` package at
+`/opt/GATv2/src`; provide that source in the image build context or publish a
+prebuilt image as `ML_SERVICE_IMAGE`. The default `ML_SERVICE_NAME` is
+`ml_ml-service` matching stack name `ml`; override `ML_SERVICE_NAME` if deploying
+under a different stack name.
+
+Scaling is driven by Kafka consumer lag. Defaults are one to four replicas,
+scale up above 1,000 messages, scale down below 100, and a two-minute
+cooldown. Kafka input partitions must be at least the maximum replica count.
+The autoscaler requires access to `/var/run/docker.sock`; restrict this stack
+to a trusted manager node.
+
+Swarm and load-test commands are available from `deploy/swarm/`:
+
+```bash
+make -C deploy/swarm services
+make -C deploy/swarm run-autoscaler
+make -C deploy/swarm scale-up SCALE_UP_TO=3
+make -C deploy/swarm scale-down SCALE_DOWN_TO=1
+make -C deploy/swarm test-request TARGET_URL=http://localhost:19100/metrics
+```
+
+The current ML worker is Kafka-based and exposes metrics, not an HTTP prediction
+route. The k6 command therefore exercises the metrics endpoint. Replace
+`TARGET_URL` when an HTTP prediction endpoint is added.

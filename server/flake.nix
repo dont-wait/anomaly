@@ -44,6 +44,7 @@
                 python3
                 python3Packages.python-lsp-server
                 python3Packages.pyls-isort
+                pytest
               ]
               ++ runtimeLibs;
 
