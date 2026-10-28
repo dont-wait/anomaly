@@ -3,6 +3,8 @@
 import logging
 from dataclasses import replace
 
+from prometheus_client import Counter, Gauge, Histogram
+
 from .contracts import ContractError, build_risk_event
 from .events import InputError, select_trigger_event
 from .history import EventStoreHistory
@@ -12,6 +14,11 @@ from .timeutil import microseconds
 from .training import TrainingDataSink
 
 log = logging.getLogger(__name__)
+
+MESSAGES_TOTAL = Counter("ml_messages_total", "Kafka messages received", ["result"])
+PREDICTIONS_TOTAL = Counter("ml_predictions_total", "Predictions published")
+PROCESSING_SECONDS = Histogram("ml_processing_seconds", "Message processing time")
+LAST_SUCCESS = Gauge("ml_last_success_timestamp_seconds", "Unix time of last successful message")
 
 
 def handle_message(raw, predictor, output_publisher, training_sink):

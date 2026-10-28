@@ -11,7 +11,7 @@
 - `cmd/relay`: persistent subscription từ EventStoreDB và Kafka producer
 
 `consumer-mock/` là Kafka consumer giả lập độc lập cho model pipeline, chạy ngoài `server/`.
-`server/ml-pipeline/` là publisher Python chạy riêng: consume trigger
+`anomaly-service/` là publisher Python chạy riêng: consume trigger
 `TransferCreated` từ Kafka, đọc event gốc + history từ EventStoreDB, chạy bundle
 GATv2 local, publish risk response và training record.
 
@@ -65,6 +65,8 @@ lưu decision tạm thời theo transfer ID để confirm có thể trả `PENDI
 `TransferFailed`; không tạo event risk riêng.
 =======
 Publisher GATv2 tại `server/ml-pipeline` không dùng payload Kafka để dựng feature
+=======
+Publisher GATv2 tại `anomaly-service` không dùng payload Kafka để dựng feature
 vì relay đã pseudonymize account/device ID. Service này dùng `TransferCreated` trên
 Kafka làm trigger, đọc raw event + toàn bộ transfer history trước `occurredAt` từ
 EventStoreDB, rồi chạy `ReplayPredictor` trên bundle GATv2 đã export. Kết quả được

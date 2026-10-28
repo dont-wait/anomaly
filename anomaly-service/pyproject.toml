@@ -5,9 +5,10 @@ description = "Kafka publisher and training-data collector for the Anomaly model
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "esdbclient>=2.0,<3.0",
+  "esdbclient>=1.1.7,<2.0",
   "kafka-python>=2.2,<3.0",
   "numpy>=1.26,<3.0",
+  "prometheus-client>=0.20,<1.0",
   "python-dotenv>=1.0",
   "torch>=2.0",
   "torch-geometric>=2.8",

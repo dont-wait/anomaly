@@ -1,4 +1,4 @@
-# Anomaly ML Pipeline
+# Anomaly Service
 
 Kafka publisher cho model GATv2: nhận trigger `TransferCreated`, đọc event gốc +
 lịch sử từ EventStoreDB, chạy inference bằng bundle GATv2 local, publish kết quả
@@ -11,7 +11,7 @@ publish Kafka. GATv2 dựng graph bằng identity tài khoản, nên payload Kaf
 khớp node catalog đã train. Vì vậy:
 
 - Kafka chỉ dùng làm **trigger** (`event_id`, `transaction_id`, `occurred_at`).
-- `ml-pipeline` đọc **Record.Event gốc + history** trực tiếp từ EventStoreDB
+- `anomaly-service` đọc **Record.Event gốc + history** trực tiếp từ EventStoreDB
   stream `banking`.
 - Bundle và scaler vẫn là artifact GATv2 đã export; không train lại.
 
@@ -24,7 +24,7 @@ server thêm history API/projection, chỉ cần thay `EventStoreHistory`.
 ```text
 TransferCreated
   → relay publish Kafka (payload đã redact/pseudonymize)
-  → ml-pipeline consume TransferCreated
+  → anomaly-service consume TransferCreated
   → đọc raw request + toàn bộ transfer event trước occurredAt từ EventStoreDB
   → GATv2 ReplayPredictor (bundle local)
   → publish anomaly.bank.risk.v1
@@ -63,7 +63,7 @@ Service dùng đúng `ReplayPredictor` của GATv2. Cần cài dependencies củ
 
 ```env
 MODEL_BUNDLE_PATH=./models/gatv2-1m-baseline-v1
-GATV2_SRC_PATH=../../../GATv2/src
+GATV2_SRC_PATH=../../GATv2/src
 MODEL_DEVICE=cpu
 ```
 
@@ -75,6 +75,10 @@ Source GATv2 vẫn là dependency ngoài, cần cung cấp theo hướng dẫn t
 
 ## Cấu hình
 
+Copy `.env.example` and change the values for the environment where the worker
+runs. `KAFKA_BROKERS` and `EVENTSTORE_URI` must be reachable from the worker
+container or process. The consumer group is shared by all worker replicas.
+
 ```env
 KAFKA_BROKERS=localhost:9092
 KAFKA_INPUT_TOPIC=anomaly.bank.events.v1
@@ -85,7 +89,7 @@ KAFKA_AUTO_OFFSET_RESET=earliest
 KAFKA_DELIVERY_TIMEOUT_SECONDS=30
 
 MODEL_BUNDLE_PATH=./models/gatv2-1m-baseline-v1
-GATV2_SRC_PATH=../../../GATv2/src
+GATV2_SRC_PATH=../../GATv2/src
 MODEL_DEVICE=cpu
 
 EVENTSTORE_URI=esdb://localhost:2113?tls=false
@@ -93,6 +97,7 @@ EVENTSTORE_STREAM=banking
 
 TRAINING_DATA_PATH=./data/training/predictions.jsonl
 TRAINING_DATA_FSYNC=true
+METRICS_PORT=9100
 TRAINING_DATA_MAX_BYTES=104857600
 TRAINING_DATA_BACKUP_COUNT=5
 ```
@@ -107,7 +112,7 @@ EVENTSTORE_URI=esdb://eventstore:2113?tls=false
 ## Chạy
 
 ```bash
-cd server/ml-pipeline
+cd anomaly-service
 cp .env.example .env
 python -m venv .venv
 . .venv/bin/activate
@@ -124,6 +129,18 @@ Hoặc:
 python -m app
 ```
 
+`METRICS_PORT` exposes Prometheus metrics. The worker exports:
+
+| Metric | Meaning |
+| --- | --- |
+| `ml_messages_total{result}` | Received messages classified as `predicted`, `ignored`, or `failed` |
+| `ml_predictions_total` | Successfully published predictions |
+| `ml_processing_seconds` | Message processing duration histogram |
+| `ml_last_success_timestamp_seconds` | UTC Unix timestamp of the last committed message |
+
+The Swarm autoscaler uses Kafka consumer lag as its primary signal. Prometheus
+and the Kafka exporter collect that lag; CPU is not used as the scaling trigger.
+
 Yêu cầu: Kafka, EventStoreDB và bundle GATv2 đã sẵn sàng. Không cần model HTTP
 service.
 
@@ -132,6 +149,101 @@ Nếu chỉ chạy CPU và muốn tránh tải CUDA, cài torch từ CPU index t
 ```bash
 pip install --index-url https://download.pytorch.org/whl/cpu torch
 pip install -e '.[dev]'
+```
+
+## Docker image
+
+The Dockerfile expects this layout in the build context parent:
+
+```text
+git/
+├── anomaly/anomaly-service/
+└── GATv2/src/fraud_pipeline/
+```
+
+Build from the `git/` directory so the image contains the matching GATv2
+source. `network.host` is required in this environment because Docker's bridge
+DNS cannot resolve PyPI:
+
+```bash
+cd deploy/swarm
+make build-ml
+```
+
+The image installs the CPU PyTorch wheel and includes the local model bundle.
+For GPU inference, use a CUDA base image and a separately tested dependency
+set; do not change `MODEL_DEVICE` alone.
+
+## Docker Swarm deployment
+
+The ML service is deployed separately from the local API Compose stack. It does
+not expose a prediction HTTP endpoint; Kafka is its input and output interface.
+The stack contains:
+
+- `ml-service`: Kafka consumer and GATv2 inference worker
+- `kafka-exporter`: exposes consumer-group lag
+- `prometheus`: scrapes worker metrics and lag
+- `ml-autoscaler`: calls the Docker API to change worker replicas
+
+Build and deploy on a Swarm manager:
+
+```bash
+cd deploy/swarm
+make build-ml
+make build-autoscaler
+
+export ML_KAFKA_BROKERS='<broker-ip>:9092'
+export ML_KAFKA_EXPORTER_SERVER='<broker-ip>:9092'
+export ML_EVENTSTORE_URI='esdb://<eventstore-ip>:2113?tls=false'
+docker stack deploy -c ml-stack.yml ml
+make services
+```
+
+The default autoscaling bounds are one to four replicas:
+
+```bash
+ML_MIN_REPLICAS=1
+ML_MAX_REPLICAS=4
+ML_SCALE_UP_LAG=1000
+ML_SCALE_DOWN_LAG=100
+AUTOSCALER_COOLDOWN_SECONDS=120
+```
+
+Set the input Kafka topic partitions to at least `ML_MAX_REPLICAS`. Kafka can
+assign only one consumer in a group to each partition, so extra replicas remain
+idle. The autoscaler mounts `/var/run/docker.sock` and must run on a manager
+node; treat that socket as full Docker control access.
+
+Manual scaling and logs:
+
+```bash
+make scale-up SCALE_UP_TO=3
+make scale-down SCALE_DOWN_TO=1
+make logs-autoscaler
+```
+
+## Verification
+
+Run the unit tests from the service directory:
+
+```bash
+cd anomaly-service
+pip install -e '.[dev]'
+pytest -q
+```
+
+For a basic Prometheus endpoint test after startup:
+
+```bash
+curl http://localhost:9100/metrics | grep -E \
+  'ml_messages_total|ml_predictions_total|ml_processing_seconds|ml_last_success'
+```
+
+The repository k6 script targets `/metrics` by default because this worker is
+Kafka based. It tests an HTTP prediction route only after one is added:
+
+```bash
+make -C deploy/swarm test-request TARGET_URL=http://<prediction-service>/predict
 ```
 
 ## Output Kafka
