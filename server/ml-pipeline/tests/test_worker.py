@@ -113,3 +113,51 @@ def test_output_or_model_failure_prevents_training_record():
     with pytest.raises(RuntimeError, match="model"):
         handle_message(json.dumps(request_event()).encode(), predictor, output, training)
     assert output.items == []
+
+
+def test_consumer_loop_commits_on_ignored_and_poison_messages():
+    from app.worker import run
+
+    class FakeMessage:
+        def __init__(self, value, offset=0, partition=0):
+            self.value = value
+            self.offset = offset
+            self.partition = partition
+
+    class FakeConsumer:
+        def __init__(self, messages):
+            self.messages = messages
+            self.commit_count = 0
+            self.closed = False
+
+        def __iter__(self):
+            return iter(self.messages)
+
+        def commit(self):
+            self.commit_count += 1
+
+        def close(self):
+            self.closed = True
+
+    messages = [
+        FakeMessage(json.dumps(request_event(event_type="TransferCompleted")).encode(), offset=0),  # ignored
+        FakeMessage(b"not-valid-json{{{", offset=1),  # poison pill
+        FakeMessage(json.dumps(request_event()).encode(), offset=2),  # valid
+    ]
+    consumer = FakeConsumer(messages)
+    predictor = FakePredictor()
+    output = FakeOutput()
+    training = FakeTraining()
+
+    class Config:
+        kafka_brokers = ["localhost:9092"]
+        input_topic = "test"
+        output_topic = "test-out"
+        training_topic = "test-train"
+        model_bundle_path = "/models"
+
+    run(Config(), consumer=consumer, predictor=predictor, output=output, training=training)
+
+    assert consumer.commit_count == 3
+    assert consumer.closed is True
+    assert len(output.items) == 1

@@ -76,3 +76,42 @@ def test_local_bundle_predictor_rejects_missing_source_dir(monkeypatch, tmp_path
         assert "source path" in str(error)
     else:
         raise AssertionError("missing GATv2 source directory was accepted")
+
+
+def test_local_bundle_predictor_maps_account_ids(monkeypatch):
+    calls = fake_fraud_pipeline(monkeypatch)
+
+    class HistoryWithAccounts:
+        def read_request_and_prefix(self, event_id):
+            req = {
+                "eventId": event_id,
+                "payload": {
+                    "sourceAccountId": "6623a1f89c30111111111111",
+                    "destinationAccountId": "6623a1f89c30222222222222",
+                },
+            }
+            prefix = [
+                {
+                    "eventId": "prev",
+                    "payload": {
+                        "sourceAccountId": "6623a1f89c30111111111111",
+                        "destinationAccountId": "known-dest",
+                    },
+                }
+            ]
+            return req, prefix
+
+    from app.predictor import LocalBundlePredictor
+
+    predictor = LocalBundlePredictor(
+        "/models/bundle",
+        HistoryWithAccounts(),
+        account_id_map={"known-dest": "custom-uuid"},
+    )
+    predictor.account_node_ids = ["acc-uuid-1", "acc-uuid-2"]
+    result = predictor.predict("evt-123")
+
+    assert result.request["payload"]["sourceAccountId"] == "6623a1f89c30111111111111"
+    model_req = calls["request"]
+    assert model_req["payload"]["sourceAccountId"] in ["acc-uuid-1", "acc-uuid-2"]
+    assert calls["history"][0]["payload"]["destinationAccountId"] == "custom-uuid"
