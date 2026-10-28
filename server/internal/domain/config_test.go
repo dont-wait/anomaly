@@ -93,6 +93,7 @@ func TestLoaderLoadAllConfig(t *testing.T) {
 	t.Setenv("MONGO_URI", "mongodb://db.example:27017")
 	t.Setenv("MONGO_DB", "banking")
 	t.Setenv("JWT_SECRET", "test-secret-32-chars-minimum-len-xx")
+	t.Setenv("TRUSTED_PROXY_CIDRS", "127.0.0.1/32, 172.17.0.0/16")
 
 	loader := &Loader{log: testLogger()}
 	got := loader.LoadAllConfig()
@@ -114,6 +115,9 @@ func TestLoaderLoadAllConfig(t *testing.T) {
 	}
 	if got.KYCConfig == nil || got.KYCConfig.ServiceURL != "http://localhost:8090" {
 		t.Fatalf("KYCConfig = %#v, want local default", got.KYCConfig)
+	}
+	if got.HTTPConfig == nil || len(got.HTTPConfig.TrustedProxyCIDRs) != 2 {
+		t.Fatalf("HTTPConfig = %#v, want two trusted proxy CIDRs", got.HTTPConfig)
 	}
 }
 
