@@ -9,6 +9,21 @@ export interface RiskAssessment {
   modelVersion: string;
   featureVersion: string;
   receivedAt: string;
+  transaction: RiskTransactionContext | null;
+}
+
+export interface RiskTransactionContext {
+  transactionId: string;
+  sourceAccountNo: string;
+  sourceAccountName: string;
+  destinationAccountNo: string;
+  destinationName: string;
+  amount: number;
+  fee: number;
+  currency: string;
+  channel: string;
+  status: string;
+  createdAt: string;
 }
 
 export interface RiskSeriesPoint {

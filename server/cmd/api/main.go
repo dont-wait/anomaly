@@ -24,6 +24,7 @@ import (
 	adminhandler "github.com/dont-wait/anomaly/internal/presentation/http/handler/admin"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/rs/zerolog"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 func main() {
@@ -69,12 +70,15 @@ func main() {
 		logger.Fatal().Err(err).Msg("ensure risk assessment indexes failed")
 	}
 	riskHub := riskstream.NewHub()
-	adminMonitorHandler := adminhandler.NewMonitorHandler(riskAssessments, riskHub)
 	go func() {
+		var resumeToken bson.Raw
 		for ctx.Err() == nil {
-			err := riskAssessments.Watch(ctx, func(assessment riskassessment.Assessment) {
+			nextToken, err := riskAssessments.Watch(ctx, resumeToken, func(assessment riskassessment.Assessment) {
 				riskHub.Publish(riskstream.Event{ID: assessment.ID, Assessment: assessment})
 			})
+			if len(nextToken) > 0 {
+				resumeToken = append(bson.Raw(nil), nextToken...)
+			}
 			if ctx.Err() != nil {
 				return
 			}
@@ -94,7 +98,8 @@ func main() {
 		logger.Fatal().Err(err).Msg("connect eventstore failed")
 	}
 	defer eventstore.Disconnect(esClient)
-	bank := eventstore.NewBankRepository(esClient, mongo.NewTransferRepository(mongoClient, config.MongoConfig.MongoDBName))
+	transferRepository := mongo.NewTransferRepository(mongoClient, config.MongoConfig.MongoDBName)
+	bank := eventstore.NewBankRepository(esClient, transferRepository)
 	legacyAccounts, err := mongoClient.Database(config.MongoConfig.MongoDBName).Collection("accounts").EstimatedDocumentCount(ctx)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("check existing account data")
@@ -102,6 +107,7 @@ func main() {
 	if err := bank.EnsureReady(ctx, legacyAccounts > 0); err != nil {
 		logger.Fatal().Err(err).Msg("banking source of truth unavailable")
 	}
+	adminMonitorHandler := adminhandler.NewMonitorHandler(riskAssessments, riskHub, transferRepository)
 
 	tokenSvc := auth.NewTokenService(config.AuthConfig.JWTSecret, config.AuthConfig.JWTExpiry)
 

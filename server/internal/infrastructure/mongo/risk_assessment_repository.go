@@ -280,20 +280,24 @@ func (r *RiskAssessmentRepository) ListAfter(ctx context.Context, after time.Tim
 // Watch emits persisted assessments for other API instances as well as the
 // local instance. The durable collection remains the source of truth; a
 // reconnecting client can replay from its cursor through ListAfter.
-func (r *RiskAssessmentRepository) Watch(ctx context.Context, publish func(riskassessment.Assessment)) error {
-	stream, err := r.collection.Watch(ctx, mongodrv.Pipeline{})
+func (r *RiskAssessmentRepository) Watch(ctx context.Context, resumeAfter bson.Raw, publish func(riskassessment.Assessment)) (bson.Raw, error) {
+	changeStreamOptions := options.ChangeStream()
+	if len(resumeAfter) > 0 {
+		changeStreamOptions.SetResumeAfter(resumeAfter)
+	}
+	stream, err := r.collection.Watch(ctx, mongodrv.Pipeline{}, changeStreamOptions)
 	if err != nil {
-		return err
+		return resumeAfter, err
 	}
 	defer func() { _ = stream.Close(ctx) }()
 	for stream.Next(ctx) {
 		var change riskAssessmentChange
 		if err := stream.Decode(&change); err != nil {
-			return err
+			return stream.ResumeToken(), err
 		}
 		if change.OperationType == "insert" && change.FullDocument.ID != "" {
 			publish(change.FullDocument)
 		}
 	}
-	return stream.Err()
+	return stream.ResumeToken(), stream.Err()
 }

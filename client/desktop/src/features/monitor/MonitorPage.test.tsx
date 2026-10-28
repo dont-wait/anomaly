@@ -28,6 +28,7 @@ const dashboard = {
       assessmentId: "assessment-1", transactionId: "TX001", riskScore: 0.9821,
       predictedLabel: 1 as const, threshold: 0.9517, modelVersion: "model-v1",
       featureVersion: "features-v1", receivedAt: "2026-10-28T10:00:00Z",
+      transaction: { transactionId: "TX001", sourceAccountNo: "ACC001", sourceAccountName: "Nguyen Van A", destinationAccountNo: "ACC002", destinationName: "Tran Thi B", amount: 50000000, fee: 0, currency: "VND", channel: "mobile", status: "awaiting_otp", createdAt: "2026-10-28T09:59:00Z" },
     }],
     modelVersions: [{ label: "model-v1", count: 2 }],
   },

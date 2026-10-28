@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -17,12 +18,17 @@ import (
 )
 
 type MonitorHandler struct {
-	repository *mongorepo.RiskAssessmentRepository
-	hub        *riskstream.Hub
+	repository   *mongorepo.RiskAssessmentRepository
+	hub          *riskstream.Hub
+	transactions transactionContextLookup
 }
 
-func NewMonitorHandler(repository *mongorepo.RiskAssessmentRepository, hub *riskstream.Hub) *MonitorHandler {
-	return &MonitorHandler{repository: repository, hub: hub}
+type transactionContextLookup interface {
+	FindRiskTransactionContexts(context.Context, []string) (map[string]mongorepo.RiskTransactionContext, error)
+}
+
+func NewMonitorHandler(repository *mongorepo.RiskAssessmentRepository, hub *riskstream.Hub, transactions transactionContextLookup) *MonitorHandler {
+	return &MonitorHandler{repository: repository, hub: hub, transactions: transactions}
 }
 
 type cursor struct {
@@ -31,14 +37,29 @@ type cursor struct {
 }
 
 type riskAssessmentDTO struct {
-	AssessmentID   string    `json:"assessmentId"`
-	TransactionID  string    `json:"transactionId"`
-	RiskScore      float64   `json:"riskScore"`
-	PredictedLabel int       `json:"predictedLabel"`
-	Threshold      float64   `json:"threshold"`
-	ModelVersion   string    `json:"modelVersion"`
-	FeatureVersion string    `json:"featureVersion"`
-	ReceivedAt     time.Time `json:"receivedAt"`
+	AssessmentID   string                 `json:"assessmentId"`
+	TransactionID  string                 `json:"transactionId"`
+	RiskScore      float64                `json:"riskScore"`
+	PredictedLabel int                    `json:"predictedLabel"`
+	Threshold      float64                `json:"threshold"`
+	ModelVersion   string                 `json:"modelVersion"`
+	FeatureVersion string                 `json:"featureVersion"`
+	ReceivedAt     time.Time              `json:"receivedAt"`
+	Transaction    *transactionContextDTO `json:"transaction"`
+}
+
+type transactionContextDTO struct {
+	TransactionID        string    `json:"transactionId"`
+	SourceAccountNo      string    `json:"sourceAccountNo"`
+	SourceAccountName    string    `json:"sourceAccountName"`
+	DestinationAccountNo string    `json:"destinationAccountNo"`
+	DestinationName      string    `json:"destinationName"`
+	Amount               int64     `json:"amount"`
+	Fee                  int64     `json:"fee"`
+	Currency             string    `json:"currency"`
+	Channel              string    `json:"channel"`
+	Status               string    `json:"status"`
+	CreatedAt            time.Time `json:"createdAt"`
 }
 
 type monitorPoint struct {
@@ -107,7 +128,12 @@ func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not load recent risk assessments", http.StatusInternalServerError)
 		return
 	}
-	response := buildMonitorResponse(rangeName, summary, recent, now)
+	recentDTO, err := h.enrichAssessments(r.Context(), recent)
+	if err != nil {
+		http.Error(w, "could not load transaction context", http.StatusInternalServerError)
+		return
+	}
+	response := buildMonitorResponse(rangeName, summary, recentDTO, now)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -146,8 +172,12 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			if listErr != nil {
 				return
 			}
-			for _, item := range items {
-				if err := writeAssessmentEvent(w, flusher, item); err != nil {
+			dtos, enrichErr := h.enrichAssessments(r.Context(), items)
+			if enrichErr != nil {
+				return
+			}
+			for index, item := range items {
+				if err := writeAssessmentEvent(w, flusher, item, dtos[index]); err != nil {
 					return
 				}
 				after = cursor{ReceivedAt: item.ReceivedAt, ID: item.ID}
@@ -171,7 +201,11 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			if !isAfter(event.Assessment, after) {
 				continue
 			}
-			if err := writeAssessmentEvent(w, flusher, event.Assessment); err != nil {
+			dto, enrichErr := h.enrichAssessment(r.Context(), event.Assessment)
+			if enrichErr != nil {
+				return
+			}
+			if err := writeAssessmentEvent(w, flusher, event.Assessment, dto); err != nil {
 				return
 			}
 			after = cursor{ReceivedAt: event.Assessment.ReceivedAt, ID: event.Assessment.ID}
@@ -197,7 +231,7 @@ func monitorRange(value string) (time.Duration, string, bool) {
 	}
 }
 
-func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSummary, recent []riskassessment.Assessment, generatedAt time.Time) monitorResponse {
+func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSummary, recent []riskAssessmentDTO, generatedAt time.Time) monitorResponse {
 	snapshot := monitorSnapshot{
 		TotalAssessments:  int(summary.Total),
 		AnomalousCount:    int(summary.Anomalous),
@@ -209,9 +243,7 @@ func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSumm
 		snapshot.AverageRiskScore = summary.ScoreTotal / float64(summary.Total)
 		snapshot.AnomalyRate = float64(summary.Anomalous) / float64(summary.Total)
 	}
-	for _, item := range recent {
-		snapshot.RecentAssessments = append(snapshot.RecentAssessments, toDTO(item))
-	}
+	snapshot.RecentAssessments = append(snapshot.RecentAssessments, recent...)
 	for _, item := range summary.Timeseries {
 		average := 0.0
 		if item.AssessmentCount > 0 {
@@ -227,18 +259,50 @@ func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSumm
 	}
 	if len(recent) > 0 {
 		latest := recent[len(recent)-1]
-		return monitorResponse{Range: rangeName, UpdatedAt: latest.ReceivedAt, DataStatus: "fresh", Cursor: encodeCursor(cursor{ReceivedAt: latest.ReceivedAt, ID: latest.ID}), Snapshot: snapshot}
+		return monitorResponse{Range: rangeName, UpdatedAt: latest.ReceivedAt, DataStatus: "fresh", Cursor: encodeCursor(cursor{ReceivedAt: latest.ReceivedAt, ID: latest.AssessmentID}), Snapshot: snapshot}
 	}
 	watermark := generatedAt.UTC().Truncate(time.Millisecond)
 	return monitorResponse{Range: rangeName, UpdatedAt: watermark, DataStatus: "fresh", Cursor: encodeCursor(cursor{ReceivedAt: watermark}), Snapshot: snapshot}
 }
 
-func toDTO(item riskassessment.Assessment) riskAssessmentDTO {
-	return riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt}
+func (h *MonitorHandler) enrichAssessments(ctx context.Context, items []riskassessment.Assessment) ([]riskAssessmentDTO, error) {
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.TransactionID)
+	}
+	contexts := map[string]mongorepo.RiskTransactionContext{}
+	if h.transactions != nil {
+		var err error
+		contexts, err = h.transactions.FindRiskTransactionContexts(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+	}
+	result := make([]riskAssessmentDTO, 0, len(items))
+	for _, item := range items {
+		result = append(result, h.assessmentDTO(item, contexts[item.TransactionID]))
+	}
+	return result, nil
 }
 
-func writeAssessmentEvent(w http.ResponseWriter, flusher http.Flusher, item riskassessment.Assessment) error {
-	payload, err := json.Marshal(toDTO(item))
+func (h *MonitorHandler) enrichAssessment(ctx context.Context, item riskassessment.Assessment) (riskAssessmentDTO, error) {
+	dtos, err := h.enrichAssessments(ctx, []riskassessment.Assessment{item})
+	if err != nil {
+		return riskAssessmentDTO{}, err
+	}
+	return dtos[0], nil
+}
+
+func (h *MonitorHandler) assessmentDTO(item riskassessment.Assessment, transaction mongorepo.RiskTransactionContext) riskAssessmentDTO {
+	dto := riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt}
+	if transaction.TransactionID != "" {
+		dto.Transaction = &transactionContextDTO{TransactionID: transaction.TransactionID, SourceAccountNo: transaction.SourceAccountNo, SourceAccountName: transaction.SourceAccountName, DestinationAccountNo: transaction.DestinationAccountNo, DestinationName: transaction.DestinationName, Amount: transaction.Amount, Fee: transaction.Fee, Currency: transaction.Currency, Channel: transaction.Channel, Status: transaction.Status, CreatedAt: transaction.CreatedAt}
+	}
+	return dto
+}
+
+func writeAssessmentEvent(w http.ResponseWriter, flusher http.Flusher, item riskassessment.Assessment, dto riskAssessmentDTO) error {
+	payload, err := json.Marshal(dto)
 	if err != nil {
 		return err
 	}
