@@ -79,12 +79,13 @@ type SavingsHistoryItem struct {
 }
 
 type SavingsNotice struct {
-	ID         string    `json:"id" bson:"_id"`
-	SavingsID  string    `json:"savingsId" bson:"savings_id"`
-	SavingsNo  string    `json:"savingsNo" bson:"savings_no"`
-	Type       string    `json:"type" bson:"type"`
-	MaturityAt time.Time `json:"maturityAt" bson:"maturity_at"`
-	CreatedAt  time.Time `json:"createdAt" bson:"created_at"`
+	ID          string    `json:"id" bson:"_id"`
+	SavingsID   string    `json:"savingsId" bson:"savings_id"`
+	SavingsNo   string    `json:"savingsNo" bson:"savings_no"`
+	Type        string    `json:"type" bson:"type"`
+	CanWithdraw bool      `json:"canWithdraw" bson:"can_withdraw"`
+	MaturityAt  time.Time `json:"maturityAt" bson:"maturity_at"`
+	CreatedAt   time.Time `json:"createdAt" bson:"created_at"`
 }
 
 type SavingsPage struct {

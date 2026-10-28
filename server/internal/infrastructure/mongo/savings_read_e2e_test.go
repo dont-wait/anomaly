@@ -98,8 +98,28 @@ func TestSavingsReadAndMaturityNoticesWithMongo(t *testing.T) {
 		t.Fatalf("duplicate notification: %d / %v", n, err)
 	}
 	notifications, err := read.Notifications(ctx, "owner", 50)
-	if err != nil || len(notifications) != 1 || notifications[0].SavingsID != "mine" {
-		t.Fatalf("owner notification: %+v / %v", notifications, err)
+	if err != nil || len(notifications) != 1 || notifications[0].SavingsID != "mine" || !notifications[0].CanWithdraw {
+		t.Fatalf("owner notification must allow matured withdrawal: %+v / %v", notifications, err)
+	}
+	// A delivered notification is history, not a pending-only queue.
+	// It remains readable after settlement but its withdrawal action stops.
+	if _, err := db.Collection("savings_contracts").UpdateOne(ctx, bson.M{"_id": "mine"}, bson.M{"$set": bson.M{"status": "settled", "settlement": bson.M{"transaction_id": "tx-mine", "settled_at": now}}}); err != nil {
+		t.Fatal(err)
+	}
+	historical, err := read.Notifications(ctx, "owner", 50)
+	if err != nil || len(historical) != 1 || historical[0].SavingsID != "mine" || historical[0].CanWithdraw {
+		t.Fatalf("settled contract must retain notice without withdrawal action: %+v / %v", historical, err)
+	}
+	// A forged notice claiming the user's ID but pointing to another user's
+	// contract must never appear in the notification history.
+	if _, err := db.Collection("savings_notifications").InsertOne(ctx, bson.M{
+		"_id": "savings-maturity:spoofed", "customer_id": "owner", "savings_id": "outsider",
+		"type": "savings_matured", "created_at": now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err := read.Notifications(ctx, "owner", 50); err != nil || len(owned) != 1 {
+		t.Fatalf("foreign contract notice leaked to customer: %+v / %v", owned, err)
 	}
 	if _, err := db.Collection("savings_contracts").UpdateOne(ctx, bson.M{"_id": "future"}, bson.M{"$set": bson.M{"status": "settled", "settlement": bson.M{"transaction_id": "tx2", "interest_amount": int64(1), "total_amount": int64(1_000_001), "settled_at": now}}}); err != nil {
 		t.Fatal(err)
@@ -134,6 +154,11 @@ func TestSavingsReadAndMaturityNoticesWithMongo(t *testing.T) {
 	notices, err := read.Notifications(ctx, "owner", 50)
 	if err != nil || len(notices) != 2 {
 		t.Fatalf("later valid notice was not persisted: %+v / %v", notices, err)
+	}
+	for _, notice := range notices {
+		if notice.SavingsID == "mine" && notice.CanWithdraw {
+			t.Fatal("settled historical notice regained an available withdrawal action")
+		}
 	}
 	for i := 0; i < 105; i++ {
 		if _, err := db.Collection("savings_contracts").DeleteOne(ctx, bson.M{"_id": fmt.Sprintf("bad-%03d", i)}); err != nil {
