@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -15,11 +16,14 @@ def test_defaults_match_anomaly_topics_and_local_bundle():
     assert config.training_topic == "anomaly.model.training.v1"
     assert config.consumer_group == "ml-pipeline"
     assert config.auto_offset_reset == "earliest"
-    assert config.model_bundle_path.endswith("gatv2-device-control-v1")
+    assert config.model_bundle_path.endswith("models/gatv2-1m-baseline-v1")
+    assert (Path(config.model_bundle_path) / "bundle.json").is_file()
     assert config.gatv2_src_path.endswith("GATv2/src")
     assert config.model_device == "cpu"
     assert config.eventstore_stream == "banking"
     assert config.training_data_fsync is True
+    assert config.training_data_max_bytes == 100 * 1024 * 1024
+    assert config.training_data_backup_count == 5
 
 
 def test_environment_overrides():
@@ -38,6 +42,8 @@ def test_environment_overrides():
         "EVENTSTORE_STREAM": "banking",
         "TRAINING_DATA_PATH": "/tmp/training.jsonl",
         "TRAINING_DATA_FSYNC": "false",
+        "TRAINING_DATA_MAX_BYTES": "1024",
+        "TRAINING_DATA_BACKUP_COUNT": "2",
     }
     with patch.dict(os.environ, env, clear=True):
         config = load_config()
@@ -54,6 +60,8 @@ def test_environment_overrides():
     assert config.eventstore_uri == "esdb://eventstore:2113?tls=false"
     assert config.training_data_path == "/tmp/training.jsonl"
     assert config.training_data_fsync is False
+    assert config.training_data_max_bytes == 1024
+    assert config.training_data_backup_count == 2
 
 
 def test_relative_gatv2_source_can_be_disabled():
@@ -64,10 +72,12 @@ def test_relative_gatv2_source_can_be_disabled():
 def test_topic_conflicts_are_rejected():
     for env in (
         {"KAFKA_INPUT_TOPIC": "same", "KAFKA_OUTPUT_TOPIC": "same"},
-        {"KAFKA_INPUT_TOPIC": "same", "KAFKA_OUTPUT_TOPIC": "risk",
-         "KAFKA_TRAINING_TOPIC": "same"},
-        {"KAFKA_INPUT_TOPIC": "events", "KAFKA_OUTPUT_TOPIC": "risk",
-         "KAFKA_TRAINING_TOPIC": "risk"},
+        {"KAFKA_INPUT_TOPIC": "same", "KAFKA_OUTPUT_TOPIC": "risk", "KAFKA_TRAINING_TOPIC": "same"},
+        {
+            "KAFKA_INPUT_TOPIC": "events",
+            "KAFKA_OUTPUT_TOPIC": "risk",
+            "KAFKA_TRAINING_TOPIC": "risk",
+        },
     ):
         with patch.dict(os.environ, env, clear=True), pytest.raises(ConfigError):
             load_config()
@@ -82,6 +92,9 @@ def test_invalid_values_are_rejected():
         {"EVENTSTORE_URI": ""},
         {"EVENTSTORE_STREAM": ""},
         {"TRAINING_DATA_PATH": ""},
+        {"TRAINING_DATA_MAX_BYTES": "0"},
+        {"TRAINING_DATA_MAX_BYTES": "invalid"},
+        {"TRAINING_DATA_BACKUP_COUNT": "0"},
     ):
         with patch.dict(os.environ, env, clear=True), pytest.raises(ConfigError):
             load_config()

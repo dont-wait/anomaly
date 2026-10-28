@@ -33,7 +33,11 @@ TransferCreated
 ```
 
 Chỉ commit offset sau khi publish risk **và** ghi training record thành công.
-Nếu một bước lỗi, message sẽ được xử lý lại sau restart (at-least-once).
+Nếu inference, publish risk hoặc ghi training lỗi, worker dừng trước khi đọc
+message tiếp theo và giữ offset để xử lý lại sau restart (at-least-once).
+Input không phải trigger được commit; trigger sai định dạng JSON/envelope được
+log và bỏ qua có chủ đích. Lỗi model/history, identity không tương thích và lỗi
+output không được coi là input có thể bỏ qua.
 
 Output `event_id` là ID của `TransferCreated`; `transaction_id` dùng để server
 correlate với transfer. Output được publish trước khi worker commit offset, nên
@@ -58,13 +62,16 @@ Service dùng đúng `ReplayPredictor` của GATv2. Cần cài dependencies củ
 (`torch`, `numpy`) và cung cấp source path:
 
 ```env
-MODEL_BUNDLE_PATH=../../../GATv2/outputs/registry/gatv2-device-control-v1
+MODEL_BUNDLE_PATH=./models/gatv2-1m-baseline-v1
 GATV2_SRC_PATH=../../../GATv2/src
 MODEL_DEVICE=cpu
 ```
 
 Nếu `fraud_pipeline` đã được cài trong environment, có thể bỏ `GATV2_SRC_PATH`.
-Đường dẫn tương đối được tính từ thư mục chạy lệnh.
+Đường dẫn tương đối được tính từ thư mục chạy lệnh. Khi không đặt
+`MODEL_BUNDLE_PATH`, service dùng bundle `models/gatv2-1m-baseline-v1` đi kèm,
+được resolve theo vị trí module, không phụ thuộc thư mục chạy lệnh.
+Source GATv2 vẫn là dependency ngoài, cần cung cấp theo hướng dẫn trên.
 
 ## Cấu hình
 
@@ -77,7 +84,7 @@ KAFKA_CONSUMER_GROUP=ml-pipeline
 KAFKA_AUTO_OFFSET_RESET=earliest
 KAFKA_DELIVERY_TIMEOUT_SECONDS=30
 
-MODEL_BUNDLE_PATH=../../../GATv2/outputs/registry/gatv2-device-control-v1
+MODEL_BUNDLE_PATH=./models/gatv2-1m-baseline-v1
 GATV2_SRC_PATH=../../../GATv2/src
 MODEL_DEVICE=cpu
 
@@ -86,6 +93,8 @@ EVENTSTORE_STREAM=banking
 
 TRAINING_DATA_PATH=./data/training/predictions.jsonl
 TRAINING_DATA_FSYNC=true
+TRAINING_DATA_MAX_BYTES=104857600
+TRAINING_DATA_BACKUP_COUNT=5
 ```
 
 Khi chạy trong Docker Compose của `server/`, dùng:
@@ -189,6 +198,21 @@ Ghi JSONL tại `TRAINING_DATA_PATH` và publish cùng record lên
 ```
 
 - `record_id` ổn định theo event + request + response, dùng để dedupe khi retry.
+- `event.occurred_at` và risk `occurred_at` lấy từ raw request `occurredAt`;
+  timestamp Kafka do relay gán chỉ dùng để kiểm tra envelope đầu vào.
+- JSONL dùng POSIX file lock khi repair/rotate/append. File mới và file đang mở
+  được giới hạn quyền `0600`; thư mục training mới dùng `0700`. Với thư mục đã
+  tồn tại, operator cần kiểm tra quyền thư mục và các backup cũ riêng.
+- Nếu lần ghi trước bị ngắt, fragment JSON cuối file được truncate trước khi
+  ghi tiếp; record JSON hoàn chỉnh thiếu newline được giữ nguyên và thêm newline.
+- File active có giới hạn mặc định 100 MiB, giữ năm backup `.1` đến `.5`.
+  Khi rotation, backup cũ nhất bị thay thế. Archive sang kho riêng nếu cần giữ
+  training data lâu dài; thay đổi giới hạn bằng `TRAINING_DATA_MAX_BYTES` và
+  `TRAINING_DATA_BACKUP_COUNT`. Record lớn hơn giới hạn làm worker dừng, không
+  commit offset. Cần giám sát dung lượng đĩa; rotation không bảo đảm đĩa còn trống.
+- Các writer dùng chung path phải dùng filesystem hỗ trợ POSIX `flock`.
+  Khi chạy replica trên nhiều node với volume local, mỗi node có file training
+  riêng; training topic cần retention và quyền truy cập được cấu hình riêng.
 - `event` và `request` đều là raw `TransferCreated` đọc từ EventStoreDB, không
   phải payload Kafka đã redact.
 - Record **không phải label**. Muốn train supervised, cần join với outcome sau
@@ -205,8 +229,9 @@ Ghi JSONL tại `TRAINING_DATA_PATH` và publish cùng record lên
   và feature policy train theo thời điểm đó; không dùng lại model request-time.
 - Kafka relay chỉ enrich `model_features` cho `TransferCompleted`; service này
   không dùng `model_features`, GATv2 tự tính từ history.
-- Chưa có DLQ. Lỗi input/model/history làm worker dừng và không commit; cần
-  restart/giám sát.
+- Chưa có DLQ. Trigger sai định dạng được log và commit; lỗi xử lý/model/history
+  giữ offset và dừng worker, cần restart/giám sát. Lỗi xử lý vĩnh viễn cần được
+  operator khắc phục trước khi retry, tránh restart loop.
 - Chưa có consumer Go cho topic risk; backend/FE cần được nối riêng.
 - Chưa benchmark latency online và chưa kiểm chứng trên dữ liệu thật.
 - `TRAINING_DATA_PATH` và topic training chứa account/device ID gốc (không bị
@@ -217,6 +242,13 @@ Ghi JSONL tại `TRAINING_DATA_PATH` và publish cùng record lên
   trước khi chạy.
 - **Bundle compatibility:** `nodes.json` của bundle GATv2 hiện tại chứa account ID
   dạng UUID v5 từ dataset training. EventStoreDB của Anomaly dùng MongoDB
-  ObjectID hex cho `sourceAccountId`/`destinationAccountId`, nên các node sẽ
-  fallback về `__unknown__` nếu bundle chưa được train/export với đúng ID của
-  Anomaly. Cần retrain hoặc thống nhất mapping ID trước khi dùng production.
+  ObjectID hex cho `sourceAccountId`/`destinationAccountId`. Service từ chối
+  account không nằm trong catalog của bundle trước khi inference; không hash
+  modulo sang account training và không âm thầm fallback về `__unknown__`.
+  Muốn score account thật, cần bundle tương thích hoặc mapping identity đã được
+  xác thực. Tham số Python `account_id_map` chỉ nhận mapping vào account có thật
+  trong catalog, không cho hai identity khác nhau cùng node trong một lần replay;
+  worker mặc định không tự tạo mapping. Bundle mẫu không đủ để score account mới.
+- Cấu hình local hiện dùng Kafka PLAINTEXT và EventStoreDB không TLS. Không dùng
+  cấu hình này qua network không tin cậy; TLS/auth/ACL, mã hóa storage và retention
+  training topic phải được chuẩn bị cho môi trường triển khai.

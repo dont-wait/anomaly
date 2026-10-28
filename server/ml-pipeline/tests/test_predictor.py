@@ -1,6 +1,8 @@
 import sys
 import types
 
+import pytest
+
 
 class FakeHistory:
     def __init__(self):
@@ -22,6 +24,10 @@ def fake_fraud_pipeline(monkeypatch):
         def __init__(self, bundle, *, device="cpu"):
             calls["bundle"] = bundle
             calls["device"] = device
+            self.nodes = [
+                {"id": identity, "type": "account"}
+                for identity in ["acc-uuid-1", "acc-uuid-2", "custom-uuid"]
+            ]
 
         def predict(self, request, history):
             calls["request"] = request
@@ -106,12 +112,84 @@ def test_local_bundle_predictor_maps_account_ids(monkeypatch):
     predictor = LocalBundlePredictor(
         "/models/bundle",
         HistoryWithAccounts(),
-        account_id_map={"known-dest": "custom-uuid"},
+        account_id_map={
+            "known-dest": "custom-uuid",
+            "6623a1f89c30111111111111": "acc-uuid-1",
+            "6623a1f89c30222222222222": "acc-uuid-2",
+        },
     )
-    predictor.account_node_ids = ["acc-uuid-1", "acc-uuid-2"]
     result = predictor.predict("evt-123")
 
     assert result.request["payload"]["sourceAccountId"] == "6623a1f89c30111111111111"
     model_req = calls["request"]
-    assert model_req["payload"]["sourceAccountId"] in ["acc-uuid-1", "acc-uuid-2"]
+    assert model_req["payload"]["sourceAccountId"] == "acc-uuid-1"
+    assert model_req["payload"]["destinationAccountId"] == "acc-uuid-2"
     assert calls["history"][0]["payload"]["destinationAccountId"] == "custom-uuid"
+
+
+@pytest.mark.parametrize("identity", ["00000000000000000000002c", "00000000000000000000004e"])
+def test_unknown_accounts_are_rejected_before_model_inference(monkeypatch, identity):
+    calls = fake_fraud_pipeline(monkeypatch)
+    from app.predictor import LocalBundlePredictor, UnsupportedIdentityError
+
+    class History:
+        def read_request_and_prefix(self, event_id):
+            return {
+                "payload": {"sourceAccountId": identity, "destinationAccountId": "acc-uuid-1"}
+            }, []
+
+    predictor = LocalBundlePredictor("bundle", History())
+    with pytest.raises(UnsupportedIdentityError, match="not supported"):
+        predictor.predict("request")
+    assert "request" not in calls
+
+
+@pytest.mark.parametrize(
+    "mapping",
+    [
+        {"a": "acc-uuid-1", "b": "acc-uuid-1"},
+        {"a": "__unknown__"},
+        {"a": "not-in-bundle"},
+        {"acc-uuid-1": "acc-uuid-2"},
+    ],
+)
+def test_invalid_explicit_account_mapping_is_rejected(monkeypatch, mapping):
+    fake_fraud_pipeline(monkeypatch)
+    from app.predictor import LocalBundlePredictor, UnsupportedIdentityError
+
+    with pytest.raises(UnsupportedIdentityError):
+        LocalBundlePredictor("bundle", FakeHistory(), account_id_map=mapping)
+
+
+def test_explicit_alias_cannot_collapse_with_native_account_in_history(monkeypatch):
+    calls = fake_fraud_pipeline(monkeypatch)
+    from app.predictor import LocalBundlePredictor, UnsupportedIdentityError
+
+    class History:
+        def read_request_and_prefix(self, event_id):
+            return (
+                {"payload": {"sourceAccountId": "alias", "destinationAccountId": "acc-uuid-2"}},
+                [{"payload": {"sourceAccountId": "acc-uuid-1"}}],
+            )
+
+    predictor = LocalBundlePredictor("bundle", History(), account_id_map={"alias": "acc-uuid-1"})
+    with pytest.raises(UnsupportedIdentityError, match="merges distinct"):
+        predictor.predict("request")
+    assert "request" not in calls
+
+
+def test_native_bundle_accounts_preserve_request_and_history(monkeypatch):
+    calls = fake_fraud_pipeline(monkeypatch)
+    from app.predictor import LocalBundlePredictor
+
+    request = {"payload": {"sourceAccountId": "acc-uuid-1", "destinationAccountId": "acc-uuid-2"}}
+    prefix = [{"payload": {"sourceAccountId": "acc-uuid-2", "destinationAccountId": "acc-uuid-1"}}]
+
+    class History:
+        def read_request_and_prefix(self, event_id):
+            return request, prefix
+
+    result = LocalBundlePredictor("bundle", History()).predict("request")
+    assert calls["request"] == request
+    assert calls["history"] == prefix
+    assert result.request is request
