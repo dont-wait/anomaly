@@ -54,10 +54,13 @@ type RegisterResponse struct {
 type KYCSessionResponse = RegisterResponse
 
 type KYCCompleteResponse struct {
-	Decision      string                  `json:"decision"`
-	ReasonCode    string                  `json:"reasonCode,omitempty"`
-	ReasonMessage string                  `json:"reasonMessage,omitempty"`
-	User          *AccountResponsePrivate `json:"user,omitempty"`
+	Decision          string                  `json:"decision"`
+	ReasonCode        string                  `json:"reasonCode,omitempty"`
+	ReasonMessage     string                  `json:"reasonMessage,omitempty"`
+	User              *AccountResponsePrivate `json:"user,omitempty"`
+	AttemptsRemaining *int                    `json:"attemptsRemaining,omitempty"`
+	AttemptLimit      int                     `json:"attemptLimit,omitempty"`
+	RetryAfter        *time.Time              `json:"retryAfter,omitempty"`
 }
 
 func toAccountResponsePublic(a *accountdomain.UserAccount) AccountResponsePublic {

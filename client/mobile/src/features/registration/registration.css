@@ -841,3 +841,119 @@
     transition: none;
   }
 }
+
+/* Camera capture owns its viewport; registration decoration stays on other steps. */
+.auth-app.auth-app-capture {
+  display: block;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+.auth-app.auth-app-capture .brand-panel,
+.auth-app.auth-app-capture .mobile-brand,
+.auth-app.auth-app-capture .progress,
+.auth-app.auth-app-capture .flow-footer {
+  display: none;
+}
+.auth-app.auth-app-capture .flow-shell {
+  max-width: 720px;
+  padding: max(8px, env(safe-area-inset-top)) 12px
+    max(8px, env(safe-area-inset-bottom));
+}
+.auth-app.auth-app-capture .screen {
+  animation: none;
+}
+.auth-app-capture .capture-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.auth-app-capture .camera-frame {
+  height: max(320px, 60vh);
+  height: max(320px, 60dvh);
+  max-height: 760px;
+  border-radius: 16px;
+  background: #10131a;
+}
+.auth-app-capture .camera-frame video {
+  object-fit: contain;
+}
+.auth-app-capture .face-oval {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--guide-width, min(52%, 240px));
+  height: auto;
+  aspect-ratio: 3 / 4;
+  max-height: 66%;
+  border-width: 2px;
+  border-color: #f4f4f4b3;
+  box-shadow: none;
+  pointer-events: none;
+}
+.auth-app-capture .camera-tag {
+  top: 10px;
+  bottom: auto;
+  left: 12px;
+  right: auto;
+  border-radius: 8px;
+  background: #10131acc;
+  color: white;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 6px 8px;
+}
+.auth-app-capture .camera-instruction {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  right: 10px;
+  margin: 0;
+  border-radius: 10px;
+  padding: 8px;
+  text-align: center;
+  font-size: 14px;
+  color: white;
+  background: #10131acc;
+  pointer-events: none;
+}
+.auth-app-capture .capture-controls {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+.auth-app-capture .capture-stage,
+.auth-app.auth-app-capture .attempts {
+  margin: 4px 0;
+  font-size: 12px;
+  text-align: center;
+}
+.auth-app-capture .capture-stage {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: white;
+  background: #10131acc;
+  font-size: 10px;
+}
+.auth-app-capture .capture-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.auth-app-capture .capture-controls .error-text {
+  margin: 0;
+}
+@media (max-height: 480px) and (orientation: landscape) {
+  .auth-app-capture .camera-frame {
+    min-height: 220px;
+    height: 70dvh;
+  }
+}

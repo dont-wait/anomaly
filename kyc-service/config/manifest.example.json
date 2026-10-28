@@ -1,0 +1,20 @@
+{
+  "model_id": "REPLACE-WITH-YOUR-MODEL",
+  "model_version": "REPLACE-WITH-WEIGHTS-VERSION",
+  "weights": "face.onnx",
+  "sha256": "REPLACE-WITH-SHA256",
+  "source": "REPLACE-WITH-WEIGHTS-SOURCE",
+  "license": "REPLACE-WITH-USAGE-LICENSE",
+  "input_name": "REPLACE-WITH-MODEL-INPUT",
+  "output_name": "REPLACE-WITH-MODEL-OUTPUT",
+  "width": 112,
+  "height": 112,
+  "embedding_size": 512,
+  "layout": "NCHW",
+  "color": "RGB",
+  "mean": [127.5, 127.5, 127.5],
+  "std": [127.5, 127.5, 127.5],
+  "alignment_points": [[0.34, 0.46], [0.66, 0.46], [0.5, 0.64], [0.37, 0.82], [0.63, 0.82]],
+  "landmarker": "face_landmarker.task",
+  "landmarker_sha256": "REPLACE-WITH-SHA256"
+}
