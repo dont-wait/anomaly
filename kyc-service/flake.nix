@@ -23,6 +23,7 @@
             pkgs.ruff
             pkgs.ffmpeg-headless
             python
+            python.pkgs.pytest
           ];
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
