@@ -239,7 +239,12 @@ func (s *Service) Withdraw(ctx context.Context, actor, id, key string, in Withdr
 		return WithdrawResponse{}, err
 	}
 	if current.Contract.Status == savings.ContractSettled {
-		if current.WithdrawalKey == actor+":"+strings.ToLower(key) && current.WithdrawalQuoteID == in.QuoteID {
+		if current.WithdrawalKey == actor+":"+strings.ToLower(key) {
+			if current.WithdrawalQuoteID != in.QuoteID {
+				return WithdrawResponse{}, ErrIdempotencyConflict
+			}
+			// Retry the identical request even if its quote has expired or
+			// disappeared from the quote cache.
 			return settled(current), nil
 		}
 		return WithdrawResponse{}, savings.ErrAlreadySettled

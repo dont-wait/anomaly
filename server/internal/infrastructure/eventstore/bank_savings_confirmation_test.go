@@ -32,8 +32,8 @@ func TestConfirmSavingsSettlementUsesPersistedRequest(t *testing.T) {
 	if _, err := confirmSavingsSettlement(state, contractID, quoteID, losingKey); !errors.Is(err, savings.ErrAlreadySettled) {
 		t.Fatalf("another key must not claim the persisted settlement: %v", err)
 	}
-	if _, err := confirmSavingsSettlement(state, contractID, "another-quote", winningKey); !errors.Is(err, savings.ErrAlreadySettled) {
-		t.Fatalf("another quote must not claim the persisted settlement: %v", err)
+	if _, err := confirmSavingsSettlement(state, contractID, "another-quote", winningKey); !errors.Is(err, ErrSavingsIdempotencyConflict) {
+		t.Fatalf("same key with another quote must conflict: %v", err)
 	}
 }
 
@@ -78,6 +78,11 @@ func TestSavingsSettlementConfirmationRetriesAndPreservesUnknown(t *testing.T) {
 		return state, nil
 	}, contractID, quoteID, "actor:loser"); !errors.Is(err, savings.ErrAlreadySettled) {
 		t.Fatalf("wrong request claimed committed withdrawal: %v", err)
+	}
+	if _, err := confirmSavingsSettlementWithRecovery(context.Background(), func(context.Context) (*bankState, error) {
+		return state, nil
+	}, contractID, "changed-quote", winningKey); !errors.Is(err, ErrSavingsIdempotencyConflict) {
+		t.Fatalf("same key with different quote must conflict after confirmation: %v", err)
 	}
 	reads = 0
 	if _, err := confirmSavingsSettlementWithRecovery(context.Background(), func(context.Context) (*bankState, error) {

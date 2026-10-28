@@ -163,6 +163,16 @@ func TestSavingsCommandsExactlyOnceWithEventStoreDB(t *testing.T) {
 	if err != nil || again.TransactionID != results[winner].TransactionID {
 		t.Fatalf("idempotent withdrawal replay=%+v, err=%v", again, err)
 	}
+	// A retry with the winning key but a changed quote must be rejected by
+	// the repository, even after the original quote has expired.
+	if _, err := eventstore.NewBankRepository(es, nil).SettleSavings(
+		ctx, actor.Id, contract.ID, uuid.NewString(), keys[winner], time.Now().Add(5*time.Minute)); !errors.Is(err, eventstore.ErrSavingsIdempotencyConflict) {
+		t.Fatalf("reusing winning key with different quote: %v", err)
+	}
+	if _, err := eventstore.NewBankRepository(es, nil).SettleSavings(
+		ctx, actor.Id, contract.ID, withdrawQuote, keys[1-winner], time.Now().Add(5*time.Minute)); !errors.Is(err, savings.ErrAlreadySettled) {
+		t.Fatalf("different key on settled contract: %v", err)
+	}
 	assertBankBalance(t, ctx, bank, actor.Id, afterPast+payout)
 	if got := countSavingsEvents(readBank(t, ctx, es), journal.SavingsSettled); got != 1 {
 		t.Fatalf("settlement credit events=%d, want=1", got)

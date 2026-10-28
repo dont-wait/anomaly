@@ -83,3 +83,45 @@ func TestOpeningIdempotentResponseUsesStoredContractStatus(t *testing.T) {
 		t.Fatalf("replay status=%s want settled", got)
 	}
 }
+
+// settledWithdrawalBank returns the persisted EventStoreDB settlement directly.
+// Retries must be decided before trying to fetch an expired withdrawal quote.
+type settledWithdrawalBank struct {
+	settlementRaceBank
+	persisted journal.SavingsMovement
+}
+
+func (b *settledWithdrawalBank) FindSavings(context.Context, string, string) (journal.SavingsMovement, error) {
+	return b.persisted, nil
+}
+
+func TestWithdrawIdempotencyUsesPersistedQuote(t *testing.T) {
+	const actor = "actor"
+	const contractID = "contract"
+	const quoteID = "persisted-quote"
+	key := "5d94122b-135b-4e6d-bf68-2713b8ca8d58"
+	m := journal.SavingsMovement{
+		Contract: savings.Contract{
+			ID: contractID, Status: savings.ContractSettled,
+			Principal: 1_000_000, SourceAccountID: "account",
+			Settlement: &savings.Settlement{TransactionID: "tx", InterestAmount: 12_000, TotalAmount: 1_012_000},
+		},
+		WithdrawalKey: actor + ":" + key, WithdrawalQuoteID: quoteID,
+		TransactionID: "tx",
+	}
+	bank := &settledWithdrawalBank{persisted: m}
+	svc := &Service{Bank: bank, WithdrawalQuotes: &raceQuoteStore{}}
+
+	// The original quote isn't in Redis any more; the same request still
+	// receives its persisted receipt, without another SettleSavings call.
+	got, err := svc.Withdraw(context.Background(), actor, contractID, key, WithdrawInput{QuoteID: quoteID, Confirm: true})
+	if err != nil || got.TransactionID != "tx" || got.TotalPayout != 1_012_000 {
+		t.Fatalf("replay settled request: receipt=%+v err=%v", got, err)
+	}
+	if _, err := svc.Withdraw(context.Background(), actor, contractID, key, WithdrawInput{QuoteID: "different-quote", Confirm: true}); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("same idempotency key with changed quote: %v", err)
+	}
+	if _, err := svc.Withdraw(context.Background(), actor, contractID, "c65e7c73-f925-49b8-8d55-2ae1477d84f9", WithdrawInput{QuoteID: quoteID, Confirm: true}); !errors.Is(err, savings.ErrAlreadySettled) {
+		t.Fatalf("different idempotency key must remain already settled: %v", err)
+	}
+}
