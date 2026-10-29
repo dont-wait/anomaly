@@ -116,6 +116,8 @@ func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc 
 }
 
 func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
+	queryCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 	duration, rangeName, ok := monitorRange(r.URL.Query().Get("range"))
 	if !ok {
 		http.Error(w, "range must be 24h, 7d, or 30d", http.StatusBadRequest)
@@ -123,17 +125,17 @@ func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	from := now.Add(-duration)
-	summary, err := h.repository.Summarize(r.Context(), from, now)
+	summary, err := h.repository.Summarize(queryCtx, from, now)
 	if err != nil {
 		http.Error(w, "could not load risk assessments", http.StatusInternalServerError)
 		return
 	}
-	recent, err := h.repository.ListRecent(r.Context(), from, now, 50)
+	recent, err := h.repository.ListRecent(queryCtx, from, now, 50)
 	if err != nil {
 		http.Error(w, "could not load recent risk assessments", http.StatusInternalServerError)
 		return
 	}
-	recentDTO, err := h.enrichAssessments(r.Context(), recent)
+	recentDTO, err := h.enrichAssessments(queryCtx, recent)
 	if err != nil {
 		http.Error(w, "could not load transaction context", http.StatusInternalServerError)
 		return
@@ -168,16 +170,20 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
+	setSSEWriteDeadline(w)
 	_, _ = fmt.Fprint(w, ": connected\n\n")
 	flusher.Flush()
 
 	if after.ID != "" || !after.ReceivedAt.IsZero() {
 		for {
-			items, listErr := h.repository.ListAfter(r.Context(), after.ReceivedAt, after.ID, 1000)
+			queryCtx, queryCancel := context.WithTimeout(r.Context(), 5*time.Second)
+			items, listErr := h.repository.ListAfter(queryCtx, after.ReceivedAt, after.ID, 1000)
 			if listErr != nil {
+				queryCancel()
 				return
 			}
-			dtos, enrichErr := h.enrichAssessments(r.Context(), items)
+			dtos, enrichErr := h.enrichAssessments(queryCtx, items)
+			queryCancel()
 			if enrichErr != nil {
 				return
 			}
@@ -206,7 +212,9 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			if !isAfter(event.Assessment, after) {
 				continue
 			}
-			dto, enrichErr := h.enrichAssessment(r.Context(), event.Assessment)
+			queryCtx, queryCancel := context.WithTimeout(r.Context(), 5*time.Second)
+			dto, enrichErr := h.enrichAssessment(queryCtx, event.Assessment)
+			queryCancel()
 			if enrichErr != nil {
 				return
 			}
@@ -215,6 +223,7 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			}
 			after = cursor{ReceivedAt: event.Assessment.ReceivedAt, ID: event.Assessment.ID}
 		case <-ticker.C:
+			setSSEWriteDeadline(w)
 			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
 				return
 			}
@@ -317,6 +326,7 @@ func (h *MonitorHandler) assessmentDTO(item riskassessment.Assessment, transacti
 }
 
 func writeAssessmentEvent(w http.ResponseWriter, flusher http.Flusher, item riskassessment.Assessment, dto riskAssessmentDTO) error {
+	setSSEWriteDeadline(w)
 	payload, err := json.Marshal(dto)
 	if err != nil {
 		return err
@@ -327,6 +337,10 @@ func writeAssessmentEvent(w http.ResponseWriter, flusher http.Flusher, item risk
 	}
 	flusher.Flush()
 	return nil
+}
+
+func setSSEWriteDeadline(w http.ResponseWriter) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second))
 }
 
 func encodeCursor(value cursor) string {

@@ -59,3 +59,12 @@ func (h *Hub) Publish(event Event) {
 		}
 	}
 }
+
+func (h *Hub) Close() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for id, client := range h.clients {
+		delete(h.clients, id)
+		close(client)
+	}
+}

@@ -220,6 +220,7 @@ export function MonitorPage() {
     let active = true;
     let skeletonTimer: number | undefined;
     let finishTimer: number | undefined;
+    let retryTimer: number | undefined;
     let requestFailed = false;
 
     if (skeletonOnLoadRef.current) {
@@ -250,6 +251,13 @@ export function MonitorPage() {
         requestFailed = true;
         setResponse(null);
         setError(requestError instanceof Error ? requestError.message : "Vui lòng thử lại sau.");
+        retryTimer = window.setTimeout(() => {
+          if (active) {
+            setIsLoading(true);
+            setError(null);
+            setRequestVersion((version) => version + 1);
+          }
+        }, 3000);
       })
       .finally(() => {
         if (!active) return;
@@ -274,6 +282,7 @@ export function MonitorPage() {
       active = false;
       if (skeletonTimer !== undefined) window.clearTimeout(skeletonTimer);
       if (finishTimer !== undefined) window.clearTimeout(finishTimer);
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };
   }, [range, requestVersion]);
 

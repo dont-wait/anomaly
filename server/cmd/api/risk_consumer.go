@@ -92,15 +92,18 @@ func handleModelResponse(
 }
 
 func runRiskDecisionConsumer(ctx context.Context, config *domain.KafkaConfig, store *mongorepo.RiskAssessmentRepository, log zerolog.Logger) {
+	retryDelay := time.Second
 	for ctx.Err() == nil {
 		consumer, err := kafkainfra.NewConsumer(config.Brokers, config.RiskDecisionTopic, config.RiskDecisionGroup)
 		if err != nil {
 			log.Error().Err(err).Msg("create risk decision consumer failed")
-			if !waitRiskConsumerRetry(ctx) {
+			if !waitRiskConsumerRetry(ctx, retryDelay) {
 				return
 			}
+			retryDelay = nextRiskConsumerRetry(retryDelay)
 			continue
 		}
+		startedAt := time.Now()
 		err = consumer.Consume(ctx, func(messageCtx context.Context, message kafkago.Message) error {
 			return handleModelResponse(messageCtx, message, store, store, config.RiskDecisionSigningKey, log)
 		})
@@ -109,14 +112,18 @@ func runRiskDecisionConsumer(ctx context.Context, config *domain.KafkaConfig, st
 			return
 		}
 		log.Error().Err(err).Msg("risk decision consumer stopped; retrying")
-		if !waitRiskConsumerRetry(ctx) {
+		if time.Since(startedAt) >= 30*time.Second {
+			retryDelay = time.Second
+		}
+		if !waitRiskConsumerRetry(ctx, retryDelay) {
 			return
 		}
+		retryDelay = nextRiskConsumerRetry(retryDelay)
 	}
 }
 
-func waitRiskConsumerRetry(ctx context.Context) bool {
-	timer := time.NewTimer(2 * time.Second)
+func waitRiskConsumerRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
@@ -124,4 +131,15 @@ func waitRiskConsumerRetry(ctx context.Context) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+func nextRiskConsumerRetry(current time.Duration) time.Duration {
+	if current >= 30*time.Second {
+		return 30 * time.Second
+	}
+	current *= 2
+	if current > 30*time.Second {
+		return 30 * time.Second
+	}
+	return current
 }

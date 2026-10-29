@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	netHTTP "net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -28,7 +31,8 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	logger := logger.NewLogger(zerolog.InfoLevel)
 
@@ -68,15 +72,26 @@ func main() {
 	riskHub := riskstream.NewHub()
 	go func() {
 		var resumeToken bson.Raw
+		var lastReceivedAt time.Time
+		var lastAssessmentID string
+		publish := func(assessment riskassessment.Assessment) {
+			lastReceivedAt = assessment.ReceivedAt
+			lastAssessmentID = assessment.ID
+			riskHub.Publish(riskstream.Event{ID: assessment.ID, Assessment: assessment})
+		}
 		for ctx.Err() == nil {
-			nextToken, err := riskAssessments.Watch(ctx, resumeToken, func(assessment riskassessment.Assessment) {
-				riskHub.Publish(riskstream.Event{ID: assessment.ID, Assessment: assessment})
-			})
+			nextToken, err := riskAssessments.Watch(ctx, resumeToken, publish)
 			if len(nextToken) > 0 {
 				resumeToken = append(bson.Raw(nil), nextToken...)
 			}
 			if ctx.Err() != nil {
 				return
+			}
+			if replayErr := replayRiskAssessments(ctx, riskAssessments, publish, lastReceivedAt, lastAssessmentID); replayErr != nil {
+				logger.Error().Err(replayErr).Msg("risk assessment recovery replay failed")
+			}
+			if isChangeStreamHistoryLost(err) {
+				resumeToken = nil
 			}
 			logger.Error().Err(err).Msg("risk assessment change stream stopped; retrying")
 			timer := time.NewTimer(2 * time.Second)
@@ -200,7 +215,47 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	if err := srv.ListenAndServe(); err != nil {
-		logger.Fatal().Err(err).Msg("server failed")
+	serverErr := make(chan error, 1)
+	go func() { serverErr <- srv.ListenAndServe() }()
+	select {
+	case err := <-serverErr:
+		if err != nil && err != netHTTP.ErrServerClosed {
+			logger.Fatal().Err(err).Msg("server failed")
+		}
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		logger.Info().Msg("shutdown signal received; draining HTTP and background workers")
+		riskHub.Close()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			logger.Error().Err(err).Msg("graceful HTTP shutdown failed")
+		}
 	}
+}
+
+func replayRiskAssessments(ctx context.Context, repository *mongo.RiskAssessmentRepository, publish func(riskassessment.Assessment), after time.Time, afterID string) error {
+	if after.IsZero() {
+		return nil
+	}
+	for {
+		items, err := repository.ListAfter(ctx, after, afterID, 1000)
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			publish(item)
+			after, afterID = item.ReceivedAt, item.ID
+		}
+		if len(items) < 1000 {
+			return nil
+		}
+	}
+}
+
+func isChangeStreamHistoryLost(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "changestreamhistorylost") || strings.Contains(message, "resume token")
 }

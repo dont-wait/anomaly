@@ -20,11 +20,28 @@ function authHeaders(): HeadersInit {
   return session ? { Authorization: `Bearer ${session.accessToken}` } : {};
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
+	const controller = new AbortController();
+	const externalSignal = init.signal;
+	const abort = () => controller.abort();
+	if (externalSignal) {
+		if (externalSignal.aborted) controller.abort();
+		else externalSignal.addEventListener("abort", abort, { once: true });
+	}
+	const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(input, { ...init, signal: controller.signal });
+	} finally {
+		window.clearTimeout(timer);
+		externalSignal?.removeEventListener("abort", abort);
+	}
+}
+
 export async function getMonitorDashboard(
   range: TimeRange,
   signal?: AbortSignal,
 ): Promise<MonitorDashboardResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/admin/monitor?range=${range}`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/admin/monitor?range=${range}`, {
     headers: authHeaders(),
     signal,
   });
