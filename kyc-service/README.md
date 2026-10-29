@@ -8,6 +8,31 @@ Spec chi tiết: [Face-Verification-Design-Plan](../specs/Face-Verification-Desi
 
 ## Chuẩn bị mô hình
 
+### Chế độ POC không cần model
+
+Trong `kyc-service/.env`:
+
+```dotenv
+APP_ENV=development
+VISION_PIPELINE_BACKEND=poc
+KYC_POC_BYPASS=true
+KYC_SERVICE_TOKEN=<cung-token-voi-server>
+```
+
+Trong `server/.env`, bật `KYC_POC_BYPASS=true` và dùng cùng token. Khởi động lại
+Python (`make start`) và Go (`make start-api`) sau khi đổi cấu hình.
+
+POC giữ camera, quay video và luồng WebSocket/ACK hiện có. Hướng dẫn động tác
+chạy theo thời gian để demo; không thực hiện nhận diện hoặc liveness.
+Khi complete, Go vẫn kiểm tra ticket, chủ tài khoản, hash ảnh/video, lưu media
+và cập nhật tài khoản thành `verified`. Session ghi provider
+`anomaly-poc-bypass`, matching/liveness là `not_run`, score và số frame phân tích
+là 0. Không tạo evidence giả cho model thật. Python chỉ cho phép POC trong
+development/test; Go phải bật cờ riêng mới nhận kết quả bypass.
+
+`GET /ready` trả backend `PocVisionPipeline`. Đổi về `real` và tắt cờ bypass
+để dùng pipeline model. Các mục mô hình bên dưới chỉ áp dụng cho chế độ `real`.
+
 Tạo thư mục riêng, ví dụ `kyc-service/models/`, chứa:
 
 ```text
