@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -20,13 +21,17 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fatalf("usage: migrate <up|up-by-one|down|version|status|new> [name]")
+		fatalf("usage: migrate <up|up-by-one|down|version|status|force|new> [version|name]")
 	}
 	command := os.Args[1]
 	switch command {
 	case "up", "up-by-one", "down", "version", "status":
 		if len(os.Args) != 2 {
 			fatalf("usage: migrate %s", command)
+		}
+	case "force":
+		if len(os.Args) != 3 {
+			fatalf("usage: migrate force <version>")
 		}
 	case "new":
 		if len(os.Args) != 3 {
@@ -82,6 +87,17 @@ func main() {
 		if err := printStatus(os.Stdout, runner, entries); err != nil {
 			fatalf("migration status failed: %v", err)
 		}
+		return
+	}
+	if command == "force" {
+		version, err := strconv.Atoi(os.Args[2])
+		if err != nil {
+			fatalf("invalid migration version %q: %v", os.Args[2], err)
+		}
+		if err := runner.Force(version); err != nil {
+			fatalf("force migration version failed: %v", err)
+		}
+		fmt.Printf("forced migration version=%d dirty=false\n", version)
 		return
 	}
 	if err := run(runner, os.Args[1]); err != nil {

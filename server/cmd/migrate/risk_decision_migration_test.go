@@ -70,6 +70,7 @@ func TestRiskDecisionConsolidationMigrationUsesMongoDropIndexField(t *testing.T)
 	}
 	var commands []struct {
 		Drop        string `json:"drop"`
+		Delete      string `json:"delete"`
 		DropIndexes string `json:"dropIndexes"`
 		Index       string `json:"index"`
 		Indexes     any    `json:"indexes"`
@@ -77,14 +78,17 @@ func TestRiskDecisionConsolidationMigrationUsesMongoDropIndexField(t *testing.T)
 	if err := json.Unmarshal(body, &commands); err != nil {
 		t.Fatal(err)
 	}
-	if len(commands) != 3 {
-		t.Fatalf("version 14 migration has %d commands, want 3", len(commands))
+	if len(commands) != 4 {
+		t.Fatalf("version 14 migration has %d commands, want 4", len(commands))
 	}
 	if commands[0].Drop != "risk_assessments" {
 		t.Fatalf("first command = %+v, want drop risk_assessments", commands[0])
 	}
 	if commands[1].DropIndexes != "risk_decisions" || commands[1].Index != "*" || commands[1].Indexes != nil {
 		t.Fatalf("drop command = %+v", commands[1])
+	}
+	if commands[2].Delete != "risk_decisions" {
+		t.Fatalf("cleanup command = %+v", commands[2])
 	}
 }
 

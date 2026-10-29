@@ -7,6 +7,21 @@
     "index": "*"
   },
   {
+    "delete": "risk_decisions",
+    "deletes": [
+      {
+        "q": {
+          "$or": [
+            { "transaction_id": { "$exists": false } },
+            { "model_version": { "$exists": false } },
+            { "feature_version": { "$exists": false } }
+          ]
+        },
+        "limit": 0
+      }
+    ]
+  },
+  {
     "createIndexes": "risk_decisions",
     "indexes": [
       {
