@@ -68,6 +68,7 @@ Nhập message, ví dụ:
       "Channel": "mobile",
       "CreatedAt": "2026-10-17T00:50:00Z",
       "DeviceID": "DEVICE01",
+      "ClientIP": "203.0.113.10",
       "Platform": "android",
       "Authentication": {
         "Method": "email_otp",

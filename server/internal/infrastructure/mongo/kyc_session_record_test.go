@@ -87,3 +87,17 @@ func TestToKYCSessionRecordRejectsMissingRequiredStorageKey(t *testing.T) {
 		t.Fatal("toKYCSessionRecord() error = nil, want missing storage key error")
 	}
 }
+
+func TestToKYCSessionRecordAllowsSeedSessionWithoutMedia(t *testing.T) {
+	session := &accountdomain.KYCSession{
+		Id:         "507f1f77bcf86cd799439011",
+		CustomerId: "507f191e810c19729de860ea",
+		Verification: accountdomain.KYCVerification{
+			Provider: "seed",
+		},
+	}
+
+	if _, err := toKYCSessionRecord(session); err != nil {
+		t.Fatalf("toKYCSessionRecord() error = %v, want seed session without media to be accepted", err)
+	}
+}
