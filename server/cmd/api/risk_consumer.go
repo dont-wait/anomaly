@@ -24,7 +24,12 @@ type riskMessageRejector interface {
 }
 
 func decodeModelResponse(payload []byte, signingKey string) (riskassessment.ModelResponse, error) {
-	var response riskassessment.ModelResponse
+	var input struct {
+		riskassessment.ModelResponse
+		RiskScore      *float64 `json:"risk_score"`
+		PredictedLabel *int     `json:"predicted_label"`
+		Threshold      *float64 `json:"threshold"`
+	}
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil {
@@ -40,11 +45,10 @@ func decodeModelResponse(payload []byte, signingKey string) (riskassessment.Mode
 	if input.RiskScore == nil || input.PredictedLabel == nil || input.Threshold == nil {
 		return riskassessment.ModelResponse{}, fmt.Errorf("risk_score, predicted_label and threshold are required and cannot be null")
 	}
-	response := riskassessment.ModelResponse{
-		TransactionID: input.TransactionID, RiskScore: *input.RiskScore,
-		PredictedLabel: *input.PredictedLabel, Threshold: *input.Threshold,
-		ModelVersion: input.ModelVersion, FeatureVersion: input.FeatureVersion,
-	}
+	response := input.ModelResponse
+	response.RiskScore = *input.RiskScore
+	response.PredictedLabel = *input.PredictedLabel
+	response.Threshold = *input.Threshold
 	if err := response.Validate(); err != nil {
 		return riskassessment.ModelResponse{}, err
 	}
@@ -57,21 +61,13 @@ func decodeModelResponse(payload []byte, signingKey string) (riskassessment.Mode
 	return response, nil
 }
 
-func signModelResponse(response riskassessment.ModelResponse, signingKey string) string {
-	payload, _ := json.Marshal(response)
-	hasher := hmac.New(sha256.New, []byte(signingKey))
-	_, _ = hasher.Write(payload)
-	return hex.EncodeToString(hasher.Sum(nil))
-}
-
 func handleModelResponse(
 	ctx context.Context,
 	message kafkago.Message,
-	store riskAssessmentStore,
+	store *mongorepo.RiskAssessmentRepository,
 	rejector riskMessageRejector,
 	signingKey string,
 	log zerolog.Logger,
-	signingKey string,
 ) error {
 	response, err := decodeModelResponse(message.Value, signingKey)
 	if err != nil {

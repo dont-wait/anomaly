@@ -2,18 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/dont-wait/anomaly/internal/domain/risk"
 	"github.com/dont-wait/anomaly/internal/domain/riskassessment"
-	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
-	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
-	"github.com/google/uuid"
-	"github.com/rs/zerolog"
-	kafkago "github.com/segmentio/kafka-go"
 )
 
 const testRiskSigningKey = "test-risk-signing-key"
@@ -71,6 +63,8 @@ func TestDecodeModelResponseRequiresNumericFields(t *testing.T) {
 		for _, mode := range []string{"missing", "null"} {
 			t.Run(field+"/"+mode, func(t *testing.T) {
 				input := map[string]any{
+					"schema_version": 1, "event_id": "event-1",
+					"occurred_at": "2026-10-28T10:00:00Z", "scored_at": "2026-10-28T10:00:01Z",
 					"transaction_id": "TX001", "risk_score": 0.1,
 					"predicted_label": 0, "threshold": 0.9,
 					"model_version": "v1", "feature_version": "f1",
@@ -94,10 +88,10 @@ func TestDecodeModelResponseRequiresNumericFields(t *testing.T) {
 
 func TestDecodeModelResponseAcceptsExplicitZeroValues(t *testing.T) {
 	for _, payload := range []string{
-		`{"transaction_id":"TX001","risk_score":0,"predicted_label":0,"threshold":0.9,"model_version":"v1","feature_version":"f1"}`,
-		`{"transaction_id":"TX001","risk_score":0,"predicted_label":1,"threshold":0,"model_version":"v1","feature_version":"f1"}`,
+		`{"schema_version":1,"event_id":"event-1","transaction_id":"TX001","occurred_at":"2026-10-28T10:00:00Z","scored_at":"2026-10-28T10:00:01Z","risk_score":0,"predicted_label":0,"threshold":0.9,"model_version":"v1","feature_version":"f1"}`,
+		`{"schema_version":1,"event_id":"event-1","transaction_id":"TX001","occurred_at":"2026-10-28T10:00:00Z","scored_at":"2026-10-28T10:00:01Z","risk_score":0,"predicted_label":1,"threshold":0,"model_version":"v1","feature_version":"f1"}`,
 	} {
-		if _, err := decodeModelResponse(signedModelResponse(t, []byte(payload)), testRiskSigningKey); err != nil {
+		if _, err := decodeModelResponse(signedModelPayload(t, []byte(payload)), testRiskSigningKey); err != nil {
 			t.Fatalf("valid zero values rejected: %v", err)
 		}
 	}
