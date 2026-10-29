@@ -124,3 +124,26 @@ func TestDecodeRiskDecisionRejectsForgedSignature(t *testing.T) {
 		t.Fatal("forged risk decision was accepted")
 	}
 }
+
+func TestDecodeModelResponse(t *testing.T) {
+	payload := []byte(`{"transaction_id":"TX001","risk_score":0.9821,"predicted_label":1,"threshold":0.9517361521720886,"model_version":"gatv2-device-control-v1","feature_version":"schema-3-0b9efd44d793"}`)
+	response, err := decodeModelResponse(payload)
+	if err != nil {
+		t.Fatalf("valid model response rejected: %v", err)
+	}
+	if response.TransactionID != "TX001" || response.PredictedLabel != 1 || response.ModelVersion == "" {
+		t.Fatalf("unexpected model response: %+v", response)
+	}
+}
+
+func TestDecodeModelResponseRejectsUnknownAndTrailingFields(t *testing.T) {
+	base := `{"transaction_id":"TX001","risk_score":0.1,"predicted_label":0,"threshold":0.9,"model_version":"model-v1","feature_version":"features-v1"}`
+	for _, payload := range []string{
+		`{"transaction_id":"TX001","risk_score":0.1,"predicted_label":0,"threshold":0.9,"model_version":"model-v1","feature_version":"features-v1","extra":true}`,
+		base + ` {}`,
+	} {
+		if _, err := decodeModelResponse([]byte(payload)); err == nil {
+			t.Fatalf("invalid model response accepted: %s", payload)
+		}
+	}
+}

@@ -228,6 +228,13 @@ func (p *BankProjection) profile(ctx context.Context, a *accountdomain.UserAccou
 	if a == nil || a.Customer == nil {
 		return fmt.Errorf("missing account profile")
 	}
+	// AccountUpdated events may have been written by the old demo seeder,
+	// which used non-ObjectID values such as "seed-kyc-...". Normalize before
+	// writing all three related projection documents.
+	accountdomain.NormalizeKYCSessionIdentifiers(a)
+	if err := accountdomain.ValidateKYCSessionIdentifiers(a); err != nil {
+		return err
+	}
 	if err := NewAccountRepository(p.client, p.db.Name()).Save(ctx, a); err != nil {
 		return err
 	}

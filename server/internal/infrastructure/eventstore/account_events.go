@@ -96,6 +96,7 @@ func applyEvent(
 func upcastAccountCreated(p accountCreatedPayload, metadata replayEventMetadata) accountdomain.UserAccount {
 	if p.Account != nil {
 		account := *p.Account
+		accountdomain.NormalizeKYCSessionIdentifiers(&account)
 		if account.Role == "" {
 			account.Role = accountdomain.AccountRoleUser
 		}
@@ -142,8 +143,9 @@ func upcastAccountVerified(
 	metadata replayEventMetadata,
 ) (*accountdomain.KYCSession, string, int64, time.Time) {
 	if p.Session != nil {
+		p.Session.Id = accountdomain.CanonicalKYCSessionID(p.Session.Id)
 		version, updatedAt := upcastVersionAndTime(p.Version, p.UpdatedAt, metadata)
-		return p.Session, p.VerifiedKYCSessionId, version, updatedAt
+		return p.Session, accountdomain.CanonicalKYCSessionID(p.VerifiedKYCSessionId), version, updatedAt
 	}
 
 	sessionID := legacyObjectID("kyc", acc.Id, fmt.Sprint(metadata.Revision))

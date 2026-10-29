@@ -7,6 +7,7 @@ Backend cho Anomaly, gồm HTTP API, banking projection worker và adapter hạ 
 - `README.md`: quick start và chỉ mục tài liệu
 - [Architecture](../docs/ARCHITECTURE.md): cấu trúc layer, executable, và runtime flow
 - [Transaction API for frontend](docs/transactions-api.md): request/response, OTP, retry, filters và mã lỗi
+- [Anomaly service](../anomaly-service/README.md): publisher GATv2, inference từ bundle local và training records
 - [Features](../docs/FEATURE.md): feature hiện có và phạm vi test
 - [Infrastructure](../docs/INFRA.md): service local, env, port, workflow vận hành
 
@@ -208,6 +209,12 @@ bằng:
 cd ../consumer-mock
 go run .
 ```
+
+Publisher GATv2 nằm tại `anomaly-service` và chạy như một service riêng. Service
+này dùng Kafka `TransferCreated` làm trigger, đọc event gốc + history từ
+EventStoreDB (payload Kafka đã pseudonymize), chạy bundle GATv2 local rồi publish
+`anomaly.bank.risk.v1` và training record. Xem
+[anomaly-service/README.md](../anomaly-service/README.md).
 
 Để gửi thử một message từ Kafka CLI:
 
@@ -533,9 +540,10 @@ schema/indexes. Do not delete EventStoreDB data to rebuild MongoDB.
 
 ### External training repository
 
-Model training lives in a separate repository. This repo owns the canonical
-journal and business projections; it does not run a training consumer, store a
-training dataset or export features.
+Model training lives in the external GATv2 repository. This repo owns the
+canonical journal and business projections. `anomaly-service` only publishes
+predictions and training records; it loads an exported GATv2 bundle and does not
+train or label data.
 
 The external consumer subscribes to `banking`, filters the four transfer lifecycle
 record types listed above, and reads the record's `event` envelope. Its contract
@@ -543,6 +551,12 @@ contains `eventId`, `transactionId`, `eventType`, `schemaVersion`, `sequence`,
 `occurredAt` and `payload`. Consume that envelope rather than the private `account`
 or `transfer` snapshots used to rebuild API state. The training repo owns its
 checkpoint, dataset, feature extraction, labels and model pipeline.
+
+`anomaly-service` reads the raw `banking` stream directly with `esdbclient`
+because the Kafka relay pseudonymizes account/device identifiers needed by the
+GATv2 graph. Kafka is only a trigger there. Training records contain the raw
+request event and model response, not labels; supervised retraining still needs an
+outcome joined later by `transaction_id`.
 
 Offline cutover records carry `historical: true`; their balance snapshots describe
 past transfers, while the imported account baseline already includes those transfers.

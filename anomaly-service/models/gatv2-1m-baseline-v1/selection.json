@@ -1,0 +1,41 @@
+{
+  "status": "frozen_before_test",
+  "feature_manifest_sha256": "bb68f6c99a1c95fbf1f2c5662ee37338c3f463838197260e86d74c52993889bb",
+  "selection_rule": "Highest validation F1 after validation-only threshold optimization; AP breaks ties",
+  "selected_model": "gatv2",
+  "models": {
+    "gatv2": {
+      "checkpoint": "/home/dontwait/Documents/git/GATv2/outputs/comparisons/pdmh18-20261025-1m/old/training/best.pt",
+      "sha256": "6069d8ad59ecbee3b4db4876532dd6adc6185788e3a35937445e79c8ab3fab30",
+      "threshold": 0.9779161810874939
+    }
+  },
+  "validation": {
+    "gatv2": {
+      "validation": {
+        "threshold": 0.9779161810874939,
+        "tp": 5776,
+        "fp": 312,
+        "fn": 216,
+        "tn": 290999,
+        "precision": 0.9487516425755584,
+        "recall": 0.9639519359145527,
+        "f1": 0.9562913907284769,
+        "count": 297303,
+        "false_positive_rate": 0.0010710203184912345,
+        "roc_auc": 0.9996557695355556,
+        "average_precision": 0.980170382377649
+      },
+      "parameter_count": 7041,
+      "best_epoch": 1,
+      "training_seconds": 1043.258040058001
+    }
+  },
+  "threshold_rule": "Exact maximum validation F1; ties choose higher threshold",
+  "seed": 42,
+  "test_used_for_selection": false,
+  "code_sha256": {
+    "/home/dontwait/Documents/git/GATv2/src/fraud_pipeline/evaluation/phase5.py": "75f94fbc89ac0c5baca174b11d473124ff2cba41ad2ca344e0f7ffa7e3923ce4",
+    "/home/dontwait/Documents/git/GATv2/src/fraud_pipeline/models/variants.py": "3fee1eba6b90652e7daee7f6cc9ea199aa73f22677c5f6609c0a91f3b8710e04"
+  }
+}

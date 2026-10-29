@@ -142,6 +142,33 @@ func TestApplyEventSupportsCurrentPayloadAfterLegacyEvents(t *testing.T) {
 	}
 }
 
+func TestApplyEventCanonicalizesLegacySeedKYCIDs(t *testing.T) {
+	const legacyID = "seed-kyc-507f1f77bcf86cd799439011"
+	account := &accountdomain.UserAccount{
+		Id:       "507f1f77bcf86cd799439011",
+		Customer: &accountdomain.Customer{},
+	}
+	version := int64(1)
+	payload, err := json.Marshal(accountVerifiedPayload{
+		Session:              &accountdomain.KYCSession{Id: legacyID, CustomerId: account.Id},
+		VerifiedKYCSessionId: legacyID,
+		Version:              &version,
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	decode := func(value any) error { return json.Unmarshal(payload, value) }
+	if err := applyEvent(account, EventAccountVerified, replayEventMetadata{}, decode); err != nil {
+		t.Fatalf("applyEvent() error = %v", err)
+	}
+
+	want := accountdomain.CanonicalKYCSessionID(legacyID)
+	if account.Customer.VerifiedKYCSessionId != want || len(account.KYCSessions) != 1 || account.KYCSessions[0].Id != want {
+		t.Fatalf("legacy KYC identifiers were not canonicalized: customer=%q sessions=%#v", account.Customer.VerifiedKYCSessionId, account.KYCSessions)
+	}
+}
+
 func TestApplyEventPreservesCurrentAccountCreatedPayload(t *testing.T) {
 	want := &accountdomain.UserAccount{
 		Id:         "507f1f77bcf86cd799439011",
