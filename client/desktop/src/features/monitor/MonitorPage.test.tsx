@@ -7,6 +7,7 @@ import { RiskTrendChart } from "./components/RiskTrendChart";
 vi.mock("./api/monitorApi", () => ({
   consumeRiskStream: vi.fn(() => new Promise<void>(() => undefined)),
   getMonitorDashboard: vi.fn(),
+  shouldAdvanceMonitorCursor: vi.fn(() => true),
 }));
 
 vi.mock("react-chartjs-2", () => ({
