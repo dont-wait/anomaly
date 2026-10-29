@@ -321,6 +321,14 @@ class StubVisionPipeline:
 
 def build_vision_pipeline(settings: Settings) -> VisionPipeline:
     backend = settings.vision_pipeline_backend.strip().lower()
+    if backend == "poc":
+        if settings.app_env not in {"test", "development"} or not settings.poc_bypass:
+            raise VisionPipelineConfigurationError(
+                "POC requires development/test and KYC_POC_BYPASS=true"
+            )
+        from app.services.poc_pipeline import PocVisionPipeline
+
+        return PocVisionPipeline(settings)
     stub_allowed = settings.app_env == "test" or (
         settings.app_env == "development" and settings.allow_stub_vision_pipeline
     )
