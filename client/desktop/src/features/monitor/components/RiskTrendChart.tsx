@@ -185,7 +185,7 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
   };
 
   return (
-    <section className="bg-(--admin-surface-subtle) flex min-h-75 flex-col justify-between rounded-(--admin-radius-md) p-3" data-testid="risk-trend-chart">
+    <section className="bg-(--admin-surface-subtle) h-full min-h-75 flex flex-col justify-between rounded-(--admin-radius-md) p-3" data-testid="risk-trend-chart">
       <div className="flex flex-col justify-between gap-2 pb-2 md:flex-row md:items-center">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">Xu hướng rủi ro ({range})</h2>

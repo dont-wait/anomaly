@@ -57,7 +57,6 @@ describe("MonitorPage", () => {
     expect(screen.getByText("0.9821")).toBeTruthy();
     expect(screen.getAllByText("Chặn").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Xu hướng rủi ro (24h)" })).toBeTruthy();
-    expect(screen.getByText("Cảnh báo mới")).toBeTruthy();
   });
 
   it("renders the reusable dashboard skeleton", () => {
