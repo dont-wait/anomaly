@@ -188,12 +188,11 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
     <section className="bg-(--admin-surface-subtle) flex min-h-75 flex-col justify-between rounded-(--admin-radius-md) p-3" data-testid="risk-trend-chart">
       <div className="flex flex-col justify-between gap-2 pb-2 md:flex-row md:items-center">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">Risk Trend Timeline ({range})</h2>
-          <span className="font-(family-name:--admin-font-mono) text-[10px] tracking-[0.03em] text-(--admin-text-muted)">ANOMALY INDEX / 30m BINS</span>
+          <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">Xu hướng rủi ro ({range})</h2>
         </div>
         <div className="font-(family-name:--admin-font-mono) flex flex-wrap items-center gap-2 text-[10px] text-(--admin-text-muted)">
-          {peakPoint && <span className="rounded-sm bg-[#3b2930] px-1.5 py-1 text-[#ffb4ab]">PEAK {(peakPoint.averageRiskScore * 100).toFixed(2)}pt · {formatTime(peakPoint.timestamp)} UTC+7</span>}
-          {hasData && <><span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-(--admin-primary)" />Điểm rủi ro trung bình</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-(--admin-danger)" />Assessment bất thường</span></>}
+          {peakPoint && <span className="rounded-sm bg-[#3b2930] px-1.5 py-1 text-[#ffb4ab]">Cao nhất {(peakPoint.averageRiskScore * 100).toFixed(2)} điểm · {formatTime(peakPoint.timestamp)}</span>}
+          {hasData && <><span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-(--admin-primary)" />Điểm rủi ro trung bình</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-(--admin-danger)" />Yêu cầu bất thường</span></>}
         </div>
       </div>
       <div className="relative my-2 h-50 w-full">
@@ -215,14 +214,14 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
             role="status"
             aria-live="polite"
           >
-            <strong className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[10px] text-(--admin-primary)">{hoverTooltip.timestamp} UTC+7</strong>
-            <span className="font-(family-name:--admin-font-mono) mt-1 block whitespace-nowrap text-[10px] text-(--admin-text)">Risk score: {hoverTooltip.riskScore}pt</span>
-            <span className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[9px] text-(--admin-text-muted)">{hoverTooltip.alertCount} assessments · {hoverTooltip.highRiskCount} anomalous</span>
+            <strong className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[10px] text-(--admin-primary)">{hoverTooltip.timestamp}</strong>
+            <span className="font-(family-name:--admin-font-mono) mt-1 block whitespace-nowrap text-[10px] text-(--admin-text)">Điểm rủi ro: {hoverTooltip.riskScore}</span>
+            <span className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[9px] text-(--admin-text-muted)">{hoverTooltip.alertCount} yêu cầu · {hoverTooltip.highRiskCount} bất thường</span>
           </div>
         )}
       </div>
       <div className="font-(family-name:--admin-font-mono) flex items-center justify-between gap-2 pt-2 text-[10px] text-(--admin-text-muted)">
-        {hasData ? <><span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span><span>HIỆN TẠI (23:59)</span></> : <span className="mx-auto">Không có điểm dữ liệu trong khoảng thời gian này</span>}
+        {hasData ? <><span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span><span>HIỆN TẠI</span></> : <span className="mx-auto">Không có điểm dữ liệu trong khoảng thời gian này</span>}
       </div>
     </section>
   );

@@ -55,9 +55,9 @@ describe("MonitorPage", () => {
     expect(await screen.findByRole("heading", { name: /Giám sát rủi ro/i })).toBeTruthy();
     expect((await screen.findAllByText("TX001")).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("0.9821")).toBeTruthy();
-    expect(screen.getAllByText("BLOCK").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByRole("heading", { name: "Risk Trend Timeline (24h)" })).toBeTruthy();
-    expect(screen.getByText("Realtime Model Stream")).toBeTruthy();
+    expect(screen.getAllByText("Chặn").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("heading", { name: "Xu hướng rủi ro (24h)" })).toBeTruthy();
+    expect(screen.getByText("Kết quả mới nhất")).toBeTruthy();
   });
 
   it("renders the reusable dashboard skeleton", () => {
