@@ -1,9 +1,9 @@
 package riskassessment
 
 import (
+	"math"
 	"testing"
 	"time"
-	"math"
 )
 
 func TestModelResponseValidate(t *testing.T) {
