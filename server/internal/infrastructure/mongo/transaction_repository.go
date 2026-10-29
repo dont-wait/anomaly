@@ -56,6 +56,7 @@ type TransferDocument struct {
 	Currency       string           `bson:"currency"`
 	Channel        string           `bson:"channel"`
 	DeviceID       string           `bson:"device_id,omitempty"`
+	ClientIP       string           `bson:"client_ip,omitempty"`
 	Platform       string           `bson:"platform,omitempty"`
 	Status         string           `bson:"status"`
 	FailureReason  string           `bson:"failure_reason,omitempty"`

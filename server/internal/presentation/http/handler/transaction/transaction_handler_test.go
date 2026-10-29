@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -126,6 +127,7 @@ func createTransferRequestWithHeaders(t *testing.T, repo Repository, key, body s
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", key)
+	request.RemoteAddr = "203.0.113.10:43123"
 	for name, value := range headers {
 		request.Header.Set(name, value)
 	}
@@ -146,8 +148,57 @@ func TestCreateTransferStoresModelMetadataFromHeaders(t *testing.T) {
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body = %s", recorder.Code, recorder.Body.String())
 	}
-	if repo.created.DeviceID != "550e8400-e29b-41d4-a716-446655440000" || repo.created.Platform != "ANDROID" || repo.created.Channel != "mobile" {
-		t.Fatalf("created metadata = device=%q platform=%q channel=%q", repo.created.DeviceID, repo.created.Platform, repo.created.Channel)
+	if repo.created.DeviceID != "550e8400-e29b-41d4-a716-446655440000" || repo.created.ClientIP != "203.0.113.10" || repo.created.Platform != "ANDROID" || repo.created.Channel != "mobile" {
+		t.Fatalf("created metadata = device=%q ip=%q platform=%q channel=%q", repo.created.DeviceID, repo.created.ClientIP, repo.created.Platform, repo.created.Channel)
+	}
+}
+
+func TestRequestClientIPParsesRemoteAddress(t *testing.T) {
+	tests := []struct {
+		name       string
+		remoteAddr string
+		want       string
+	}{
+		{name: "ipv4 with port", remoteAddr: "203.0.113.10:43123", want: "203.0.113.10"},
+		{name: "ipv6 with port", remoteAddr: "[2001:db8::10]:43123", want: "2001:db8::10"},
+		{name: "invalid", remoteAddr: "not-an-ip:43123", want: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/transfers", nil)
+			request.RemoteAddr = test.remoteAddr
+			if got := requestClientIP(request); got != test.want {
+				t.Fatalf("requestClientIP(%q) = %q, want %q", test.remoteAddr, got, test.want)
+			}
+		})
+	}
+}
+
+func TestClientIPFromRequestTrustsForwardedHeadersOnlyFromTrustedProxy(t *testing.T) {
+	trustedProxy := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+
+	trusted := httptest.NewRequest(http.MethodPost, "/api/transfers", nil)
+	trusted.RemoteAddr = "127.0.0.1:8080"
+	trusted.Header.Set("CF-Connecting-IP", "198.51.100.20")
+	trusted.Header.Set("X-Real-IP", "198.51.100.21")
+	if got := clientIPFromRequest(trusted, trustedProxy); got != "198.51.100.21" {
+		t.Fatalf("trusted proxy IP = %q, want %q", got, "198.51.100.21")
+	}
+
+	untrusted := httptest.NewRequest(http.MethodPost, "/api/transfers", nil)
+	untrusted.RemoteAddr = "203.0.113.10:8080"
+	untrusted.Header.Set("CF-Connecting-IP", "198.51.100.20")
+	untrusted.Header.Set("X-Real-IP", "198.51.100.21")
+	if got := clientIPFromRequest(untrusted, trustedProxy); got != "203.0.113.10" {
+		t.Fatalf("untrusted proxy IP = %q, want %q", got, "203.0.113.10")
+	}
+}
+
+func TestSetTrustedProxyCIDRsRejectsInvalidValues(t *testing.T) {
+	handler := &Handler{}
+	if err := handler.SetTrustedProxyCIDRs([]string{"127.0.0.1/32", "not-a-cidr"}); err == nil {
+		t.Fatal("SetTrustedProxyCIDRs() accepted an invalid CIDR")
 	}
 }
 
