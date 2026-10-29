@@ -28,7 +28,7 @@ help:
 	  '  logs-autoscaler  Follow autoscaler service logs'
 
 build-ml:
-	docker build --network host --build-context gatv2=../../../GATv2 -f ../../anomaly-service/Dockerfile -t $(ML_SERVICE_IMAGE) ../../anomaly-service
+	docker build --allow network.host -f ../../anomaly-service/Dockerfile -t $(ML_SERVICE_IMAGE) ../../..
 
 build-autoscaler:
 	docker build --allow network.host -f autoscaler/Dockerfile -t $(AUTOSCALER_IMAGE) autoscaler

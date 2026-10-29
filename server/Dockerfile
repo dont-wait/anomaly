@@ -17,13 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/imp
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/relay ./cmd/relay
 RUN chmod +x /app/bin/relay
 
-FROM builder AS checks
-RUN apk add --no-cache redis
-RUN go vet ./...
-# go test includes Testcontainers and runs in a container with a Docker socket.
-CMD ["go", "test", "-count=1", "./..."]
-
-FROM alpine:3.20 AS runtime
+FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates tzdata \
     && adduser -D -u 10001 appuser
