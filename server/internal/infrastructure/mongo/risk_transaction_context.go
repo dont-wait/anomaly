@@ -38,6 +38,10 @@ func (r *TransferRepository) FindRiskTransactionContexts(ctx context.Context, tr
 		if err := cursor.Decode(&transfer); err != nil {
 			return nil, err
 		}
+		status := transfer.Status
+		if status == "awaiting_otp" && !transfer.OTPExpiresAt.IsZero() && time.Now().UTC().After(transfer.OTPExpiresAt) {
+			status = "expired"
+		}
 		contexts[transfer.ID] = RiskTransactionContext{
 			TransactionID:        transfer.ID,
 			SourceAccountNo:      transfer.Source.AccountNo,
@@ -48,7 +52,7 @@ func (r *TransferRepository) FindRiskTransactionContexts(ctx context.Context, tr
 			Fee:                  transfer.Fee,
 			Currency:             transfer.Currency,
 			Channel:              transfer.Channel,
-			Status:               transfer.Status,
+			Status:               status,
 			CreatedAt:            transfer.CreatedAt,
 		}
 	}

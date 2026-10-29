@@ -22,7 +22,27 @@ const surfaceHover = "hover:bg-(--admin-surface-hover)";
 const mono = "font-(family-name:--admin-font-mono)";
 const LOADING_SKELETON_DELAY_MS = 100;
 const MIN_SKELETON_VISIBLE_MS = 240;
+const TRANSACTION_STATUS_REFRESH_MS = 30_000;
 const formatMoney = (amount: number, currency: string) => `${amount.toLocaleString("vi-VN")} ${currency || "VND"}`;
+
+const transactionStatusLabels: Record<string, string> = {
+  awaiting_otp: "Chờ OTP",
+  success: "Đã hoàn tất",
+  failed: "Bị từ chối",
+  cancelled: "Đã huỷ",
+  expired: "Hết hạn OTP",
+};
+
+function transactionStatusLabel(status?: string): string {
+  return status ? transactionStatusLabels[status] || status : "Chưa xác định";
+}
+
+function transactionStatusClass(status?: string): string {
+  if (status === "success") return "bg-[#1f4d3a] text-[#b7f3d0]";
+  if (status === "failed" || status === "cancelled" || status === "expired") return "bg-[#5b2427] text-[#ffb4ab]";
+  if (status === "awaiting_otp") return "bg-[#4b3b1d] text-[#f6d58a]";
+  return "bg-(--admin-surface-hover) text-(--admin-text-secondary)";
+}
 
 interface Metric {
   label: string;
@@ -124,7 +144,7 @@ function RiskBreakdown({ snapshot }: { snapshot: MonitorSnapshot }) {
     <section className={`${surfaceSubtle} flex flex-col justify-between gap-6 rounded-(--admin-radius-md) p-3`}>
       <div>
         <div className="flex items-center justify-between gap-2 pb-2">
-          <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">Phân bố nhãn model</h2>
+          <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">Phân bố mức rủi ro</h2>
           <span className={`${mono} text-[11px] text-(--admin-text-muted)`}>{totalAssessments} assessments</span>
         </div>
         <div className="my-2 flex h-3 overflow-hidden rounded-sm bg-(--admin-surface-hover)">
@@ -154,17 +174,17 @@ function RiskBreakdown({ snapshot }: { snapshot: MonitorSnapshot }) {
   );
 }
 
-function RiskAccountsTable({ assessments }: { assessments: RiskAssessment[] }) {
+function RiskRequestsTable({ assessments }: { assessments: RiskAssessment[] }) {
   return (
     <section className={`${surfaceSubtle} flex min-h-80 flex-col justify-between rounded-(--admin-radius-md) p-3`}>
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
-          <div className="flex items-center gap-2"><h2 className="text-[16px] leading-5 font-semibold text-(--admin-text) uppercase">Kết quả chấm điểm gần nhất</h2><span className={`${mono} rounded-sm bg-[#5b2427] px-1.5 py-0.5 text-[10px] text-[#ffb4ab]`}>MODEL OUTPUT</span></div>
+          <div className="flex items-center gap-2"><h2 className="text-[16px] leading-5 font-semibold text-(--admin-text) uppercase">Yêu cầu chấm điểm gần nhất</h2><span className={`${mono} rounded-sm bg-[#5b2427] px-1.5 py-0.5 text-[10px] text-[#ffb4ab]`}>MODEL OUTPUT</span></div>
           <span className="text-[12px] text-(--admin-text-muted)">{assessments.length} kết quả</span>
         </div>
-        {assessments.length === 0 ? <div className="grid min-h-48 place-items-center text-[12px] text-(--admin-text-muted)">Chưa có dữ liệu trong khoảng thời gian này.</div> : <div className="w-full overflow-x-auto"><table className="w-full min-w-250 text-left"><thead><tr className={`${surface} h-7 text-[10px] font-semibold uppercase tracking-[0.04em] text-(--admin-text-muted)`}><th className="px-2">Transaction ID</th><th className="px-2">Tài khoản nguồn</th><th className="px-2 text-right">Số tiền</th><th className="px-2 text-center">Risk score</th><th className="px-2 text-center">Policy</th><th className="px-2 text-center">Decision</th><th className="px-2 text-center">Threshold</th><th className="px-2">Model</th><th className="px-2 text-right">Received</th></tr></thead><tbody>{[...assessments].reverse().map((assessment) => <tr key={assessment.assessmentId} className={`h-9 transition-colors ${surfaceHover}`}><td className={`${mono} px-2 text-[11px] font-bold text-(--admin-primary)`}>{assessment.transactionId}</td><td className="max-w-35 truncate px-2 text-[12px] text-(--admin-text-secondary)" title={assessment.transaction?.sourceAccountName || undefined}>{assessment.transaction?.sourceAccountNo || "—"}</td><td className={`${mono} px-2 text-right text-[11px] text-(--admin-text)`}>{assessment.transaction ? formatMoney(assessment.transaction.amount, assessment.transaction.currency) : "—"}</td><td className={`${mono} px-2 text-center text-[12px] font-semibold text-(--admin-text)`}>{assessment.riskScore.toFixed(4)}</td><td className="px-2 text-center"><span className={`${mono} rounded-sm px-1.5 py-1 text-[10px] font-bold ${assessment.riskLevel === "BLOCK" ? "bg-[#5b2427] text-[#ffb4ab]" : assessment.riskLevel === "WARNING" ? "bg-[#4b3b1d] text-[#f6d58a]" : "bg-(--admin-surface-hover) text-(--admin-text-secondary)"}`}>{assessment.riskLevel}</span></td><td className={`${mono} px-2 text-center text-[11px] font-bold ${assessment.decision === "BLOCK" ? "text-(--admin-danger)" : "text-(--admin-primary)"}`}>{assessment.decision}</td><td className={`${mono} px-2 text-center text-[12px] text-(--admin-text)`}>{assessment.threshold.toFixed(4)}</td><td className="max-w-35 truncate px-2 text-[11px] text-(--admin-text-secondary)">{assessment.modelVersion}</td><td className={`${mono} px-2 text-right text-[10px] text-(--admin-text-muted)`}>{new Date(assessment.receivedAt).toLocaleTimeString("vi-VN", { hour12: false })}</td></tr>)}</tbody></table></div>}
+        {assessments.length === 0 ? <div className="grid min-h-48 place-items-center text-[12px] text-(--admin-text-muted)">Chưa có dữ liệu trong khoảng thời gian này.</div> : <div className="w-full overflow-x-auto"><table className="w-full min-w-250 text-left"><thead><tr className={`${surface} h-7 text-[10px] font-semibold uppercase tracking-[0.04em] text-(--admin-text-muted)`}><th className="px-2">Transaction ID</th><th className="px-2">Tài khoản nguồn</th><th className="px-2 text-right">Số tiền</th><th className="px-2 text-center">Risk score</th><th className="px-2 text-center">Mức rủi ro</th><th className="px-2 text-center">Decision</th><th className="px-2 text-center">Trạng thái</th><th className="px-2 text-center">Threshold</th><th className="px-2">Model</th><th className="px-2 text-right">Received</th></tr></thead><tbody>{[...assessments].reverse().map((assessment) => <tr key={assessment.assessmentId} className={`h-9 transition-colors ${surfaceHover}`}><td className={`${mono} px-2 text-[11px] font-bold text-(--admin-primary)`}>{assessment.transactionId}</td><td className="max-w-35 truncate px-2 text-[12px] text-(--admin-text-secondary)" title={assessment.transaction?.sourceAccountName || undefined}>{assessment.transaction?.sourceAccountNo || "—"}</td><td className={`${mono} px-2 text-right text-[11px] text-(--admin-text)`}>{assessment.transaction ? formatMoney(assessment.transaction.amount, assessment.transaction.currency) : "—"}</td><td className={`${mono} px-2 text-center text-[12px] font-semibold text-(--admin-text)`}>{assessment.riskScore.toFixed(4)}</td><td className="px-2 text-center"><span className={`${mono} rounded-sm px-1.5 py-1 text-[10px] font-bold ${assessment.riskLevel === "BLOCK" ? "bg-[#5b2427] text-[#ffb4ab]" : assessment.riskLevel === "WARNING" ? "bg-[#4b3b1d] text-[#f6d58a]" : "bg-(--admin-surface-hover) text-(--admin-text-secondary)"}`}>{assessment.riskLevel}</span></td><td className={`${mono} px-2 text-center text-[11px] font-bold ${assessment.decision === "BLOCK" ? "text-(--admin-danger)" : "text-(--admin-primary)"}`}>{assessment.decision}</td><td className="px-2 text-center"><span className={`${mono} rounded-sm px-1.5 py-1 text-[10px] font-bold ${transactionStatusClass(assessment.transaction?.status)}`}>{transactionStatusLabel(assessment.transaction?.status)}</span></td><td className={`${mono} px-2 text-center text-[12px] text-(--admin-text)`}>{assessment.threshold.toFixed(4)}</td><td className="max-w-35 truncate px-2 text-[11px] text-(--admin-text-secondary)">{assessment.modelVersion}</td><td className={`${mono} px-2 text-right text-[10px] text-(--admin-text-muted)`}>{new Date(assessment.receivedAt).toLocaleTimeString("vi-VN", { hour12: false })}</td></tr>)}</tbody></table></div>}
       </div>
-      <div className={`${mono} flex flex-wrap items-center justify-between gap-2 pt-2 text-[10px] text-(--admin-text-muted)`}><span>Score hiển thị theo thang đo model, không phải xác suất gian lận.</span><span>Không có business decision trong output này.</span></div>
+      <div className={`${mono} flex flex-wrap items-center justify-between gap-2 pt-2 text-[10px] text-(--admin-text-muted)`}><span>Score hiển thị theo thang đo model, không phải xác suất gian lận.</span><span>Assessment có thể phát sinh trước khi user nhập OTP; decision không đồng nghĩa giao dịch đã hoàn tất.</span></div>
     </section>
   );
 }
@@ -176,7 +196,7 @@ function RealtimeAlertStream({ assessments }: { assessments: RiskAssessment[] })
     <section className={`${surfaceSubtle} flex min-h-80 flex-col justify-between rounded-(--admin-radius-md) p-3`}>
       <div>
         <div className="flex items-center justify-between gap-2 pb-2"><div className="flex items-center gap-1.5"><FontAwesomeIcon icon={faStream} className="text-[14px] text-(--admin-primary)" aria-hidden="true" /><h2 className="text-[16px] leading-5 font-semibold text-(--admin-text) uppercase">Realtime Model Stream</h2></div><span className={`${mono} rounded-sm ${surface} px-1.5 py-1 text-[10px] text-(--admin-text-muted)`}>SSE</span></div>
-         {assessments.length === 0 ? <div className="grid min-h-48 place-items-center text-[12px] text-(--admin-text-muted)">Chưa có model assessment realtime.</div> : <div className={`grid gap-1 ${isPaused ? "opacity-60" : ""}`} aria-live="polite">{[...assessments].reverse().map((assessment) => <article key={assessment.assessmentId} className={`${surface} ${surfaceHover} flex items-start justify-between gap-2 rounded-sm p-2 transition-colors`}><div className="min-w-0"><div className="flex items-center gap-1.5"><span className={`${assessment.riskLevel === "BLOCK" ? "bg-(--admin-danger) text-white" : assessment.riskLevel === "WARNING" ? "bg-[#4b3b1d] text-[#f6d58a]" : "bg-(--admin-surface-hover) text-(--admin-text-secondary)"} rounded-sm px-1 py-0.5 text-[10px] font-bold`}>{assessment.riskLevel}</span><span className="truncate text-[12px] font-medium text-(--admin-text)">{assessment.transactionId}</span><span className="truncate text-[10px] text-(--admin-text-muted)">{assessment.transaction?.sourceAccountNo || "Chưa join transaction"}</span></div><div className={`${mono} mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-(--admin-text-muted)`}><span>score={assessment.riskScore.toFixed(4)}</span><span>·</span><span className="truncate">decision={assessment.decision} · {assessment.modelVersion}</span></div></div><time className={`${mono} shrink-0 text-[10px] text-(--admin-text-muted)`}>{new Date(assessment.receivedAt).toLocaleTimeString("vi-VN", { hour12: false })}</time></article>)}</div>}
+         {assessments.length === 0 ? <div className="grid min-h-48 place-items-center text-[12px] text-(--admin-text-muted)">Chưa có model assessment realtime.</div> : <div className={`grid gap-1 ${isPaused ? "opacity-60" : ""}`} aria-live="polite">{[...assessments].reverse().map((assessment) => <article key={assessment.assessmentId} className={`${surface} ${surfaceHover} flex items-start justify-between gap-2 rounded-sm p-2 transition-colors`}><div className="min-w-0"><div className="flex items-center gap-1.5"><span className={`${assessment.riskLevel === "BLOCK" ? "bg-(--admin-danger) text-white" : assessment.riskLevel === "WARNING" ? "bg-[#4b3b1d] text-[#f6d58a]" : "bg-(--admin-surface-hover) text-(--admin-text-secondary)"} rounded-sm px-1 py-0.5 text-[10px] font-bold`}>{assessment.riskLevel}</span><span className="truncate text-[12px] font-medium text-(--admin-text)">{assessment.transactionId}</span><span className="truncate text-[10px] text-(--admin-text-muted)">{assessment.transaction?.sourceAccountNo || "Chưa join transaction"}</span></div><div className={`${mono} mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-(--admin-text-muted)`}><span>score={assessment.riskScore.toFixed(4)}</span><span>·</span><span className="truncate">decision={assessment.decision}</span><span> · </span><span className={`${mono} rounded-sm px-1 py-0.5 font-bold ${transactionStatusClass(assessment.transaction?.status)}`}>{transactionStatusLabel(assessment.transaction?.status)}</span><span> · {assessment.modelVersion}</span></div></div><time className={`${mono} shrink-0 text-[10px] text-(--admin-text-muted)`}>{new Date(assessment.receivedAt).toLocaleTimeString("vi-VN", { hour12: false })}</time></article>)}</div>}
       </div>
       <div className={`${mono} flex flex-wrap items-center justify-between gap-2 pt-2 text-[10px] text-(--admin-text-muted)`}><span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-(--admin-primary)" />Nguồn: risk assessment API</span><button className="text-(--admin-primary) hover:underline" type="button" onClick={() => setIsPaused((paused) => !paused)}>{isPaused ? "Tiếp tục hiển thị" : "Tạm dừng hiển thị"}</button></div>
     </section>
@@ -215,6 +235,14 @@ export function MonitorPage() {
   useEffect(() => {
     responseRef.current = response;
   }, [response]);
+
+  useEffect(() => {
+    if (!hasResponse) return;
+    const timer = window.setInterval(() => {
+      setRequestVersion((version) => version + 1);
+    }, TRANSACTION_STATUS_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [hasResponse]);
 
   useEffect(() => {
     let active = true;
@@ -396,7 +424,7 @@ export function MonitorPage() {
       {error && !snapshot ? <DashboardError message={error} onRetry={refresh} /> : showSkeleton && skeletonForRequest ? <MonitorDashboardSkeleton /> : snapshot ? <>
         <div className="grid grid-cols-2 gap-1 lg:grid-cols-6">{metricsForSnapshot(snapshot).map((metric) => <MetricCard key={metric.label} metric={metric} />)}</div>
         <div className="grid grid-cols-12 gap-1"><div className="col-span-12 xl:col-span-8"><RiskTrendChart series={snapshot.timeseries} range={range} /></div><div className="col-span-12 xl:col-span-4"><RiskBreakdown snapshot={snapshot} /></div></div>
-        <div className="grid grid-cols-12 gap-1"><div className="col-span-12 lg:col-span-7"><RiskAccountsTable assessments={snapshot.recentAssessments} /></div><div className="col-span-12 lg:col-span-5"><RealtimeAlertStream assessments={snapshot.recentAssessments} /></div></div>
+        <div className="grid grid-cols-12 gap-1"><div className="col-span-12 lg:col-span-7"><RiskRequestsTable assessments={snapshot.recentAssessments} /></div><div className="col-span-12 lg:col-span-5"><RealtimeAlertStream assessments={snapshot.recentAssessments} /></div></div>
         <div className={`${mono} flex items-center justify-end gap-1 pt-1 text-[10px] text-(--admin-text-muted)`.trim()}><FontAwesomeIcon icon={faCircleExclamation} aria-hidden="true" />Cập nhật {response.updatedAt}{response.dataStatus === "stale" ? " · STALE" : ""}</div>
       </> : null}
     </div>
@@ -405,9 +433,9 @@ export function MonitorPage() {
 
 function metricsForSnapshot(snapshot: MonitorSnapshot): Metric[] {
   return [
-    { label: "Kết quả chấm điểm", value: String(snapshot.totalAssessments), note: "Trong khoảng thời gian đã chọn", icon: faBell },
-    { label: "Warning", value: String(snapshot.warningCount), note: "Cho phép chuyển tiền", tone: "primary", icon: faCircleExclamation },
-    { label: "Block", value: String(snapshot.blockCount), note: "Score > 0.7", tone: "danger", icon: faCircleExclamation },
+    { label: "Yêu cầu đã chấm điểm", value: String(snapshot.totalAssessments), note: "Bao gồm yêu cầu chưa nhập OTP", icon: faBell },
+    { label: "Warning", value: String(snapshot.warningCount), note: "Policy ALLOW; còn chờ OTP nếu chưa xác nhận", tone: "primary", icon: faCircleExclamation },
+    { label: "Block", value: String(snapshot.blockCount), note: "Policy BLOCK; chưa đồng nghĩa đã chuyển tiền", tone: "danger", icon: faCircleExclamation },
     { label: "Tỷ lệ gắn cờ", value: `${(snapshot.anomalyRate * 100).toFixed(2)}%`, note: "Không phải false positive rate", tone: "primary", icon: faArrowUp },
     { label: "Điểm rủi ro trung bình", value: snapshot.averageRiskScore.toFixed(4), note: "Thang điểm model 0..1", icon: faStream },
     { label: "Model version", value: String(snapshot.modelVersions.length), note: "Số phiên bản đang xuất hiện", icon: faArrowsRotate },
