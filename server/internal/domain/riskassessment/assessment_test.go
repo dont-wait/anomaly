@@ -1,6 +1,9 @@
 package riskassessment
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestModelResponseValidate(t *testing.T) {
 	valid := ModelResponse{
@@ -17,6 +20,8 @@ func TestModelResponseValidate(t *testing.T) {
 	}{
 		{name: "missing transaction", edit: func(r *ModelResponse) { r.TransactionID = "" }},
 		{name: "invalid score", edit: func(r *ModelResponse) { r.RiskScore = 1.1 }},
+		{name: "nonfinite score", edit: func(r *ModelResponse) { r.RiskScore = math.NaN() }},
+		{name: "nonfinite threshold", edit: func(r *ModelResponse) { r.Threshold = math.Inf(1) }},
 		{name: "invalid label", edit: func(r *ModelResponse) { r.PredictedLabel = 2 }},
 		{name: "inconsistent label", edit: func(r *ModelResponse) { r.PredictedLabel = 0 }},
 		{name: "missing model version", edit: func(r *ModelResponse) { r.ModelVersion = "" }},

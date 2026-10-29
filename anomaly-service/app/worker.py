@@ -32,7 +32,7 @@ def handle_message(raw, predictor, output_publisher, training_sink):
     raw_transaction_id = result.request.get("transactionId") or result.request.get("transaction_id")
     if raw_transaction_id and raw_transaction_id != event.transaction_id:
         raise ContractError("raw request transactionId differs from the Kafka trigger")
-    # Output metadata must use the canonical business time, not relay persistence time.
+    # Training metadata uses canonical business time, not relay persistence time.
     occurred_at = result.request.get("occurredAt")
     event = replace(event, occurred_at=occurred_at, occurred_at_us=microseconds(occurred_at))
     risk_event = build_risk_event(event, prediction)
@@ -73,7 +73,9 @@ def run(config, *, consumer=None, predictor=None, output=None, training=None):
         )
     if output is None:
         output = KafkaOutputPublisher(
-            producer, config.output_topic, timeout=config.delivery_timeout_seconds
+            producer, config.output_topic,
+            signing_key=config.risk_decision_signing_key,
+            timeout=config.delivery_timeout_seconds,
         )
     if training is None:
         training = TrainingDataSink(
@@ -115,11 +117,10 @@ def run(config, *, consumer=None, predictor=None, output=None, training=None):
             consumer.commit()
             if result is not None:
                 log.info(
-                    "prediction published event_id=%s transaction_id=%s score=%.6f label=%d",
-                    result["event_id"],
-                    result["transaction_id"],
+                    "decision published transfer_id=%s score=%.6f decision=%s",
+                    result["transfer_id"],
                     result["risk_score"],
-                    result["predicted_label"],
+                    result["decision"],
                 )
     finally:
         if getattr(consumer, "close", None) is not None:

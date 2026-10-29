@@ -33,6 +33,10 @@ type riskMessageRejector interface {
 	Reject(context.Context, string, int, int64, []byte, string) error
 }
 
+type riskAssessmentStore interface {
+	Save(context.Context, riskassessment.Assessment) (bool, error)
+}
+
 type riskDecisionUnsigned struct {
 	TransferID    string    `json:"transfer_id"`
 	SourceEventID string    `json:"source_event_id"`
@@ -64,7 +68,12 @@ func handleRiskDecision(ctx context.Context, message kafkago.Message, store risk
 		return nil
 	}
 	// Storage/network failures remain retryable: never commit these offsets.
-	return store.Save(ctx, decision)
+	if err := store.Save(ctx, decision); err != nil {
+		return err
+	}
+	log.Info().Str("transfer_id", decision.TransferID).Str("decision", decision.Decision).
+		Msg("risk decision processed")
+	return nil
 }
 
 func decodeRiskDecision(payload []byte, signingKey string) (risk.Decision, error) {
@@ -114,11 +123,19 @@ func isModelResponse(payload []byte) bool {
 	return envelope.TransactionID != "" || envelope.PredictedLabel != nil
 }
 
-func decodeModelResponse(payload []byte) (riskassessment.ModelResponse, error) {
-	var response riskassessment.ModelResponse
+func decodeModelResponse(payload []byte, signingKey string) (riskassessment.ModelResponse, error) {
+	var input struct {
+		TransactionID  string   `json:"transaction_id"`
+		RiskScore      *float64 `json:"risk_score"`
+		PredictedLabel *int     `json:"predicted_label"`
+		Threshold      *float64 `json:"threshold"`
+		ModelVersion   string   `json:"model_version"`
+		FeatureVersion string   `json:"feature_version"`
+		Signature      string   `json:"signature"`
+	}
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&response); err != nil {
+	if err := decoder.Decode(&input); err != nil {
 		return riskassessment.ModelResponse{}, fmt.Errorf("invalid model response JSON: %w", err)
 	}
 	var extra any
@@ -128,20 +145,43 @@ func decodeModelResponse(payload []byte) (riskassessment.ModelResponse, error) {
 		}
 		return riskassessment.ModelResponse{}, fmt.Errorf("invalid trailing model response data: %w", err)
 	}
+	if input.RiskScore == nil || input.PredictedLabel == nil || input.Threshold == nil {
+		return riskassessment.ModelResponse{}, fmt.Errorf("risk_score, predicted_label and threshold are required and cannot be null")
+	}
+	response := riskassessment.ModelResponse{
+		TransactionID: input.TransactionID, RiskScore: *input.RiskScore,
+		PredictedLabel: *input.PredictedLabel, Threshold: *input.Threshold,
+		ModelVersion: input.ModelVersion, FeatureVersion: input.FeatureVersion,
+	}
 	if err := response.Validate(); err != nil {
 		return riskassessment.ModelResponse{}, err
 	}
+	if strings.TrimSpace(signingKey) == "" {
+		return riskassessment.ModelResponse{}, fmt.Errorf("risk decision signing key is not configured")
+	}
+	expectedSignature := signModelResponse(response, signingKey)
+	if !hmac.Equal([]byte(strings.ToLower(strings.TrimSpace(input.Signature))), []byte(expectedSignature)) {
+		return riskassessment.ModelResponse{}, fmt.Errorf("invalid model response signature")
+	}
 	return response, nil
+}
+
+func signModelResponse(response riskassessment.ModelResponse, signingKey string) string {
+	payload, _ := json.Marshal(response)
+	hasher := hmac.New(sha256.New, []byte(signingKey))
+	_, _ = hasher.Write(payload)
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 func handleModelResponse(
 	ctx context.Context,
 	message kafkago.Message,
-	store *mongorepo.RiskAssessmentRepository,
+	store riskAssessmentStore,
 	rejector riskMessageRejector,
 	log zerolog.Logger,
+	signingKey string,
 ) error {
-	response, err := decodeModelResponse(message.Value)
+	response, err := decodeModelResponse(message.Value, signingKey)
 	if err != nil {
 		if parkErr := rejector.Reject(ctx, message.Topic, message.Partition, message.Offset, message.Value, err.Error()); parkErr != nil {
 			return fmt.Errorf("park invalid model response: %w", parkErr)
@@ -161,7 +201,7 @@ func handleModelResponse(
 	if err != nil {
 		return err
 	}
-	_, err = store.Save(ctx, assessment)
+	inserted, err := store.Save(ctx, assessment)
 	if err != nil {
 		if errors.Is(err, mongorepo.ErrRiskAssessmentConflict) {
 			if parkErr := rejector.Reject(ctx, message.Topic, message.Partition, message.Offset, message.Value, err.Error()); parkErr != nil {
@@ -172,7 +212,17 @@ func handleModelResponse(
 		}
 		return err
 	}
+	log.Info().Str("transaction_id", response.TransactionID).
+		Str("model_version", response.ModelVersion).Str("feature_version", response.FeatureVersion).
+		Bool("inserted", inserted).Msg("model assessment stored")
 	return nil
+}
+
+func handleRiskResponse(ctx context.Context, message kafkago.Message, decisions riskResponseStore, assessments riskAssessmentStore, log zerolog.Logger, signingKey string) error {
+	if isModelResponse(message.Value) {
+		return handleModelResponse(ctx, message, assessments, decisions, log, signingKey)
+	}
+	return handleRiskDecision(ctx, message, decisions, log, signingKey)
 }
 
 func signRiskDecision(input riskDecisionUnsigned, signingKey string) string {
@@ -193,10 +243,7 @@ func runRiskDecisionConsumer(ctx context.Context, config *domain.KafkaConfig, st
 			continue
 		}
 		err = consumer.Consume(ctx, func(messageCtx context.Context, message kafkago.Message) error {
-			if isModelResponse(message.Value) {
-				return handleModelResponse(messageCtx, message, assessments, store, log)
-			}
-			return handleRiskDecision(messageCtx, message, store, log, config.RiskDecisionSigningKey)
+			return handleRiskResponse(messageCtx, message, store, assessments, log, config.RiskDecisionSigningKey)
 		})
 		_ = consumer.Close()
 		if ctx.Err() != nil {

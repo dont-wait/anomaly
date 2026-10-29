@@ -41,10 +41,10 @@
                 golangci-lint
                 hurl
                 nodejs
-                python3
+                (python3.withPackages (ps: with ps; [ pytest prometheus-client ]))
                 python3Packages.python-lsp-server
                 python3Packages.pyls-isort
-                pytest
+                ruff
               ]
               ++ runtimeLibs;
 
