@@ -1,0 +1,21 @@
+[
+  {
+    "dropIndexes": "risk_decisions",
+    "indexes": ["uniq_risk_decision_model_input", "risk_decision_received_at"]
+  },
+  {
+    "createIndexes": "risk_decisions",
+    "indexes": [
+      {
+        "key": { "transfer_id": 1 },
+        "name": "uniq_risk_decision_transfer",
+        "unique": true
+      },
+      {
+        "key": { "expires_at": 1 },
+        "name": "ttl_risk_decision",
+        "expireAfterSeconds": 0
+      }
+    ]
+  }
+]

@@ -27,7 +27,7 @@ TransferCreated
   → anomaly-service consume TransferCreated
   → đọc raw request + toàn bộ transfer event trước occurredAt từ EventStoreDB
   → GATv2 ReplayPredictor (bundle local)
-  → publish anomaly.bank.risk.v1
+  → publish anomaly.bank.risk-decisions.v1
   → ghi JSONL + publish anomaly.model.training.v1
   → commit Kafka offset
 ```
@@ -82,7 +82,7 @@ container or process. The consumer group is shared by all worker replicas.
 ```env
 KAFKA_BROKERS=localhost:9092
 KAFKA_INPUT_TOPIC=anomaly.bank.events.v1
-KAFKA_OUTPUT_TOPIC=anomaly.bank.risk.v1
+KAFKA_OUTPUT_TOPIC=anomaly.bank.risk-decisions.v1
 KAFKA_TRAINING_TOPIC=anomaly.model.training.v1
 KAFKA_CONSUMER_GROUP=ml-pipeline
 KAFKA_AUTO_OFFSET_RESET=earliest
@@ -248,7 +248,7 @@ make -C deploy/swarm test-request TARGET_URL=http://<prediction-service>/predict
 
 ## Output Kafka
 
-Topic: `anomaly.bank.risk.v1` (cấu hình được).
+Topic: `anomaly.bank.risk-decisions.v1` (cấu hình được).
 
 ```json
 {

@@ -35,7 +35,7 @@ func main() {
 	loader := domain.GetEnvLoader().Load(logger)
 	config := loader.LoadAllConfig()
 	if strings.TrimSpace(config.KafkaConfig.RiskDecisionSigningKey) == "" {
-		logger.Fatal().Msg("KAFKA_RISK_DECISION_SIGNING_KEY is required")
+		logger.Fatal().Msg("KAFKA_RISK_DECISION_SIGNING_KEY is required for model responses")
 	}
 
 	mongoClient, err := mongo.NewMongoClient(ctx, config.MongoConfig)
@@ -60,10 +60,6 @@ func main() {
 	receiptOutbox := mongo.NewReceiptOutboxRepository(mongoClient, config.MongoConfig.MongoDBName)
 	if err := receiptOutbox.EnsureIndexes(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("ensure receipt outbox indexes failed")
-	}
-	riskDecisions := mongo.NewRiskDecisionRepository(mongoClient, config.MongoConfig.MongoDBName)
-	if err := riskDecisions.EnsureIndexes(ctx); err != nil {
-		logger.Fatal().Err(err).Msg("ensure risk decision indexes failed")
 	}
 	riskAssessments := mongo.NewRiskAssessmentRepository(mongoClient, config.MongoConfig.MongoDBName)
 	if err := riskAssessments.EnsureIndexes(ctx); err != nil {
@@ -138,9 +134,9 @@ func main() {
 	if err := transactionHandler.SetTrustedProxyCIDRs(config.HTTPConfig.TrustedProxyCIDRs); err != nil {
 		logger.Fatal().Err(err).Msg("invalid trusted proxy configuration")
 	}
-	transactionHandler.SetRiskDecisionStore(riskDecisions)
+	transactionHandler.SetRiskDecisionStore(riskAssessments)
 	go composition.NewReceiptWorker(receiptOutbox, config.SMTPConfig, *logger).Run(ctx)
-	go runRiskDecisionConsumer(ctx, config.KafkaConfig, riskDecisions, riskAssessments, *logger)
+	go runRiskDecisionConsumer(ctx, config.KafkaConfig, riskAssessments, *logger)
 
 	// Loan Application Repository - EventStoreDB.
 	loanRepo := eventstore.NewLoanRepository(esClient)

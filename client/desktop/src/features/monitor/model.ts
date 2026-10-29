@@ -5,6 +5,8 @@ export interface RiskAssessment {
   transactionId: string;
   riskScore: number;
   predictedLabel: 0 | 1;
+  riskLevel: "NORMAL" | "WARNING" | "BLOCK";
+  decision: "ALLOW" | "BLOCK";
   threshold: number;
   modelVersion: string;
   featureVersion: string;
@@ -46,6 +48,9 @@ export interface MonitorSnapshot {
   timeseries: RiskSeriesPoint[];
   recentAssessments: RiskAssessment[];
   modelVersions: ModelVersionCount[];
+  normalCount: number;
+  warningCount: number;
+  blockCount: number;
 }
 
 export interface MonitorDashboardResponse {

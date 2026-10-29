@@ -41,6 +41,8 @@ type riskAssessmentDTO struct {
 	TransactionID  string                 `json:"transactionId"`
 	RiskScore      float64                `json:"riskScore"`
 	PredictedLabel int                    `json:"predictedLabel"`
+	RiskLevel      string                 `json:"riskLevel"`
+	Decision       string                 `json:"decision"`
 	Threshold      float64                `json:"threshold"`
 	ModelVersion   string                 `json:"modelVersion"`
 	FeatureVersion string                 `json:"featureVersion"`
@@ -82,6 +84,9 @@ type monitorSnapshot struct {
 	Timeseries        []monitorPoint      `json:"timeseries"`
 	RecentAssessments []riskAssessmentDTO `json:"recentAssessments"`
 	ModelVersions     []modelVersionCount `json:"modelVersions"`
+	NormalCount       int                 `json:"normalCount"`
+	WarningCount      int                 `json:"warningCount"`
+	BlockCount        int                 `json:"blockCount"`
 }
 
 type monitorResponse struct {
@@ -257,6 +262,16 @@ func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSumm
 	for _, item := range summary.ModelVersions {
 		snapshot.ModelVersions = append(snapshot.ModelVersions, modelVersionCount{Label: item.Label, Count: item.Count})
 	}
+	for _, item := range summary.RiskLevels {
+		switch item.Label {
+		case riskassessment.RiskLevelNormal:
+			snapshot.NormalCount = item.Count
+		case riskassessment.RiskLevelWarning:
+			snapshot.WarningCount = item.Count
+		case riskassessment.RiskLevelBlock:
+			snapshot.BlockCount = item.Count
+		}
+	}
 	if len(recent) > 0 {
 		latest := recent[len(recent)-1]
 		return monitorResponse{Range: rangeName, UpdatedAt: latest.ReceivedAt, DataStatus: "fresh", Cursor: encodeCursor(cursor{ReceivedAt: latest.ReceivedAt, ID: latest.AssessmentID}), Snapshot: snapshot}
@@ -294,7 +309,7 @@ func (h *MonitorHandler) enrichAssessment(ctx context.Context, item riskassessme
 }
 
 func (h *MonitorHandler) assessmentDTO(item riskassessment.Assessment, transaction mongorepo.RiskTransactionContext) riskAssessmentDTO {
-	dto := riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt}
+	dto := riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, RiskLevel: item.RiskLevel, Decision: item.Decision, Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt}
 	if transaction.TransactionID != "" {
 		dto.Transaction = &transactionContextDTO{TransactionID: transaction.TransactionID, SourceAccountNo: transaction.SourceAccountNo, SourceAccountName: transaction.SourceAccountName, DestinationAccountNo: transaction.DestinationAccountNo, DestinationName: transaction.DestinationName, Amount: transaction.Amount, Fee: transaction.Fee, Currency: transaction.Currency, Channel: transaction.Channel, Status: transaction.Status, CreatedAt: transaction.CreatedAt}
 	}

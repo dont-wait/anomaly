@@ -59,10 +59,10 @@ toàn bộ transaction history cho mỗi event. `consumer-mock` đọc `model_fe
 cùng account number, authentication và metadata thiết bị từ envelope. Client gửi
 `X-Device-ID` và `X-Platform`; giá trị thiếu được chuyển thành `UNKNOWN`.
 
-Model trả risk decision về Kafka topic `anomaly.bank.risk-decisions.v1`. API server
-lưu decision tạm thời theo transfer ID để confirm có thể trả `PENDING`, `ALLOW` hoặc
-`BLOCK`. Decision được gắn vào event terminal `TransferCompleted` hoặc
-`TransferFailed`; không tạo event risk riêng.
+Model trả scoring response về Kafka topic `anomaly.bank.risk-decisions.v1`. API server lưu
+model assessment vào `risk_assessments` để monitoring/admin dashboard. Luồng
+business decision legacy `ALLOW/BLOCK/PENDING` vẫn được hỗ trợ riêng qua
+`risk_decisions` cho transaction confirmation.
 =======
 Publisher GATv2 tại `server/ml-pipeline` không dùng payload Kafka để dựng feature
 =======
@@ -70,7 +70,7 @@ Publisher GATv2 tại `anomaly-service` không dùng payload Kafka để dựng 
 vì relay đã pseudonymize account/device ID. Service này dùng `TransferCreated` trên
 Kafka làm trigger, đọc raw event + toàn bộ transfer history trước `occurredAt` từ
 EventStoreDB, rồi chạy `ReplayPredictor` trên bundle GATv2 đã export. Kết quả được
-publish vào `anomaly.bank.risk.v1`; training record được ghi JSONL và publish vào
+publish vào `anomaly.bank.risk-decisions.v1`; training record được ghi JSONL và publish vào
 `anomaly.model.training.v1`. Record này chứa request gốc + response + timestamp,
 không phải label.
 

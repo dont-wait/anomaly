@@ -12,7 +12,7 @@ def test_defaults_match_anomaly_topics_and_local_bundle():
         config = load_config()
     assert config.kafka_brokers == ("localhost:9092",)
     assert config.input_topic == "anomaly.bank.events.v1"
-    assert config.output_topic == "anomaly.bank.risk.v1"
+    assert config.output_topic == "anomaly.bank.risk-decisions.v1"
     assert config.training_topic == "anomaly.model.training.v1"
     assert config.consumer_group == "ml-pipeline"
     assert config.auto_offset_reset == "earliest"

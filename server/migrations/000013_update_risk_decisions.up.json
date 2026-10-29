@@ -1,0 +1,20 @@
+[
+  {
+    "dropIndexes": "risk_decisions",
+    "indexes": ["uniq_risk_decision_transfer", "ttl_risk_decision"]
+  },
+  {
+    "createIndexes": "risk_decisions",
+    "indexes": [
+      {
+        "key": { "transaction_id": 1, "model_version": 1, "feature_version": 1 },
+        "name": "uniq_risk_decision_model_input",
+        "unique": true
+      },
+      {
+        "key": { "received_at": 1, "_id": 1 },
+        "name": "risk_decision_received_at"
+      }
+    ]
+  }
+]

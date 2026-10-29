@@ -64,7 +64,7 @@ def env_number(name, default, cast):
 def load_config():
     brokers = split_csv(env("KAFKA_BROKERS", "localhost:9092"))
     input_topic = env("KAFKA_INPUT_TOPIC", "anomaly.bank.events.v1").strip()
-    output_topic = env("KAFKA_OUTPUT_TOPIC", "anomaly.bank.risk.v1").strip()
+    output_topic = env("KAFKA_OUTPUT_TOPIC", "anomaly.bank.risk-decisions.v1").strip()
     training_topic = env("KAFKA_TRAINING_TOPIC", "anomaly.model.training.v1").strip() or None
     consumer_group = env("KAFKA_CONSUMER_GROUP", "ml-pipeline").strip()
     auto_offset_reset = env("KAFKA_AUTO_OFFSET_RESET", "earliest").strip().lower()

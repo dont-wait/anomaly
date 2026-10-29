@@ -4,7 +4,7 @@ services:
     environment:
       KAFKA_BROKERS: ${ML_KAFKA_BROKERS:?ML_KAFKA_BROKERS is required}
       KAFKA_INPUT_TOPIC: ${KAFKA_INPUT_TOPIC:-anomaly.bank.events.v1}
-      KAFKA_OUTPUT_TOPIC: ${KAFKA_OUTPUT_TOPIC:-anomaly.bank.risk.v1}
+      KAFKA_OUTPUT_TOPIC: ${KAFKA_OUTPUT_TOPIC:-anomaly.bank.risk-decisions.v1}
       KAFKA_TRAINING_TOPIC: ${KAFKA_TRAINING_TOPIC:-anomaly.model.training.v1}
       KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-ml-pipeline}
       KAFKA_AUTO_OFFSET_RESET: ${KAFKA_AUTO_OFFSET_RESET:-latest}

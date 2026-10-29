@@ -2,22 +2,25 @@ package mongo
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/dont-wait/anomaly/internal/domain/risk"
 	"github.com/dont-wait/anomaly/internal/domain/riskassessment"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-const riskAssessmentsCollection = "risk_assessments"
+const riskAssessmentsCollection = "risk_decisions"
 
 var ErrRiskAssessmentConflict = errors.New("risk assessment idempotency conflict")
 
 type RiskAssessmentRepository struct {
 	collection *mongodrv.Collection
+	rejected   *mongodrv.Collection
 }
 
 type RiskAssessmentBucket struct {
@@ -32,12 +35,18 @@ type RiskAssessmentVersionCount struct {
 	Count int    `bson:"count"`
 }
 
+type RiskAssessmentLevelCount struct {
+	Label string `bson:"_id"`
+	Count int    `bson:"count"`
+}
+
 type RiskAssessmentSummary struct {
 	Total         int64
 	Anomalous     int64
 	ScoreTotal    float64
 	Timeseries    []RiskAssessmentBucket
 	ModelVersions []RiskAssessmentVersionCount
+	RiskLevels    []RiskAssessmentLevelCount
 }
 
 type riskAssessmentChange struct {
@@ -48,20 +57,31 @@ type riskAssessmentChange struct {
 func NewRiskAssessmentRepository(client *mongodrv.Client, dbName string) *RiskAssessmentRepository {
 	return &RiskAssessmentRepository{
 		collection: client.Database(dbName).Collection(riskAssessmentsCollection),
+		rejected:   client.Database(dbName).Collection("risk_decision_rejections"),
 	}
 }
 
 func (r *RiskAssessmentRepository) EnsureIndexes(ctx context.Context) error {
+	for _, indexName := range []string{"uniq_risk_decision_transfer", "ttl_risk_decision"} {
+		_ = r.collection.Indexes().DropOne(ctx, indexName)
+	}
 	_, err := r.collection.Indexes().CreateOne(ctx, mongodrv.IndexModel{
 		Keys:    bson.D{{Key: "transaction_id", Value: 1}, {Key: "model_version", Value: 1}, {Key: "feature_version", Value: 1}},
-		Options: options.Index().SetUnique(true).SetName("uniq_risk_assessment_model_input"),
+		Options: options.Index().SetUnique(true).SetName("uniq_risk_decision_model_input"),
 	})
 	if err != nil {
 		return fmt.Errorf("create risk assessment idempotency index: %w", err)
 	}
 	_, err = r.collection.Indexes().CreateOne(ctx, mongodrv.IndexModel{
 		Keys:    bson.D{{Key: "received_at", Value: 1}, {Key: "_id", Value: 1}},
-		Options: options.Index().SetName("risk_assessment_received_at"),
+		Options: options.Index().SetName("risk_decision_received_at"),
+	})
+	if err != nil {
+		return err
+	}
+	_, err = r.rejected.Indexes().CreateOne(ctx, mongodrv.IndexModel{
+		Keys:    bson.D{{Key: "expires_at", Value: 1}},
+		Options: options.Index().SetExpireAfterSeconds(0).SetName("ttl_risk_decision_rejections"),
 	})
 	return err
 }
@@ -91,6 +111,52 @@ func (r *RiskAssessmentRepository) Save(ctx context.Context, assessment riskasse
 		return false, ErrRiskAssessmentConflict
 	}
 	return false, err
+}
+
+// Find adapts the scoring assessment to the transaction confirmation port.
+// WARNING is still ALLOW; only scores strictly above 0.7 are BLOCK.
+func (r *RiskAssessmentRepository) Find(ctx context.Context, transactionID string) (risk.Decision, bool, error) {
+	var assessment riskassessment.Assessment
+	err := r.collection.FindOne(ctx, bson.M{"transaction_id": transactionID, "finalized": bson.M{"$ne": true}}).Decode(&assessment)
+	if errors.Is(err, mongodrv.ErrNoDocuments) {
+		return risk.Decision{}, false, nil
+	}
+	if err != nil {
+		return risk.Decision{}, false, err
+	}
+	evaluatedAt := assessment.ScoredAt
+	if evaluatedAt.IsZero() {
+		evaluatedAt = assessment.ReceivedAt
+	}
+	return risk.Decision{
+		TransferID:    assessment.TransactionID,
+		SourceEventID: assessment.EventID,
+		Decision:      assessment.Decision,
+		Assessment:    risk.Assessment{Decision: assessment.Decision, IsAnomalous: assessment.RiskLevel == riskassessment.RiskLevelBlock, RiskScore: assessment.RiskScore, ModelVersion: assessment.ModelVersion, EvaluatedAt: evaluatedAt},
+	}, true, nil
+}
+
+func (r *RiskAssessmentRepository) Finalize(ctx context.Context, transactionID string) error {
+	now := time.Now().UTC()
+	_, err := r.collection.UpdateOne(ctx, bson.M{"transaction_id": transactionID, "finalized": bson.M{"$ne": true}}, bson.M{"$set": bson.M{"finalized": true, "finalized_at": now}})
+	return err
+}
+
+func (r *RiskAssessmentRepository) Reject(ctx context.Context, topic string, partition int, offset int64, payload []byte, reason string) error {
+	now := time.Now().UTC()
+	digest := sha256.Sum256(payload)
+	sample := payload
+	if len(sample) > maxRiskRejectionSampleBytes {
+		sample = sample[:maxRiskRejectionSampleBytes]
+	}
+	_, err := r.rejected.UpdateOne(ctx, bson.M{"_id": fmt.Sprintf("%s:%d:%d", topic, partition, offset)}, bson.M{
+		"$setOnInsert": bson.M{
+			"topic": topic, "partition": partition, "offset": offset,
+			"payload_sample": sample, "payload_sha256": fmt.Sprintf("%x", digest), "payload_size": len(payload),
+			"reason": reason, "created_at": now, "expires_at": now.Add(7 * 24 * time.Hour),
+		},
+	}, options.UpdateOne().SetUpsert(true))
+	return err
 }
 func (r *RiskAssessmentRepository) List(ctx context.Context, from, to time.Time, limit int64) ([]riskassessment.Assessment, error) {
 	if limit <= 0 {
@@ -238,6 +304,28 @@ func (r *RiskAssessmentRepository) Summarize(ctx context.Context, from, to time.
 	}
 	if summary.ModelVersions == nil {
 		summary.ModelVersions = []RiskAssessmentVersionCount{}
+	}
+
+	levelCursor, err := r.collection.Aggregate(ctx, mongodrv.Pipeline{
+		bson.D{{Key: "$match", Value: filter}},
+		bson.D{{Key: "$group", Value: bson.D{{Key: "_id", Value: "$risk_level"}, {Key: "count", Value: bson.D{{Key: "$sum", Value: 1}}}}}},
+	})
+	if err != nil {
+		return RiskAssessmentSummary{}, err
+	}
+	defer func() { _ = levelCursor.Close(ctx) }()
+	for levelCursor.Next(ctx) {
+		var row RiskAssessmentLevelCount
+		if err := levelCursor.Decode(&row); err != nil {
+			return RiskAssessmentSummary{}, err
+		}
+		summary.RiskLevels = append(summary.RiskLevels, row)
+	}
+	if err := levelCursor.Err(); err != nil {
+		return RiskAssessmentSummary{}, err
+	}
+	if summary.RiskLevels == nil {
+		summary.RiskLevels = []RiskAssessmentLevelCount{}
 	}
 	return summary, nil
 }

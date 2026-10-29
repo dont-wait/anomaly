@@ -213,7 +213,7 @@ go run .
 Publisher GATv2 nằm tại `anomaly-service` và chạy như một service riêng. Service
 này dùng Kafka `TransferCreated` làm trigger, đọc event gốc + history từ
 EventStoreDB (payload Kafka đã pseudonymize), chạy bundle GATv2 local rồi publish
-`anomaly.bank.risk.v1` và training record. Xem
+`anomaly.bank.risk-decisions.v1` và training record. Xem
 [anomaly-service/README.md](../anomaly-service/README.md).
 
 Để gửi thử một message từ Kafka CLI:

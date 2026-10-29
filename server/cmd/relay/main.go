@@ -62,7 +62,7 @@ func main() {
 	if err := featureStore.EnsureIndexes(ctx); err != nil {
 		log.Fatal().Err(err).Msg("ensure model feature indexes failed")
 	}
-	riskStore := mongorepo.NewRiskDecisionRepository(mongoClient, mongoConfig.MongoDBName)
+	riskStore := mongorepo.NewRiskAssessmentRepository(mongoClient, mongoConfig.MongoDBName)
 	if err := riskStore.EnsureIndexes(ctx); err != nil {
 		log.Fatal().Err(err).Msg("ensure risk decision indexes failed")
 	}
