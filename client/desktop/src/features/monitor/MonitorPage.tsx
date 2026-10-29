@@ -207,16 +207,23 @@ function RiskRequestsTable({ assessments }: { assessments: RiskAssessment[] }) {
   );
 }
 
-function RealtimeAlertStream({ assessments }: { assessments: RiskAssessment[] }) {
+function RecentAlertsPanel({ assessments }: { assessments: RiskAssessment[] }) {
   const [isPaused, setIsPaused] = useState(false);
+  const alerts = assessments.filter((assessment) => assessment.riskLevel !== "NORMAL");
 
   return (
     <section className={`${surfaceSubtle} flex min-h-80 flex-col justify-between rounded-(--admin-radius-md) p-3`}>
       <div>
-        <div className="flex items-center justify-between gap-2 pb-2"><div className="flex items-center gap-1.5"><FontAwesomeIcon icon={faStream} className="text-[14px] text-(--admin-primary)" aria-hidden="true" /><h2 className="text-[16px] leading-5 font-semibold text-(--admin-text) uppercase">Kết quả mới nhất</h2></div></div>
-         {assessments.length === 0 ? <div className="grid min-h-48 place-items-center text-[12px] text-(--admin-text-muted)">Chưa có kết quả mới.</div> : <div className={`grid gap-1 ${isPaused ? "opacity-60" : ""}`} aria-live="polite">{[...assessments].reverse().map((assessment) => <article key={assessment.assessmentId} className={`${surface} ${surfaceHover} flex items-start justify-between gap-2 rounded-sm p-2 transition-colors`}><div className="min-w-0"><div className="flex items-center gap-1.5"><span className={`${assessment.riskLevel === "BLOCK" ? "bg-(--admin-danger) text-white" : assessment.riskLevel === "WARNING" ? "bg-[#4b3b1d] text-[#f6d58a]" : "bg-(--admin-surface-hover) text-(--admin-text-secondary)"} rounded-sm px-1 py-0.5 text-[10px] font-bold`}>{riskLevelLabel(assessment.riskLevel)}</span><span className="truncate text-[12px] font-medium text-(--admin-text)">{assessment.transactionId}</span><span className="truncate text-[10px] text-(--admin-text-muted)">{assessment.transaction?.sourceAccountNo || "Chưa có thông tin giao dịch"}</span></div><div className={`${mono} mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-(--admin-text-muted)`}><span>điểm={assessment.riskScore.toFixed(4)}</span><span>·</span><span className="truncate">kết quả={decisionLabel(assessment.decision)}</span><span> · </span><span className={`${mono} rounded-sm px-1 py-0.5 font-bold ${transactionStatusClass(assessment.transaction?.status)}`}>{transactionStatusLabel(assessment.transaction?.status)}</span><span> · {assessment.modelVersion}</span></div></div><time className={`${mono} shrink-0 text-[10px] text-(--admin-text-muted)`}>{new Date(assessment.receivedAt).toLocaleTimeString("vi-VN", { hour12: false })}</time></article>)}</div>}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <FontAwesomeIcon icon={faBell} className="text-[14px] text-(--admin-primary)" aria-hidden="true" />
+            <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text) uppercase">Cảnh báo mới</h2>
+          </div>
+          <span className={`${mono} rounded-sm ${surface} px-1.5 py-1 text-[10px] text-(--admin-text-muted)`}>{alerts.length}</span>
+        </div>
+        {alerts.length === 0 ? <div className="grid min-h-48 place-items-center text-[12px] text-(--admin-text-muted)">Không có cảnh báo mới.</div> : <div className={`grid gap-1 ${isPaused ? "opacity-60" : ""}`} aria-live="polite">{[...alerts].reverse().map((assessment) => <article key={assessment.assessmentId} className={`${surface} ${surfaceHover} flex items-start justify-between gap-2 rounded-sm p-2 transition-colors`}><div className="min-w-0"><div className="flex items-center gap-1.5"><span className={`${assessment.riskLevel === "BLOCK" ? "bg-(--admin-danger) text-white" : "bg-[#4b3b1d] text-[#f6d58a]"} rounded-sm px-1 py-0.5 text-[10px] font-bold`}>{riskLevelLabel(assessment.riskLevel)}</span><span className="truncate text-[12px] font-medium text-(--admin-text)">{assessment.transactionId}</span><span className="truncate text-[10px] text-(--admin-text-muted)">{assessment.transaction?.sourceAccountNo || "Chưa có thông tin giao dịch"}</span></div><div className={`${mono} mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-(--admin-text-muted)`}><span>điểm={assessment.riskScore.toFixed(4)}</span><span>·</span><span className="truncate">kết quả={decisionLabel(assessment.decision)}</span><span>·</span><span className={`${mono} rounded-sm px-1 py-0.5 font-bold ${transactionStatusClass(assessment.transaction?.status)}`}>{transactionStatusLabel(assessment.transaction?.status)}</span></div></div><time className={`${mono} shrink-0 text-[10px] text-(--admin-text-muted)`}>{new Date(assessment.receivedAt).toLocaleTimeString("vi-VN", { hour12: false })}</time></article>)}</div>}
       </div>
-      <div className={`${mono} flex flex-wrap items-center justify-between gap-2 pt-2 text-[10px] text-(--admin-text-muted)`}><span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-(--admin-primary)" /></span><button className="text-(--admin-primary) hover:underline" type="button" onClick={() => setIsPaused((paused) => !paused)}>{isPaused ? "Tiếp tục" : "Tạm dừng"}</button></div>
+      <div className={`${mono} flex flex-wrap items-center justify-end gap-2 pt-2 text-[10px] text-(--admin-text-muted)`}><button className="text-(--admin-primary) hover:underline" type="button" onClick={() => setIsPaused((paused) => !paused)}>{isPaused ? "Tiếp tục" : "Tạm dừng"}</button></div>
     </section>
   );
 }
@@ -442,7 +449,7 @@ export function MonitorPage() {
       {error && !snapshot ? <DashboardError message={error} onRetry={refresh} /> : showSkeleton && skeletonForRequest ? <MonitorDashboardSkeleton /> : snapshot ? <>
         <div className="grid grid-cols-2 gap-1 lg:grid-cols-6">{metricsForSnapshot(snapshot).map((metric) => <MetricCard key={metric.label} metric={metric} />)}</div>
         <div className="grid grid-cols-12 gap-1"><div className="col-span-12 xl:col-span-8"><RiskTrendChart series={snapshot.timeseries} range={range} /></div><div className="col-span-12 xl:col-span-4"><RiskBreakdown snapshot={snapshot} /></div></div>
-        <div className="grid grid-cols-12 gap-1"><div className="col-span-12 lg:col-span-7"><RiskRequestsTable assessments={snapshot.recentAssessments} /></div><div className="col-span-12 lg:col-span-5"><RealtimeAlertStream assessments={snapshot.recentAssessments} /></div></div>
+        <div className="grid grid-cols-12 gap-1"><div className="col-span-12 lg:col-span-7"><RiskRequestsTable assessments={snapshot.recentAssessments} /></div><div className="col-span-12 lg:col-span-5"><RecentAlertsPanel assessments={snapshot.recentAssessments} /></div></div>
         <div className={`${mono} flex items-center justify-end gap-1 pt-1 text-[10px] text-(--admin-text-muted)`.trim()}><FontAwesomeIcon icon={faCircleExclamation} aria-hidden="true" />Cập nhật lúc {response.updatedAt}{response.dataStatus === "stale" ? " · DỮ LIỆU CŨ" : ""}</div>
       </> : null}
     </div>
