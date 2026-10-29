@@ -71,9 +71,11 @@ cd client
 make android
 ```
 
-Lệnh tự vào Nix shell, chuyển tiếp cổng API `8080` và KYC `8090` từ
-emulator về laptop bằng `adb reverse`, rồi thiết lập Corepack và chạy app.
-Giữ một emulator đang chạy; `adb -e` chọn emulator, bỏ qua điện thoại USB.
+Lệnh tự vào Nix shell, chuyển tiếp cổng API `8080`, KYC `8090`, Vite `1420` và HMR `1421` từ
+thiết bị về laptop bằng `adb reverse`, rồi thiết lập Corepack và chạy app.
+Lệnh ưu tiên điện thoại USB; khi không có điện thoại USB mới chọn emulator.
+Nếu có nhiều thiết bị cùng loại, chọn bằng `ANDROID_DEVICE=SERIAL`.
+Điện thoại USB chưa cấp quyền gỡ lỗi sẽ khiến lệnh dừng để bạn cấp quyền.
 Nếu chuyển tiếp lỗi, lệnh dừng trước khi chạy app. Mỗi lần `make android`
 sẽ thiết lập lại chuyển tiếp, kể cả sau khi khởi động lại emulator.
 Nếu cần kiểm tra thiết bị,
@@ -148,9 +150,9 @@ bản production cần endpoint HTTPS. Khởi động lại app sau khi đổi `
 
 ### Chạy trên điện thoại USB
 
-`make android` mặc định chọn emulator. Với điện thoại thật, bật **Developer
-options → USB debugging**, cắm cáp dữ liệu, mở khóa máy và chấp nhận hộp
-thoại RSA. Lấy serial bằng:
+`make android` tự ưu tiên điện thoại USB. Bật **Developer options → USB
+debugging**, cắm cáp dữ liệu, mở khóa máy và chấp nhận hộp thoại RSA, rồi chạy
+`make android`. Khi cần chọn một thiết bị cụ thể, lấy serial bằng:
 
 ```bash
 nix develop .#android --command adb devices -l
@@ -162,7 +164,8 @@ Nếu serial là `ABC123`, chạy từ thư mục `client/`:
 make android ANDROID_DEVICE=ABC123
 ```
 
-Lệnh này chọn đúng điện thoại cho cả `adb reverse` và Tauri.
+Lệnh dùng serial cho `adb reverse`, lấy tên model (hoặc tên AVD với emulator)
+để chọn thiết bị trong Tauri. Giao diện Vite dùng `127.0.0.1:1420` qua USB.
 
 Build APK riêng khi cần:
 
@@ -176,3 +179,18 @@ còn bản phát hành cần cấu hình signing key.
 
 Kiểm tra frontend theo thứ tự: `yarn lint`, `yarn tsc --noEmit`, `yarn test`.
 Các kiểm tra này không thay thế việc nhìn UI trên emulator.
+
+### Tên và icon ứng dụng
+
+Tên hiển thị là **Anomaly**, cấu hình trong `src-tauri/tauri.conf.json` và
+`src-tauri/gen/android/app/src/main/res/values/strings.xml` (tính từ `mobile/`).
+`src-tauri/app-icon.svg` dùng lại biểu tượng chữ A trong logo AnomalyBank hiện có.
+Để tạo lại icon từ `client/`:
+
+```bash
+yarn tauri icon mobile/src-tauri/app-icon.svg --output /tmp/anomaly-brand-icons
+```
+
+Cập nhật các file tương ứng trong `mobile/src-tauri/icons/` và chép nội dung
+`/tmp/anomaly-brand-icons/android/` vào `mobile/src-tauri/gen/android/app/src/main/res/`.
+Chạy lại `make android` để build và cài tên/icon mới lên điện thoại.

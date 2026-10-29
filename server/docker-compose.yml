@@ -23,6 +23,7 @@ services:
       RUSTFS_BUCKET: media
       KYC_SERVICE_URL: ${KYC_SERVICE_URL:-http://anomaly-kyc-service:8090}
       KYC_SERVICE_TOKEN: ${KYC_SERVICE_TOKEN:-}
+      KYC_POC_BYPASS: ${KYC_POC_BYPASS:-false}
       KYC_MAX_ATTEMPTS: ${KYC_MAX_ATTEMPTS:-3}
       KYC_ATTEMPT_WINDOW: ${KYC_ATTEMPT_WINDOW:-24h}
       KYC_ATTEMPT_TTL: ${KYC_ATTEMPT_TTL:-2m}
@@ -167,6 +168,7 @@ services:
       VISION_PIPELINE_BACKEND: ${VISION_PIPELINE_BACKEND:-disabled}
       ALLOW_STUB_VISION_PIPELINE: "false"
       KYC_SERVICE_TOKEN: ${KYC_SERVICE_TOKEN:-}
+      KYC_POC_BYPASS: ${KYC_POC_BYPASS:-false}
       VISION_CONFIG_PATH: /models/vision.toml
       FACE_MODEL_MANIFEST_PATH: /models/manifest.json
     volumes:

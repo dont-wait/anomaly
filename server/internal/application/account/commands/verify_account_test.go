@@ -109,3 +109,24 @@ func (r *verifyAccountRepository) Save(context.Context, *accountdomain.UserAccou
 	r.saveCalls++
 	return nil
 }
+
+func TestVerifyAccountPOCRecordsBypassWithoutBiometricClaims(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		repo := &verifyAccountRepository{account: &accountdomain.UserAccount{Id: "account-id", Customer: &accountdomain.Customer{}}}
+		cmd := VerifyAccountCommand{POCBypass: enabled, AccountID: "account-id", IdCardFrontUrl: "kyc/account-id/id-card-front/x", IdCardBackUrl: "kyc/account-id/id-card-back/x", LiveVideoUrl: "kyc/account-id/live-video/x", Evidence: &accountdomain.KYCEvidence{RequestID: "poc-request", ModelID: "poc-bypass", PipelineVersion: "poc-v1", MatchingStatus: "not_run", LivenessStatus: "not_run"}}
+		result, err := NewVerifyAccountCommandHandler(repo).Handle(context.Background(), cmd)
+		if !enabled {
+			if err != accountdomain.ErrInvalidVerifyPayload || repo.saveCalls != 0 {
+				t.Fatalf("POC without opt-in: %v", err)
+			}
+			continue
+		}
+		if err != nil || !result.IsVerified() || repo.saveCalls != 1 {
+			t.Fatalf("POC verification: result=%+v err=%v", result, err)
+		}
+		verification := result.KYCSessions[0].Verification
+		if verification.Provider != "anomaly-poc-bypass" || verification.LivenessStatus != accountdomain.VerificationStatusNotRun || verification.FaceMatchStatus != accountdomain.VerificationStatusNotRun {
+			t.Fatalf("POC represented as biometric evidence: %+v", verification)
+		}
+	}
+}

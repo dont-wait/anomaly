@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     vision_config_path: str = Field(default="", alias="VISION_CONFIG_PATH")
     face_model_manifest_path: str = Field(default="", alias="FACE_MODEL_MANIFEST_PATH")
     service_token: str = Field(default="", alias="KYC_SERVICE_TOKEN")
+    poc_bypass: bool = Field(default=False, alias="KYC_POC_BYPASS")
     # update to true bool when has backend
     allow_stub_vision_pipeline: bool = Field(default=False, alias="ALLOW_STUB_VISION_PIPELINE")
     match_threshold: float = Field(default=0.78, alias="MATCH_THRESHOLD", ge=0.0, le=1.0)

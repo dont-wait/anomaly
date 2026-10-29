@@ -11,6 +11,7 @@ import (
 )
 
 type VerifyAccountCommand struct {
+	POCBypass      bool
 	AccountID      string
 	IdCardFrontUrl string
 	IdCardBackUrl  string
@@ -59,12 +60,22 @@ func (h *VerifyAccountCommandHandler) Handle(ctx context.Context, cmd VerifyAcco
 	if acc.IsVerified() {
 		return acc, nil
 	}
-	if cmd.Evidence == nil || cmd.Evidence.MatchingStatus != "passed" ||
+	validPOC := cmd.POCBypass && cmd.Evidence != nil && cmd.Evidence.ModelID == "poc-bypass" &&
+		cmd.Evidence.PipelineVersion == "poc-v1" && cmd.Evidence.RequestID != "" &&
+		cmd.Evidence.MatchingStatus == "not_run" && cmd.Evidence.LivenessStatus == "not_run" &&
+		cmd.MatchScore == 0 && cmd.LivenessScore == 0
+	if !validPOC && (cmd.POCBypass || cmd.Evidence == nil || cmd.Evidence.ModelID == "poc-bypass" || cmd.Evidence.MatchingStatus != "passed" ||
 		cmd.Evidence.LivenessStatus != "passed" || !cmd.Evidence.ChallengePassed ||
 		!cmd.Evidence.SubjectConsistencyPassed || math.IsNaN(cmd.MatchScore) || math.IsInf(cmd.MatchScore, 0) ||
 		cmd.MatchScore < 0 || cmd.MatchScore > 1 || math.IsNaN(cmd.LivenessScore) ||
-		math.IsInf(cmd.LivenessScore, 0) || cmd.LivenessScore < 0 || cmd.LivenessScore > 1 {
+		math.IsInf(cmd.LivenessScore, 0) || cmd.LivenessScore < 0 || cmd.LivenessScore > 1) {
 		return nil, accountdomain.ErrInvalidVerifyPayload
+	}
+	provider := "anomaly-real-vision"
+	livenessStatus, matchingStatus := accountdomain.VerificationStatusPassed, accountdomain.VerificationStatusPassed
+	if validPOC {
+		provider = "anomaly-poc-bypass"
+		livenessStatus, matchingStatus = accountdomain.VerificationStatusNotRun, accountdomain.VerificationStatusNotRun
 	}
 
 	now := time.Now().UTC()
@@ -82,11 +93,11 @@ func (h *VerifyAccountCommandHandler) Handle(ctx context.Context, cmd VerifyAcco
 		},
 		Verification: accountdomain.KYCVerification{
 			OCRStatus:           accountdomain.VerificationStatusNotRun,
-			LivenessStatus:      accountdomain.VerificationStatusPassed,
-			FaceMatchStatus:     accountdomain.VerificationStatusPassed,
+			LivenessStatus:      livenessStatus,
+			FaceMatchStatus:     matchingStatus,
 			FaceMatchScore:      strconv.FormatFloat(cmd.MatchScore, 'f', -1, 64),
 			LivenessScore:       cmd.LivenessScore,
-			Provider:            "anomaly-real-vision",
+			Provider:            provider,
 			ProviderReferenceId: cmd.Evidence.RequestID,
 			Evidence:            cmd.Evidence,
 		},
