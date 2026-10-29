@@ -19,7 +19,10 @@ Các feature cần gửi:
 - `new_device`: thiết bị có phải thiết bị mới không
 
 Ngoài `model_features`, model input có `ip_address` là IP nguồn do API quan sát
-lúc tạo giao dịch; nếu không xác định được thì dùng `UNKNOWN`.
+lúc tạo giao dịch. Consumer mock dùng `UNKNOWN` khi thiếu IP. `anomaly-service`
+giữ IP có thật trong training request (`payload.ip_address`); dữ liệu cũ thiếu IP
+không được bổ sung giá trị giả. Bundle GATv2 hiện chưa có feature IP nên không
+đưa field này vào inference input.
 
 `last_tx_at` dùng timestamp RFC3339, thống nhất với `occurred_at` trong event
 envelope. Nếu chưa có giao dịch trước đó thì giá trị là `null`.

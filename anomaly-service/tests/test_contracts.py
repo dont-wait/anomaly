@@ -50,17 +50,18 @@ def test_prediction_contract_rejects_drift():
             Prediction.from_payload(payload)
 
 
-def test_risk_event_contains_join_metadata_and_prediction():
-    event = selected()
-    risk = build_risk_event(event, prediction(), scored_at="2026-10-19T10:30:01Z")
-    assert risk["schema_version"] == 1
-    assert risk["event_id"] == event.event_id
-    assert risk["transaction_id"] == event.transaction_id
-    assert risk["occurred_at"] == "2026-10-19T10:30:00.123456789Z"
-    assert risk["scored_at"] == "2026-10-19T10:30:01Z"
-    assert risk["risk_score"] == 0.9821
-    assert risk["predicted_label"] == 1
-    assert risk["model_version"] == "gatv2-device-control-v1"
+@pytest.mark.parametrize("score,label", [(0.9821, 1), (0.08, 0), (0.9517, 1)])
+def test_risk_event_uses_approved_label_to_decision_policy(score, label):
+    result = prediction(risk_score=score, predicted_label=label)
+    risk = build_risk_event(selected(), result)
+    assert risk["transfer_id"] == result.transaction_id
+    assert risk["source_event_id"] == selected().event_id
+    assert risk["decision"] == ("BLOCK" if label else "ALLOW")
+    assert risk["is_anomalous"] is bool(label)
+    assert risk["risk_score"] == score
+    assert "predicted_label" not in risk
+    assert "feature_version" not in risk
+    assert risk["evaluated_at"].endswith("Z")
 
 
 def test_training_record_is_stable_for_duplicate_delivery():
