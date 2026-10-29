@@ -117,6 +117,7 @@ type Assessment struct {
 	Finalized      bool       `json:"-" bson:"finalized"`
 	FinalizedAt    *time.Time `json:"-" bson:"finalized_at,omitempty"`
 	ReceivedAt     time.Time  `json:"receivedAt" bson:"received_at"`
+	Cursor         int64      `json:"-" bson:"cursor,omitempty"`
 	KafkaTopic     string     `json:"-" bson:"kafka_topic"`
 	KafkaPartition int        `json:"-" bson:"kafka_partition"`
 	KafkaOffset    int64      `json:"-" bson:"kafka_offset"`

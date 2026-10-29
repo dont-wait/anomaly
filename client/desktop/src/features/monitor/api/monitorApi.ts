@@ -15,6 +15,28 @@ export class MonitorApiError extends Error {
   }
 }
 
+function cursorSequence(cursor: string): bigint | null {
+  if (!cursor) return null;
+  try {
+    const normalized = cursor.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(cursor.length / 4) * 4, "=");
+    const bytes = atob(normalized);
+    const payload = JSON.parse(bytes) as { sequence?: unknown };
+    if (typeof payload.sequence !== "number" || !Number.isSafeInteger(payload.sequence) || payload.sequence <= 0) return null;
+    return BigInt(payload.sequence);
+  } catch {
+    return null;
+  }
+}
+
+export function shouldAdvanceMonitorCursor(current: string, next: string): boolean {
+  if (!next) return false;
+  if (!current) return true;
+  const currentSequence = cursorSequence(current);
+  const nextSequence = cursorSequence(next);
+  if (currentSequence !== null && nextSequence !== null) return nextSequence >= currentSequence;
+  return false;
+}
+
 function authHeaders(): HeadersInit {
   const session = readAdminSession();
   return session ? { Authorization: `Bearer ${session.accessToken}` } : {};

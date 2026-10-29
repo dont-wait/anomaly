@@ -19,8 +19,15 @@ const riskAssessmentsCollection = "risk_decisions"
 var ErrRiskAssessmentConflict = errors.New("risk assessment idempotency conflict")
 
 type RiskAssessmentRepository struct {
+	client     *mongodrv.Client
 	collection *mongodrv.Collection
 	rejected   *mongodrv.Collection
+	sequence   *mongodrv.Collection
+}
+
+type riskDecisionSequence struct {
+	ID    string `bson:"_id"`
+	Value int64  `bson:"value"`
 }
 
 type RiskAssessmentBucket struct {
@@ -56,8 +63,10 @@ type riskAssessmentChange struct {
 
 func NewRiskAssessmentRepository(client *mongodrv.Client, dbName string) *RiskAssessmentRepository {
 	return &RiskAssessmentRepository{
+		client:     client,
 		collection: client.Database(dbName).Collection(riskAssessmentsCollection),
 		rejected:   client.Database(dbName).Collection("risk_decision_rejections"),
+		sequence:   client.Database(dbName).Collection("risk_decision_sequences"),
 	}
 }
 
@@ -79,6 +88,13 @@ func (r *RiskAssessmentRepository) EnsureIndexes(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	_, err = r.collection.Indexes().CreateOne(ctx, mongodrv.IndexModel{
+		Keys:    bson.D{{Key: "cursor", Value: 1}},
+		Options: options.Index().SetName("risk_decision_cursor"),
+	})
+	if err != nil {
+		return err
+	}
 	_, err = r.rejected.Indexes().CreateOne(ctx, mongodrv.IndexModel{
 		Keys:    bson.D{{Key: "expires_at", Value: 1}},
 		Options: options.Index().SetExpireAfterSeconds(0).SetName("ttl_risk_decision_rejections"),
@@ -91,7 +107,27 @@ func (r *RiskAssessmentRepository) Save(ctx context.Context, assessment riskasse
 	if assessment.ID == "" {
 		return false, errors.New("risk assessment id is required")
 	}
-	_, err := r.collection.InsertOne(ctx, assessment)
+	var err error
+	if assessment.Cursor == 0 {
+		session, sessionErr := r.client.StartSession()
+		if sessionErr != nil {
+			return false, sessionErr
+		}
+		defer session.EndSession(ctx)
+		_, err = session.WithTransaction(ctx, func(sc context.Context) (any, error) {
+			cursor, cursorErr := r.nextCursor(sc)
+			if cursorErr != nil {
+				return nil, cursorErr
+			}
+			assessment.Cursor = cursor
+			if _, insertErr := r.collection.InsertOne(sc, assessment); insertErr != nil {
+				return nil, insertErr
+			}
+			return nil, nil
+		})
+	} else {
+		_, err = r.collection.InsertOne(ctx, assessment)
+	}
 	if err == nil {
 		return true, nil
 	}
@@ -113,11 +149,29 @@ func (r *RiskAssessmentRepository) Save(ctx context.Context, assessment riskasse
 	return false, err
 }
 
+func (r *RiskAssessmentRepository) nextCursor(ctx context.Context) (int64, error) {
+	var sequence riskDecisionSequence
+	err := r.sequence.FindOneAndUpdate(
+		ctx,
+		bson.M{"_id": riskAssessmentsCollection},
+		bson.M{"$inc": bson.M{"value": 1}},
+		options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After),
+	).Decode(&sequence)
+	if err != nil {
+		return 0, fmt.Errorf("allocate risk assessment cursor: %w", err)
+	}
+	return sequence.Value, nil
+}
+
 // Find adapts the scoring assessment to the transaction confirmation port.
 // WARNING is still ALLOW; only scores strictly above 0.7 are BLOCK.
 func (r *RiskAssessmentRepository) Find(ctx context.Context, transactionID string) (risk.Decision, bool, error) {
 	var assessment riskassessment.Assessment
-	err := r.collection.FindOne(ctx, bson.M{"transaction_id": transactionID, "finalized": bson.M{"$ne": true}}).Decode(&assessment)
+	err := r.collection.FindOne(
+		ctx,
+		bson.M{"transaction_id": transactionID, "finalized": bson.M{"$ne": true}},
+		options.FindOne().SetSort(bson.D{{Key: "scored_at", Value: -1}, {Key: "received_at", Value: -1}, {Key: "_id", Value: -1}}),
+	).Decode(&assessment)
 	if errors.Is(err, mongodrv.ErrNoDocuments) {
 		return risk.Decision{}, false, nil
 	}
@@ -138,7 +192,7 @@ func (r *RiskAssessmentRepository) Find(ctx context.Context, transactionID strin
 
 func (r *RiskAssessmentRepository) Finalize(ctx context.Context, transactionID string) error {
 	now := time.Now().UTC()
-	_, err := r.collection.UpdateOne(ctx, bson.M{"transaction_id": transactionID, "finalized": bson.M{"$ne": true}}, bson.M{"$set": bson.M{"finalized": true, "finalized_at": now}})
+	_, err := r.collection.UpdateMany(ctx, bson.M{"transaction_id": transactionID, "finalized": bson.M{"$ne": true}}, bson.M{"$set": bson.M{"finalized": true, "finalized_at": now}})
 	return err
 }
 
@@ -196,7 +250,7 @@ func (r *RiskAssessmentRepository) ListRecent(ctx context.Context, from, to time
 	}
 	cursor, err := r.collection.Find(ctx, bson.M{
 		"received_at": bson.M{"$gte": from, "$lt": to},
-	}, options.Find().SetSort(bson.D{{Key: "received_at", Value: -1}, {Key: "_id", Value: -1}}).SetLimit(limit))
+	}, options.Find().SetSort(bson.D{{Key: "cursor", Value: -1}, {Key: "received_at", Value: -1}, {Key: "_id", Value: -1}}).SetLimit(limit))
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +385,7 @@ func (r *RiskAssessmentRepository) Summarize(ctx context.Context, from, to time.
 	return summary, nil
 }
 
-func (r *RiskAssessmentRepository) ListAfter(ctx context.Context, after time.Time, afterID string, limit int64) ([]riskassessment.Assessment, error) {
+func (r *RiskAssessmentRepository) ListAfter(ctx context.Context, afterCursor int64, after time.Time, afterID string, limit int64) ([]riskassessment.Assessment, error) {
 	if limit <= 0 {
 		limit = 1000
 	}
@@ -339,14 +393,18 @@ func (r *RiskAssessmentRepository) ListAfter(ctx context.Context, after time.Tim
 		limit = 10000
 	}
 	filter := bson.M{}
-	if !after.IsZero() || afterID != "" {
+	sort := bson.D{{Key: "received_at", Value: 1}, {Key: "_id", Value: 1}}
+	if afterCursor > 0 {
+		filter = bson.M{"cursor": bson.M{"$gt": afterCursor}}
+		sort = bson.D{{Key: "cursor", Value: 1}}
+	} else if !after.IsZero() || afterID != "" {
 		filter = bson.M{"$or": bson.A{
 			bson.M{"received_at": bson.M{"$gt": after}},
 			bson.M{"received_at": after, "_id": bson.M{"$gt": afterID}},
 		}}
 	}
 	cursor, err := r.collection.Find(ctx, filter,
-		options.Find().SetSort(bson.D{{Key: "received_at", Value: 1}, {Key: "_id", Value: 1}}).SetLimit(limit))
+		options.Find().SetSort(sort).SetLimit(limit))
 	if err != nil {
 		return nil, err
 	}
@@ -368,10 +426,12 @@ func (r *RiskAssessmentRepository) ListAfter(ctx context.Context, after time.Tim
 // Watch emits persisted assessments for other API instances as well as the
 // local instance. The durable collection remains the source of truth; a
 // reconnecting client can replay from its cursor through ListAfter.
-func (r *RiskAssessmentRepository) Watch(ctx context.Context, resumeAfter bson.Raw, publish func(riskassessment.Assessment)) (bson.Raw, error) {
+func (r *RiskAssessmentRepository) Watch(ctx context.Context, resumeAfter bson.Raw, startAtOperationTime *bson.Timestamp, publish func(riskassessment.Assessment)) (bson.Raw, error) {
 	changeStreamOptions := options.ChangeStream()
 	if len(resumeAfter) > 0 {
 		changeStreamOptions.SetResumeAfter(resumeAfter)
+	} else if startAtOperationTime != nil {
+		changeStreamOptions.SetStartAtOperationTime(startAtOperationTime)
 	}
 	stream, err := r.collection.Watch(ctx, mongodrv.Pipeline{}, changeStreamOptions)
 	if err != nil {

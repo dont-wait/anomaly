@@ -87,3 +87,23 @@ func TestRiskDecisionConsolidationMigrationUsesMongoDropIndexField(t *testing.T)
 		t.Fatalf("drop command = %+v", commands[1])
 	}
 }
+
+func TestRiskDecisionCursorMigrationCreatesCursorIndex(t *testing.T) {
+	path := filepath.Join("../../migrations", "000015_add_risk_decision_cursor.up.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var commands []struct {
+		CreateIndexes string `json:"createIndexes"`
+		Indexes       []struct {
+			Name string `json:"name"`
+		} `json:"indexes"`
+	}
+	if err := json.Unmarshal(body, &commands); err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 1 || commands[0].CreateIndexes != "risk_decisions" || len(commands[0].Indexes) != 1 || commands[0].Indexes[0].Name != "risk_decision_cursor" {
+		t.Fatalf("unexpected version 15 migration: %+v", commands)
+	}
+}

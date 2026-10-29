@@ -334,6 +334,13 @@ func (h *Handler) RequireCurrentAdmin(next http.Handler) http.Handler {
 	})
 }
 
+// IsCurrentAdmin is used by long-lived admin streams to re-check persisted
+// authorization after the initial request has been authenticated.
+func (h *Handler) IsCurrentAdmin(ctx context.Context, userID string) bool {
+	account, err := h.getByID.Handle(ctx, queries.GetAccountByIDQuery{ID: userID})
+	return err == nil && account.EffectiveRole() == accountdomain.AccountRoleAdmin
+}
+
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 

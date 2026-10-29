@@ -72,26 +72,47 @@ func main() {
 	riskHub := riskstream.NewHub()
 	go func() {
 		var resumeToken bson.Raw
+		var startAtOperationTime *bson.Timestamp
 		var lastReceivedAt time.Time
 		var lastAssessmentID string
+		var lastCursor int64
 		publish := func(assessment riskassessment.Assessment) {
+			if lastCursor > 0 && assessment.Cursor > 0 && assessment.Cursor <= lastCursor {
+				return
+			}
+			if assessment.Cursor == 0 && !lastReceivedAt.IsZero() {
+				if assessment.ReceivedAt.Before(lastReceivedAt) || (assessment.ReceivedAt.Equal(lastReceivedAt) && assessment.ID <= lastAssessmentID) {
+					return
+				}
+			}
+			if assessment.Cursor > 0 {
+				lastCursor = assessment.Cursor
+			}
 			lastReceivedAt = assessment.ReceivedAt
 			lastAssessmentID = assessment.ID
 			riskHub.Publish(riskstream.Event{ID: assessment.ID, Assessment: assessment})
 		}
 		for ctx.Err() == nil {
-			nextToken, err := riskAssessments.Watch(ctx, resumeToken, publish)
+			nextToken, err := riskAssessments.Watch(ctx, resumeToken, startAtOperationTime, publish)
 			if len(nextToken) > 0 {
 				resumeToken = append(bson.Raw(nil), nextToken...)
 			}
 			if ctx.Err() != nil {
 				return
 			}
-			if replayErr := replayRiskAssessments(ctx, riskAssessments, publish, lastReceivedAt, lastAssessmentID); replayErr != nil {
+			var recoveryStart *bson.Timestamp
+			if isChangeStreamHistoryLost(err) {
+				now := uint32(time.Now().Unix())
+				recoveryStart = &bson.Timestamp{T: now}
+			}
+			if replayErr := replayRiskAssessments(ctx, riskAssessments, publish, lastCursor, lastReceivedAt, lastAssessmentID); replayErr != nil {
 				logger.Error().Err(replayErr).Msg("risk assessment recovery replay failed")
 			}
 			if isChangeStreamHistoryLost(err) {
 				resumeToken = nil
+				startAtOperationTime = recoveryStart
+			} else if len(nextToken) > 0 {
+				startAtOperationTime = nil
 			}
 			logger.Error().Err(err).Msg("risk assessment change stream stopped; retrying")
 			timer := time.NewTimer(2 * time.Second)
@@ -118,8 +139,6 @@ func main() {
 	if err := bank.EnsureReady(ctx, legacyAccounts > 0); err != nil {
 		logger.Fatal().Err(err).Msg("banking source of truth unavailable")
 	}
-	adminMonitorHandler := adminhandler.NewMonitorHandler(riskAssessments, riskHub, transferRepository)
-
 	tokenSvc := auth.NewTokenService(config.AuthConfig.JWTSecret, config.AuthConfig.JWTExpiry)
 
 	rdb := redis.NewClient(&redis.Options{
@@ -137,6 +156,7 @@ func main() {
 	}()
 
 	accountHandler := composition.NewAccountHandlerWithKYC(bank, tokenSvc, kyc.NewClient(config.KYCConfig.ServiceURL, config.KYCConfig.ServiceToken), mediaRepo, *logger)
+	adminMonitorHandler := adminhandler.NewMonitorHandler(riskAssessments, riskHub, transferRepository, accountHandler.IsCurrentAdmin)
 	accountHandler.WithRealtime(&kyc.RealtimeStore{DB: rdb, Policy: kyc.Policy{
 		MaxAttempts: config.KYCConfig.MaxAttempts, Window: config.KYCConfig.AttemptWindow, AttemptTTL: config.KYCConfig.AttemptTTL,
 		MaxConcurrent: config.KYCConfig.MaxConcurrentAttempts, StartsPerMinute: config.KYCConfig.StartsPerMinute,
@@ -233,17 +253,18 @@ func main() {
 	}
 }
 
-func replayRiskAssessments(ctx context.Context, repository *mongo.RiskAssessmentRepository, publish func(riskassessment.Assessment), after time.Time, afterID string) error {
-	if after.IsZero() {
+func replayRiskAssessments(ctx context.Context, repository *mongo.RiskAssessmentRepository, publish func(riskassessment.Assessment), afterCursor int64, after time.Time, afterID string) error {
+	if afterCursor == 0 && after.IsZero() {
 		return nil
 	}
 	for {
-		items, err := repository.ListAfter(ctx, after, afterID, 1000)
+		items, err := repository.ListAfter(ctx, afterCursor, after, afterID, 1000)
 		if err != nil {
 			return err
 		}
 		for _, item := range items {
 			publish(item)
+			afterCursor = item.Cursor
 			after, afterID = item.ReceivedAt, item.ID
 		}
 		if len(items) < 1000 {

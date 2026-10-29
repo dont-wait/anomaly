@@ -11,7 +11,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { navigate, routes } from "@/app/routes";
 import { clearAdminSession } from "@/features/auth/api/adminSession";
-import { consumeRiskStream, getMonitorDashboard } from "./api/monitorApi";
+import { consumeRiskStream, getMonitorDashboard, shouldAdvanceMonitorCursor } from "./api/monitorApi";
 import { RiskTrendChart } from "./components/RiskTrendChart";
 import { MonitorDashboardSkeleton } from "./components/MonitorDashboardSkeleton";
 import { ranges, type MonitorDashboardResponse, type MonitorSnapshot, type RiskAssessment, type TimeRange } from "./model";
@@ -243,12 +243,21 @@ export function MonitorPage() {
     getMonitorDashboard(range)
       .then((nextResponse) => {
         if (!active) return;
-        streamCursorRef.current = nextResponse.cursor;
+        if (shouldAdvanceMonitorCursor(streamCursorRef.current, nextResponse.cursor)) {
+          streamCursorRef.current = nextResponse.cursor;
+        }
         setResponse(nextResponse);
       })
       .catch((requestError: unknown) => {
         if (!active) return;
+        if (requestError instanceof Error && "status" in requestError && [401, 403].includes((requestError as { status?: number }).status ?? 0)) {
+          clearAdminSession();
+          navigate(routes.login);
+          setStreamStatus("Phiên đăng nhập hết hạn");
+          return;
+        }
         requestFailed = true;
+        streamCursorRef.current = "";
         setResponse(null);
         setError(requestError instanceof Error ? requestError.message : "Vui lòng thử lại sau.");
         retryTimer = window.setTimeout(() => {
@@ -333,7 +342,7 @@ export function MonitorPage() {
           if (!cancelled) setStreamStatus("Đang kết nối lại");
         } catch (streamError) {
           if (cancelled || (streamError instanceof DOMException && streamError.name === "AbortError")) return;
-          if (streamError instanceof Error && "status" in streamError && (streamError as { status?: number }).status === 401) {
+          if (streamError instanceof Error && "status" in streamError && [401, 403].includes((streamError as { status?: number }).status ?? 0)) {
             clearAdminSession();
             navigate(routes.login);
             setStreamStatus("Phiên đăng nhập hết hạn");

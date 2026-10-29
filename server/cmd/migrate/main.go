@@ -97,6 +97,13 @@ func run(runner *migrate.Migrate, command string) error {
 	case "up-by-one":
 		err = runner.Steps(1)
 	case "down":
+		version, _, versionErr := runner.Version()
+		if versionErr != nil && !errors.Is(versionErr, migrate.ErrNilVersion) {
+			return versionErr
+		}
+		if version == 14 {
+			return errors.New("migration 14 is irreversible: the legacy risk_assessments collection was dropped")
+		}
 		err = runner.Steps(-1)
 	case "version":
 		version, dirty, versionErr := runner.Version()

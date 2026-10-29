@@ -21,17 +21,23 @@ type MonitorHandler struct {
 	repository   *mongorepo.RiskAssessmentRepository
 	hub          *riskstream.Hub
 	transactions transactionContextLookup
+	currentAdmin func(context.Context, string) bool
 }
 
 type transactionContextLookup interface {
 	FindRiskTransactionContexts(context.Context, []string) (map[string]mongorepo.RiskTransactionContext, error)
 }
 
-func NewMonitorHandler(repository *mongorepo.RiskAssessmentRepository, hub *riskstream.Hub, transactions transactionContextLookup) *MonitorHandler {
-	return &MonitorHandler{repository: repository, hub: hub, transactions: transactions}
+func NewMonitorHandler(repository *mongorepo.RiskAssessmentRepository, hub *riskstream.Hub, transactions transactionContextLookup, currentAdmin ...func(context.Context, string) bool) *MonitorHandler {
+	var checker func(context.Context, string) bool
+	if len(currentAdmin) > 0 {
+		checker = currentAdmin[0]
+	}
+	return &MonitorHandler{repository: repository, hub: hub, transactions: transactions, currentAdmin: checker}
 }
 
 type cursor struct {
+	Sequence   int64     `json:"sequence,omitempty"`
 	ReceivedAt time.Time `json:"receivedAt"`
 	ID         string    `json:"id"`
 }
@@ -48,6 +54,7 @@ type riskAssessmentDTO struct {
 	FeatureVersion string                 `json:"featureVersion"`
 	ReceivedAt     time.Time              `json:"receivedAt"`
 	Transaction    *transactionContextDTO `json:"transaction"`
+	Cursor         int64                  `json:"-"`
 }
 
 type transactionContextDTO struct {
@@ -163,6 +170,11 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid cursor", http.StatusBadRequest)
 		return
 	}
+	claims, claimsOK := middleware.ClaimsFromContext(r.Context())
+	if !claimsOK || claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	updates, cancel := h.hub.Subscribe()
 	defer cancel()
@@ -174,10 +186,10 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprint(w, ": connected\n\n")
 	flusher.Flush()
 
-	if after.ID != "" || !after.ReceivedAt.IsZero() {
+	if after.Sequence > 0 || after.ID != "" || !after.ReceivedAt.IsZero() {
 		for {
 			queryCtx, queryCancel := context.WithTimeout(r.Context(), 5*time.Second)
-			items, listErr := h.repository.ListAfter(queryCtx, after.ReceivedAt, after.ID, 1000)
+			items, listErr := h.repository.ListAfter(queryCtx, after.Sequence, after.ReceivedAt, after.ID, 1000)
 			if listErr != nil {
 				queryCancel()
 				return
@@ -191,7 +203,7 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 				if err := writeAssessmentEvent(w, flusher, item, dtos[index]); err != nil {
 					return
 				}
-				after = cursor{ReceivedAt: item.ReceivedAt, ID: item.ID}
+				after = cursor{Sequence: item.Cursor, ReceivedAt: item.ReceivedAt, ID: item.ID}
 			}
 			if len(items) < 1000 {
 				break
@@ -221,8 +233,14 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			if err := writeAssessmentEvent(w, flusher, event.Assessment, dto); err != nil {
 				return
 			}
-			after = cursor{ReceivedAt: event.Assessment.ReceivedAt, ID: event.Assessment.ID}
+			after = cursor{Sequence: event.Assessment.Cursor, ReceivedAt: event.Assessment.ReceivedAt, ID: event.Assessment.ID}
 		case <-ticker.C:
+			if !claims.ExpiresAt.IsZero() && !time.Now().Before(claims.ExpiresAt) {
+				return
+			}
+			if h.currentAdmin != nil && !h.currentAdmin(r.Context(), claims.UserID) {
+				return
+			}
 			setSSEWriteDeadline(w)
 			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
 				return
@@ -283,7 +301,7 @@ func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSumm
 	}
 	if len(recent) > 0 {
 		latest := recent[len(recent)-1]
-		return monitorResponse{Range: rangeName, UpdatedAt: latest.ReceivedAt, DataStatus: "fresh", Cursor: encodeCursor(cursor{ReceivedAt: latest.ReceivedAt, ID: latest.AssessmentID}), Snapshot: snapshot}
+		return monitorResponse{Range: rangeName, UpdatedAt: latest.ReceivedAt, DataStatus: "fresh", Cursor: encodeCursor(cursor{Sequence: latest.Cursor, ReceivedAt: latest.ReceivedAt, ID: latest.AssessmentID}), Snapshot: snapshot}
 	}
 	watermark := generatedAt.UTC().Truncate(time.Millisecond)
 	return monitorResponse{Range: rangeName, UpdatedAt: watermark, DataStatus: "fresh", Cursor: encodeCursor(cursor{ReceivedAt: watermark}), Snapshot: snapshot}
@@ -318,7 +336,7 @@ func (h *MonitorHandler) enrichAssessment(ctx context.Context, item riskassessme
 }
 
 func (h *MonitorHandler) assessmentDTO(item riskassessment.Assessment, transaction mongorepo.RiskTransactionContext) riskAssessmentDTO {
-	dto := riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, RiskLevel: item.RiskLevel, Decision: item.Decision, Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt}
+	dto := riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, RiskLevel: item.RiskLevel, Decision: item.Decision, Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt, Cursor: item.Cursor}
 	if transaction.TransactionID != "" {
 		dto.Transaction = &transactionContextDTO{TransactionID: transaction.TransactionID, SourceAccountNo: transaction.SourceAccountNo, SourceAccountName: transaction.SourceAccountName, DestinationAccountNo: transaction.DestinationAccountNo, DestinationName: transaction.DestinationName, Amount: transaction.Amount, Fee: transaction.Fee, Currency: transaction.Currency, Channel: transaction.Channel, Status: transaction.Status, CreatedAt: transaction.CreatedAt}
 	}
@@ -331,7 +349,7 @@ func writeAssessmentEvent(w http.ResponseWriter, flusher http.Flusher, item risk
 	if err != nil {
 		return err
 	}
-	id := encodeCursor(cursor{ReceivedAt: item.ReceivedAt, ID: item.ID})
+	id := encodeCursor(cursor{Sequence: item.Cursor, ReceivedAt: item.ReceivedAt, ID: item.ID})
 	if _, err := fmt.Fprintf(w, "id: %s\nevent: risk_assessment.created\ndata: %s\n\n", id, payload); err != nil {
 		return err
 	}
@@ -344,7 +362,7 @@ func setSSEWriteDeadline(w http.ResponseWriter) {
 }
 
 func encodeCursor(value cursor) string {
-	if value.ReceivedAt.IsZero() {
+	if value.Sequence <= 0 && value.ReceivedAt.IsZero() {
 		return ""
 	}
 	payload, _ := json.Marshal(value)
@@ -363,13 +381,16 @@ func decodeCursor(value string) (cursor, error) {
 	if err := json.Unmarshal(payload, &result); err != nil {
 		return cursor{}, err
 	}
-	if result.ReceivedAt.IsZero() {
+	if result.Sequence <= 0 && result.ReceivedAt.IsZero() {
 		return cursor{}, fmt.Errorf("cursor fields are required")
 	}
 	return result, nil
 }
 
 func isAfter(item riskassessment.Assessment, after cursor) bool {
+	if after.Sequence > 0 {
+		return item.Cursor > after.Sequence
+	}
 	if after.ReceivedAt.IsZero() {
 		return true
 	}

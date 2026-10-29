@@ -21,6 +21,18 @@ func TestCursorRoundTripAllowsWatermarkWithoutID(t *testing.T) {
 	}
 }
 
+func TestCursorRoundTripUsesMonotonicSequence(t *testing.T) {
+	value := cursor{Sequence: 42, ReceivedAt: time.UnixMilli(10), ID: "assessment-42"}
+	encoded := encodeCursor(value)
+	decoded, err := decodeCursor(encoded)
+	if err != nil {
+		t.Fatalf("decode cursor: %v", err)
+	}
+	if decoded.Sequence != value.Sequence || decoded.ID != value.ID {
+		t.Fatalf("decoded cursor = %+v, want %+v", decoded, value)
+	}
+}
+
 func TestIsAfterUsesAssessmentIDForSameMillisecond(t *testing.T) {
 	after := cursor{ReceivedAt: time.UnixMilli(10), ID: "assessment-1"}
 	if isAfter(assessmentAt(time.UnixMilli(10), "assessment-0"), after) {
@@ -28,6 +40,16 @@ func TestIsAfterUsesAssessmentIDForSameMillisecond(t *testing.T) {
 	}
 	if !isAfter(assessmentAt(time.UnixMilli(10), "assessment-2"), after) {
 		t.Fatal("newer assessment ID should be after cursor")
+	}
+}
+
+func TestIsAfterUsesSequenceBeforeTimestampTieBreaker(t *testing.T) {
+	after := cursor{Sequence: 10, ReceivedAt: time.UnixMilli(10), ID: "assessment-10"}
+	if isAfter(riskassessment.Assessment{Cursor: 9, ReceivedAt: time.UnixMilli(11), ID: "assessment-9"}, after) {
+		t.Fatal("older sequence should not be after cursor")
+	}
+	if !isAfter(riskassessment.Assessment{Cursor: 11, ReceivedAt: time.UnixMilli(1), ID: "assessment-11"}, after) {
+		t.Fatal("newer sequence should be after cursor")
 	}
 }
 
