@@ -1,7 +1,10 @@
 [
   {
+    "drop": "risk_assessments"
+  },
+  {
     "dropIndexes": "risk_decisions",
-    "indexes": ["uniq_risk_decision_transfer", "ttl_risk_decision"]
+    "index": "*"
   },
   {
     "createIndexes": "risk_decisions",

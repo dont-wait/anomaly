@@ -158,7 +158,7 @@ commit rolling feature state sau khi debit/credit thành công.
 6. Publish envelope vào `anomaly.bank.events.v1`.
 7. ACK `TransferCreated` sau khi Kafka xác nhận.
 8. Model publish scoring response vào `anomaly.bank.risk-decisions.v1`.
-9. API server lưu model assessment vào `risk_assessments`; Admin Dashboard đọc
+9. API server lưu model assessment vào `risk_decisions`; Admin Dashboard đọc
    assessment này qua snapshot API và SSE.
 10. `ALLOW` tạo `TransferCompleted`; `BLOCK` tạo `TransferFailed`.
 11. Chỉ sau `TransferCompleted`, relay cập nhật rolling state và receiver/device

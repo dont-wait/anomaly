@@ -4,7 +4,7 @@ Consumer độc lập tối giản cho Kafka, mô phỏng model service thật. 
 `TransferCreated` envelope từ request topic, chọn các field transaction và
 `model_features` do relay enrich, log input rồi publish model response v1 vào
 cùng output topic mà model service thật sử dụng. Server lưu response vào
-collection `risk_assessments`.
+collection `risk_decisions`.
 
 ## Configuration
 
