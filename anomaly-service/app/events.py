@@ -1,9 +1,4 @@
-"""Select request-time events from the sanitized Anomaly Kafka envelope.
-
-Kafka is only a trigger. Account/device IDs in the relay payload are
-pseudonymized and the GATv2 graph needs raw identities, so the publisher reads
-the original request and its history from EventStoreDB instead.
-"""
+"""Select Kafka triggers; the publisher reads canonical request/history from EventStoreDB."""
 import json
 from dataclasses import dataclass
 
