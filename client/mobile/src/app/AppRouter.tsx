@@ -8,7 +8,16 @@ import TransferPage from "@/pages/TransferPage";
 import TransactionHistoryPage from "@/pages/TransactionHistoryPage";
 import TransactionDetailPage from "@/pages/TransactionDetailPage";
 import LoanRegisterPage from "@/pages/LoanRegisterPage";
-import { isProtectedRoute, parseTransactionId, routes } from "./routes";
+import LoanApplicationsPage from "@/pages/LoanApplicationsPage";
+import LoanContractsPage from "@/pages/LoanContractsPage";
+import LoanAdminPage from "@/pages/LoanAdminPage";
+import {
+  isProtectedRoute,
+  parseTransactionId,
+  parseLoanApplicationId,
+  parseLoanContractId,
+  routes,
+} from "./routes";
 
 function subscribe(onChange: () => void) {
   window.addEventListener("hashchange", onChange);
@@ -44,6 +53,12 @@ export function AppRouter() {
     return <TransactionDetailPage transactionId={transactionId} />;
   }
 
+  const applicationId = parseLoanApplicationId(hash);
+  if (applicationId)
+    return <LoanApplicationsPage applicationId={applicationId} />;
+  const loanId = parseLoanContractId(hash);
+  if (loanId) return <LoanContractsPage loanId={loanId} />;
+
   switch (hash) {
     case routes.dashboard:
       return <DashboardPage />;
@@ -53,6 +68,12 @@ export function AppRouter() {
       return <TransactionHistoryPage />;
     case routes.loanRegister:
       return <LoanRegisterPage />;
+    case routes.loanApplications:
+      return <LoanApplicationsPage />;
+    case routes.loanContracts:
+      return <LoanContractsPage />;
+    case routes.loanAdmin:
+      return <LoanAdminPage />;
     case routes.register:
       return <RegisterPage />;
     default:
