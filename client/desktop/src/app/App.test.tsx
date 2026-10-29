@@ -69,7 +69,7 @@ describe("App admin route", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: /Giám sát rủi ro & bất thường hệ thống/i,
+        name: /Giám sát rủi ro giao dịch/i,
       }),
     ).toBeTruthy();
     expect(screen.getAllByText("Admin Staff")).toHaveLength(2);
