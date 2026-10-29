@@ -88,8 +88,12 @@ func toKYCSessionRecord(session *accountdomain.KYCSession) (kycSessionRecord, er
 		score = &value
 	}
 
+	allowMissingMedia := session.Verification.Provider == "seed"
 	toMedia := func(field string, media accountdomain.MediaObject) (MediaObjectRecord, error) {
 		if strings.TrimSpace(media.StorageKey) == "" {
+			if allowMissingMedia {
+				return MediaObjectRecord{}, nil
+			}
 			return MediaObjectRecord{}, fmt.Errorf("%s storage key is required", field)
 		}
 		return MediaObjectRecord{
