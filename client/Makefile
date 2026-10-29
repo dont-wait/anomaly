@@ -18,6 +18,8 @@ help:
 	  '  emulator         Mở pixel_33 với camera trước dùng webcam0 ở terminal 1' \
 	  '  android          Chạy Android (mặc định emulator; ANDROID_DEVICE=SERIAL cho USB)' \
 	  '  desktop          Chạy client Linux desktop' \
+	  '  release          Docker checks/build/smoke rồi push runtime images lên GHCR' \
+	  '                   Cần docker login và GATV2_REF=<commit>' \
 	  '' \
 	  'Đổi camera trước: make emulator CAMERA_FRONT=webcam1 (hoặc emulated nếu không có webcam).' \
 	  'Các lệnh tự vào Nix shell. Cài dependencies trước khi chạy client.' \
@@ -41,3 +43,8 @@ android:
 
 desktop:
 	nix develop .\#default --command bash -c 'set -e; mkdir -p "$$HOME/.local/bin"; corepack enable --install-directory "$$HOME/.local/bin"; export PATH="$$HOME/.local/bin:$$PATH"; exec yarn workspace anomaly-mobile tauri dev'
+
+# Run the same release pipeline from client/ or the monorepo root.
+.PHONY: release release-plan release-check release-build release-test
+release release-plan release-check release-build release-test:
+	$(MAKE) -C .. $@

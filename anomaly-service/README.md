@@ -153,22 +153,20 @@ pip install -e '.[dev]'
 
 ## Docker image
 
-The Dockerfile expects this layout in the build context parent:
-
-```text
-git/
-├── anomaly/anomaly-service/
-└── GATv2/src/fraud_pipeline/
-```
-
-Build from the `git/` directory so the image contains the matching GATv2
-source. `network.host` is required in this environment because Docker's bridge
-DNS cannot resolve PyPI:
+The Dockerfile uses a named BuildKit context for the matching GATv2 source.
+From the repository root:
 
 ```bash
-cd deploy/swarm
-make build-ml
+docker build --build-context gatv2=../GATv2 -f anomaly-service/Dockerfile -t anomaly-ml-service:swarm anomaly-service
 ```
+
+This development command includes the GATv2 working tree. For a release, use
+`make release GATV2_REF=<commit>`: it archives the two committed source trees,
+runs container checks/model-load smoke tests, builds every runtime image, then
+pushes registry images and writes their digests. See
+[release image instructions](../deploy/release/README.md).
+If bridge DNS cannot reach PyPI, explicitly use `BUILD_NETWORK=host` for the
+release command or `--network host` for the development build.
 
 The image installs the CPU PyTorch wheel and includes the local model bundle.
 For GPU inference, use a CUDA base image and a separately tested dependency

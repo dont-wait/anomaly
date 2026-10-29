@@ -1,0 +1,82 @@
+services:
+  ml-service:
+    image: ${ML_SERVICE_IMAGE:?Load images.env from a completed release}
+    environment:
+      KAFKA_BROKERS: ${ML_KAFKA_BROKERS:?ML_KAFKA_BROKERS is required}
+      KAFKA_INPUT_TOPIC: ${KAFKA_INPUT_TOPIC:-anomaly.bank.events.v1}
+      KAFKA_OUTPUT_TOPIC: ${KAFKA_OUTPUT_TOPIC:-anomaly.bank.risk.v1}
+      KAFKA_TRAINING_TOPIC: ${KAFKA_TRAINING_TOPIC:-anomaly.model.training.v1}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-ml-pipeline}
+      KAFKA_AUTO_OFFSET_RESET: ${KAFKA_AUTO_OFFSET_RESET:-latest}
+      EVENTSTORE_URI: ${ML_EVENTSTORE_URI:?ML_EVENTSTORE_URI is required}
+      EVENTSTORE_STREAM: banking
+      MODEL_BUNDLE_PATH: /app/models/gatv2-1m-baseline-v1
+      GATV2_SRC_PATH: /opt/GATv2/src
+      MODEL_DEVICE: ${MODEL_DEVICE:-cpu}
+      TRAINING_DATA_PATH: /data/training/predictions.jsonl
+      METRICS_PORT: 9100
+    ports:
+      - target: 9100
+        published: ${ML_METRICS_PORT:-19100}
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - ml-training-data:/data/training
+    networks: [ml-overlay]
+    deploy:
+      replicas: ${ML_MIN_REPLICAS:-1}
+      restart_policy:
+        condition: on-failure
+      update_config:
+        order: start-first
+        failure_action: rollback
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.8.0
+    command:
+      - --kafka.server=${ML_KAFKA_EXPORTER_SERVER:?ML_KAFKA_EXPORTER_SERVER is required}
+      - --group.filter=^${KAFKA_CONSUMER_GROUP:-ml-pipeline}$
+      - --topic.filter=^${KAFKA_INPUT_TOPIC:-anomaly.bank.events.v1}$
+    networks: [ml-overlay]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    configs:
+      - source: prometheus-config
+        target: /etc/prometheus/prometheus.yml
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    networks: [ml-overlay]
+
+  ml-autoscaler:
+    image: ${ML_AUTOSCALER_IMAGE:?Load images.env from a completed release}
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+      ML_SERVICE_NAME: ${ML_SERVICE_NAME:-ml_ml-service}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-ml-pipeline}
+      KAFKA_INPUT_TOPIC: ${KAFKA_INPUT_TOPIC:-anomaly.bank.events.v1}
+      ML_MIN_REPLICAS: ${ML_MIN_REPLICAS:-1}
+      ML_MAX_REPLICAS: ${ML_MAX_REPLICAS:-4}
+      ML_SCALE_UP_LAG: ${ML_SCALE_UP_LAG:-1000}
+      ML_SCALE_DOWN_LAG: ${ML_SCALE_DOWN_LAG:-100}
+      AUTOSCALER_POLL_SECONDS: ${AUTOSCALER_POLL_SECONDS:-30}
+      AUTOSCALER_COOLDOWN_SECONDS: ${AUTOSCALER_COOLDOWN_SECONDS:-120}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [ml-overlay]
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+networks:
+  ml-overlay:
+    driver: overlay
+
+configs:
+  prometheus-config:
+    file: ./prometheus.yml
+
+volumes:
+  ml-training-data:
