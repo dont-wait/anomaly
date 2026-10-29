@@ -158,6 +158,7 @@ func (r *RiskAssessmentRepository) Reject(ctx context.Context, topic string, par
 	}, options.UpdateOne().SetUpsert(true))
 	return err
 }
+
 func (r *RiskAssessmentRepository) List(ctx context.Context, from, to time.Time, limit int64) ([]riskassessment.Assessment, error) {
 	if limit <= 0 {
 		limit = 1000

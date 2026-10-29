@@ -6,9 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/dont-wait/anomaly/internal/domain/risk"
 	"strings"
 	"time"
+
+	"github.com/dont-wait/anomaly/internal/domain/risk"
 )
 
 const (

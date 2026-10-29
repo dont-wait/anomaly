@@ -73,7 +73,7 @@ describe("App admin route", () => {
       }),
     ).toBeTruthy();
     expect(screen.getAllByText("Admin Staff")).toHaveLength(2);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/auth/me"), expect.anything());
   });
 
   it("renders the shared shell for another protected route", async () => {

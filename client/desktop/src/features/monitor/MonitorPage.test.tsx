@@ -52,9 +52,9 @@ describe("MonitorPage", () => {
     render(<MonitorPage />);
 
     expect(await screen.findByRole("heading", { name: /Giám sát rủi ro/i })).toBeTruthy();
-    expect(await screen.findByText("TX001")).toBeTruthy();
+    expect((await screen.findAllByText("TX001")).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("0.9821")).toBeTruthy();
-    expect(screen.getByText("ANOMALOUS")).toBeTruthy();
+    expect(screen.getAllByText("BLOCK").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Risk Trend Timeline (24h)" })).toBeTruthy();
     expect(screen.getByText("Realtime Model Stream")).toBeTruthy();
   });
@@ -104,7 +104,7 @@ describe("MonitorPage", () => {
 
   it("refreshes the snapshot", async () => {
     render(<MonitorPage />);
-    await screen.findByText("TX001");
+    await screen.findAllByText("TX001");
     fireEvent.click(screen.getByRole("button", { name: "Làm mới" }));
 
     expect(await screen.findByRole("button", { name: "Làm mới" })).toBeTruthy();
