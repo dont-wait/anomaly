@@ -1,0 +1,128 @@
+[
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transfer_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_event_id": "562e8b27-3ef8-5c9f-8a77-40c6e950825a",
+      "decision": "BLOCK",
+      "is_anomalous": true,
+      "risk_score": 0.9821,
+      "model_version": "GATv2 <model>& Việt  ",
+      "evaluated_at": "2026-10-19T10:30:01.12Z",
+      "signature": "06e8196e762bfb229460d9bb26ee15542b71a6b061493f5710d886c50136d43d"
+    },
+    "canonical": "{\"transfer_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"source_event_id\":\"562e8b27-3ef8-5c9f-8a77-40c6e950825a\",\"decision\":\"BLOCK\",\"is_anomalous\":true,\"risk_score\":0.9821,\"model_version\":\"GATv2 \\u003cmodel\\u003e\\u0026 Việt\\u2028\\u2029\",\"evaluated_at\":\"2026-10-19T10:30:01.12Z\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transfer_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_event_id": "562e8b27-3ef8-5c9f-8a77-40c6e950825a",
+      "decision": "ALLOW",
+      "is_anomalous": false,
+      "risk_score": 0.08,
+      "model_version": "gatv2-v1",
+      "evaluated_at": "2026-10-19T10:30:01Z",
+      "signature": "b9c1a330035b45fb874a6e7b94658aa9487c07b6f556a357d16b898f65fce781"
+    },
+    "canonical": "{\"transfer_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"source_event_id\":\"562e8b27-3ef8-5c9f-8a77-40c6e950825a\",\"decision\":\"ALLOW\",\"is_anomalous\":false,\"risk_score\":0.08,\"model_version\":\"gatv2-v1\",\"evaluated_at\":\"2026-10-19T10:30:01Z\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transfer_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_event_id": "562e8b27-3ef8-5c9f-8a77-40c6e950825a",
+      "decision": "PENDING",
+      "is_anomalous": false,
+      "risk_score": 0.4,
+      "model_version": "gatv2-v1",
+      "evaluated_at": "2026-10-19T10:30:01.123456789Z",
+      "signature": "1ea6eea870aed2fd2ec57b84e4b62d4fe63a49e3ee315ff32b7cc430eb1db9d3"
+    },
+    "canonical": "{\"transfer_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"source_event_id\":\"562e8b27-3ef8-5c9f-8a77-40c6e950825a\",\"decision\":\"PENDING\",\"is_anomalous\":false,\"risk_score\":0.4,\"model_version\":\"gatv2-v1\",\"evaluated_at\":\"2026-10-19T10:30:01.123456789Z\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transfer_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_event_id": "562e8b27-3ef8-5c9f-8a77-40c6e950825a",
+      "decision": "ALLOW",
+      "is_anomalous": false,
+      "risk_score": 0.0,
+      "model_version": "gatv2-v1",
+      "evaluated_at": "2026-10-19T10:30:01.12Z",
+      "signature": "1cb59f0dae02bfee4c301faf220184b0a583861de8acb551ba111a70edfc56b7"
+    },
+    "canonical": "{\"transfer_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"source_event_id\":\"562e8b27-3ef8-5c9f-8a77-40c6e950825a\",\"decision\":\"ALLOW\",\"is_anomalous\":false,\"risk_score\":0,\"model_version\":\"gatv2-v1\",\"evaluated_at\":\"2026-10-19T10:30:01.12Z\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transfer_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_event_id": "562e8b27-3ef8-5c9f-8a77-40c6e950825a",
+      "decision": "BLOCK",
+      "is_anomalous": true,
+      "risk_score": 1.0,
+      "model_version": "gatv2-v1",
+      "evaluated_at": "2026-10-19T10:30:01Z",
+      "signature": "ba2bb779c486aa37e644b2c8a5e561e985acf8153338c97ff3c88bd9d1c92d76"
+    },
+    "canonical": "{\"transfer_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"source_event_id\":\"562e8b27-3ef8-5c9f-8a77-40c6e950825a\",\"decision\":\"BLOCK\",\"is_anomalous\":true,\"risk_score\":1,\"model_version\":\"gatv2-v1\",\"evaluated_at\":\"2026-10-19T10:30:01Z\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transfer_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_event_id": "562e8b27-3ef8-5c9f-8a77-40c6e950825a",
+      "decision": "ALLOW",
+      "is_anomalous": false,
+      "risk_score": -0.0,
+      "model_version": "gatv2-v1",
+      "evaluated_at": "2026-10-19T10:30:01.123456789Z",
+      "signature": "94c8a57686ff98f7710228396e3685cc42e018ec22eaae0c228ae234e9f979a3"
+    },
+    "canonical": "{\"transfer_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"source_event_id\":\"562e8b27-3ef8-5c9f-8a77-40c6e950825a\",\"decision\":\"ALLOW\",\"is_anomalous\":false,\"risk_score\":-0,\"model_version\":\"gatv2-v1\",\"evaluated_at\":\"2026-10-19T10:30:01.123456789Z\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transfer_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_event_id": "562e8b27-3ef8-5c9f-8a77-40c6e950825a",
+      "decision": "ALLOW",
+      "is_anomalous": false,
+      "risk_score": 1e-07,
+      "model_version": "gatv2-v1",
+      "evaluated_at": "2026-10-19T10:30:01.12Z",
+      "signature": "e61d63b0ce5379df60f678028b21d08cd08c3d27ffb5bb6f46ef2c82adc51071"
+    },
+    "canonical": "{\"transfer_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"source_event_id\":\"562e8b27-3ef8-5c9f-8a77-40c6e950825a\",\"decision\":\"ALLOW\",\"is_anomalous\":false,\"risk_score\":1e-7,\"model_version\":\"gatv2-v1\",\"evaluated_at\":\"2026-10-19T10:30:01.12Z\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transfer_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_event_id": "562e8b27-3ef8-5c9f-8a77-40c6e950825a",
+      "decision": "ALLOW",
+      "is_anomalous": false,
+      "risk_score": 1e-06,
+      "model_version": "gatv2-v1",
+      "evaluated_at": "2026-10-19T10:30:01Z",
+      "signature": "8d7c6b3797317c354b2defb727e67482b383e73734b60d5a8f87e6e7b5188821"
+    },
+    "canonical": "{\"transfer_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"source_event_id\":\"562e8b27-3ef8-5c9f-8a77-40c6e950825a\",\"decision\":\"ALLOW\",\"is_anomalous\":false,\"risk_score\":0.000001,\"model_version\":\"gatv2-v1\",\"evaluated_at\":\"2026-10-19T10:30:01Z\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transfer_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "source_event_id": "562e8b27-3ef8-5c9f-8a77-40c6e950825a",
+      "decision": "ALLOW",
+      "is_anomalous": false,
+      "risk_score": 1.2345678901234569e-20,
+      "model_version": "gatv2-v1",
+      "evaluated_at": "2026-10-19T10:30:01.123456789Z",
+      "signature": "c8a50f3ef7c99f436926fa24607e8d34bfdbd4170ac25f0fb5146ff76ed8e6d6"
+    },
+    "canonical": "{\"transfer_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"source_event_id\":\"562e8b27-3ef8-5c9f-8a77-40c6e950825a\",\"decision\":\"ALLOW\",\"is_anomalous\":false,\"risk_score\":1.2345678901234569e-20,\"model_version\":\"gatv2-v1\",\"evaluated_at\":\"2026-10-19T10:30:01.123456789Z\"}"
+  }
+]

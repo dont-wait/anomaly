@@ -6,9 +6,11 @@ import pytest
 
 from app.config import ConfigError, load_config
 
+SIGNING_ENV = {"KAFKA_RISK_DECISION_SIGNING_KEY": "test-only-secret"}
+
 
 def test_defaults_match_anomaly_topics_and_local_bundle():
-    with patch.dict(os.environ, {}, clear=True):
+    with patch.dict(os.environ, SIGNING_ENV, clear=True):
         config = load_config()
     assert config.kafka_brokers == ("localhost:9092",)
     assert config.input_topic == "anomaly.bank.events.v1"
@@ -29,6 +31,7 @@ def test_defaults_match_anomaly_topics_and_local_bundle():
 def test_environment_overrides():
     env = {
         "KAFKA_BROKERS": "kafka-a:9092, kafka-b:9092",
+        "KAFKA_RISK_DECISION_SIGNING_KEY": " override-secret ",
         "KAFKA_INPUT_TOPIC": "events.v1",
         "KAFKA_OUTPUT_TOPIC": "risk.v1",
         "KAFKA_TRAINING_TOPIC": "training.v1",
@@ -45,9 +48,11 @@ def test_environment_overrides():
         "TRAINING_DATA_MAX_BYTES": "1024",
         "TRAINING_DATA_BACKUP_COUNT": "2",
     }
-    with patch.dict(os.environ, env, clear=True):
+    with patch.dict(os.environ, {**SIGNING_ENV, **env}, clear=True):
         config = load_config()
     assert config.kafka_brokers == ("kafka-a:9092", "kafka-b:9092")
+    assert config.risk_decision_signing_key == " override-secret "
+    assert "override-secret" not in repr(config)
     assert config.input_topic == "events.v1"
     assert config.output_topic == "risk.v1"
     assert config.training_topic == "training.v1"
@@ -65,7 +70,7 @@ def test_environment_overrides():
 
 
 def test_relative_gatv2_source_can_be_disabled():
-    with patch.dict(os.environ, {"GATV2_SRC_PATH": ""}, clear=True):
+    with patch.dict(os.environ, {**SIGNING_ENV, "GATV2_SRC_PATH": ""}, clear=True):
         assert load_config().gatv2_src_path is None
 
 
@@ -79,7 +84,7 @@ def test_topic_conflicts_are_rejected():
             "KAFKA_TRAINING_TOPIC": "risk",
         },
     ):
-        with patch.dict(os.environ, env, clear=True), pytest.raises(ConfigError):
+        with patch.dict(os.environ, {**SIGNING_ENV, **env}, clear=True), pytest.raises(ConfigError):
             load_config()
 
 
@@ -96,5 +101,14 @@ def test_invalid_values_are_rejected():
         {"TRAINING_DATA_MAX_BYTES": "invalid"},
         {"TRAINING_DATA_BACKUP_COUNT": "0"},
     ):
-        with patch.dict(os.environ, env, clear=True), pytest.raises(ConfigError):
+        with patch.dict(os.environ, {**SIGNING_ENV, **env}, clear=True), pytest.raises(ConfigError):
             load_config()
+
+
+@pytest.mark.parametrize("key", [None, "", "   "])
+def test_signing_key_is_required(key):
+    env = {} if key is None else {"KAFKA_RISK_DECISION_SIGNING_KEY": key}
+    with patch.dict(os.environ, env, clear=True), pytest.raises(
+        ConfigError, match="KAFKA_RISK_DECISION_SIGNING_KEY is required"
+    ):
+        load_config()

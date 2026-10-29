@@ -13,7 +13,6 @@ PREDICTION_FIELDS = (
     "model_version",
     "feature_version",
 )
-RISK_SCHEMA_VERSION = 1
 TRAINING_SCHEMA_VERSION = 1
 
 
@@ -82,15 +81,28 @@ class PredictorResult:
     request: dict
 
 
-def build_risk_event(event, prediction, *, scored_at=None):
+def build_risk_event(event, prediction):
     prediction = _prediction(prediction)
+    return build_risk_decision(
+        event, prediction, decision="BLOCK" if prediction.predicted_label else "ALLOW"
+    )
+
+
+def build_risk_decision(event, prediction, *, decision, evaluated_at=None):
+    """Adapt a prediction to the server contract using an explicitly supplied decision."""
+    prediction = _prediction(prediction)
+    if prediction.transaction_id != event.transaction_id:
+        raise ContractError("model response transaction_id differs from the Kafka trigger")
+    if decision not in {"ALLOW", "BLOCK", "PENDING"}:
+        raise ContractError("decision must be ALLOW, BLOCK or PENDING")
     return {
-        "schema_version": RISK_SCHEMA_VERSION,
-        "event_id": event.event_id,
-        "transaction_id": prediction.transaction_id,
-        "occurred_at": event.occurred_at,
-        "scored_at": scored_at or utc_now(),
-        **prediction.as_dict(),
+        "transfer_id": prediction.transaction_id,
+        "source_event_id": event.event_id,
+        "decision": decision,
+        "is_anomalous": decision == "BLOCK",
+        "risk_score": prediction.risk_score,
+        "model_version": prediction.model_version,
+        "evaluated_at": evaluated_at or utc_now(),
     }
 
 

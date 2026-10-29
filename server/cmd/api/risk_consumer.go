@@ -27,7 +27,7 @@ func decodeModelResponse(payload []byte, signingKey string) (riskassessment.Mode
 	var response riskassessment.ModelResponse
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&response); err != nil {
+	if err := decoder.Decode(&input); err != nil {
 		return riskassessment.ModelResponse{}, fmt.Errorf("invalid model response JSON: %w", err)
 	}
 	var extra any
@@ -36,6 +36,14 @@ func decodeModelResponse(payload []byte, signingKey string) (riskassessment.Mode
 			return riskassessment.ModelResponse{}, fmt.Errorf("model response contains trailing data")
 		}
 		return riskassessment.ModelResponse{}, fmt.Errorf("invalid trailing model response data: %w", err)
+	}
+	if input.RiskScore == nil || input.PredictedLabel == nil || input.Threshold == nil {
+		return riskassessment.ModelResponse{}, fmt.Errorf("risk_score, predicted_label and threshold are required and cannot be null")
+	}
+	response := riskassessment.ModelResponse{
+		TransactionID: input.TransactionID, RiskScore: *input.RiskScore,
+		PredictedLabel: *input.PredictedLabel, Threshold: *input.Threshold,
+		ModelVersion: input.ModelVersion, FeatureVersion: input.FeatureVersion,
 	}
 	if err := response.Validate(); err != nil {
 		return riskassessment.ModelResponse{}, err
@@ -49,13 +57,21 @@ func decodeModelResponse(payload []byte, signingKey string) (riskassessment.Mode
 	return response, nil
 }
 
+func signModelResponse(response riskassessment.ModelResponse, signingKey string) string {
+	payload, _ := json.Marshal(response)
+	hasher := hmac.New(sha256.New, []byte(signingKey))
+	_, _ = hasher.Write(payload)
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
 func handleModelResponse(
 	ctx context.Context,
 	message kafkago.Message,
-	store *mongorepo.RiskAssessmentRepository,
+	store riskAssessmentStore,
 	rejector riskMessageRejector,
 	signingKey string,
 	log zerolog.Logger,
+	signingKey string,
 ) error {
 	response, err := decodeModelResponse(message.Value, signingKey)
 	if err != nil {
@@ -77,7 +93,7 @@ func handleModelResponse(
 	if err != nil {
 		return err
 	}
-	_, err = store.Save(ctx, assessment)
+	inserted, err := store.Save(ctx, assessment)
 	if err != nil {
 		if errors.Is(err, mongorepo.ErrRiskAssessmentConflict) {
 			if parkErr := rejector.Reject(ctx, message.Topic, message.Partition, message.Offset, message.Value, err.Error()); parkErr != nil {
@@ -88,6 +104,9 @@ func handleModelResponse(
 		}
 		return err
 	}
+	log.Info().Str("transaction_id", response.TransactionID).
+		Str("model_version", response.ModelVersion).Str("feature_version", response.FeatureVersion).
+		Bool("inserted", inserted).Msg("model assessment stored")
 	return nil
 }
 

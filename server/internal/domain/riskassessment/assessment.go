@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -65,13 +66,13 @@ func (r ModelResponse) Validate() error {
 	if strings.TrimSpace(r.TransactionID) == "" {
 		return fmt.Errorf("transaction_id is required")
 	}
-	if r.RiskScore < 0 || r.RiskScore > 1 {
+	if math.IsNaN(r.RiskScore) || math.IsInf(r.RiskScore, 0) || r.RiskScore < 0 || r.RiskScore > 1 {
 		return fmt.Errorf("risk_score must be between 0 and 1")
 	}
 	if r.PredictedLabel != 0 && r.PredictedLabel != 1 {
 		return fmt.Errorf("predicted_label must be 0 or 1")
 	}
-	if r.Threshold < 0 || r.Threshold > 1 {
+	if math.IsNaN(r.Threshold) || math.IsInf(r.Threshold, 0) || r.Threshold < 0 || r.Threshold > 1 {
 		return fmt.Errorf("threshold must be between 0 and 1")
 	}
 	expectedLabel := 0

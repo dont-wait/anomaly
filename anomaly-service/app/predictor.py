@@ -33,6 +33,9 @@ class LocalBundlePredictor:
             ) from error
         self.history = history
         self.predictor = ReplayPredictor(bundle_path, device=device)
+        self.supports_dynamic_accounts = (
+            getattr(self.predictor, "account_identity_policy", None) == "distinct-account-nodes-v1"
+        )
         self.account_id_map = dict(account_id_map) if account_id_map else {}
         self.account_node_ids = [
             n["id"]
@@ -63,6 +66,8 @@ class LocalBundlePredictor:
             return account_id
         if account_id in self.account_id_map:
             return self.account_id_map[account_id]
+        if self.supports_dynamic_accounts and account_id != "__unknown__":
+            return account_id
         raise UnsupportedIdentityError(
             "account is not supported by this bundle; use a compatible bundle or an explicit "
             "identity-preserving account mapping"
@@ -76,9 +81,13 @@ class LocalBundlePredictor:
             return event
         src = payload.get("sourceAccountId")
         dst = payload.get("destinationAccountId")
-        if not src and not dst:
-            return event
         mapped = deepcopy(event)
+        # Preserve IP in the original request/training record. The frozen bundle
+        # has no IP features and its input validator rejects additional fields.
+        mapped["payload"].pop("ip_address", None)
+        # Server terminal events may contain a prior model output. Never feed
+        # that output back into causal history as a feature/label.
+        mapped["payload"].pop("riskAssessment", None)
         if src:
             mapped["payload"]["sourceAccountId"] = self._map_account_id(src)
         if dst:

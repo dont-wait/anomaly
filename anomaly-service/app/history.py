@@ -1,8 +1,7 @@
 """Raw banking history from EventStoreDB for GATv2 replay.
 
-The relay's Kafka payload is sanitized and pseudonymizes account/device IDs.
-GATv2 needs the raw journal to reconstruct the graph, so this reader consumes
-the canonical `banking` stream directly.
+Kafka triggers identify the canonical request. This reader reconstructs its
+history and request context from the `banking` stream directly.
 """
 import json
 
@@ -85,12 +84,15 @@ def _decode(data):
 
 
 def _with_request_context(event, transfer):
-    """Copy optional device/auth metadata into a request event payload."""
+    """Preserve request-time device/auth/IP context for inference and training."""
     if event.get("eventType") != "TransferCreated":
         return event
     if not isinstance(transfer, dict):
         return event
     payload = dict(event.get("payload") or {})
+    client_ip = transfer.get("ClientIP")
+    if isinstance(client_ip, str) and client_ip.strip():
+        payload.setdefault("ip_address", client_ip.strip())
     device_id = transfer.get("DeviceID")
     if isinstance(device_id, str) and device_id.strip():
         payload.setdefault("device_id", device_id.strip())

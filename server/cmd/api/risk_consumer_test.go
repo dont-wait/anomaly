@@ -2,9 +2,18 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/dont-wait/anomaly/internal/domain/risk"
 	"github.com/dont-wait/anomaly/internal/domain/riskassessment"
+	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
+	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
+	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+	kafkago "github.com/segmentio/kafka-go"
 )
 
 const testRiskSigningKey = "test-risk-signing-key"
@@ -55,4 +64,41 @@ func signedModelPayload(t *testing.T, payload []byte) []byte {
 		t.Fatal(err)
 	}
 	return result
+}
+
+func TestDecodeModelResponseRequiresNumericFields(t *testing.T) {
+	for _, field := range []string{"risk_score", "predicted_label", "threshold"} {
+		for _, mode := range []string{"missing", "null"} {
+			t.Run(field+"/"+mode, func(t *testing.T) {
+				input := map[string]any{
+					"transaction_id": "TX001", "risk_score": 0.1,
+					"predicted_label": 0, "threshold": 0.9,
+					"model_version": "v1", "feature_version": "f1",
+				}
+				if mode == "missing" {
+					delete(input, field)
+				} else {
+					input[field] = nil
+				}
+				payload, err := json.Marshal(input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := decodeModelResponse(payload, testRiskSigningKey); err == nil || !strings.Contains(err.Error(), "required and cannot be null") {
+					t.Fatalf("expected missing-field rejection for %s %s, got %v", mode, field, err)
+				}
+			})
+		}
+	}
+}
+
+func TestDecodeModelResponseAcceptsExplicitZeroValues(t *testing.T) {
+	for _, payload := range []string{
+		`{"transaction_id":"TX001","risk_score":0,"predicted_label":0,"threshold":0.9,"model_version":"v1","feature_version":"f1"}`,
+		`{"transaction_id":"TX001","risk_score":0,"predicted_label":1,"threshold":0,"model_version":"v1","feature_version":"f1"}`,
+	} {
+		if _, err := decodeModelResponse(signedModelResponse(t, []byte(payload)), testRiskSigningKey); err != nil {
+			t.Fatalf("valid zero values rejected: %v", err)
+		}
+	}
 }
