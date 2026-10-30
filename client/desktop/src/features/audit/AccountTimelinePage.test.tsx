@@ -38,6 +38,15 @@ describe("AccountTimelinePage", () => {
     vi.mocked(getAccountTimeline).mockReset();
   });
 
+  it("keeps an empty search neutral and does not call the API", () => {
+    render(<AccountTimelinePage />);
+
+    const button = screen.getByRole("button", { name: "Xem lịch sử" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(getAccountTimeline).not.toHaveBeenCalled();
+  });
+
   it("searches by account and renders the grouped timeline", async () => {
     vi.mocked(getAccountTimeline).mockResolvedValue(response);
     render(<AccountTimelinePage />);

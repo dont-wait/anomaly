@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowDown, faArrowUp, faBolt, faCircleExclamation, faClockRotateLeft, faMagnifyingGlass, faShieldHalved } from "@fortawesome/free-solid-svg-icons";
 import { getAccountTimeline } from "./api/auditApi";
@@ -121,6 +121,7 @@ export function AccountTimelinePage() {
   const [cursor, setCursor] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const accountInputRef = useRef<HTMLInputElement>(null);
 
   const groups = useMemo(() => groupedItems(items), [items]);
 
@@ -128,7 +129,8 @@ export function AccountTimelinePage() {
     event?.preventDefault();
     const account = accountInput.trim();
     if (!account) {
-      setError("Nhập account ID, account number hoặc username.");
+      setError("");
+      accountInputRef.current?.focus();
       return;
     }
     if ((from && !to) || (!from && to) || (from && to && from > to)) {
@@ -181,14 +183,14 @@ export function AccountTimelinePage() {
           <label className="flex h-9 items-center gap-2 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2.5 focus-within:border-(--admin-primary)">
             <FontAwesomeIcon icon={faMagnifyingGlass} className="text-[12px] text-(--admin-text-muted)" aria-hidden="true" />
             <span className="sr-only">Tài khoản</span>
-            <input className="min-w-0 flex-1 bg-transparent text-[12px] text-(--admin-text) outline-none placeholder:text-(--admin-text-muted)" placeholder="Account ID, số tài khoản, username..." value={accountInput} onChange={(event) => setAccountInput(event.target.value)} />
+            <input ref={accountInputRef} className="min-w-0 flex-1 bg-transparent text-[12px] text-(--admin-text) outline-none placeholder:text-(--admin-text-muted)" placeholder="Account ID, số tài khoản, username..." value={accountInput} onChange={(event) => { setAccountInput(event.target.value); if (error) setError(""); }} />
           </label>
           <select className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-[12px] text-(--admin-text) outline-none" value={category} onChange={(event) => setCategory(event.target.value as TimelineCategory)} aria-label="Loại event">
             {(Object.keys(categoryLabels) as TimelineCategory[]).map((key) => <option key={key} value={key}>{categoryLabels[key]}</option>)}
           </select>
           <input className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-[12px] text-(--admin-text) outline-none" type="date" aria-label="Từ ngày" value={from} onChange={(event) => setFrom(event.target.value)} />
           <input className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-[12px] text-(--admin-text) outline-none" type="date" aria-label="Đến ngày" value={to} onChange={(event) => setTo(event.target.value)} />
-          <button className="h-9 rounded-sm bg-(--admin-primary) px-4 text-[12px] font-semibold text-white hover:bg-(--admin-primary-strong) disabled:opacity-60" type="submit" disabled={loading}>{loading ? "Đang tải..." : "Xem lịch sử"}</button>
+          <button className="h-9 rounded-sm bg-(--admin-primary) px-4 text-[12px] font-semibold text-white hover:bg-(--admin-primary-strong) disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled={loading || !accountInput.trim()}>{loading ? "Đang tải..." : "Xem lịch sử"}</button>
         </form>
         {error && <div className="mt-3 flex items-center gap-2 rounded-sm border border-(--admin-danger) bg-(--admin-danger-soft) px-3 py-2 text-[11px] text-(--admin-danger)" role="alert"><FontAwesomeIcon icon={faCircleExclamation} aria-hidden="true" />{error}</div>}
       </section>
