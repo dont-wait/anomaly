@@ -3,6 +3,7 @@
 PYTHON ?= python3
 VENV ?= .venv
 PIP := $(VENV)/bin/python -m pip
+RUFF := $(shell command -v ruff 2>/dev/null || printf '%s' '$(VENV)/bin/ruff')
 
 .PHONY: help install start test lint check
 
@@ -17,7 +18,7 @@ help:
 	  '  check    Chạy lint rồi test'
 
 install:
-	$(PYTHON) -m venv $(VENV)
+	@if [ ! -x $(VENV)/bin/python ]; then rm -rf $(VENV); $(PYTHON) -m venv $(VENV); fi
 	$(PIP) install --upgrade pip
 	$(PIP) install -e '.[dev]'
 
@@ -32,6 +33,7 @@ test:
 
 lint:
 	@test -x $(VENV)/bin/python || $(MAKE) install
-	$(VENV)/bin/ruff check app tests scripts
+	@test -x $(RUFF) || $(MAKE) install
+	$(RUFF) check app tests scripts
 
 check: lint test
