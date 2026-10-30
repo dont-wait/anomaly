@@ -259,11 +259,16 @@ function formatDateTime(value?: string): string {
 
 function AssessmentDetailsDrawer({ assessment, onClose }: { assessment: RiskAssessment; onClose: () => void }) {
   const transaction = assessment.transaction;
-  const timeline = [
+  const timeline: { label: string; value?: string; current?: boolean }[] = [
     { label: "Yêu cầu được tạo", value: transaction?.createdAt },
     { label: "Đã chấm điểm", value: assessment.receivedAt },
-    { label: transactionStatusLabel(transaction?.status), value: transaction?.status === "success" ? transaction?.createdAt : undefined },
   ];
+  if (transaction?.otpVerifiedAt) timeline.push({ label: "OTP đã xác nhận", value: transaction.otpVerifiedAt });
+  if (transaction?.status === "awaiting_otp") timeline.push({ label: "Chờ OTP", current: true });
+  else if (transaction?.status === "expired") timeline.push({ label: "Hết hạn OTP", value: transaction.otpExpiresAt, current: !transaction.otpExpiresAt });
+  else if (transaction?.status === "success") timeline.push({ label: "Đã hoàn tất", value: transaction.completedAt, current: !transaction.completedAt });
+  else if (transaction?.status === "failed") timeline.push({ label: "Bị từ chối", value: transaction.failedAt, current: !transaction.failedAt });
+  else if (transaction?.status === "cancelled") timeline.push({ label: "Đã huỷ", value: transaction.cancelledAt, current: !transaction.cancelledAt });
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -282,10 +287,9 @@ function AssessmentDetailsDrawer({ assessment, onClose }: { assessment: RiskAsse
           <div className="flex justify-between gap-4"><dt className="text-(--admin-text-muted)">Số tiền</dt><dd className={`${mono} text-right text-(--admin-text)`}>{transaction ? formatMoney(transaction.amount, transaction.currency) : "—"}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-(--admin-text-muted)">Tài khoản gửi</dt><dd className="text-right text-(--admin-text)">{transaction?.sourceAccountNo || "—"}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-(--admin-text-muted)">Người nhận</dt><dd className="text-right text-(--admin-text)">{transaction?.destinationName || "—"}</dd></div>
-          <div className="flex justify-between gap-4"><dt className="text-(--admin-text-muted)">Mô hình</dt><dd className="text-right text-(--admin-text)">{assessment.modelVersion}</dd></div>
           <div className="flex justify-between gap-4"><dt className="text-(--admin-text-muted)">Chấm điểm lúc</dt><dd className="text-right text-(--admin-text)">{formatDateTime(assessment.receivedAt)}</dd></div>
         </dl>
-        <div className="mt-5 border-t border-(--admin-border) pt-4"><h3 className="text-[13px] font-semibold text-(--admin-text)">Diễn biến</h3><ol className="mt-3 grid gap-3">{timeline.map((item) => <li key={item.label} className="flex gap-2 text-[12px]"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-(--admin-primary)" /><div><strong className="font-medium text-(--admin-text)">{item.label}</strong><div className="text-(--admin-text-muted)">{formatDateTime(item.value)}</div></div></li>)}</ol></div>
+        <div className="mt-5 border-t border-(--admin-border) pt-4"><h3 className="text-[13px] font-semibold text-(--admin-text)">Diễn biến</h3><ol className="mt-3 grid gap-3">{timeline.map((item) => <li key={item.label} className="flex gap-2 text-[12px]"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-(--admin-primary)" /><div><strong className="font-medium text-(--admin-text)">{item.label}</strong><div className="text-(--admin-text-muted)">{item.current ? "Hiện tại" : formatDateTime(item.value)}</div></div></li>)}</ol></div>
       </aside>
     </div>
   );

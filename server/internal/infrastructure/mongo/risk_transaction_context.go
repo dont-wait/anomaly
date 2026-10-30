@@ -8,17 +8,22 @@ import (
 )
 
 type RiskTransactionContext struct {
-	TransactionID        string    `json:"transactionId"`
-	SourceAccountNo      string    `json:"sourceAccountNo"`
-	SourceAccountName    string    `json:"sourceAccountName"`
-	DestinationAccountNo string    `json:"destinationAccountNo"`
-	DestinationName      string    `json:"destinationName"`
-	Amount               int64     `json:"amount"`
-	Fee                  int64     `json:"fee"`
-	Currency             string    `json:"currency"`
-	Channel              string    `json:"channel"`
-	Status               string    `json:"status"`
-	CreatedAt            time.Time `json:"createdAt"`
+	TransactionID        string     `json:"transactionId"`
+	SourceAccountNo      string     `json:"sourceAccountNo"`
+	SourceAccountName    string     `json:"sourceAccountName"`
+	DestinationAccountNo string     `json:"destinationAccountNo"`
+	DestinationName      string     `json:"destinationName"`
+	Amount               int64      `json:"amount"`
+	Fee                  int64      `json:"fee"`
+	Currency             string     `json:"currency"`
+	Channel              string     `json:"channel"`
+	Status               string     `json:"status"`
+	CreatedAt            time.Time  `json:"createdAt"`
+	OTPExpiresAt         *time.Time `json:"otpExpiresAt,omitempty"`
+	OTPVerifiedAt        *time.Time `json:"otpVerifiedAt,omitempty"`
+	CompletedAt          *time.Time `json:"completedAt,omitempty"`
+	FailedAt             *time.Time `json:"failedAt,omitempty"`
+	CancelledAt          *time.Time `json:"cancelledAt,omitempty"`
 }
 
 // FindRiskTransactionContexts reads the projection needed by the admin risk
@@ -54,10 +59,22 @@ func (r *TransferRepository) FindRiskTransactionContexts(ctx context.Context, tr
 			Channel:              transfer.Channel,
 			Status:               status,
 			CreatedAt:            transfer.CreatedAt,
+			OTPExpiresAt:         timePointer(transfer.OTPExpiresAt),
+			OTPVerifiedAt:        transfer.OTPVerifiedAt,
+			CompletedAt:          transfer.CompletedAt,
+			FailedAt:             transfer.FailedAt,
+			CancelledAt:          transfer.CancelledAt,
 		}
 	}
 	if err := cursor.Err(); err != nil {
 		return nil, err
 	}
 	return contexts, nil
+}
+
+func timePointer(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	return &value
 }

@@ -26,6 +26,11 @@ export interface RiskTransactionContext {
   channel: string;
   status: string;
   createdAt: string;
+  otpExpiresAt?: string;
+  otpVerifiedAt?: string;
+  completedAt?: string;
+  failedAt?: string;
+  cancelledAt?: string;
 }
 
 export interface RiskSeriesPoint {

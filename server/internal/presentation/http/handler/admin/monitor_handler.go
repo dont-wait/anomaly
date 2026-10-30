@@ -58,17 +58,22 @@ type riskAssessmentDTO struct {
 }
 
 type transactionContextDTO struct {
-	TransactionID        string    `json:"transactionId"`
-	SourceAccountNo      string    `json:"sourceAccountNo"`
-	SourceAccountName    string    `json:"sourceAccountName"`
-	DestinationAccountNo string    `json:"destinationAccountNo"`
-	DestinationName      string    `json:"destinationName"`
-	Amount               int64     `json:"amount"`
-	Fee                  int64     `json:"fee"`
-	Currency             string    `json:"currency"`
-	Channel              string    `json:"channel"`
-	Status               string    `json:"status"`
-	CreatedAt            time.Time `json:"createdAt"`
+	TransactionID        string     `json:"transactionId"`
+	SourceAccountNo      string     `json:"sourceAccountNo"`
+	SourceAccountName    string     `json:"sourceAccountName"`
+	DestinationAccountNo string     `json:"destinationAccountNo"`
+	DestinationName      string     `json:"destinationName"`
+	Amount               int64      `json:"amount"`
+	Fee                  int64      `json:"fee"`
+	Currency             string     `json:"currency"`
+	Channel              string     `json:"channel"`
+	Status               string     `json:"status"`
+	CreatedAt            time.Time  `json:"createdAt"`
+	OTPExpiresAt         *time.Time `json:"otpExpiresAt,omitempty"`
+	OTPVerifiedAt        *time.Time `json:"otpVerifiedAt,omitempty"`
+	CompletedAt          *time.Time `json:"completedAt,omitempty"`
+	FailedAt             *time.Time `json:"failedAt,omitempty"`
+	CancelledAt          *time.Time `json:"cancelledAt,omitempty"`
 }
 
 type monitorPoint struct {
@@ -345,7 +350,7 @@ func (h *MonitorHandler) enrichAssessment(ctx context.Context, item riskassessme
 func (h *MonitorHandler) assessmentDTO(item riskassessment.Assessment, transaction mongorepo.RiskTransactionContext) riskAssessmentDTO {
 	dto := riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, RiskLevel: item.RiskLevel, Decision: item.Decision, Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt, Cursor: item.Cursor}
 	if transaction.TransactionID != "" {
-		dto.Transaction = &transactionContextDTO{TransactionID: transaction.TransactionID, SourceAccountNo: transaction.SourceAccountNo, SourceAccountName: transaction.SourceAccountName, DestinationAccountNo: transaction.DestinationAccountNo, DestinationName: transaction.DestinationName, Amount: transaction.Amount, Fee: transaction.Fee, Currency: transaction.Currency, Channel: transaction.Channel, Status: transaction.Status, CreatedAt: transaction.CreatedAt}
+		dto.Transaction = &transactionContextDTO{TransactionID: transaction.TransactionID, SourceAccountNo: transaction.SourceAccountNo, SourceAccountName: transaction.SourceAccountName, DestinationAccountNo: transaction.DestinationAccountNo, DestinationName: transaction.DestinationName, Amount: transaction.Amount, Fee: transaction.Fee, Currency: transaction.Currency, Channel: transaction.Channel, Status: transaction.Status, CreatedAt: transaction.CreatedAt, OTPExpiresAt: transaction.OTPExpiresAt, OTPVerifiedAt: transaction.OTPVerifiedAt, CompletedAt: transaction.CompletedAt, FailedAt: transaction.FailedAt, CancelledAt: transaction.CancelledAt}
 	}
 	return dto
 }

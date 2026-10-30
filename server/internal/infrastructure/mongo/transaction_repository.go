@@ -65,6 +65,10 @@ type TransferDocument struct {
 	IdempotencyKey string           `bson:"idempotency_key"`
 	CreatedAt      time.Time        `bson:"created_at"`
 	PostedAt       time.Time        `bson:"posted_at,omitempty"`
+	OTPVerifiedAt  *time.Time       `bson:"otp_verified_at,omitempty"`
+	CompletedAt    *time.Time       `bson:"completed_at,omitempty"`
+	FailedAt       *time.Time       `bson:"failed_at,omitempty"`
+	CancelledAt    *time.Time       `bson:"cancelled_at,omitempty"`
 	Authentication struct {
 		Method   string `bson:"method"`
 		Verified bool   `bson:"verified"`
