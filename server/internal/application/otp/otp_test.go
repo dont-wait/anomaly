@@ -328,6 +328,40 @@ func TestVerifyOTPWithAuditReturnsRecorderError(t *testing.T) {
 	}
 }
 
+func TestVerifyOTPWithAuditRecordsExpired(t *testing.T) {
+	recorder := &auditRecorderFake{}
+	h := NewVerifyOTPHandler(newFakeStore(), recorder)
+
+	if err := h.HandleWithAudit(context.Background(), VerifyOTPCommand{Email: "a@b.co", Code: "123456"}); err != otpdomain.ErrOTPExpired {
+		t.Fatalf("HandleWithAudit() error = %v, want ErrOTPExpired", err)
+	}
+	if len(recorder.events) != 1 || recorder.events[0].Type != audit.EmailOTPExpired {
+		t.Fatalf("audit events = %#v, want one EmailOTPExpired event", recorder.events)
+	}
+}
+
+func TestVerifyOTPWithAuditRecordsAttemptsExceeded(t *testing.T) {
+	store := newFakeStore()
+	recorder := &auditRecorderFake{}
+	ctx := context.Background()
+	if err := store.Set(ctx, "a@b.co", "123456", time.Minute); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	h := NewVerifyOTPHandler(store, recorder)
+
+	for range maxVerifyAttempts {
+		if err := h.HandleWithAudit(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "654321"}); err != otpdomain.ErrOTPInvalid {
+			t.Fatalf("invalid attempt error = %v, want ErrOTPInvalid", err)
+		}
+	}
+	if err := h.HandleWithAudit(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "654321"}); err != otpdomain.ErrOTPExpired {
+		t.Fatalf("exhausted attempt error = %v, want ErrOTPExpired", err)
+	}
+	if len(recorder.events) != maxVerifyAttempts+1 || recorder.events[len(recorder.events)-1].Type != audit.EmailOTPAttemptsExceeded {
+		t.Fatalf("last audit event = %#v, want EmailOTPAttemptsExceeded", recorder.events)
+	}
+}
+
 func TestVerifyOTPMismatchKeepsKey(t *testing.T) {
 	store := newFakeStore()
 	ctx := context.Background()
