@@ -20,6 +20,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	apptransaction "github.com/dont-wait/anomaly/internal/application/transaction"
+	domainaudit "github.com/dont-wait/anomaly/internal/domain/audit"
 	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
 	"github.com/dont-wait/anomaly/internal/domain/risk"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
@@ -61,6 +62,14 @@ type ReceiptOutbox interface {
 	Enqueue(context.Context, string, maildomain.MailMessage) error
 }
 
+type auditRecorder interface {
+	Record(context.Context, domainaudit.Event) error
+}
+
+type cancellationReasonRepository interface {
+	CancelPendingWithReason(context.Context, string, string) error
+}
+
 type RiskDecisionStore interface {
 	Find(context.Context, string) (risk.Decision, bool, error)
 	Finalize(context.Context, string) error
@@ -74,11 +83,17 @@ type Handler struct {
 	outbox            ReceiptOutbox
 	contacts          ContactRepository
 	risk              RiskDecisionStore
+	audit             auditRecorder
 	trustedProxyCIDRs []netip.Prefix
 }
 
 func (h *Handler) SetRiskDecisionStore(store RiskDecisionStore) {
 	h.risk = store
+}
+
+func (h *Handler) WithAudit(recorder auditRecorder) *Handler {
+	h.audit = recorder
+	return h
 }
 
 // SetTrustedProxyCIDRs configures the proxy addresses allowed to provide the
@@ -510,13 +525,24 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	attemptsLeft, err := h.otp.Verify(r.Context(), id, req.OTP)
+	operationID := uuid.NewString()
+	verification, err := h.otp.VerifyWithState(r.Context(), id, req.OTP)
+	attemptsLeft := verification.AttemptsLeft
 	if errors.Is(err, otp.ErrTransferOTPInvalid) {
+		left := attemptsLeft
+		if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPVerificationFailed, operationID, id, claims.UserID, &left, "invalid_code"); auditErr != nil {
+			h.writeRepoError(w, auditErr)
+			return
+		}
 		writeAPIErrorExtra(w, http.StatusBadRequest, "INVALID_OTP", "invalid otp", map[string]int{"attemptsLeft": attemptsLeft})
 		return
 	}
 	if errors.Is(err, otp.ErrTransferOTPExpired) {
-		if cancelErr := h.repo.CancelPending(r.Context(), id); cancelErr != nil {
+		if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPExpired, operationID, id, claims.UserID, nil, "expired"); auditErr != nil {
+			h.writeRepoError(w, auditErr)
+			return
+		}
+		if cancelErr := h.cancelPendingWithReason(r.Context(), id, "otp_expired"); cancelErr != nil {
 			h.writeRepoError(w, cancelErr)
 			return
 		}
@@ -524,7 +550,11 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, otp.ErrTransferOTPExceeded) {
-		if cancelErr := h.repo.CancelPending(r.Context(), id); cancelErr != nil {
+		if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPAttemptsExceeded, operationID, id, claims.UserID, intPointer(0), "attempts_exceeded"); auditErr != nil {
+			h.writeRepoError(w, auditErr)
+			return
+		}
+		if cancelErr := h.cancelPendingWithReason(r.Context(), id, "otp_attempts_exceeded"); cancelErr != nil {
 			h.writeRepoError(w, cancelErr)
 			return
 		}
@@ -534,6 +564,12 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.writeRepoError(w, err)
 		return
+	}
+	if verification.NewlyVerified {
+		if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPVerificationSucceeded, operationID, id, claims.UserID, nil, ""); auditErr != nil {
+			h.writeRepoError(w, auditErr)
+			return
+		}
 	}
 	var confirmed mongorepo.TransferDocument
 	if assessment != nil {
@@ -570,6 +606,28 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, transactionResponse(feed))
+}
+
+func (h *Handler) recordTransferOTPAudit(ctx context.Context, eventType, operationID, transactionID, accountID string, attemptsLeft *int, reason string) error {
+	if h.audit == nil {
+		return nil
+	}
+	event := domainaudit.NewEvent(eventType, operationID, time.Now().UTC())
+	event.AccountID = accountID
+	event.ActorID = accountID
+	event.TransactionID = transactionID
+	event.AttemptsLeft = attemptsLeft
+	event.ReasonCode = reason
+	return h.audit.Record(ctx, event)
+}
+
+func intPointer(value int) *int { return &value }
+
+func (h *Handler) cancelPendingWithReason(ctx context.Context, id, reason string) error {
+	if repo, ok := h.repo.(cancellationReasonRepository); ok {
+		return repo.CancelPendingWithReason(ctx, id, reason)
+	}
+	return h.repo.CancelPending(ctx, id)
 }
 
 func (h *Handler) finalizeRiskDecision(ctx context.Context, id string) {
