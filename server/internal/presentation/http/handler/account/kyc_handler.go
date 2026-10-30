@@ -213,6 +213,7 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 	account, err = h.verify.Handle(r.Context(), commands.VerifyAccountCommand{
 		AccountID: claims.UserID, IdCardFrontUrl: keys[0], IdCardBackUrl: keys[1], LiveVideoUrl: keys[2],
 		Evidence: result.Analysis, MatchScore: result.MatchScore, LivenessScore: result.LivenessScore,
+		POCBypass: result.POCBypass,
 		Media: &accountdomain.KYCMedia{
 			IdentityFront: accountdomain.MediaObject{StorageKey: keys[0], MIMEType: front.contentType, SizeBytes: int64(len(front.data)), SHA256: kycinfra.Digest(front.data)},
 			IdentityBack:  accountdomain.MediaObject{StorageKey: keys[1], MIMEType: back.contentType, SizeBytes: int64(len(back.data)), SHA256: kycinfra.Digest(back.data)},
