@@ -421,30 +421,41 @@ export function MonitorPage() {
             if (cancelled) return;
             if (nextCursor) streamCursorRef.current = nextCursor;
             setStreamStatus("Trực tiếp");
+            if (event.kind === "transaction_status") {
+              const statusEvent = event.event;
+              const updateAssessment = (assessment: RiskAssessment): RiskAssessment => {
+                if (assessment.transactionId !== statusEvent.transactionId || !assessment.transaction) return assessment;
+                return { ...assessment, transaction: { ...assessment.transaction, status: statusEvent.status, otpExpiresAt: statusEvent.otpExpiresAt, otpVerifiedAt: statusEvent.otpVerifiedAt, completedAt: statusEvent.completedAt, failedAt: statusEvent.failedAt, cancelledAt: statusEvent.cancelledAt } };
+              };
+              setSelectedAssessment((current) => current ? updateAssessment(current) : current);
+              setResponse((current) => current ? { ...current, snapshot: { ...current.snapshot, recentAssessments: current.snapshot.recentAssessments.map(updateAssessment) } } : current);
+              return;
+            }
+            const assessmentEvent = event.event;
             setResponse((current) => {
-              if (!current || current.snapshot.recentAssessments.some((item) => item.assessmentId === event.assessmentId)) return current;
+              if (!current || current.snapshot.recentAssessments.some((item) => item.assessmentId === assessmentEvent.assessmentId)) return current;
               const previous = current.snapshot;
               const total = previous.totalAssessments + 1;
-              const anomalous = previous.anomalousCount + event.predictedLabel;
-              const normalCount = previous.normalCount + (event.riskLevel === "NORMAL" ? 1 : 0);
-              const warningCount = previous.warningCount + (event.riskLevel === "WARNING" ? 1 : 0);
-              const blockCount = previous.blockCount + (event.riskLevel === "BLOCK" ? 1 : 0);
-              const recentAssessments = [...previous.recentAssessments, event].slice(-50);
-              const existingVersion = previous.modelVersions.find((item) => item.label === event.modelVersion);
+              const anomalous = previous.anomalousCount + assessmentEvent.predictedLabel;
+              const normalCount = previous.normalCount + (assessmentEvent.riskLevel === "NORMAL" ? 1 : 0);
+              const warningCount = previous.warningCount + (assessmentEvent.riskLevel === "WARNING" ? 1 : 0);
+              const blockCount = previous.blockCount + (assessmentEvent.riskLevel === "BLOCK" ? 1 : 0);
+              const recentAssessments = [...previous.recentAssessments, assessmentEvent].slice(-50);
+              const existingVersion = previous.modelVersions.find((item) => item.label === assessmentEvent.modelVersion);
               const modelVersions = existingVersion
-                ? previous.modelVersions.map((item) => item.label === event.modelVersion ? { ...item, count: item.count + 1 } : item)
-                : [...previous.modelVersions, { label: event.modelVersion, count: 1 }];
-              const bucketAt = new Date(event.receivedAt);
+                ? previous.modelVersions.map((item) => item.label === assessmentEvent.modelVersion ? { ...item, count: item.count + 1 } : item)
+                : [...previous.modelVersions, { label: assessmentEvent.modelVersion, count: 1 }];
+              const bucketAt = new Date(assessmentEvent.receivedAt);
               bucketAt.setMinutes(0, 0, 0);
               const timeseries = [...previous.timeseries];
               const last = timeseries[timeseries.length - 1];
               if (last && new Date(last.timestamp).getTime() === bucketAt.getTime()) {
                 const count = last.assessmentCount + 1;
-                timeseries[timeseries.length - 1] = { ...last, assessmentCount: count, anomalousCount: last.anomalousCount + event.predictedLabel, averageRiskScore: (last.averageRiskScore * last.assessmentCount + event.riskScore) / count };
+                timeseries[timeseries.length - 1] = { ...last, assessmentCount: count, anomalousCount: last.anomalousCount + assessmentEvent.predictedLabel, averageRiskScore: (last.averageRiskScore * last.assessmentCount + assessmentEvent.riskScore) / count };
               } else {
-                timeseries.push({ timestamp: bucketAt.toISOString(), assessmentCount: 1, anomalousCount: event.predictedLabel, averageRiskScore: event.riskScore });
+                timeseries.push({ timestamp: bucketAt.toISOString(), assessmentCount: 1, anomalousCount: assessmentEvent.predictedLabel, averageRiskScore: assessmentEvent.riskScore });
               }
-              return { ...current, cursor: streamCursorRef.current, updatedAt: event.receivedAt, snapshot: { ...previous, totalAssessments: total, anomalousCount: anomalous, normalCount, warningCount, blockCount, anomalyRate: anomalous / total, averageRiskScore: (previous.averageRiskScore * previous.totalAssessments + event.riskScore) / total, recentAssessments, modelVersions, timeseries } };
+              return { ...current, cursor: streamCursorRef.current, updatedAt: assessmentEvent.receivedAt, snapshot: { ...previous, totalAssessments: total, anomalousCount: anomalous, normalCount, warningCount, blockCount, anomalyRate: anomalous / total, averageRiskScore: (previous.averageRiskScore * previous.totalAssessments + assessmentEvent.riskScore) / total, recentAssessments, modelVersions, timeseries } };
             });
           }, controller.signal);
           if (!cancelled) setStreamStatus("Đang kết nối lại");

@@ -2,6 +2,8 @@ import { API_BASE_URL, readAdminSession } from "@/features/auth/api/adminSession
 import type {
   MonitorDashboardResponse,
   RiskAssessmentEvent,
+  RiskStreamEvent,
+  TransactionStatusEvent,
   TimeRange,
 } from "../model";
 
@@ -73,20 +75,22 @@ export async function getMonitorDashboard(
   return (await response.json()) as MonitorDashboardResponse;
 }
 
-function parseSseBlock(block: string): RiskAssessmentEvent | null {
+function parseSseBlock(block: string): RiskStreamEvent | null {
   let eventName = "message";
   let data = "";
   for (const line of block.split("\n")) {
     if (line.startsWith("event:")) eventName = line.slice(6).trim();
     if (line.startsWith("data:")) data += line.slice(5).trim();
   }
-  if (eventName !== "risk_assessment.created" || !data) return null;
-  return JSON.parse(data) as RiskAssessmentEvent;
+  if (!data) return null;
+  if (eventName === "risk_assessment.created") return { kind: "assessment", event: JSON.parse(data) as RiskAssessmentEvent };
+  if (eventName === "transaction.status_changed") return { kind: "transaction_status", event: JSON.parse(data) as TransactionStatusEvent };
+  return null;
 }
 
 export async function consumeRiskStream(
   cursor: string,
-  onEvent: (event: RiskAssessmentEvent, cursor: string) => void,
+  onEvent: (event: RiskStreamEvent, cursor: string) => void,
   signal: AbortSignal,
 ): Promise<void> {
   const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";

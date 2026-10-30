@@ -19,10 +19,11 @@ const riskAssessmentsCollection = "risk_decisions"
 var ErrRiskAssessmentConflict = errors.New("risk assessment idempotency conflict")
 
 type RiskAssessmentRepository struct {
-	client     *mongodrv.Client
-	collection *mongodrv.Collection
-	rejected   *mongodrv.Collection
-	sequence   *mongodrv.Collection
+	client       *mongodrv.Client
+	collection   *mongodrv.Collection
+	transactions *mongodrv.Collection
+	rejected     *mongodrv.Collection
+	sequence     *mongodrv.Collection
 }
 
 type riskDecisionSequence struct {
@@ -67,12 +68,24 @@ type riskAssessmentChange struct {
 	FullDocument  riskassessment.Assessment `bson:"fullDocument"`
 }
 
+type RiskTransactionStatus struct {
+	TransactionID string
+	Status        string
+	StatusAt      time.Time
+	OTPExpiresAt  *time.Time
+	OTPVerifiedAt *time.Time
+	CompletedAt   *time.Time
+	FailedAt      *time.Time
+	CancelledAt   *time.Time
+}
+
 func NewRiskAssessmentRepository(client *mongodrv.Client, dbName string) *RiskAssessmentRepository {
 	return &RiskAssessmentRepository{
-		client:     client,
-		collection: client.Database(dbName).Collection(riskAssessmentsCollection),
-		rejected:   client.Database(dbName).Collection("risk_decision_rejections"),
-		sequence:   client.Database(dbName).Collection("risk_decision_sequences"),
+		client:       client,
+		collection:   client.Database(dbName).Collection(riskAssessmentsCollection),
+		transactions: client.Database(dbName).Collection("transactions"),
+		rejected:     client.Database(dbName).Collection("risk_decision_rejections"),
+		sequence:     client.Database(dbName).Collection("risk_decision_sequences"),
 	}
 }
 
@@ -482,6 +495,69 @@ func (r *RiskAssessmentRepository) Watch(ctx context.Context, resumeAfter bson.R
 		if change.OperationType == "insert" && change.FullDocument.ID != "" {
 			publish(change.FullDocument)
 		}
+	}
+	return stream.ResumeToken(), stream.Err()
+}
+
+func (r *RiskAssessmentRepository) WatchTransactionStatuses(ctx context.Context, resumeAfter bson.Raw, startAtOperationTime *bson.Timestamp, publish func(RiskTransactionStatus)) (bson.Raw, error) {
+	changeStreamOptions := options.ChangeStream().SetFullDocument(options.UpdateLookup)
+	if len(resumeAfter) > 0 {
+		changeStreamOptions.SetResumeAfter(resumeAfter)
+	} else if startAtOperationTime != nil {
+		changeStreamOptions.SetStartAtOperationTime(startAtOperationTime)
+	}
+	stream, err := r.transactions.Watch(ctx, mongodrv.Pipeline{}, changeStreamOptions)
+	if err != nil {
+		return resumeAfter, err
+	}
+	defer func() { _ = stream.Close(ctx) }()
+	for stream.Next(ctx) {
+		var change struct {
+			OperationType string           `bson:"operationType"`
+			FullDocument  TransferDocument `bson:"fullDocument"`
+		}
+		if err := stream.Decode(&change); err != nil {
+			return stream.ResumeToken(), err
+		}
+		if change.OperationType != "insert" && change.OperationType != "replace" && change.OperationType != "update" {
+			continue
+		}
+		if change.FullDocument.ID == "" {
+			continue
+		}
+		status := change.FullDocument.Status
+		statusAt := change.FullDocument.CreatedAt
+		switch status {
+		case "success":
+			if change.FullDocument.CompletedAt != nil {
+				statusAt = *change.FullDocument.CompletedAt
+			} else if !change.FullDocument.PostedAt.IsZero() {
+				statusAt = change.FullDocument.PostedAt
+			}
+		case "failed":
+			if change.FullDocument.FailedAt != nil {
+				statusAt = *change.FullDocument.FailedAt
+			}
+		case "cancelled":
+			if change.FullDocument.CancelledAt != nil {
+				statusAt = *change.FullDocument.CancelledAt
+			}
+		case "awaiting_otp":
+			if !change.FullDocument.OTPExpiresAt.IsZero() && time.Now().UTC().After(change.FullDocument.OTPExpiresAt) {
+				status = "expired"
+				statusAt = change.FullDocument.OTPExpiresAt
+			}
+		}
+		publish(RiskTransactionStatus{
+			TransactionID: change.FullDocument.ID,
+			Status:        status,
+			StatusAt:      statusAt,
+			OTPExpiresAt:  timePointer(change.FullDocument.OTPExpiresAt),
+			OTPVerifiedAt: change.FullDocument.OTPVerifiedAt,
+			CompletedAt:   change.FullDocument.CompletedAt,
+			FailedAt:      change.FullDocument.FailedAt,
+			CancelledAt:   change.FullDocument.CancelledAt,
+		})
 	}
 	return stream.ResumeToken(), stream.Err()
 }

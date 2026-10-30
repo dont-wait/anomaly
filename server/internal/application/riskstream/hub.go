@@ -2,13 +2,26 @@ package riskstream
 
 import (
 	"sync"
+	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain/riskassessment"
 )
 
 type Event struct {
-	ID         string
-	Assessment riskassessment.Assessment
+	ID                string
+	Assessment        riskassessment.Assessment
+	TransactionStatus *TransactionStatus
+}
+
+type TransactionStatus struct {
+	TransactionID string     `json:"transactionId"`
+	Status        string     `json:"status"`
+	StatusAt      time.Time  `json:"statusAt"`
+	OTPExpiresAt  *time.Time `json:"otpExpiresAt,omitempty"`
+	OTPVerifiedAt *time.Time `json:"otpVerifiedAt,omitempty"`
+	CompletedAt   *time.Time `json:"completedAt,omitempty"`
+	FailedAt      *time.Time `json:"failedAt,omitempty"`
+	CancelledAt   *time.Time `json:"cancelledAt,omitempty"`
 }
 
 type Hub struct {

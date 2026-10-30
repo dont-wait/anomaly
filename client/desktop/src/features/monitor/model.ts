@@ -69,6 +69,21 @@ export interface MonitorDashboardResponse {
 
 export type RiskAssessmentEvent = RiskAssessment;
 
+export interface TransactionStatusEvent {
+  transactionId: string;
+  status: string;
+  statusAt: string;
+  otpExpiresAt?: string;
+  otpVerifiedAt?: string;
+  completedAt?: string;
+  failedAt?: string;
+  cancelledAt?: string;
+}
+
+export type RiskStreamEvent =
+  | { kind: "assessment"; event: RiskAssessmentEvent }
+  | { kind: "transaction_status"; event: TransactionStatusEvent };
+
 export const ranges: { value: TimeRange; label: string }[] = [
   { value: "24h", label: "24h" },
   { value: "7d", label: "7 ngày" },

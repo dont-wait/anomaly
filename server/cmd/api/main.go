@@ -124,6 +124,44 @@ func main() {
 			}
 		}
 	}()
+	go func() {
+		var resumeToken bson.Raw
+		var startAtOperationTime *bson.Timestamp
+		publish := func(status mongo.RiskTransactionStatus) {
+			riskHub.Publish(riskstream.Event{ID: status.TransactionID, TransactionStatus: &riskstream.TransactionStatus{
+				TransactionID: status.TransactionID,
+				Status:        status.Status,
+				StatusAt:      status.StatusAt,
+				OTPExpiresAt:  status.OTPExpiresAt,
+				OTPVerifiedAt: status.OTPVerifiedAt,
+				CompletedAt:   status.CompletedAt,
+				FailedAt:      status.FailedAt,
+				CancelledAt:   status.CancelledAt,
+			}})
+		}
+		for ctx.Err() == nil {
+			nextToken, err := riskAssessments.WatchTransactionStatuses(ctx, resumeToken, startAtOperationTime, publish)
+			if len(nextToken) > 0 {
+				resumeToken = append(bson.Raw(nil), nextToken...)
+				startAtOperationTime = nil
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			if isChangeStreamHistoryLost(err) {
+				resumeToken = nil
+				startAtOperationTime = &bson.Timestamp{T: uint32(time.Now().Unix())}
+			}
+			logger.Error().Err(err).Msg("transaction status change stream stopped; retrying")
+			timer := time.NewTimer(2 * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+	}()
 
 	esClient, err := eventstore.NewEventStoreClient(config.EventStoreConfig)
 	if err != nil {

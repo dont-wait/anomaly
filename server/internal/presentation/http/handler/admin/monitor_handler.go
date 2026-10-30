@@ -227,6 +227,12 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			if !open {
 				return
 			}
+			if event.TransactionStatus != nil {
+				if err := writeTransactionStatusEvent(w, flusher, *event.TransactionStatus); err != nil {
+					return
+				}
+				continue
+			}
 			if !isAfter(event.Assessment, after) {
 				continue
 			}
@@ -363,6 +369,19 @@ func writeAssessmentEvent(w http.ResponseWriter, flusher http.Flusher, item risk
 	}
 	id := encodeCursor(cursor{Sequence: item.Cursor, ReceivedAt: item.ReceivedAt, ID: item.ID})
 	if _, err := fmt.Fprintf(w, "id: %s\nevent: risk_assessment.created\ndata: %s\n\n", id, payload); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
+}
+
+func writeTransactionStatusEvent(w http.ResponseWriter, flusher http.Flusher, status riskstream.TransactionStatus) error {
+	setSSEWriteDeadline(w)
+	payload, err := json.Marshal(status)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "event: transaction.status_changed\ndata: %s\n\n", payload); err != nil {
 		return err
 	}
 	flusher.Flush()
