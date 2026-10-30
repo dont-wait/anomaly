@@ -39,6 +39,22 @@ func TestTransferOTPVerifyTransitionsToRetryableAuthorization(t *testing.T) {
 	}
 }
 
+func TestTransferOTPVerifyStateDistinguishesNewAuthorizationFromRetry(t *testing.T) {
+	store, rdb := newTransferOTPTestStore(t)
+	ctx := context.Background()
+	id := "audit-retry"
+	setTransferOTPChallenge(t, rdb, id, "123456", 30*time.Second)
+
+	first, err := store.VerifyWithState(ctx, id, "123456")
+	if err != nil || !first.NewlyVerified {
+		t.Fatalf("first VerifyWithState() = (%+v, %v), want newly verified", first, err)
+	}
+	second, err := store.VerifyWithState(ctx, id, "wrong-code")
+	if err != nil || second.NewlyVerified {
+		t.Fatalf("retry VerifyWithState() = (%+v, %v), want already verified", second, err)
+	}
+}
+
 func TestTransferOTPVerifyFailuresAreBoundedAndExpireAtMaximum(t *testing.T) {
 	store, rdb := newTransferOTPTestStore(t)
 	ctx := context.Background()
