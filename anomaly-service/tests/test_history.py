@@ -85,3 +85,12 @@ def test_non_request_trigger_raises():
     history = EventStoreHistory(client, "banking")
     with pytest.raises(HistoryError, match="not a TransferCreated"):
         history.read_request_and_prefix(event_id)
+
+
+def test_request_preserves_client_ip_without_mutating_stored_event():
+    record = raw_bank_record()
+    record["transfer"]["ClientIP"] = "203.0.113.10"
+    history = EventStoreHistory(Client([Record(record)]), "banking")
+    request, _ = history.read_request_and_prefix(record["id"])
+    assert request["payload"]["ip_address"] == "203.0.113.10"
+    assert "ip_address" not in record["event"]["payload"]

@@ -115,7 +115,7 @@ type KYCVerification struct {
 	Evidence            *KYCEvidence
 }
 
-// KYCEvidence describes actual model execution, not a client assertion.
+// KYCEvidence describes model execution, or an explicit poc-bypass record with not_run statuses.
 type KYCEvidence struct {
 	RequestID                string  `json:"request_id" bson:"request_id"`
 	ModelID                  string  `json:"model_id" bson:"model_id"`

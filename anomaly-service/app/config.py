@@ -1,7 +1,7 @@
 """Environment configuration for the local GATv2 publisher."""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -26,6 +26,7 @@ class Config:
     training_data_path: str
     training_data_fsync: bool
     metrics_port: int
+    risk_decision_signing_key: str = field(repr=False)
     training_data_max_bytes: int = 100 * 1024 * 1024
     training_data_backup_count: int = 5
 
@@ -62,9 +63,12 @@ def env_number(name, default, cast):
 
 
 def load_config():
+    signing_key = env("KAFKA_RISK_DECISION_SIGNING_KEY", "")
+    if not signing_key.strip():
+        raise ConfigError("KAFKA_RISK_DECISION_SIGNING_KEY is required")
     brokers = split_csv(env("KAFKA_BROKERS", "localhost:9092"))
     input_topic = env("KAFKA_INPUT_TOPIC", "anomaly.bank.events.v1").strip()
-    output_topic = env("KAFKA_OUTPUT_TOPIC", "anomaly.bank.risk.v1").strip()
+    output_topic = env("KAFKA_OUTPUT_TOPIC", "anomaly.bank.risk-decisions.v1").strip()
     training_topic = env("KAFKA_TRAINING_TOPIC", "anomaly.model.training.v1").strip() or None
     consumer_group = env("KAFKA_CONSUMER_GROUP", "ml-pipeline").strip()
     auto_offset_reset = env("KAFKA_AUTO_OFFSET_RESET", "earliest").strip().lower()
@@ -126,6 +130,7 @@ def load_config():
         training_data_path=training_data_path,
         training_data_fsync=env_bool("TRAINING_DATA_FSYNC", True),
         metrics_port=metrics_port,
+        risk_decision_signing_key=signing_key,
         training_data_max_bytes=training_data_max_bytes,
         training_data_backup_count=training_data_backup_count,
     )

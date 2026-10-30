@@ -23,8 +23,12 @@ def create_app() -> FastAPI:
         from app.api.deps import get_vision_pipeline
 
         backend = settings.vision_pipeline_backend.strip().lower()
-        if backend == "stub" and settings.app_env not in {"test", "development"}:
+        if backend in {"stub", "poc"} and settings.app_env not in {"test", "development"}:
             raise RuntimeError("Stub vision is forbidden in this environment")
+        if backend == "poc":
+            if not settings.service_token:
+                raise RuntimeError("POC requires KYC_SERVICE_TOKEN shared with Go")
+            await asyncio.to_thread(get_vision_pipeline)
         if backend == "real":
             if len(settings.service_token) < 32:
                 raise RuntimeError(
@@ -57,10 +61,10 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def service_auth(request: Request, call_next):
-        if (
-            settings.vision_pipeline_backend.strip().lower() == "real"
-            and request.url.path.startswith("/v1/")
-        ):
+        if settings.vision_pipeline_backend.strip().lower() in {
+            "real",
+            "poc",
+        } and request.url.path.startswith("/v1/"):
             supplied = request.headers.get("X-KYC-Service-Token", "")
             if not settings.service_token or not hmac.compare_digest(
                 supplied, settings.service_token

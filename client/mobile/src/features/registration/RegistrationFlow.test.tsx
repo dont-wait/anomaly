@@ -151,10 +151,12 @@ it("verifies the emailed OTP between the email and document steps", async () => 
   fireEvent.change(screen.getByLabelText("Ảnh mặt sau CCCD"), {
     target: { files: [back] },
   });
-  expect(
-    (screen.getByRole("button", { name: "Tiếp tục" }) as HTMLButtonElement)
-      .disabled,
-  ).toBe(false);
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "Tiếp tục" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
 });
 // Gửi mã treo lại cho tới khi gọi release(), để kiểm tra trạng thái "đang gửi".
 function deferSend() {

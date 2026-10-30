@@ -27,6 +27,8 @@ type Media struct {
 }
 
 type VerifyResult struct {
+	POCBypass     bool `json:"poc_bypass,omitempty"`
+	pocApproved   bool
 	Success       bool                       `json:"success"`
 	Decision      string                     `json:"decision"`
 	ReasonCode    string                     `json:"reason_code,omitempty"`
@@ -45,6 +47,14 @@ type QualityChecks struct {
 
 func (r *VerifyResult) ValidVerified() bool {
 	a := r.Analysis
+	if r.POCBypass {
+		return r.pocApproved && r.Success && r.Decision == "VERIFIED" && a != nil &&
+			a.RequestID != "" && a.ModelID == "poc-bypass" && a.PipelineVersion == "poc-v1" &&
+			a.MatchingStatus == "not_run" && a.LivenessStatus == "not_run" &&
+			a.ModelSHA256 == "" && a.SampledFrames == 0 && a.MatchedFrames == 0 &&
+			!a.ChallengePassed && !a.SubjectConsistencyPassed &&
+			r.MatchScore == 0 && r.LivenessScore == 0
+	}
 	return r.Success && r.Decision == "VERIFIED" && validScore(r.MatchScore) && validScore(r.LivenessScore) &&
 		r.QualityChecks.Portrait && r.QualityChecks.SingleFace && r.QualityChecks.ImageQuality &&
 		a != nil && a.RequestID != "" && a.ModelID != "" && a.ModelVersion != "" && len(a.ModelSHA256) == 64 &&
@@ -57,9 +67,16 @@ func (r *VerifyResult) ValidVerified() bool {
 func validScore(s float64) bool { return !math.IsNaN(s) && !math.IsInf(s, 0) && s >= 0 && s <= 1 }
 
 type Client struct {
+	pocBypass    bool
 	baseURL      string
 	http         *http.Client
 	serviceToken string
+}
+
+// WithPOCBypass accepts explicitly marked demo results from the internal service.
+func (c *Client) WithPOCBypass(enabled bool) *Client {
+	c.pocBypass = enabled
+	return c
 }
 
 func NewClient(baseURL string, serviceToken ...string) *Client {
@@ -114,6 +131,7 @@ func (c *Client) VerifyFace(ctx context.Context, front, video Media, challengeTy
 	if err := decoder.Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode KYC response: %w", err)
 	}
+	result.pocApproved = c.pocBypass
 	if !validDecision(result.Decision) || (result.Success != (result.Decision == "VERIFIED")) ||
 		!validScore(result.MatchScore) || !validScore(result.LivenessScore) ||
 		(result.Success && (!result.ValidVerified() || result.Analysis.RequestID != requestID)) {

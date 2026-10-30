@@ -1,0 +1,106 @@
+[
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transaction_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "risk_score": 0.9821,
+      "predicted_label": 1,
+      "threshold": 0.95,
+      "model_version": "GATv2 <model>& Việt  ",
+      "feature_version": "f1",
+      "signature": "9f370d9f4d488b4adbb0fc838966f412b7fbf48e40fc13efc038636cf8c84e6a"
+    },
+    "canonical": "{\"transaction_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"risk_score\":0.9821,\"predicted_label\":1,\"threshold\":0.95,\"model_version\":\"GATv2 \\u003cmodel\\u003e\\u0026 Việt\\u2028\\u2029\",\"feature_version\":\"f1\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transaction_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "risk_score": 0.08,
+      "predicted_label": 0,
+      "threshold": 0.95,
+      "model_version": "gatv2-v1",
+      "feature_version": "f1",
+      "signature": "c157d68daef1d9b1e11f6154cf84b163d60e8eee8b6710d8007d10ce1987eec8"
+    },
+    "canonical": "{\"transaction_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"risk_score\":0.08,\"predicted_label\":0,\"threshold\":0.95,\"model_version\":\"gatv2-v1\",\"feature_version\":\"f1\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transaction_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "risk_score": 0.0,
+      "predicted_label": 0,
+      "threshold": 0.95,
+      "model_version": "gatv2-v1",
+      "feature_version": "f1",
+      "signature": "dfc6ebc73bb77c12bfed3223d716538a30f508c142dc86a3fcc10cf81f09d7db"
+    },
+    "canonical": "{\"transaction_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"risk_score\":0,\"predicted_label\":0,\"threshold\":0.95,\"model_version\":\"gatv2-v1\",\"feature_version\":\"f1\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transaction_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "risk_score": 1.0,
+      "predicted_label": 1,
+      "threshold": 0.95,
+      "model_version": "gatv2-v1",
+      "feature_version": "f1",
+      "signature": "8e6d339b62c261375d59cbed77d04bb2a48586a73deebe834305f50ec0e5b7e1"
+    },
+    "canonical": "{\"transaction_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"risk_score\":1,\"predicted_label\":1,\"threshold\":0.95,\"model_version\":\"gatv2-v1\",\"feature_version\":\"f1\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transaction_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "risk_score": -0.0,
+      "predicted_label": 0,
+      "threshold": 0.95,
+      "model_version": "gatv2-v1",
+      "feature_version": "f1",
+      "signature": "3216007b956ed32f60b202bf6f45a728cce8ec8b491f47a6a051df8ba0024faa"
+    },
+    "canonical": "{\"transaction_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"risk_score\":-0,\"predicted_label\":0,\"threshold\":0.95,\"model_version\":\"gatv2-v1\",\"feature_version\":\"f1\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transaction_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "risk_score": 1e-07,
+      "predicted_label": 0,
+      "threshold": 0.95,
+      "model_version": "gatv2-v1",
+      "feature_version": "f1",
+      "signature": "8f8fd880b600179c7888b1d8bd55e7503f5e0c84798829434975824ba73f78dd"
+    },
+    "canonical": "{\"transaction_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"risk_score\":1e-7,\"predicted_label\":0,\"threshold\":0.95,\"model_version\":\"gatv2-v1\",\"feature_version\":\"f1\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transaction_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "risk_score": 1e-06,
+      "predicted_label": 0,
+      "threshold": 0.95,
+      "model_version": "gatv2-v1",
+      "feature_version": "f1",
+      "signature": "7175d0168a0c6806b3c2ea289daeb4e89a8c45eb2600f412d54a77de6246681c"
+    },
+    "canonical": "{\"transaction_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"risk_score\":0.000001,\"predicted_label\":0,\"threshold\":0.95,\"model_version\":\"gatv2-v1\",\"feature_version\":\"f1\"}"
+  },
+  {
+    "key": "test-risk-signing-key",
+    "message": {
+      "transaction_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "risk_score": 1.2345678901234569e-20,
+      "predicted_label": 0,
+      "threshold": 0.95,
+      "model_version": "gatv2-v1",
+      "feature_version": "f1",
+      "signature": "67f8db110dfe56b3144a21b6213395ee29f220a4f9b61d641c5da89474bd66ca"
+    },
+    "canonical": "{\"transaction_id\":\"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\"risk_score\":1.2345678901234569e-20,\"predicted_label\":0,\"threshold\":0.95,\"model_version\":\"gatv2-v1\",\"feature_version\":\"f1\"}"
+  }
+]
