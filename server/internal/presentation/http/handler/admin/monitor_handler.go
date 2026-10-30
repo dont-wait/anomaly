@@ -94,6 +94,7 @@ type monitorSnapshot struct {
 	NormalCount       int                 `json:"normalCount"`
 	WarningCount      int                 `json:"warningCount"`
 	BlockCount        int                 `json:"blockCount"`
+	TransactionStatus map[string]int      `json:"transactionStatus"`
 }
 
 type monitorResponse struct {
@@ -270,6 +271,7 @@ func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSumm
 		RecentAssessments: make([]riskAssessmentDTO, 0, len(recent)),
 		Timeseries:        make([]monitorPoint, 0, len(summary.Timeseries)),
 		ModelVersions:     make([]modelVersionCount, 0, len(summary.ModelVersions)),
+		TransactionStatus: make(map[string]int, len(summary.Statuses)),
 	}
 	if summary.Total > 0 {
 		snapshot.AverageRiskScore = summary.ScoreTotal / float64(summary.Total)
@@ -297,6 +299,11 @@ func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSumm
 			snapshot.WarningCount = item.Count
 		case riskassessment.RiskLevelBlock:
 			snapshot.BlockCount = item.Count
+		}
+	}
+	for _, item := range summary.Statuses {
+		if item.Label != "" {
+			snapshot.TransactionStatus[item.Label] = item.Count
 		}
 	}
 	if len(recent) > 0 {

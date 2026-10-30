@@ -51,6 +51,7 @@ export interface MonitorSnapshot {
   normalCount: number;
   warningCount: number;
   blockCount: number;
+  transactionStatus?: Record<string, number>;
 }
 
 export interface MonitorDashboardResponse {

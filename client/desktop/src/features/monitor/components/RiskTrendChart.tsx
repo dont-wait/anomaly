@@ -88,11 +88,15 @@ interface RiskTrendChartProps {
   range?: TimeRange;
 }
 
+type ChartMode = "risk" | "volume" | "alerts";
+
 export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
   const [hoverTooltip, setHoverTooltip] = useState<TooltipState | null>(null);
+  const [mode, setMode] = useState<ChartMode>("risk");
   const tooltipRef = useRef<TooltipState | null>(null);
   const hasData = series.length > 0;
-  const values = series.map((point) => point.averageRiskScore * 100);
+  const values = series.map((point) => mode === "risk" ? point.averageRiskScore * 100 : mode === "volume" ? point.assessmentCount : point.anomalousCount);
+  const chartMax = mode === "risk" ? 100 : Math.max(1, Math.ceil(Math.max(...values, 1) * 1.2));
   const peakIndex = hasData ? values.indexOf(Math.max(...values)) : -1;
   const peakPoint = series[peakIndex];
   const labels = series.map((point) => formatTime(point.timestamp));
@@ -155,7 +159,7 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
             left: Math.min(86, Math.max(14, (tooltip.caretX / chart.width) * 100)),
             top: Math.max(20, (tooltip.caretY / chart.height) * 100 - 8),
             timestamp: formatTime(point.timestamp),
-            riskScore: point.averageRiskScore * 100,
+            riskScore: values[item.dataIndex] ?? 0,
             alertCount: point.assessmentCount,
             highRiskCount: point.anomalousCount,
           });
@@ -176,7 +180,7 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
       },
       y: {
         min: 0,
-        max: 100,
+        max: chartMax,
         grid: { color: chartColors.grid, drawTicks: false },
         border: { display: false },
         ticks: { display: false, stepSize: 25 },
@@ -189,9 +193,12 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
       <div className="flex flex-col justify-between gap-2 pb-2 md:flex-row md:items-center">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">Xu hướng rủi ro ({range})</h2>
+          <div className="bg-(--admin-surface) flex rounded-sm p-0.5" role="group" aria-label="Chỉ số biểu đồ">
+            {([['risk', 'Điểm rủi ro'], ['volume', 'Số yêu cầu'], ['alerts', 'Bất thường']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)} className={`rounded-sm px-2 py-1 text-[10px] font-semibold ${mode === value ? "bg-(--admin-primary) text-white" : "text-(--admin-text-muted) hover:text-(--admin-text)"}`}>{label}</button>)}
+          </div>
         </div>
         <div className="font-(family-name:--admin-font-mono) flex flex-wrap items-center gap-2 text-[10px] text-(--admin-text-muted)">
-          {peakPoint && <span className="rounded-sm bg-[#3b2930] px-1.5 py-1 text-[#ffb4ab]">Cao nhất {(peakPoint.averageRiskScore * 100).toFixed(2)} điểm · {formatTime(peakPoint.timestamp)}</span>}
+          {peakPoint && <span className="rounded-sm bg-[#3b2930] px-1.5 py-1 text-[#ffb4ab]">{mode === "risk" ? `Cao nhất ${(values[peakIndex] ?? 0).toFixed(2)} điểm` : mode === "volume" ? `Nhiều nhất ${values[peakIndex] ?? 0} yêu cầu` : `Nhiều nhất ${values[peakIndex] ?? 0} bất thường`} · {formatTime(peakPoint.timestamp)}</span>}
           {hasData && <><span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-(--admin-primary)" />Điểm rủi ro trung bình</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-(--admin-danger)" />Yêu cầu bất thường</span></>}
         </div>
       </div>
@@ -215,7 +222,7 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
             aria-live="polite"
           >
             <strong className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[10px] text-(--admin-primary)">{hoverTooltip.timestamp}</strong>
-            <span className="font-(family-name:--admin-font-mono) mt-1 block whitespace-nowrap text-[10px] text-(--admin-text)">Điểm rủi ro: {hoverTooltip.riskScore}</span>
+            <span className="font-(family-name:--admin-font-mono) mt-1 block whitespace-nowrap text-[10px] text-(--admin-text)">{mode === "risk" ? "Điểm rủi ro" : mode === "volume" ? "Số yêu cầu" : "Yêu cầu bất thường"}: {hoverTooltip.riskScore.toFixed(mode === "risk" ? 2 : 0)}</span>
             <span className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[9px] text-(--admin-text-muted)">{hoverTooltip.alertCount} yêu cầu · {hoverTooltip.highRiskCount} bất thường</span>
           </div>
         )}

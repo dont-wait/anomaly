@@ -47,6 +47,11 @@ type RiskAssessmentLevelCount struct {
 	Count int    `bson:"count"`
 }
 
+type RiskTransactionStatusCount struct {
+	Label string `bson:"_id"`
+	Count int    `bson:"count"`
+}
+
 type RiskAssessmentSummary struct {
 	Total         int64
 	Anomalous     int64
@@ -54,6 +59,7 @@ type RiskAssessmentSummary struct {
 	Timeseries    []RiskAssessmentBucket
 	ModelVersions []RiskAssessmentVersionCount
 	RiskLevels    []RiskAssessmentLevelCount
+	Statuses      []RiskTransactionStatusCount
 }
 
 type riskAssessmentChange struct {
@@ -381,6 +387,36 @@ func (r *RiskAssessmentRepository) Summarize(ctx context.Context, from, to time.
 	}
 	if summary.RiskLevels == nil {
 		summary.RiskLevels = []RiskAssessmentLevelCount{}
+	}
+
+	statusCursor, err := r.collection.Aggregate(ctx, mongodrv.Pipeline{
+		bson.D{{Key: "$match", Value: filter}},
+		bson.D{{Key: "$lookup", Value: bson.D{
+			{Key: "from", Value: "transactions"},
+			{Key: "localField", Value: "transaction_id"},
+			{Key: "foreignField", Value: "transaction_id"},
+			{Key: "as", Value: "transaction"},
+		}}},
+		bson.D{{Key: "$unwind", Value: bson.D{{Key: "path", Value: "$transaction"}, {Key: "preserveNullAndEmptyArrays", Value: true}}}},
+		bson.D{{Key: "$group", Value: bson.D{{Key: "_id", Value: "$transaction.status"}, {Key: "count", Value: bson.D{{Key: "$sum", Value: 1}}}}}},
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "_id", Value: 1}}}},
+	})
+	if err != nil {
+		return RiskAssessmentSummary{}, err
+	}
+	defer func() { _ = statusCursor.Close(ctx) }()
+	for statusCursor.Next(ctx) {
+		var row RiskTransactionStatusCount
+		if err := statusCursor.Decode(&row); err != nil {
+			return RiskAssessmentSummary{}, err
+		}
+		summary.Statuses = append(summary.Statuses, row)
+	}
+	if err := statusCursor.Err(); err != nil {
+		return RiskAssessmentSummary{}, err
+	}
+	if summary.Statuses == nil {
+		summary.Statuses = []RiskTransactionStatusCount{}
 	}
 	return summary, nil
 }
