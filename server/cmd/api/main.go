@@ -202,6 +202,7 @@ func main() {
 	auditRepository := eventstore.NewAuditRepository(esClient)
 	transferRepository := mongo.NewTransferRepository(mongoClient, config.MongoConfig.MongoDBName)
 	bank := eventstore.NewBankRepository(esClient, transferRepository)
+	adminTimelineHandler := adminhandler.NewTimelineHandler(esClient, bank)
 	legacyAccounts, err := mongoClient.Database(config.MongoConfig.MongoDBName).Collection("accounts").EstimatedDocumentCount(ctx)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("check existing account data")
@@ -292,7 +293,7 @@ func main() {
 	)
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouterWithAdminMonitor(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled, adminMonitorHandler, loanHandler)
+	mux = presentation.NewRouterWithAdminMonitor(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled, adminMonitorHandler, adminTimelineHandler, loanHandler)
 
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
 	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(
