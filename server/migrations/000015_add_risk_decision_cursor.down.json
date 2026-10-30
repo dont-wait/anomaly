@@ -1,0 +1,6 @@
+[
+  {
+    "dropIndexes": "risk_decisions",
+    "index": "risk_decision_cursor"
+  }
+]

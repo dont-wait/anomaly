@@ -165,6 +165,9 @@ func TestLoaderLoadKafkaConfigUsesDefaults(t *testing.T) {
 	if got.Topic != "anomaly.bank.events.v1" {
 		t.Fatalf("Topic = %q, want anomaly.bank.events.v1", got.Topic)
 	}
+	if got.RiskDecisionTopic != "anomaly.bank.risk-decisions.v1" {
+		t.Fatalf("RiskDecisionTopic = %q, want anomaly.bank.risk-decisions.v1", got.RiskDecisionTopic)
+	}
 	if got.ProducerID != "anomaly-server" {
 		t.Fatalf("ProducerID = %q, want anomaly-server", got.ProducerID)
 	}
