@@ -8,6 +8,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+	"github.com/dont-wait/anomaly/internal/domain/audit"
 )
 
 type LoginQuery struct {
@@ -30,23 +31,40 @@ type KYCSessionResult struct {
 type LoginQueryHandler struct {
 	readRepo AccountQueryRepository
 	tokens   TokenService
+	audit    audit.Recorder
 }
 
 func NewLoginQueryHandler(readRepo AccountQueryRepository, tokens TokenService) *LoginQueryHandler {
 	return &LoginQueryHandler{readRepo: readRepo, tokens: tokens}
 }
 
+func (h *LoginQueryHandler) WithAudit(recorder audit.Recorder) *LoginQueryHandler {
+	h.audit = recorder
+	return h
+}
+
 func (h *LoginQueryHandler) Handle(ctx context.Context, q LoginQuery) (*LoginResult, error) {
 	acc, err := validateCredentials(ctx, h.readRepo, q.CCCDNumber, q.Password)
 	if err != nil {
+		if errors.Is(err, accountdomain.ErrInvalidCredentials) {
+			if auditErr := h.recordLogin(ctx, audit.LoginFailed, "invalid_credentials", ""); auditErr != nil {
+				return nil, auditErr
+			}
+		}
 		return nil, err
 	}
 	if !acc.IsVerified() {
+		if auditErr := h.recordLogin(ctx, audit.LoginFailed, "kyc_required", acc.Id); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, accountdomain.ErrKYCRequired
 	}
 
 	token, expiresAt, err := h.tokens.Issue(acc.Id, acc.Username, string(acc.EffectiveRole()), acc.IsVerified())
 	if err != nil {
+		return nil, err
+	}
+	if err := h.recordLogin(ctx, audit.LoginSucceeded, "", acc.Id); err != nil {
 		return nil, err
 	}
 
@@ -55,6 +73,17 @@ func (h *LoginQueryHandler) Handle(ctx context.Context, q LoginQuery) (*LoginRes
 		Token:     token,
 		ExpiresAt: expiresAt,
 	}, nil
+}
+
+func (h *LoginQueryHandler) recordLogin(ctx context.Context, eventType, reasonCode, accountID string) error {
+	if h.audit == nil {
+		return nil
+	}
+	event := audit.NewEvent(eventType, "", time.Now().UTC())
+	event.AccountID = accountID
+	event.ActorID = accountID
+	event.ReasonCode = reasonCode
+	return h.audit.Record(ctx, event)
 }
 
 func (h *LoginQueryHandler) StartKYCSession(ctx context.Context, q LoginQuery) (*KYCSessionResult, error) {

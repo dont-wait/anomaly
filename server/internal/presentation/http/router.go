@@ -21,21 +21,21 @@ import (
 // thuộc trực tiếp vào infrastructure, đúng dependency rule của Clean
 // Architecture.
 func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, loanHandlers ...*loan.Handler) *http.ServeMux {
-	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, loanHandlers...)
+	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, nil, loanHandlers...)
 }
 
-func NewRouterWithAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, adminMonitorHandler *admin.MonitorHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
-	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, adminMonitorHandler, loanHandlers...)
+func NewRouterWithAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, adminMonitorHandler *admin.MonitorHandler, timelineHandler *admin.TimelineHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
+	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, adminMonitorHandler, timelineHandler, loanHandlers...)
 }
 
-func newRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, adminMonitorHandler *admin.MonitorHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
+func newRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, adminMonitorHandler *admin.MonitorHandler, timelineHandler *admin.TimelineHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
 	router := openapi.NewRegistry(mux, swaggerEnabled)
 	account.RegisterRoutes(router, accountHandler, tokenSvc)
 	media.RegisterRoutes(router, mediaHandler, tokenSvc)
 	otp.RegisterRoutes(router, otpHandler)
 	transaction.RegisterRoutes(router, transactionHandler, tokenSvc)
 	if adminMonitorHandler != nil {
-		admin.RegisterRoutes(router, adminMonitorHandler, tokenSvc, accountHandler.RequireCurrentAdmin)
+		admin.RegisterRoutes(router, adminMonitorHandler, tokenSvc, accountHandler.RequireCurrentAdmin, timelineHandler)
 	}
 	if len(loanHandlers) > 0 &&
 		loanHandlers[0] != nil {
