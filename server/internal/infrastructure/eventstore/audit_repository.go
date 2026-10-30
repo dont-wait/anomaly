@@ -13,8 +13,10 @@ import (
 	esdb "github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
 )
 
-const auditStreamPrefix = "audit-account-"
-const auditGlobalStream = "audit-global"
+const (
+	auditStreamPrefix = "audit-account-"
+	auditGlobalStream = "audit-global"
+)
 
 type AuditRepository struct {
 	client *esdb.Client
@@ -75,7 +77,7 @@ func (r *AuditRepository) Record(ctx context.Context, event audit.Event) error {
 
 func (r *AuditRepository) streamRevision(ctx context.Context, streamID, eventID string) (uint64, bool, bool, error) {
 	const pageSize = 4096
-	var opts = esdb.ReadStreamOptions{From: esdb.Start{}}
+	opts := esdb.ReadStreamOptions{From: esdb.Start{}}
 	var last uint64
 	for {
 		stream, err := r.client.ReadStream(ctx, streamID, opts, pageSize)
