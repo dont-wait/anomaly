@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -124,23 +125,33 @@ func main() {
 			}
 		}
 	}()
+	var statusMu sync.Mutex
+	lastStatusFingerprints := make(map[string]string)
+	publishStatus := func(status mongo.RiskTransactionStatus) {
+		fingerprint := transactionStatusFingerprint(status)
+		statusMu.Lock()
+		if lastStatusFingerprints[status.TransactionID] == fingerprint {
+			statusMu.Unlock()
+			return
+		}
+		lastStatusFingerprints[status.TransactionID] = fingerprint
+		statusMu.Unlock()
+		riskHub.Publish(riskstream.Event{ID: status.TransactionID, TransactionStatus: &riskstream.TransactionStatus{
+			TransactionID: status.TransactionID,
+			Status:        status.Status,
+			StatusAt:      status.StatusAt,
+			OTPExpiresAt:  status.OTPExpiresAt,
+			OTPVerifiedAt: status.OTPVerifiedAt,
+			CompletedAt:   status.CompletedAt,
+			FailedAt:      status.FailedAt,
+			CancelledAt:   status.CancelledAt,
+		}})
+	}
 	go func() {
 		var resumeToken bson.Raw
 		var startAtOperationTime *bson.Timestamp
-		publish := func(status mongo.RiskTransactionStatus) {
-			riskHub.Publish(riskstream.Event{ID: status.TransactionID, TransactionStatus: &riskstream.TransactionStatus{
-				TransactionID: status.TransactionID,
-				Status:        status.Status,
-				StatusAt:      status.StatusAt,
-				OTPExpiresAt:  status.OTPExpiresAt,
-				OTPVerifiedAt: status.OTPVerifiedAt,
-				CompletedAt:   status.CompletedAt,
-				FailedAt:      status.FailedAt,
-				CancelledAt:   status.CancelledAt,
-			}})
-		}
 		for ctx.Err() == nil {
-			nextToken, err := riskAssessments.WatchTransactionStatuses(ctx, resumeToken, startAtOperationTime, publish)
+			nextToken, err := riskAssessments.WatchTransactionStatuses(ctx, resumeToken, startAtOperationTime, publishStatus)
 			if len(nextToken) > 0 {
 				resumeToken = append(bson.Raw(nil), nextToken...)
 				startAtOperationTime = nil
@@ -159,6 +170,26 @@ func main() {
 				timer.Stop()
 				return
 			case <-timer.C:
+			}
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				statuses, err := riskAssessments.ListExpiredTransactionStatuses(ctx)
+				if err != nil {
+					logger.Error().Err(err).Msg("list expired transaction statuses failed")
+					continue
+				}
+				for _, status := range statuses {
+					publishStatus(status)
+				}
 			}
 		}
 	}()
@@ -317,4 +348,23 @@ func isChangeStreamHistoryLost(err error) bool {
 	}
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "changestreamhistorylost") || strings.Contains(message, "resume token")
+}
+
+func transactionStatusFingerprint(status mongo.RiskTransactionStatus) string {
+	return strings.Join([]string{
+		status.Status,
+		status.StatusAt.UTC().Format(time.RFC3339Nano),
+		timeString(status.OTPExpiresAt),
+		timeString(status.OTPVerifiedAt),
+		timeString(status.CompletedAt),
+		timeString(status.FailedAt),
+		timeString(status.CancelledAt),
+	}, "|")
+}
+
+func timeString(value *time.Time) string {
+	if value == nil {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }

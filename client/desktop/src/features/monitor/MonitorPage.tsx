@@ -409,6 +409,7 @@ export function MonitorPage() {
     let cancelled = false;
     let retryTimer: number | undefined;
     let controller: AbortController | undefined;
+    let hasConnected = false;
     if (!streamCursorRef.current) streamCursorRef.current = initialResponse.cursor;
     let delay = 1000;
 
@@ -428,7 +429,17 @@ export function MonitorPage() {
                 return { ...assessment, transaction: { ...assessment.transaction, status: statusEvent.status, otpExpiresAt: statusEvent.otpExpiresAt, otpVerifiedAt: statusEvent.otpVerifiedAt, completedAt: statusEvent.completedAt, failedAt: statusEvent.failedAt, cancelledAt: statusEvent.cancelledAt } };
               };
               setSelectedAssessment((current) => current ? updateAssessment(current) : current);
-              setResponse((current) => current ? { ...current, snapshot: { ...current.snapshot, recentAssessments: current.snapshot.recentAssessments.map(updateAssessment) } } : current);
+              setResponse((current) => {
+                if (!current) return current;
+                const previousAssessment = current.snapshot.recentAssessments.find((item) => item.transactionId === statusEvent.transactionId);
+                const previousStatus = previousAssessment?.transaction?.status;
+                const transactionStatus = { ...(current.snapshot.transactionStatus ?? {}) };
+                if (previousStatus && previousStatus !== statusEvent.status) {
+                  transactionStatus[previousStatus] = Math.max(0, (transactionStatus[previousStatus] ?? 0) - 1);
+                  transactionStatus[statusEvent.status] = (transactionStatus[statusEvent.status] ?? 0) + 1;
+                }
+                return { ...current, snapshot: { ...current.snapshot, transactionStatus, recentAssessments: current.snapshot.recentAssessments.map(updateAssessment) } };
+              });
               return;
             }
             const assessmentEvent = event.event;
@@ -457,7 +468,10 @@ export function MonitorPage() {
               }
               return { ...current, cursor: streamCursorRef.current, updatedAt: assessmentEvent.receivedAt, snapshot: { ...previous, totalAssessments: total, anomalousCount: anomalous, normalCount, warningCount, blockCount, anomalyRate: anomalous / total, averageRiskScore: (previous.averageRiskScore * previous.totalAssessments + assessmentEvent.riskScore) / total, recentAssessments, modelVersions, timeseries } };
             });
-          }, controller.signal);
+          }, controller.signal, () => {
+            if (hasConnected) setRequestVersion((version) => version + 1);
+            hasConnected = true;
+          });
           if (!cancelled) setStreamStatus("Đang kết nối lại");
         } catch (streamError) {
           if (cancelled || (streamError instanceof DOMException && streamError.name === "AbortError")) return;

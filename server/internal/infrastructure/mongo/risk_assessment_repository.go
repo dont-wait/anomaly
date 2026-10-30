@@ -79,6 +79,39 @@ type RiskTransactionStatus struct {
 	CancelledAt   *time.Time
 }
 
+func (r *RiskAssessmentRepository) ListExpiredTransactionStatuses(ctx context.Context) ([]RiskTransactionStatus, error) {
+	now := time.Now().UTC()
+	cursor, err := r.transactions.Find(ctx, bson.M{"status": "awaiting_otp", "otp_expires_at": bson.M{"$lte": now}})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	var statuses []RiskTransactionStatus
+	for cursor.Next(ctx) {
+		var transfer TransferDocument
+		if err := cursor.Decode(&transfer); err != nil {
+			return nil, err
+		}
+		if transfer.ID == "" {
+			continue
+		}
+		statuses = append(statuses, RiskTransactionStatus{
+			TransactionID: transfer.ID,
+			Status:        "expired",
+			StatusAt:      transfer.OTPExpiresAt,
+			OTPExpiresAt:  timePointer(transfer.OTPExpiresAt),
+			OTPVerifiedAt: transfer.OTPVerifiedAt,
+			CompletedAt:   transfer.CompletedAt,
+			FailedAt:      transfer.FailedAt,
+			CancelledAt:   transfer.CancelledAt,
+		})
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+	return statuses, nil
+}
+
 func NewRiskAssessmentRepository(client *mongodrv.Client, dbName string) *RiskAssessmentRepository {
 	return &RiskAssessmentRepository{
 		client:       client,
@@ -402,6 +435,16 @@ func (r *RiskAssessmentRepository) Summarize(ctx context.Context, from, to time.
 		summary.RiskLevels = []RiskAssessmentLevelCount{}
 	}
 
+	expiresAt := time.Now().UTC()
+	expiredStatus := bson.D{{Key: "$cond", Value: bson.A{
+		bson.D{{Key: "$and", Value: bson.A{
+			bson.D{{Key: "$eq", Value: bson.A{"$transaction.status", "awaiting_otp"}}},
+			bson.D{{Key: "$ne", Value: bson.A{"$transaction.otp_expires_at", nil}}},
+			bson.D{{Key: "$lte", Value: bson.A{"$transaction.otp_expires_at", expiresAt}}},
+		}}},
+		"expired",
+		"$transaction.status",
+	}}}
 	statusCursor, err := r.collection.Aggregate(ctx, mongodrv.Pipeline{
 		bson.D{{Key: "$match", Value: filter}},
 		bson.D{{Key: "$lookup", Value: bson.D{
@@ -411,7 +454,8 @@ func (r *RiskAssessmentRepository) Summarize(ctx context.Context, from, to time.
 			{Key: "as", Value: "transaction"},
 		}}},
 		bson.D{{Key: "$unwind", Value: bson.D{{Key: "path", Value: "$transaction"}, {Key: "preserveNullAndEmptyArrays", Value: true}}}},
-		bson.D{{Key: "$group", Value: bson.D{{Key: "_id", Value: "$transaction.status"}, {Key: "count", Value: bson.D{{Key: "$sum", Value: 1}}}}}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: "status", Value: expiredStatus}}}},
+		bson.D{{Key: "$group", Value: bson.D{{Key: "_id", Value: "$status"}, {Key: "count", Value: bson.D{{Key: "$sum", Value: 1}}}}}},
 		bson.D{{Key: "$sort", Value: bson.D{{Key: "_id", Value: 1}}}},
 	})
 	if err != nil {

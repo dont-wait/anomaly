@@ -92,6 +92,7 @@ export async function consumeRiskStream(
   cursor: string,
   onEvent: (event: RiskStreamEvent, cursor: string) => void,
   signal: AbortSignal,
+  onConnected?: () => void,
 ): Promise<void> {
   const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
   const response = await fetch(`${API_BASE_URL}/api/admin/monitor/stream${query}`, {
@@ -102,6 +103,7 @@ export async function consumeRiskStream(
     throw new MonitorApiError("Không thể kết nối luồng realtime", response.status);
   }
   if (!response.body) throw new MonitorApiError("Luồng realtime không có dữ liệu");
+  onConnected?.();
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
