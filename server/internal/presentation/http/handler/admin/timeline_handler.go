@@ -227,7 +227,8 @@ func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *account
 		if bankingCandidate == nil && auditCandidate == nil {
 			break
 		}
-		if auditCandidate == nil || (bankingCandidate != nil && timelineCandidateAfter(bankingCandidate, auditCandidate)) {
+		selected := selectTimelineCandidate(bankingCandidate, auditCandidate)
+		if selected == bankingCandidate {
 			items = append(items, bankingCandidate.item)
 			positions.BankingRevision = int64Pointer(bankingCandidate.next)
 			bankingCandidate = nil
@@ -269,6 +270,16 @@ func timelineCandidateAfter(left, right *timelineCandidate) bool {
 		return timelineKey(left.item) > timelineKey(right.item)
 	}
 	return left.item.OccurredAt.After(right.item.OccurredAt)
+}
+
+func selectTimelineCandidate(banking, audit *timelineCandidate) *timelineCandidate {
+	if banking == nil {
+		return audit
+	}
+	if audit == nil || timelineCandidateAfter(banking, audit) {
+		return banking
+	}
+	return audit
 }
 
 func int64Pointer(value int64) *int64 { return &value }

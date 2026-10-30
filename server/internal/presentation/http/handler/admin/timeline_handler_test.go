@@ -102,6 +102,72 @@ func TestTimelineCursorRoundTripStoresBothStreamPositions(t *testing.T) {
 	}
 }
 
+func TestSelectTimelineCandidateMergesBankingAndAuditByOccurrence(t *testing.T) {
+	banking := &timelineCandidate{item: timelineItemDTO{EventID: "banking-event", OccurredAt: time.Date(2026, 10, 30, 8, 0, 0, 0, time.UTC), SourceStream: journal.BankStream}}
+	audit := &timelineCandidate{item: timelineItemDTO{EventID: "audit-event", OccurredAt: time.Date(2026, 10, 30, 7, 0, 0, 0, time.UTC), SourceStream: auditAccountPrefix + "account-1"}}
+
+	if selected := selectTimelineCandidate(banking, audit); selected != banking {
+		t.Fatalf("selected candidate = %#v, want banking candidate", selected)
+	}
+	if selected := selectTimelineCandidate(audit, banking); selected != banking {
+		t.Fatalf("selected candidate = %#v, want banking candidate regardless of argument order", selected)
+	}
+}
+
+func TestSelectTimelineCandidateUsesStableTieBreak(t *testing.T) {
+	when := time.Date(2026, 10, 30, 8, 0, 0, 0, time.UTC)
+	banking := &timelineCandidate{item: timelineItemDTO{EventID: "banking-event", OccurredAt: when, SourceStream: journal.BankStream, SourceRevision: 2}}
+	audit := &timelineCandidate{item: timelineItemDTO{EventID: "audit-event", OccurredAt: when, SourceStream: auditAccountPrefix + "account-1", SourceRevision: 1}}
+
+	if selected := selectTimelineCandidate(banking, audit); selected != banking {
+		t.Fatalf("selected candidate = %#v, want stable key ordering", selected)
+	}
+}
+
+func TestTimelineMatchesFiltersCategoryAndInclusiveDateRange(t *testing.T) {
+	from := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		item     timelineItemDTO
+		category string
+		want     bool
+	}{
+		{
+			name:     "matches category and start boundary",
+			item:     timelineItemDTO{Category: "otp", OccurredAt: from},
+			category: "otp",
+			want:     true,
+		},
+		{
+			name:     "rejects different category",
+			item:     timelineItemDTO{Category: "login", OccurredAt: from},
+			category: "otp",
+			want:     false,
+		},
+		{
+			name:     "all category accepts matching event",
+			item:     timelineItemDTO{Category: "transfer", OccurredAt: from.Add(24 * time.Hour)},
+			category: "all",
+			want:     true,
+		},
+		{
+			name:     "rejects end boundary",
+			item:     timelineItemDTO{Category: "otp", OccurredAt: to},
+			category: "otp",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := timelineMatches(tt.item, from, to, tt.category); got != tt.want {
+				t.Fatalf("timelineMatches() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTimelineCursorRejectsDifferentQuery(t *testing.T) {
 	cursor := timelineCursor{Version: timelineCursorV2, AccountID: "account-1", Category: "all", From: "2026-10-01", To: "2026-10-30", BankingRevision: int64Pointer(12), AuditRevision: int64Pointer(7)}
 	if err := validateTimelineCursor(cursor, "account-2", "all", "2026-10-01", "2026-10-30"); err == nil {
