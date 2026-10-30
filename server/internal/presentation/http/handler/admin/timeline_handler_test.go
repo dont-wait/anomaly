@@ -90,24 +90,15 @@ func TestBankingTimelineItemDoesNotShowSourceOnlyEventForDestination(t *testing.
 	}
 }
 
-func TestTimelinePaginationUsesStableCursor(t *testing.T) {
-	when := time.Date(2026, 10, 30, 7, 0, 0, 0, time.UTC)
-	items := []timelineEvent{
-		{Item: timelineItemDTO{EventID: "3", OccurredAt: when, SourceStream: "banking", SourceRevision: 3}, Key: "banking:00000000000000000003:3"},
-		{Item: timelineItemDTO{EventID: "2", OccurredAt: when, SourceStream: "banking", SourceRevision: 2}, Key: "banking:00000000000000000002:2"},
-		{Item: timelineItemDTO{EventID: "1", OccurredAt: when.Add(-time.Minute), SourceStream: "banking", SourceRevision: 1}, Key: "banking:00000000000000000001:1"},
-	}
-	page, next, more := paginateTimeline(items, timelineCursor{}, 2)
-	if len(page) != 2 || next == "" || !more {
-		t.Fatalf("first page = %d/%q/%v, want two items, cursor, more", len(page), next, more)
-	}
-	cursor, err := decodeTimelineCursor(next)
+func TestTimelineCursorRoundTripStoresBothStreamPositions(t *testing.T) {
+	cursor := timelineCursor{BankingRevision: int64Pointer(12), AuditRevision: int64Pointer(7)}
+	encoded := encodeTimelineCursor(cursor)
+	decoded, err := decodeTimelineCursor(encoded)
 	if err != nil {
 		t.Fatalf("decode cursor error = %v", err)
 	}
-	page, next, more = paginateTimeline(items, cursor, 2)
-	if len(page) != 1 || next != "" || more || page[0].EventID != "1" {
-		t.Fatalf("second page = %#v/%q/%v, want event 1 and end", page, next, more)
+	if decoded.BankingRevision == nil || *decoded.BankingRevision != 12 || decoded.AuditRevision == nil || *decoded.AuditRevision != 7 {
+		t.Fatalf("decoded cursor = %+v, want banking=12 audit=7", decoded)
 	}
 }
 

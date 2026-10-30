@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -26,8 +25,8 @@ const (
 	bankingStream       = journal.BankStream
 	auditAccountPrefix  = "audit-account-"
 	maxTimelineScan     = 10000
-	defaultTimelinePage = 50
-	maxTimelinePage     = 200
+	defaultTimelinePage = 20
+	maxTimelinePage     = 20
 )
 
 type accountTimelineLookup interface {
@@ -52,7 +51,7 @@ func RegisterTimelineRoutes(router *openapi.Registry, handler *TimelineHandler, 
 			{Name: "from", In: "query", Type: "string", Example: "2026-10-01"},
 			{Name: "to", In: "query", Type: "string", Example: "2026-10-30"},
 			{Name: "category", In: "query", Type: "string", Example: "all"},
-			{Name: "limit", In: "query", Type: "integer", Example: "50"},
+			{Name: "limit", In: "query", Type: "integer", Example: "20"},
 			{Name: "cursor", In: "query", Type: "string"},
 		},
 		Response: timelineResponse{}, FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusInternalServerError},
@@ -60,8 +59,8 @@ func RegisterTimelineRoutes(router *openapi.Registry, handler *TimelineHandler, 
 }
 
 type timelineCursor struct {
-	OccurredAt time.Time `json:"occurredAt"`
-	Key        string    `json:"key"`
+	BankingRevision *int64 `json:"bankingRevision,omitempty"`
+	AuditRevision   *int64 `json:"auditRevision,omitempty"`
 }
 
 type timelineAccountDTO struct {
@@ -94,11 +93,6 @@ type timelineResponse struct {
 	Items      []timelineItemDTO  `json:"items"`
 	NextCursor string             `json:"nextCursor,omitempty"`
 	HasMore    bool               `json:"hasMore"`
-}
-
-type timelineEvent struct {
-	Item timelineItemDTO
-	Key  string
 }
 
 func (h *TimelineHandler) Events(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +129,7 @@ func (h *TimelineHandler) Events(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, err := h.loadTimeline(ctx, account, from, to, category)
+	items, next, hasMore, err := h.loadTimelinePage(ctx, account, from, to, category, cursor, limit)
 	if err != nil {
 		if errors.Is(err, errTimelineTooLarge) {
 			http.Error(w, "history is too large; narrow the date range", http.StatusRequestEntityTooLarge)
@@ -144,10 +138,9 @@ func (h *TimelineHandler) Events(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not load account history", http.StatusInternalServerError)
 		return
 	}
-	page, next, hasMore := paginateTimeline(items, cursor, limit)
 	response := timelineResponse{
 		Account:    accountDTO(account),
-		Items:      page,
+		Items:      items,
 		NextCursor: next,
 		HasMore:    hasMore,
 	}
@@ -189,45 +182,127 @@ func accountDTO(account *accountdomain.UserAccount) timelineAccountDTO {
 	return timelineAccountDTO{ID: account.Id, AccountNo: account.AccountNo, Username: account.Username, Email: account.Email, Customer: name, Currency: string(account.Currency), Status: string(account.Status), Balance: account.Balance.Current}
 }
 
-func (h *TimelineHandler) loadTimeline(ctx context.Context, account *accountdomain.UserAccount, from, to time.Time, category string) ([]timelineEvent, error) {
+type timelineCandidate struct {
+	item     timelineItemDTO
+	revision int64
+	next     int64
+	source   string
+}
+
+func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *accountdomain.UserAccount, from, to time.Time, category string, cursor timelineCursor, limit int) ([]timelineItemDTO, string, bool, error) {
 	financialID := journal.FinancialAccountID(account.Id)
-	items := make([]timelineEvent, 0)
-	banking, err := readTimelineStream(ctx, h.client, bankingStream, maxTimelineScan)
-	if err != nil {
-		return nil, err
-	}
-	for _, recorded := range banking {
-		item, ok, decodeErr := bankingTimelineItem(recorded, account.Id, financialID)
-		if decodeErr != nil {
-			return nil, decodeErr
+	positions := cursor
+	budget := maxTimelineScan
+	var bankingCandidate, auditCandidate *timelineCandidate
+	items := make([]timelineItemDTO, 0, limit)
+
+	for len(items) < limit {
+		var err error
+		if bankingCandidate == nil {
+			bankingCandidate, positions.BankingRevision, err = h.nextBankingCandidate(ctx, account.Id, financialID, from, to, category, positions.BankingRevision, &budget)
+			if err != nil {
+				return nil, "", false, err
+			}
 		}
-		if ok && timelineMatches(item, from, to, category) {
-			items = append(items, timelineEvent{Item: item, Key: timelineKey(item)})
+		if auditCandidate == nil {
+			auditCandidate, positions.AuditRevision, err = h.nextAuditCandidate(ctx, from, to, category, positions.AuditRevision, &budget, account.Id)
+			if err != nil {
+				return nil, "", false, err
+			}
+		}
+		if bankingCandidate == nil && auditCandidate == nil {
+			break
+		}
+		if auditCandidate == nil || (bankingCandidate != nil && timelineCandidateAfter(bankingCandidate, auditCandidate)) {
+			items = append(items, bankingCandidate.item)
+			positions.BankingRevision = int64Pointer(bankingCandidate.next)
+			bankingCandidate = nil
+		} else {
+			items = append(items, auditCandidate.item)
+			positions.AuditRevision = int64Pointer(auditCandidate.next)
+			auditCandidate = nil
 		}
 	}
 
-	auditEvents, err := readTimelineStream(ctx, h.client, auditAccountPrefix+account.Id, maxTimelineScan)
-	if err != nil && !resourceMissingTimeline(err) {
-		return nil, err
+	if bankingCandidate == nil {
+		var err error
+		bankingCandidate, positions.BankingRevision, err = h.nextBankingCandidate(ctx, account.Id, financialID, from, to, category, positions.BankingRevision, &budget)
+		if err != nil {
+			return nil, "", false, err
+		}
 	}
-	for _, recorded := range auditEvents {
+	if auditCandidate == nil {
+		var err error
+		auditCandidate, positions.AuditRevision, err = h.nextAuditCandidate(ctx, from, to, category, positions.AuditRevision, &budget, account.Id)
+		if err != nil {
+			return nil, "", false, err
+		}
+	}
+	hasMore := bankingCandidate != nil || auditCandidate != nil
+	if !hasMore {
+		return items, "", false, nil
+	}
+	return items, encodeTimelineCursor(positions), true, nil
+}
+
+func timelineCandidateAfter(left, right *timelineCandidate) bool {
+	if left.item.OccurredAt.Equal(right.item.OccurredAt) {
+		return timelineKey(left.item) > timelineKey(right.item)
+	}
+	return left.item.OccurredAt.After(right.item.OccurredAt)
+}
+
+func int64Pointer(value int64) *int64 { return &value }
+
+func (h *TimelineHandler) nextBankingCandidate(ctx context.Context, accountID, financialID string, from, to time.Time, category string, position *int64, budget *int) (*timelineCandidate, *int64, error) {
+	for *budget > 0 {
+		(*budget)--
+		recorded, found, err := readOneTimelineEvent(ctx, h.client, bankingStream, position)
+		if err != nil {
+			return nil, position, err
+		}
+		if !found {
+			return nil, int64Pointer(-1), nil
+		}
+		item, ok, err := bankingTimelineItem(recorded, accountID, financialID)
+		if err != nil {
+			return nil, position, err
+		}
+		next := int64(recorded.Revision) - 1
+		if ok && timelineMatches(item, from, to, category) {
+			return &timelineCandidate{item: item, revision: int64(recorded.Revision), next: next, source: bankingStream}, int64Pointer(int64(recorded.Revision)), nil
+		}
+		position = int64Pointer(next)
+	}
+	return nil, position, errTimelineTooLarge
+}
+
+func (h *TimelineHandler) nextAuditCandidate(ctx context.Context, from, to time.Time, category string, position *int64, budget *int, accountID string) (*timelineCandidate, *int64, error) {
+	streamID := auditAccountPrefix + accountID
+	for *budget > 0 {
+		(*budget)--
+		recorded, found, err := readOneTimelineEvent(ctx, h.client, streamID, position)
+		if err != nil {
+			if resourceMissingTimeline(err) {
+				return nil, int64Pointer(-1), nil
+			}
+			return nil, position, err
+		}
+		if !found {
+			return nil, int64Pointer(-1), nil
+		}
 		var event audit.Event
 		if err := json.Unmarshal(recorded.Data, &event); err != nil {
-			return nil, err
+			return nil, position, err
 		}
 		item, ok := auditTimelineItem(recorded, event)
+		next := int64(recorded.Revision) - 1
 		if ok && timelineMatches(item, from, to, category) {
-			items = append(items, timelineEvent{Item: item, Key: timelineKey(item)})
+			return &timelineCandidate{item: item, revision: int64(recorded.Revision), next: next, source: streamID}, int64Pointer(int64(recorded.Revision)), nil
 		}
+		position = int64Pointer(next)
 	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].Item.OccurredAt.Equal(items[j].Item.OccurredAt) {
-			return items[i].Key > items[j].Key
-		}
-		return items[i].Item.OccurredAt.After(items[j].Item.OccurredAt)
-	})
-	return items, nil
+	return nil, position, errTimelineTooLarge
 }
 
 type timelineRecorded struct {
@@ -239,47 +314,30 @@ type timelineRecorded struct {
 	Created  time.Time
 }
 
-func readTimelineStream(ctx context.Context, client *esdb.Client, streamID string, max int) ([]timelineRecorded, error) {
+func readOneTimelineEvent(ctx context.Context, client *esdb.Client, streamID string, position *int64) (timelineRecorded, bool, error) {
 	if client == nil {
-		return nil, errors.New("event store is unavailable")
+		return timelineRecorded{}, false, errors.New("event store is unavailable")
 	}
-	const pageSize = 4096
-	result := make([]timelineRecorded, 0)
-	opts := esdb.ReadStreamOptions{From: esdb.Start{}}
-	for {
-		stream, err := client.ReadStream(ctx, streamID, opts, pageSize)
-		if err != nil {
-			return nil, err
-		}
-		count := 0
-		var last uint64
-		for {
-			event, err := stream.Recv()
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if err != nil {
-				if resourceMissingTimeline(err) && count == 0 {
-					stream.Close()
-					return result, nil
-				}
-				stream.Close()
-				return nil, err
-			}
-			count++
-			last = event.Event.EventNumber
-			if len(result) >= max {
-				stream.Close()
-				return nil, errTimelineTooLarge
-			}
-			result = append(result, timelineRecorded{StreamID: streamID, EventID: event.Event.EventID.String(), Type: event.Event.EventType, Revision: event.Event.EventNumber, Data: append([]byte(nil), event.Event.Data...), Created: event.Event.CreatedDate})
-		}
-		stream.Close()
-		if count < pageSize {
-			return result, nil
-		}
-		opts = esdb.ReadStreamOptions{From: esdb.Revision(last + 1)}
+	if position != nil && *position < 0 {
+		return timelineRecorded{}, false, nil
 	}
+	from := esdb.StreamPosition(esdb.End{})
+	if position != nil {
+		from = esdb.Revision(uint64(*position))
+	}
+	stream, err := client.ReadStream(ctx, streamID, esdb.ReadStreamOptions{Direction: esdb.Backwards, From: from}, 1)
+	if err != nil {
+		return timelineRecorded{}, false, err
+	}
+	defer stream.Close()
+	event, err := stream.Recv()
+	if errors.Is(err, io.EOF) {
+		return timelineRecorded{}, false, nil
+	}
+	if err != nil {
+		return timelineRecorded{}, false, err
+	}
+	return timelineRecorded{StreamID: streamID, EventID: event.Event.EventID.String(), Type: event.Event.EventType, Revision: event.Event.EventNumber, Data: append([]byte(nil), event.Event.Data...), Created: event.Event.CreatedDate}, true, nil
 }
 
 func resourceMissingTimeline(err error) bool {
@@ -480,7 +538,7 @@ func decodeTimelineCursor(value string) (timelineCursor, error) {
 		return timelineCursor{}, err
 	}
 	var cursor timelineCursor
-	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.OccurredAt.IsZero() || cursor.Key == "" {
+	if err := json.Unmarshal(payload, &cursor); err != nil || (cursor.BankingRevision == nil && cursor.AuditRevision == nil) {
 		return timelineCursor{}, errors.New("invalid cursor")
 	}
 	return cursor, nil
@@ -488,31 +546,4 @@ func decodeTimelineCursor(value string) (timelineCursor, error) {
 
 func timelineKey(item timelineItemDTO) string {
 	return fmt.Sprintf("%s:%020d:%s", item.SourceStream, item.SourceRevision, item.EventID)
-}
-
-func paginateTimeline(items []timelineEvent, cursor timelineCursor, limit int) ([]timelineItemDTO, string, bool) {
-	start := 0
-	if !cursor.OccurredAt.IsZero() {
-		for start < len(items) {
-			item := items[start]
-			if item.Item.OccurredAt.Before(cursor.OccurredAt) || (item.Item.OccurredAt.Equal(cursor.OccurredAt) && item.Key < cursor.Key) {
-				break
-			}
-			start++
-		}
-	}
-	end := start + limit
-	if end > len(items) {
-		end = len(items)
-	}
-	page := make([]timelineItemDTO, 0, end-start)
-	for _, item := range items[start:end] {
-		page = append(page, item.Item)
-	}
-	hasMore := end < len(items)
-	if !hasMore || len(page) == 0 {
-		return page, "", hasMore
-	}
-	last := items[end-1]
-	return page, encodeTimelineCursor(timelineCursor{OccurredAt: last.Item.OccurredAt, Key: last.Key}), true
 }
