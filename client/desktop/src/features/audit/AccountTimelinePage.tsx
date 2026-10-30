@@ -9,6 +9,14 @@ const subtle = "bg-(--admin-surface-subtle)";
 const mono = "font-(family-name:--admin-font-mono)";
 const PAGE_LIMIT = 20;
 
+type AppliedTimelineQuery = {
+  input: string;
+  accountId: string;
+  category: TimelineCategory;
+  from: string;
+  to: string;
+};
+
 const categoryLabels: Record<TimelineCategory, string> = {
   all: "Tất cả event",
   account: "Tài khoản",
@@ -141,6 +149,7 @@ export function AccountTimelinePage() {
   const [to, setTo] = useState("");
   const [result, setResult] = useState<TimelineResponse | null>(null);
   const [items, setItems] = useState<TimelineItem[]>([]);
+  const [appliedQuery, setAppliedQuery] = useState<AppliedTimelineQuery | null>(null);
   const [page, setPage] = useState(1);
   const [pageCursors, setPageCursors] = useState<Array<string | undefined>>([undefined]);
   const [loading, setLoading] = useState(false);
@@ -149,16 +158,24 @@ export function AccountTimelinePage() {
   const accountInputRef = useRef<HTMLInputElement>(null);
 
   const groups = useMemo(() => groupedItems(items), [items]);
+  const draftChanged = appliedQuery !== null && (
+    appliedQuery.input !== accountInput.trim()
+    || appliedQuery.category !== category
+    || appliedQuery.from !== from
+    || appliedQuery.to !== to
+  );
 
   async function search(event?: FormEvent) {
     event?.preventDefault();
     const account = accountInput.trim();
     if (!account) {
       setError("");
+      setNotFound(false);
       accountInputRef.current?.focus();
       return;
     }
     if ((from && !to) || (!from && to) || (from && to && from > to)) {
+      setNotFound(false);
       setError("Khoảng ngày không hợp lệ.");
       return;
     }
@@ -171,6 +188,7 @@ export function AccountTimelinePage() {
       const response = await getAccountTimeline(account, { category, from: from || undefined, to: to || undefined, limit: PAGE_LIMIT });
       setResult(response);
       setItems(response.items);
+      setAppliedQuery({ input: account, accountId: response.account.id, category, from, to });
       setPageCursors(response.nextCursor ? [undefined, response.nextCursor] : [undefined]);
     } catch (reason) {
       setResult(null);
@@ -184,11 +202,11 @@ export function AccountTimelinePage() {
   }
 
   async function loadPage(pageCursor: string | undefined, targetPage: number) {
-    if (loading) return;
+    if (loading || !appliedQuery || draftChanged) return;
     setLoading(true);
     setError("");
     try {
-      const response = await getAccountTimeline(accountInput.trim(), { category, from: from || undefined, to: to || undefined, limit: PAGE_LIMIT, cursor: pageCursor });
+      const response = await getAccountTimeline(appliedQuery.accountId, { category: appliedQuery.category, from: appliedQuery.from || undefined, to: appliedQuery.to || undefined, limit: PAGE_LIMIT, cursor: pageCursor });
       setResult(response);
       setItems(response.items);
       setPage(targetPage);
@@ -241,9 +259,9 @@ export function AccountTimelinePage() {
         </div>
         {groups.length === 0 ? <div className={`${surface} grid min-h-48 place-items-center rounded-(--admin-radius-md) border border-(--admin-border) text-[12px] text-(--admin-text-muted)`}>Không có event trong điều kiện đã chọn.</div> : groups.map(([day, dayItems]) => <section key={day} className="grid gap-2"><h2 className={`${mono} px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-(--admin-text-muted)`}>{formatDay(day)}</h2>{dayItems.map((item) => <TimelineCard key={`${item.sourceStream}:${item.sourceRevision}:${item.eventId}`} item={item} currency={result.account.currency} />)}</section>)}
         <div className="flex items-center justify-center gap-3 pt-1">
-          <button className={`${surface} h-9 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} type="button" onClick={() => void loadPage(pageCursors[page - 2], page - 1)} disabled={loading || page === 1}>{"← Trang trước"}</button>
+          <button className={`${surface} h-9 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} type="button" onClick={() => void loadPage(pageCursors[page - 2], page - 1)} disabled={loading || page === 1 || !appliedQuery || draftChanged}>{"← Trang trước"}</button>
           <span className={`${mono} min-w-18 text-center text-[11px] text-(--admin-text-muted)`}>Trang {page}</span>
-          <button className={`${surface} h-9 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} type="button" onClick={() => void loadPage(result.nextCursor, page + 1)} disabled={loading || !result.hasMore}>{"Trang sau →"}</button>
+          <button className={`${surface} h-9 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} type="button" onClick={() => void loadPage(result.nextCursor, page + 1)} disabled={loading || !result.hasMore || !appliedQuery || draftChanged}>{"Trang sau →"}</button>
         </div>
       </section>}
     </div>

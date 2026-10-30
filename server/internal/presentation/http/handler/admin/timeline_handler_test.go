@@ -91,14 +91,38 @@ func TestBankingTimelineItemDoesNotShowSourceOnlyEventForDestination(t *testing.
 }
 
 func TestTimelineCursorRoundTripStoresBothStreamPositions(t *testing.T) {
-	cursor := timelineCursor{BankingRevision: int64Pointer(12), AuditRevision: int64Pointer(7)}
+	cursor := timelineCursor{Version: timelineCursorV2, AccountID: "account-1", Category: "all", From: "2026-10-01", To: "2026-10-30", BankingRevision: int64Pointer(12), AuditRevision: int64Pointer(7)}
 	encoded := encodeTimelineCursor(cursor)
 	decoded, err := decodeTimelineCursor(encoded)
 	if err != nil {
 		t.Fatalf("decode cursor error = %v", err)
 	}
-	if decoded.BankingRevision == nil || *decoded.BankingRevision != 12 || decoded.AuditRevision == nil || *decoded.AuditRevision != 7 {
+	if decoded.Version != timelineCursorV2 || decoded.AccountID != "account-1" || decoded.Category != "all" || decoded.From != "2026-10-01" || decoded.To != "2026-10-30" || decoded.BankingRevision == nil || *decoded.BankingRevision != 12 || decoded.AuditRevision == nil || *decoded.AuditRevision != 7 {
 		t.Fatalf("decoded cursor = %+v, want banking=12 audit=7", decoded)
+	}
+}
+
+func TestTimelineCursorRejectsDifferentQuery(t *testing.T) {
+	cursor := timelineCursor{Version: timelineCursorV2, AccountID: "account-1", Category: "all", From: "2026-10-01", To: "2026-10-30", BankingRevision: int64Pointer(12), AuditRevision: int64Pointer(7)}
+	if err := validateTimelineCursor(cursor, "account-2", "all", "2026-10-01", "2026-10-30"); err == nil {
+		t.Fatal("validateTimelineCursor() accepted a different account")
+	}
+	if err := validateTimelineCursor(cursor, "account-1", "otp", "2026-10-01", "2026-10-30"); err == nil {
+		t.Fatal("validateTimelineCursor() accepted a different category")
+	}
+	if err := validateTimelineCursor(cursor, "account-1", "all", "2026-09-01", "2026-09-30"); err == nil {
+		t.Fatal("validateTimelineCursor() accepted a different date range")
+	}
+}
+
+func TestDecodeTimelineCursorRejectsLegacyOrPartialCursor(t *testing.T) {
+	legacy := encodeTimelineCursor(timelineCursor{BankingRevision: int64Pointer(12), AuditRevision: int64Pointer(7)})
+	if _, err := decodeTimelineCursor(legacy); err == nil {
+		t.Fatal("decodeTimelineCursor() accepted a legacy cursor")
+	}
+	partial := encodeTimelineCursor(timelineCursor{Version: timelineCursorV2, AccountID: "account-1", Category: "all", BankingRevision: int64Pointer(12)})
+	if _, err := decodeTimelineCursor(partial); err == nil {
+		t.Fatal("decodeTimelineCursor() accepted a partial cursor")
 	}
 }
 

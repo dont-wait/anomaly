@@ -59,4 +59,24 @@ describe("AccountTimelinePage", () => {
     expect(screen.getByText("Giao dịch: tx-1")).toBeTruthy();
     await waitFor(() => expect(getAccountTimeline).toHaveBeenCalledWith("ACC-0001", expect.objectContaining({ category: "all" })));
   });
+
+  it("uses the submitted query and cursor for pagination", async () => {
+    vi.mocked(getAccountTimeline)
+      .mockResolvedValueOnce({ ...response, nextCursor: "cursor-1", hasMore: true })
+      .mockResolvedValueOnce({ ...response, nextCursor: undefined, hasMore: false });
+    render(<AccountTimelinePage />);
+
+    fireEvent.change(screen.getByPlaceholderText(/Account ID/i), { target: { value: "ACC-0001" } });
+    fireEvent.click(screen.getByRole("button", { name: "Xem lịch sử" }));
+    await screen.findByText("Alice Nguyen");
+
+    const nextButton = screen.getByRole("button", { name: "Trang sau →" }) as HTMLButtonElement;
+    expect(nextButton.disabled).toBe(false);
+    fireEvent.click(nextButton);
+
+    await waitFor(() => expect(getAccountTimeline).toHaveBeenNthCalledWith(2, "account-1", expect.objectContaining({ category: "all", cursor: "cursor-1", limit: 20 })));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Loại event" }), { target: { value: "otp" } });
+    expect((screen.getByRole("button", { name: "Trang sau →" }) as HTMLButtonElement).disabled).toBe(true);
+  });
 });

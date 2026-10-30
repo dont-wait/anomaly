@@ -27,6 +27,7 @@ const (
 	maxTimelineScan     = 10000
 	defaultTimelinePage = 20
 	maxTimelinePage     = 20
+	timelineCursorV2    = 2
 )
 
 type accountTimelineLookup interface {
@@ -59,6 +60,11 @@ func RegisterTimelineRoutes(router *openapi.Registry, handler *TimelineHandler, 
 }
 
 type timelineCursor struct {
+	Version         int    `json:"version"`
+	AccountID       string `json:"accountId"`
+	Category        string `json:"category"`
+	From            string `json:"from"`
+	To              string `json:"to"`
 	BankingRevision *int64 `json:"bankingRevision,omitempty"`
 	AuditRevision   *int64 `json:"auditRevision,omitempty"`
 }
@@ -114,6 +120,8 @@ func (h *TimelineHandler) Events(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	fromRaw := strings.TrimSpace(r.URL.Query().Get("from"))
+	toRaw := strings.TrimSpace(r.URL.Query().Get("to"))
 	category := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("category")))
 	if category == "" {
 		category = "all"
@@ -128,8 +136,14 @@ func (h *TimelineHandler) Events(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid cursor", http.StatusBadRequest)
 		return
 	}
+	if strings.TrimSpace(r.URL.Query().Get("cursor")) != "" {
+		if err := validateTimelineCursor(cursor, account.Id, category, fromRaw, toRaw); err != nil {
+			http.Error(w, "cursor does not match the requested timeline", http.StatusBadRequest)
+			return
+		}
+	}
 
-	items, next, hasMore, err := h.loadTimelinePage(ctx, account, from, to, category, cursor, limit)
+	items, next, hasMore, err := h.loadTimelinePage(ctx, account, from, to, fromRaw, toRaw, category, cursor, limit)
 	if err != nil {
 		if errors.Is(err, errTimelineTooLarge) {
 			http.Error(w, "history is too large; narrow the date range", http.StatusRequestEntityTooLarge)
@@ -189,7 +203,7 @@ type timelineCandidate struct {
 	source   string
 }
 
-func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *accountdomain.UserAccount, from, to time.Time, category string, cursor timelineCursor, limit int) ([]timelineItemDTO, string, bool, error) {
+func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *accountdomain.UserAccount, from, to time.Time, fromRaw, toRaw, category string, cursor timelineCursor, limit int) ([]timelineItemDTO, string, bool, error) {
 	financialID := journal.FinancialAccountID(account.Id)
 	positions := cursor
 	budget := maxTimelineScan
@@ -242,6 +256,11 @@ func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *account
 	if !hasMore {
 		return items, "", false, nil
 	}
+	positions.Version = timelineCursorV2
+	positions.AccountID = account.Id
+	positions.Category = category
+	positions.From = fromRaw
+	positions.To = toRaw
 	return items, encodeTimelineCursor(positions), true, nil
 }
 
@@ -538,10 +557,21 @@ func decodeTimelineCursor(value string) (timelineCursor, error) {
 		return timelineCursor{}, err
 	}
 	var cursor timelineCursor
-	if err := json.Unmarshal(payload, &cursor); err != nil || (cursor.BankingRevision == nil && cursor.AuditRevision == nil) {
+	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.Version != timelineCursorV2 || cursor.AccountID == "" || cursor.Category == "" || cursor.BankingRevision == nil || cursor.AuditRevision == nil || invalidTimelineRevision(cursor.BankingRevision) || invalidTimelineRevision(cursor.AuditRevision) {
 		return timelineCursor{}, errors.New("invalid cursor")
 	}
 	return cursor, nil
+}
+
+func invalidTimelineRevision(revision *int64) bool {
+	return revision == nil || *revision < -1
+}
+
+func validateTimelineCursor(cursor timelineCursor, accountID, category, from, to string) error {
+	if cursor.AccountID != accountID || cursor.Category != category || cursor.From != from || cursor.To != to {
+		return errors.New("cursor does not match timeline query")
+	}
+	return nil
 }
 
 func timelineKey(item timelineItemDTO) string {
