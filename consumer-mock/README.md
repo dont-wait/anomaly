@@ -1,9 +1,10 @@
 # Kafka Consumer Mock
 
-Consumer độc lập tối giản cho Kafka. Service này đọc `TransferCreated` envelope
-từ request topic, chọn các field transaction và `model_features` do relay enrich,
-log JSON ra stdout rồi publish risk decision sang response topic. Không phụ thuộc
-vào `server/`; model pipeline thật sẽ được triển khai riêng sau này.
+Consumer độc lập tối giản cho Kafka, mô phỏng model service thật. Service đọc
+`TransferCreated` envelope từ request topic, chọn các field transaction và
+`model_features` do relay enrich, log input rồi publish model response v1 vào
+cùng output topic mà model service thật sử dụng. Server lưu response vào
+collection `risk_decisions`.
 
 ## Configuration
 
@@ -15,9 +16,10 @@ KAFKA_TOPIC=anomaly.bank.events.v1
 KAFKA_OUTPUT_TOPIC=anomaly.bank.risk-decisions.v1
 KAFKA_CONSUMER_GROUP=model-pipeline
 KAFKA_RISK_DECISION_SIGNING_KEY=replace-with-the-server-shared-key
-# PENDING, ALLOW, or BLOCK (cố định, không ngẫu nhiên)
-MOCK_RISK_DECISION=ALLOW
-MOCK_MODEL_VERSION=mock-v1
+MOCK_RISK_SCORE=0.9821
+MOCK_THRESHOLD=0.9517361521720886
+MOCK_MODEL_VERSION=gatv2-device-control-v1
+MOCK_FEATURE_VERSION=schema-3-0b9efd44d793
 ```
 
 Khi chạy cùng server Docker Compose, consumer chạy ngoài Docker nên dùng broker
@@ -51,6 +53,7 @@ Nhập message, ví dụ:
 {
   "event_id": "test-1",
   "event_type": "TransferCreated",
+  "occurred_at": "2026-10-17T00:50:00Z",
   "stream": "banking",
   "stream_revision": 1,
   "schema_version": 2,
@@ -87,9 +90,36 @@ Nhập message, ví dụ:
 }
 ```
 
-Consumer chỉ xử lý `TransferCreated`, log model input và publish risk decision
-sang `KAFKA_OUTPUT_TOPIC`. Đặt `MOCK_RISK_DECISION=BLOCK` để mô phỏng giao dịch
-bất thường. Đặt `MOCK_RISK_DECISION=PENDING` để mô phỏng model chưa có kết quả.
+Consumer chỉ xử lý `TransferCreated`, log model input và publish model response
+v1 sang `KAFKA_OUTPUT_TOPIC`. `predicted_label` được tính từ
+`risk_score >= threshold`; thay đổi `MOCK_RISK_SCORE` để mô phỏng assessment
+normal hoặc anomalous.
+
+Output có cùng schema với model service thật:
+
+```json
+{
+  "schema_version": 1,
+  "event_id": "event-123",
+  "transaction_id": "TX001",
+  "occurred_at": "2026-10-19T10:30:00.123456789Z",
+  "scored_at": "2026-10-19T10:30:01.123Z",
+  "risk_score": 0.9821,
+  "predicted_label": 1,
+  "threshold": 0.9517361521720886,
+  "model_version": "gatv2-device-control-v1",
+  "feature_version": "schema-3-0b9efd44d793",
+  "signature": "hmac-sha256-hex"
+}
+```
+
+Kafka message key là:
+
+```text
+transaction_id:model_version:feature_version
+```
+
+Output này là model assessment, không phải quyết định `ALLOW/BLOCK`.
 Các event khác sẽ được ACK và bỏ qua.
 
 Consumer commit offset sau khi publish risk decision thành công. EventStoreDB relay thuộc

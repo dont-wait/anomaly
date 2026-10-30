@@ -27,10 +27,8 @@ TransferCreated
   → commit Kafka offset
 
 Server consume cùng topic
-  → phân loại schema assessment / decision
   → xác minh schema + HMAC
-  → assessment: lưu risk_assessments
-  → decision hiện có: lưu risk_decisions
+  → lưu model assessment vào risk_decisions
   → commit offset sau khi lưu/park thành công
 ```
 
@@ -52,7 +50,7 @@ Server dùng decision này qua luồng `risk_decisions` hiện tại, kiểm tra
 `source_event_id` khớp `TransferCreated` của `transfer_id`. `ALLOW` vẫn yêu cầu OTP
 hợp lệ để hoàn tất giao dịch; `BLOCK` được xử lý theo luồng fail transfer hiện tại.
 Prediction sáu field gốc (kèm threshold/feature version) vẫn giữ trong training
-record. Worker không phát thêm message assessment riêng vào `risk_assessments`.
+record. Worker không phát thêm message assessment riêng ngoài response trên topic này.
 
 **Thay mock:** dừng process `consumer-mock` trước khi tạo giao dịch mới để test
 worker thật. Hai consumer group khác nhau đều nhận cùng event; server giữ terminal
@@ -357,7 +355,6 @@ trong Mongo shell (thay placeholder; các lệnh dưới chỉ đọc):
 use anomaly
 db.risk_decisions.find({transfer_id: {$in: ["<block-transfer-id>", "<allow-transfer-id>"]}})
 db.risk_decisions.countDocuments({transfer_id: "<block-transfer-id>"}) // 1 dù publish hai lần
-db.risk_assessments.countDocuments({transaction_id: "<block-transfer-id>"}) // 0
 db.risk_decision_rejections.find({created_at: {$gte: new Date(Date.now() - 5*60*1000)}}, {reason: 1, topic: 1, partition: 1, offset: 1})
 ```
 
