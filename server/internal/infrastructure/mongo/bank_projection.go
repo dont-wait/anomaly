@@ -213,7 +213,7 @@ func (p *BankProjection) Apply(ctx context.Context, record journal.Record, revis
 				}
 				// Recover API crashes between the canonical append and risk cleanup.
 				// Finalization and the projection checkpoint commit together.
-				if err := NewRiskDecisionRepository(p.client, p.db.Name()).Finalize(sc, tx.ID); err != nil {
+				if err := NewRiskAssessmentRepository(p.client, p.db.Name()).Finalize(sc, tx.ID); err != nil {
 					return nil, err
 				}
 			}

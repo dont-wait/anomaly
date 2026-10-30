@@ -6,6 +6,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
 
 	account "github.com/dont-wait/anomaly/internal/presentation/http/handler/account"
+	admin "github.com/dont-wait/anomaly/internal/presentation/http/handler/admin"
 	loan "github.com/dont-wait/anomaly/internal/presentation/http/handler/loan"
 	media "github.com/dont-wait/anomaly/internal/presentation/http/handler/media"
 	otp "github.com/dont-wait/anomaly/internal/presentation/http/handler/otp"
@@ -21,16 +22,33 @@ import (
 // thuộc trực tiếp vào infrastructure, đúng dependency rule của Clean
 // Architecture.
 func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, loanHandlers ...*loan.Handler) *http.ServeMux {
-	return NewRouterWithSavings(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, loanHandlers...)
+	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, nil, loanHandlers...)
 }
 
-// NewRouterWithSavings adds the savings GĐ2 API without changing existing NewRouter callers.
+// NewRouterWithSavings adds the Savings API while preserving older callers.
 func NewRouterWithSavings(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, loanHandlers ...*loan.Handler) *http.ServeMux {
+	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, savingsHandler, nil, loanHandlers...)
+}
+
+// NewRouterWithAdminMonitor adds admin monitoring while preserving older callers.
+func NewRouterWithAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, adminMonitorHandler *admin.MonitorHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
+	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, adminMonitorHandler, loanHandlers...)
+}
+
+// NewRouterWithSavingsAndAdminMonitor enables both features on the same API instance.
+func NewRouterWithSavingsAndAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, adminMonitorHandler *admin.MonitorHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
+	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, savingsHandler, adminMonitorHandler, loanHandlers...)
+}
+
+func newRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, adminMonitorHandler *admin.MonitorHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
 	router := openapi.NewRegistry(mux, swaggerEnabled)
 	account.RegisterRoutes(router, accountHandler, tokenSvc)
 	media.RegisterRoutes(router, mediaHandler, tokenSvc)
 	otp.RegisterRoutes(router, otpHandler)
 	transaction.RegisterRoutes(router, transactionHandler, tokenSvc)
+	if adminMonitorHandler != nil {
+		admin.RegisterRoutes(router, adminMonitorHandler, tokenSvc, accountHandler.RequireCurrentAdmin)
+	}
 	if len(loanHandlers) > 0 &&
 		loanHandlers[0] != nil {
 

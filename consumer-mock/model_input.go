@@ -11,6 +11,8 @@ const modelEventType = "TransferCreated"
 
 type bankEventEnvelope struct {
 	EventType     string          `json:"event_type"`
+	EventID       string          `json:"event_id"`
+	OccurredAt    time.Time       `json:"occurred_at"`
 	Payload       json.RawMessage `json:"payload"`
 	ModelFeatures *modelFeatures  `json:"model_features"`
 }
@@ -50,6 +52,7 @@ type transferSnapshot struct {
 }
 
 type modelInput struct {
+	EventID                string     `json:"event_id"`
 	TransactionID          string     `json:"transaction_id"`
 	SourceAccount          string     `json:"source_account"`
 	DestinationAccount     string     `json:"destination_account"`
@@ -78,6 +81,9 @@ func selectModelInput(data []byte) (modelInput, bool, error) {
 	if envelope.EventType != modelEventType {
 		return modelInput{}, false, nil
 	}
+	if strings.TrimSpace(envelope.EventID) == "" {
+		return modelInput{}, true, fmt.Errorf("created event id is missing")
+	}
 	if envelope.ModelFeatures == nil {
 		return modelInput{}, true, fmt.Errorf("created event model features are missing")
 	}
@@ -104,8 +110,13 @@ func selectModelInput(data []byte) (modelInput, bool, error) {
 		return modelInput{}, true, fmt.Errorf("transfer snapshot has invalid amount or created_at")
 	}
 
+	occurredAt := envelope.OccurredAt
+	if occurredAt.IsZero() {
+		occurredAt = transfer.CreatedAt
+	}
 	return modelInput{
 		TransactionID:          transfer.ID,
+		EventID:                envelope.EventID,
 		SourceAccount:          transfer.Source.AccountNo,
 		DestinationAccount:     transfer.Destination.AccountNo,
 		Amount:                 transfer.Amount,
@@ -116,7 +127,7 @@ func selectModelInput(data []byte) (modelInput, bool, error) {
 		DeviceID:               normalizeValue(transfer.DeviceID),
 		IPAddress:              normalizeValue(transfer.ClientIP),
 		Platform:               normalizeEnum(transfer.Platform, "UNKNOWN"),
-		CreatedAt:              transfer.CreatedAt,
+		CreatedAt:              occurredAt,
 		AvgAmount7d:            envelope.ModelFeatures.AvgAmount7d,
 		TxCount1h:              envelope.ModelFeatures.TxCount1h,
 		TxCount24h:             envelope.ModelFeatures.TxCount24h,

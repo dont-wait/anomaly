@@ -34,7 +34,7 @@ func main() {
 		log.Warn("ensure kafka output topic failed; topic will be retried on publish", "error", err)
 	}
 
-	log.Info("kafka model consumer starting", "brokers", cfg.brokers, "topic", cfg.topic, "output_topic", cfg.outputTopic, "consumer_group", cfg.consumerGroup, "decision", cfg.decision)
+	log.Info("kafka model consumer starting", "brokers", cfg.brokers, "topic", cfg.topic, "output_topic", cfg.outputTopic, "consumer_group", cfg.consumerGroup, "risk_score", cfg.riskScore, "threshold", cfg.threshold, "model_version", cfg.modelVersion, "feature_version", cfg.featureVersion)
 	for ctx.Err() == nil {
 		consumer, err := newKafkaConsumer(cfg)
 		if err != nil {
@@ -95,15 +95,7 @@ func modelHandler(log *slog.Logger, producer *kafkaProducer, cfg config) message
 				"new_receiver", input.NewReceiver,
 				"new_device", input.NewDevice,
 			)
-			return producer.publish(ctx, riskDecisionMessage{
-				TransferID:    input.TransactionID,
-				SourceEventID: metadata.EventID,
-				Decision:      cfg.decision,
-				IsAnomalous:   cfg.decision == "BLOCK",
-				RiskScore:     cfg.riskScore,
-				ModelVersion:  cfg.modelVersion,
-				EvaluatedAt:   time.Now().UTC(),
-			})
+			return producer.publish(ctx, input, cfg)
 		}
 		return fmt.Errorf("model input was not selected")
 	}

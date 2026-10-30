@@ -1,0 +1,11 @@
+[
+  {
+    "createIndexes": "risk_decisions",
+    "indexes": [
+      {
+        "key": { "cursor": 1 },
+        "name": "risk_decision_cursor"
+      }
+    ]
+  }
+]

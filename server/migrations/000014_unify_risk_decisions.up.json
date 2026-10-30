@@ -1,0 +1,38 @@
+[
+  {
+    "drop": "risk_assessments"
+  },
+  {
+    "dropIndexes": "risk_decisions",
+    "index": "*"
+  },
+  {
+    "delete": "risk_decisions",
+    "deletes": [
+      {
+        "q": {
+          "$or": [
+            { "transaction_id": { "$exists": false } },
+            { "model_version": { "$exists": false } },
+            { "feature_version": { "$exists": false } }
+          ]
+        },
+        "limit": 0
+      }
+    ]
+  },
+  {
+    "createIndexes": "risk_decisions",
+    "indexes": [
+      {
+        "key": { "transaction_id": 1, "model_version": 1, "feature_version": 1 },
+        "name": "uniq_risk_decision_model_input",
+        "unique": true
+      },
+      {
+        "key": { "received_at": 1, "_id": 1 },
+        "name": "risk_decision_received_at"
+      }
+    ]
+  }
+]

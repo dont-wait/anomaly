@@ -69,11 +69,11 @@ describe("App admin route", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: /Giám sát rủi ro & bất thường hệ thống/i,
+        name: /Giám sát rủi ro giao dịch/i,
       }),
     ).toBeTruthy();
     expect(screen.getAllByText("Admin Staff")).toHaveLength(2);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/auth/me"), expect.anything());
   });
 
   it("renders the shared shell for another protected route", async () => {

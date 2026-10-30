@@ -649,7 +649,9 @@ func (r *BankRepository) ConfirmTransferWithRisk(ctx context.Context, id, owner 
 			return nil, nil, mongorepo.ErrTransactionInsufficient
 		}
 		newSource, newDestination := source-tx.Amount-tx.Fee, destination+tx.Amount
-		tx.Status, tx.PostedAt = "success", time.Now().UTC()
+		completedAt := time.Now().UTC()
+		tx.Status, tx.PostedAt = "success", completedAt
+		tx.OTPVerifiedAt, tx.CompletedAt = &completedAt, &completedAt
 		tx.Authentication.Method, tx.Authentication.Verified = "email_otp", true
 		tx.FailureReason = ""
 		tx.RiskAssessment = assessment
@@ -684,10 +686,12 @@ func (r *BankRepository) FailTransfer(ctx context.Context, id, owner string, ass
 			return nil, nil, err
 		}
 		tx := state.Tx
+		failedAt := time.Now().UTC()
 		tx.Status = "failed"
 		tx.FailureReason = "anomalous_transfer"
+		tx.FailedAt = &failedAt
 		tx.RiskAssessment = &assessment
-		record, err := transferRecord(tx, eventFor(tx, journal.Failed, state.Event.Sequence+1, time.Now().UTC()))
+		record, err := transferRecord(tx, eventFor(tx, journal.Failed, state.Event.Sequence+1, failedAt))
 		return record, tx, err
 	})
 	if err != nil {
@@ -703,8 +707,10 @@ func (r *BankRepository) CancelPending(ctx context.Context, id string) error {
 			return nil, nil, nil
 		}
 		tx := state.Tx
+		cancelledAt := time.Now().UTC()
 		tx.Status = "cancelled"
-		record, err := transferRecord(tx, eventFor(tx, journal.Cancelled, state.Event.Sequence+1, time.Now().UTC()))
+		tx.CancelledAt = &cancelledAt
+		record, err := transferRecord(tx, eventFor(tx, journal.Cancelled, state.Event.Sequence+1, cancelledAt))
 		return record, nil, err
 	})
 	return err
