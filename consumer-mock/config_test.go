@@ -6,6 +6,8 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	t.Setenv("KAFKA_BROKERS", "")
 	t.Setenv("KAFKA_TOPIC", "")
 	t.Setenv("KAFKA_CONSUMER_GROUP", "")
+	t.Setenv("MOCK_RISK_SCORE", "")
+	t.Setenv("MOCK_THRESHOLD", "")
 	t.Setenv("KAFKA_RISK_DECISION_SIGNING_KEY", "test-risk-signing-key")
 
 	cfg, err := loadConfig()
@@ -18,6 +20,9 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	if cfg.topic != "anomaly.bank.events.v1" {
 		t.Fatalf("topic = %q, want anomaly.bank.events.v1", cfg.topic)
 	}
+	if cfg.outputTopic != "anomaly.bank.risk-decisions.v1" || cfg.riskScore != 0.9821 || cfg.threshold != 0.9517361521720886 {
+		t.Fatalf("model output config = %#v, want model response defaults", cfg)
+	}
 	if cfg.consumerGroup != "model-pipeline" {
 		t.Fatalf("consumer group = %q, want model-pipeline", cfg.consumerGroup)
 	}
@@ -27,6 +32,8 @@ func TestLoadConfigUsesEnvironment(t *testing.T) {
 	t.Setenv("KAFKA_BROKERS", "kafka-a:9092, kafka-b:9092")
 	t.Setenv("KAFKA_TOPIC", "events.v1")
 	t.Setenv("KAFKA_CONSUMER_GROUP", "log-reader")
+	t.Setenv("MOCK_RISK_SCORE", "0.1")
+	t.Setenv("MOCK_THRESHOLD", "0.9")
 	t.Setenv("KAFKA_RISK_DECISION_SIGNING_KEY", "test-risk-signing-key")
 
 	cfg, err := loadConfig()
@@ -38,6 +45,9 @@ func TestLoadConfigUsesEnvironment(t *testing.T) {
 	}
 	if cfg.topic != "events.v1" || cfg.consumerGroup != "log-reader" {
 		t.Fatalf("config = %#v, want environment values", cfg)
+	}
+	if cfg.riskScore != 0.1 || cfg.threshold != 0.9 {
+		t.Fatalf("scores = %v/%v, want 0.1/0.9", cfg.riskScore, cfg.threshold)
 	}
 }
 
