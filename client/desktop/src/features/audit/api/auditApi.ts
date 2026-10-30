@@ -29,7 +29,7 @@ export async function getAccountTimeline(
 ): Promise<TimelineResponse> {
   const query = new URLSearchParams({
     category: options.category,
-    limit: String(options.limit || 50),
+    limit: String(options.limit || 20),
   });
   if (options.from && options.to) {
     query.set("from", options.from);

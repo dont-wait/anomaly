@@ -1,12 +1,13 @@
 import { FormEvent, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowDown, faArrowUp, faBolt, faCircleExclamation, faClockRotateLeft, faMagnifyingGlass, faShieldHalved } from "@fortawesome/free-solid-svg-icons";
+import { faArrowDown, faArrowUp, faBolt, faCalendarDays, faCircleExclamation, faClockRotateLeft, faMagnifyingGlass, faShieldHalved } from "@fortawesome/free-solid-svg-icons";
 import { AuditApiError, getAccountTimeline } from "./api/auditApi";
 import type { TimelineCategory, TimelineItem, TimelineResponse } from "./model";
 
 const surface = "bg-(--admin-surface)";
 const subtle = "bg-(--admin-surface-subtle)";
 const mono = "font-(family-name:--admin-font-mono)";
+const PAGE_LIMIT = 20;
 
 const categoryLabels: Record<TimelineCategory, string> = {
   all: "Tất cả event",
@@ -111,6 +112,28 @@ function groupedItems(items: TimelineItem[]) {
   return [...groups.entries()];
 }
 
+function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const openPicker = () => {
+    const input = inputRef.current;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+    } else {
+      input.focus();
+    }
+  };
+
+  return (
+    <div className="flex h-9 items-center rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 focus-within:border-(--admin-primary)">
+      <input ref={inputRef} className="min-w-0 flex-1 appearance-none bg-transparent px-0 text-[12px] text-(--admin-text) outline-none" type="date" aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} />
+      <button className="grid h-6 w-6 shrink-0 place-items-center rounded-sm text-(--admin-text-muted) hover:bg-(--admin-primary-soft) hover:text-(--admin-primary)" type="button" aria-label={`Chọn ${label.toLowerCase()}`} onClick={openPicker}>
+        <FontAwesomeIcon icon={faCalendarDays} className="text-[12px]" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 export function AccountTimelinePage() {
   const [accountInput, setAccountInput] = useState("");
   const [category, setCategory] = useState<TimelineCategory>("all");
@@ -118,7 +141,8 @@ export function AccountTimelinePage() {
   const [to, setTo] = useState("");
   const [result, setResult] = useState<TimelineResponse | null>(null);
   const [items, setItems] = useState<TimelineItem[]>([]);
-  const [cursor, setCursor] = useState<string | undefined>();
+  const [page, setPage] = useState(1);
+  const [pageCursors, setPageCursors] = useState<Array<string | undefined>>([undefined]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notFound, setNotFound] = useState(false);
@@ -141,12 +165,13 @@ export function AccountTimelinePage() {
     setLoading(true);
     setError("");
     setNotFound(false);
-    setCursor(undefined);
+    setPage(1);
+    setPageCursors([undefined]);
     try {
-      const response = await getAccountTimeline(account, { category, from: from || undefined, to: to || undefined });
+      const response = await getAccountTimeline(account, { category, from: from || undefined, to: to || undefined, limit: PAGE_LIMIT });
       setResult(response);
       setItems(response.items);
-      setCursor(response.nextCursor);
+      setPageCursors(response.nextCursor ? [undefined, response.nextCursor] : [undefined]);
     } catch (reason) {
       setResult(null);
       setItems([]);
@@ -158,17 +183,24 @@ export function AccountTimelinePage() {
     }
   }
 
-  async function loadMore() {
-    if (!result?.hasMore || !cursor || loading) return;
+  async function loadPage(pageCursor: string | undefined, targetPage: number) {
+    if (loading) return;
     setLoading(true);
+    setError("");
     try {
-      const response = await getAccountTimeline(accountInput.trim(), { category, from: from || undefined, to: to || undefined, cursor });
-      setItems((current) => [...current, ...response.items]);
-      setCursor(response.nextCursor);
+      const response = await getAccountTimeline(accountInput.trim(), { category, from: from || undefined, to: to || undefined, limit: PAGE_LIMIT, cursor: pageCursor });
       setResult(response);
+      setItems(response.items);
+      setPage(targetPage);
+      setPageCursors((current) => {
+        const next = current.slice(0, targetPage);
+        next[targetPage - 1] = pageCursor;
+        if (response.nextCursor) next[targetPage] = response.nextCursor;
+        return next;
+      });
     } catch (reason) {
       setNotFound(false);
-      setError(reason instanceof Error ? reason.message : "Không thể tải thêm lịch sử.");
+      setError(reason instanceof Error ? reason.message : "Không thể tải trang lịch sử.");
     } finally {
       setLoading(false);
     }
@@ -193,8 +225,8 @@ export function AccountTimelinePage() {
           <select className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-[12px] text-(--admin-text) outline-none" value={category} onChange={(event) => setCategory(event.target.value as TimelineCategory)} aria-label="Loại event">
             {(Object.keys(categoryLabels) as TimelineCategory[]).map((key) => <option key={key} value={key}>{categoryLabels[key]}</option>)}
           </select>
-          <input className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-[12px] text-(--admin-text) outline-none" type="date" aria-label="Từ ngày" value={from} onChange={(event) => setFrom(event.target.value)} />
-          <input className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-[12px] text-(--admin-text) outline-none" type="date" aria-label="Đến ngày" value={to} onChange={(event) => setTo(event.target.value)} />
+          <DateField label="Từ ngày" value={from} onChange={setFrom} />
+          <DateField label="Đến ngày" value={to} onChange={setTo} />
           <button className="h-9 rounded-sm bg-(--admin-primary) px-4 text-[12px] font-semibold text-white hover:bg-(--admin-primary-strong) disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled={loading || !accountInput.trim()}>{loading ? "Đang tải..." : "Xem lịch sử"}</button>
         </form>
         {error && <div className={`mt-3 flex items-center gap-2 rounded-sm border px-3 py-2 text-[11px] ${notFound ? "border-(--admin-border) bg-(--admin-surface) text-(--admin-text-muted)" : "border-(--admin-danger) bg-(--admin-danger-soft) text-(--admin-danger)"}`} role={notFound ? "status" : "alert"}>{!notFound && <FontAwesomeIcon icon={faCircleExclamation} aria-hidden="true" />}{error}</div>}
@@ -205,10 +237,14 @@ export function AccountTimelinePage() {
       {result && <section className="grid gap-3">
         <div className={`${surface} flex flex-wrap items-center justify-between gap-3 rounded-(--admin-radius-md) border border-(--admin-border) p-3`}>
           <div><strong className="text-[14px] text-(--admin-text)">{result.account.customerName || result.account.username}</strong><span className={`${mono} ml-2 text-[11px] text-(--admin-primary)`}>{result.account.accountNo}</span><div className="mt-1 text-[11px] text-(--admin-text-muted)">{result.account.id} · {result.account.status} · Số dư hiện tại: {formatMoney(result.account.balance, result.account.currency)}</div></div>
-          <span className={`${mono} text-[11px] text-(--admin-text-muted)`}>{items.length} event đã tải</span>
+          <span className={`${mono} text-[11px] text-(--admin-text-muted)`}>{items.length} event · Trang {page}</span>
         </div>
         {groups.length === 0 ? <div className={`${surface} grid min-h-48 place-items-center rounded-(--admin-radius-md) border border-(--admin-border) text-[12px] text-(--admin-text-muted)`}>Không có event trong điều kiện đã chọn.</div> : groups.map(([day, dayItems]) => <section key={day} className="grid gap-2"><h2 className={`${mono} px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-(--admin-text-muted)`}>{formatDay(day)}</h2>{dayItems.map((item) => <TimelineCard key={`${item.sourceStream}:${item.sourceRevision}:${item.eventId}`} item={item} currency={result.account.currency} />)}</section>)}
-        {result.hasMore && <button className={`${surface} mx-auto h-9 rounded-sm border border-(--admin-border) px-4 text-[12px] font-semibold text-(--admin-text) hover:border-(--admin-primary) disabled:opacity-60`} type="button" onClick={() => void loadMore()} disabled={loading}>{loading ? "Đang tải..." : "Xem thêm"}</button>}
+        <div className="flex items-center justify-center gap-3 pt-1">
+          <button className={`${surface} h-9 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} type="button" onClick={() => void loadPage(pageCursors[page - 2], page - 1)} disabled={loading || page === 1}>{"← Trang trước"}</button>
+          <span className={`${mono} min-w-18 text-center text-[11px] text-(--admin-text-muted)`}>Trang {page}</span>
+          <button className={`${surface} h-9 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} type="button" onClick={() => void loadPage(result.nextCursor, page + 1)} disabled={loading || !result.hasMore}>{"Trang sau →"}</button>
+        </div>
       </section>}
     </div>
   );
