@@ -17,6 +17,7 @@ it("marks transaction pages as protected", () => {
   expect(isProtectedRoute(routes.transfer)).toBe(true);
   expect(isProtectedRoute(routes.transactions)).toBe(true);
   expect(isProtectedRoute(routes.loanRegister)).toBe(true);
+  expect(isProtectedRoute(routes.savings)).toBe(true);
   expect(isProtectedRoute(transactionDetailRoute("tx_1001"))).toBe(true);
   expect(isProtectedRoute(routes.login)).toBe(false);
 });
