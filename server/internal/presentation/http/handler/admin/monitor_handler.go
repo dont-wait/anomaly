@@ -110,7 +110,7 @@ type monitorResponse struct {
 	Snapshot   monitorSnapshot `json:"snapshot"`
 }
 
-func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc queries.TokenService, currentAdmin func(http.Handler) http.Handler) {
+func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc queries.TokenService, currentAdmin func(http.Handler) http.Handler, timelines ...*TimelineHandler) {
 	admin := func(pattern string, fn http.HandlerFunc, operation openapi.Operation) {
 		operation.Auth = true
 		operation.Tags = []string{"Admin Monitor"}
@@ -126,6 +126,9 @@ func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc 
 		ID: "adminMonitorStream", Summary: "Stream risk assessments to the admin monitor",
 		ResponseContentType: "text/event-stream", FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 	})
+	if len(timelines) > 0 && timelines[0] != nil {
+		RegisterTimelineRoutes(router, timelines[0], tokenSvc, currentAdmin)
+	}
 }
 
 func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {

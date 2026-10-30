@@ -20,6 +20,7 @@ import (
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	infraauth "github.com/dont-wait/anomaly/internal/infrastructure/auth"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
+	otpinfra "github.com/dont-wait/anomaly/internal/infrastructure/otp"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 )
 
@@ -36,6 +37,8 @@ type transferRepositoryFake struct {
 	recipientCalls int
 	createCalls    int
 	created        mongorepo.TransferDocument
+	createResult   bool
+	cancelReason   string
 	transfer       mongorepo.TransferDocument
 	feed           mongorepo.FeedDocument
 	failCalls      int
@@ -70,7 +73,7 @@ func (f *transferRepositoryFake) FindTransferByIdempotencyKey(_ context.Context,
 func (f *transferRepositoryFake) CreatePending(_ context.Context, tx mongorepo.TransferDocument) (mongorepo.TransferDocument, bool, error) {
 	f.createCalls++
 	f.created = tx
-	return tx, false, nil
+	return tx, f.createResult, nil
 }
 
 func (f *transferRepositoryFake) FindTransfer(context.Context, string, string) (mongorepo.TransferDocument, error) {
@@ -92,6 +95,11 @@ func (f *transferRepositoryFake) FailTransfer(context.Context, string, string, r
 }
 
 func (*transferRepositoryFake) CancelPending(context.Context, string) error { return nil }
+
+func (f *transferRepositoryFake) CancelPendingWithReason(_ context.Context, _, reason string) error {
+	f.cancelReason = reason
+	return nil
+}
 
 func (*transferRepositoryFake) SetOTPMetadata(context.Context, string, time.Time, time.Time) error {
 	return nil
@@ -150,6 +158,35 @@ func TestCreateTransferStoresModelMetadataFromHeaders(t *testing.T) {
 	}
 	if repo.created.DeviceID != "550e8400-e29b-41d4-a716-446655440000" || repo.created.ClientIP != "203.0.113.10" || repo.created.Platform != "ANDROID" || repo.created.Channel != "mobile" {
 		t.Fatalf("created metadata = device=%q ip=%q platform=%q channel=%q", repo.created.DeviceID, repo.created.ClientIP, repo.created.Platform, repo.created.Channel)
+	}
+}
+
+func TestCreateTransferUsesDeliveryFailureCancellationReason(t *testing.T) {
+	repo := &transferRepositoryFake{
+		lookupErr:    mongorepo.ErrTransactionAccountNotFound,
+		createResult: true,
+		source:       mongorepo.TransferAccount{ID: bson.NewObjectID(), AccountNo: "99999180105", Status: "active", Email: "owner@example.com"},
+		recipient:    mongorepo.TransferAccount{ID: bson.NewObjectID(), AccountNo: "99999180147", Name: "TRAN THI BICH"},
+	}
+	tokens := infraauth.NewTokenService("test-secret", time.Hour)
+	token, _, err := tokens.Issue("owner-id", "owner", "user", true)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+	handler := NewHandler(zerolog.Nop(), repo, otpinfra.NewTransferOTPStore(nil, nil), nil, nil)
+	secured := middleware.RequireAuth(tokens)(http.HandlerFunc(handler.CreateTransfer))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/transfers", strings.NewReader(`{"toBankCode":"ANOMALY","toAccountNo":"99999180147","amount":50000000}`))
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "34297a72-9433-4adf-8958-868d5e50d197")
+	secured.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body = %s", recorder.Code, recorder.Body.String())
+	}
+	if repo.cancelReason != "otp_delivery_failed" {
+		t.Fatalf("cancel reason = %q, want otp_delivery_failed", repo.cancelReason)
 	}
 }
 

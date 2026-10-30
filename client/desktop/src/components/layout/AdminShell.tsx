@@ -68,7 +68,7 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { label: "Event Explorer", route: routes.audit, icon: faCode },
       {
-        label: "Timeline",
+        label: "Lịch sử tài khoản",
         route: routes.auditAccounts,
         icon: faClockRotateLeft,
       },

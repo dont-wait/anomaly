@@ -6,6 +6,7 @@ import (
 
 	apptransaction "github.com/dont-wait/anomaly/internal/application/transaction"
 	"github.com/dont-wait/anomaly/internal/domain"
+	"github.com/dont-wait/anomaly/internal/domain/audit"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/mail"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
@@ -26,6 +27,11 @@ func newTransferMailSender(smtpCfg *domain.SMTPConfig, logger zerolog.Logger) ot
 func NewTransactionHandler(repo *eventstore.BankRepository, contacts *mongorepo.RecipientContactRepository, rdb *redis.Client, smtpCfg *domain.SMTPConfig, logger zerolog.Logger, receiptOutbox ...handlertransaction.ReceiptOutbox) *handlertransaction.Handler {
 	sender := newTransferMailSender(smtpCfg, logger)
 	return handlertransaction.NewHandler(logger, repo, otpinfra.NewTransferOTPStore(rdb, sender), sender, contacts, receiptOutbox...)
+}
+
+func NewTransactionHandlerWithAudit(repo *eventstore.BankRepository, contacts *mongorepo.RecipientContactRepository, rdb *redis.Client, smtpCfg *domain.SMTPConfig, logger zerolog.Logger, recorder audit.Recorder, receiptOutbox ...handlertransaction.ReceiptOutbox) *handlertransaction.Handler {
+	handler := NewTransactionHandler(repo, contacts, rdb, smtpCfg, logger, receiptOutbox...)
+	return handler.WithAudit(recorder)
 }
 
 func NewReceiptWorker(outbox apptransaction.ReceiptOutbox, smtpCfg *domain.SMTPConfig, logger zerolog.Logger) *apptransaction.ReceiptWorker {

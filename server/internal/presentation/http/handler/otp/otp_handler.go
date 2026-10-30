@@ -92,7 +92,7 @@ func (h *Handler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.verify.Handle(r.Context(), appotp.VerifyOTPCommand{Email: req.Email, Code: req.Code}); err != nil {
+	if err := h.verify.HandleWithAudit(r.Context(), appotp.VerifyOTPCommand{Email: req.Email, Code: req.Code}); err != nil {
 		httpx.WriteError(w, h.logger, err, otpErrorStatus, otpErrorCode)
 		return
 	}
