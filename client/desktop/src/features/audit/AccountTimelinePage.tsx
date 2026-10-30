@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowDown, faArrowUp, faBolt, faCircleExclamation, faClockRotateLeft, faMagnifyingGlass, faShieldHalved } from "@fortawesome/free-solid-svg-icons";
-import { getAccountTimeline } from "./api/auditApi";
+import { AuditApiError, getAccountTimeline } from "./api/auditApi";
 import type { TimelineCategory, TimelineItem, TimelineResponse } from "./model";
 
 const surface = "bg-(--admin-surface)";
@@ -121,6 +121,7 @@ export function AccountTimelinePage() {
   const [cursor, setCursor] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notFound, setNotFound] = useState(false);
   const accountInputRef = useRef<HTMLInputElement>(null);
 
   const groups = useMemo(() => groupedItems(items), [items]);
@@ -139,6 +140,7 @@ export function AccountTimelinePage() {
     }
     setLoading(true);
     setError("");
+    setNotFound(false);
     setCursor(undefined);
     try {
       const response = await getAccountTimeline(account, { category, from: from || undefined, to: to || undefined });
@@ -148,6 +150,8 @@ export function AccountTimelinePage() {
     } catch (reason) {
       setResult(null);
       setItems([]);
+      const isNotFound = reason instanceof AuditApiError && reason.status === 404;
+      setNotFound(isNotFound);
       setError(reason instanceof Error ? reason.message : "Không thể tải lịch sử tài khoản.");
     } finally {
       setLoading(false);
@@ -163,6 +167,7 @@ export function AccountTimelinePage() {
       setCursor(response.nextCursor);
       setResult(response);
     } catch (reason) {
+      setNotFound(false);
       setError(reason instanceof Error ? reason.message : "Không thể tải thêm lịch sử.");
     } finally {
       setLoading(false);
@@ -183,7 +188,7 @@ export function AccountTimelinePage() {
           <label className="flex h-9 items-center gap-2 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2.5 focus-within:border-(--admin-primary)">
             <FontAwesomeIcon icon={faMagnifyingGlass} className="text-[12px] text-(--admin-text-muted)" aria-hidden="true" />
             <span className="sr-only">Tài khoản</span>
-            <input ref={accountInputRef} className="min-w-0 flex-1 bg-transparent text-[12px] text-(--admin-text) outline-none placeholder:text-(--admin-text-muted)" placeholder="Account ID, số tài khoản, username..." value={accountInput} onChange={(event) => { setAccountInput(event.target.value); if (error) setError(""); }} />
+            <input ref={accountInputRef} className="min-w-0 flex-1 bg-transparent text-[12px] text-(--admin-text) outline-none placeholder:text-(--admin-text-muted)" placeholder="Account ID, số tài khoản, username..." value={accountInput} onChange={(event) => { setAccountInput(event.target.value); if (error) setError(""); if (notFound) setNotFound(false); }} />
           </label>
           <select className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-[12px] text-(--admin-text) outline-none" value={category} onChange={(event) => setCategory(event.target.value as TimelineCategory)} aria-label="Loại event">
             {(Object.keys(categoryLabels) as TimelineCategory[]).map((key) => <option key={key} value={key}>{categoryLabels[key]}</option>)}
@@ -192,7 +197,7 @@ export function AccountTimelinePage() {
           <input className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-[12px] text-(--admin-text) outline-none" type="date" aria-label="Đến ngày" value={to} onChange={(event) => setTo(event.target.value)} />
           <button className="h-9 rounded-sm bg-(--admin-primary) px-4 text-[12px] font-semibold text-white hover:bg-(--admin-primary-strong) disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled={loading || !accountInput.trim()}>{loading ? "Đang tải..." : "Xem lịch sử"}</button>
         </form>
-        {error && <div className="mt-3 flex items-center gap-2 rounded-sm border border-(--admin-danger) bg-(--admin-danger-soft) px-3 py-2 text-[11px] text-(--admin-danger)" role="alert"><FontAwesomeIcon icon={faCircleExclamation} aria-hidden="true" />{error}</div>}
+        {error && <div className={`mt-3 flex items-center gap-2 rounded-sm border px-3 py-2 text-[11px] ${notFound ? "border-(--admin-border) bg-(--admin-surface) text-(--admin-text-muted)" : "border-(--admin-danger) bg-(--admin-danger-soft) text-(--admin-danger)"}`} role={notFound ? "status" : "alert"}>{!notFound && <FontAwesomeIcon icon={faCircleExclamation} aria-hidden="true" />}{error}</div>}
       </section>
 
       {!result && !error && <section className={`${surface} grid min-h-55 place-items-center rounded-(--admin-radius-md) border border-(--admin-border) p-6 text-center`}><div className="grid max-w-100 gap-2"><FontAwesomeIcon icon={faShieldHalved} className="mx-auto text-2xl text-(--admin-text-muted)" aria-hidden="true" /><strong className="text-[14px] text-(--admin-text)">Nhập tài khoản để bắt đầu</strong><span className="text-[12px] leading-5 text-(--admin-text-muted)">Có thể tìm bằng account ID, số tài khoản hoặc username.</span></div></section>}
