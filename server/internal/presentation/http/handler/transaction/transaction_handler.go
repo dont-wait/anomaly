@@ -338,7 +338,7 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 	if created {
 		info, err := h.otp.Issue(r.Context(), tx.ID, source.Email)
 		if err != nil {
-			if cancelErr := h.repo.CancelPending(r.Context(), tx.ID); cancelErr != nil {
+			if cancelErr := h.cancelPendingWithReason(r.Context(), tx.ID, "otp_delivery_failed"); cancelErr != nil {
 				h.writeRepoError(w, cancelErr)
 				return
 			}
