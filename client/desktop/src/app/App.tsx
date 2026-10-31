@@ -6,6 +6,7 @@ import {
 } from "@/features/auth/api/adminSession";
 import { AdminShell } from "@/components/layout/AdminShell";
 import { AccountTimelinePage } from "@/features/audit/AccountTimelinePage";
+import { LoanReviewPage } from "@/features/loans/LoanReviewPage";
 import { MonitorPage } from "@/features/monitor/MonitorPage";
 import {
   isProtectedRoute,
@@ -55,6 +56,7 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const isMonitor = route === routes.monitor;
   const isAccountTimeline = route === routes.auditAccounts;
+  const isLoanReview = route === routes.loanApplications;
   useEffect(() => {
     let active = true;
     let retryTimer: number | undefined;
@@ -92,7 +94,15 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
   }
   return (
     <AdminShell currentRoute={route} user={profile}>
-      {isMonitor ? <MonitorPage /> : isAccountTimeline ? <AccountTimelinePage /> : <PlaceholderPage route={route} />}
+      {isMonitor ? (
+        <MonitorPage />
+      ) : isAccountTimeline ? (
+        <AccountTimelinePage />
+      ) : isLoanReview ? (
+        <LoanReviewPage />
+      ) : (
+        <PlaceholderPage route={route} />
+      )}
     </AdminShell>
   );
 }

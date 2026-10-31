@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeftIcon,
   ChevronDownIcon,
@@ -7,9 +7,21 @@ import {
   UserIcon,
 } from "@/shared/icons";
 import { Logo } from "@/shared/layout/Logo";
-import { navigate, routes } from "@/app/routes";
+import { navigate, routes, loanApplication } from "@/app/routes";
 import { useAuth } from "@/features/auth/useAuth";
 import { useLocalStorage } from "@/shared/hooks";
+import {
+  createLoan,
+  listLoanPackages,
+  preQuoteLoan,
+  type LoanPackage,
+  type LoanQuote,
+} from "@/features/loans/api";
+import { explainLoanError, percentBps, vnd } from "@/features/loans/format";
+import {
+  clearIdempotencyKey,
+  getOrCreateIdempotencyKey,
+} from "@/features/loans/idempotency";
 
 const AMOUNTS = [30_000_000, 50_000_000, 100_000_000, 200_000_000] as const;
 const TENURES = [6, 12, 24, 36] as const;
@@ -46,43 +58,78 @@ interface SaveMessage {
 const formatMoney = (value: number) =>
   new Intl.NumberFormat("vi-VN").format(value);
 
-const monthlyPayment = (amount: number, months: number) => {
-  const monthlyRate = 0.138 / 12;
-  return Math.round(
-    (amount * monthlyRate * (1 + monthlyRate) ** months) /
-      ((1 + monthlyRate) ** months - 1),
-  );
-};
-
 const LoanRegisterPage = () => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [draft, setDraft] = useLocalStorage<LoanDraft>(
     `anomaly:loan-draft:${user?.id ?? "anonymous"}`,
     DEFAULT_DRAFT,
   );
-  const [purposeOpen, setPurposeOpen] = useState(false);
   const [saveMessage, setSaveMessage] = useState<SaveMessage | null>(null);
+  const [purposeOpen, setPurposeOpen] = useState(false);
+  const [packages, setPackages] = useState<LoanPackage[]>([]);
+  const [packageCode, setPackageCode] = useState("");
+  const [loadingPackages, setLoadingPackages] = useState(true);
+  const [income, setIncome] = useState(20_000_000);
+  const [region, setRegion] = useState<"KV01" | "KV02" | "KV03">("KV01");
+  const [debt, setDebt] = useState(0);
+  const [sourceAccountId, setSourceAccountId] = useState(user?.id ?? "");
+  const [quote, setQuote] = useState<LoanQuote | null>(null);
+  const [busy, setBusy] = useState(false);
+  const quotedFingerprint = useRef<string | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    void listLoanPackages(token, controller.signal)
+      .then(({ items }) => {
+        setPackages(items ?? []);
+        setPackageCode((current) => current || items?.[0]?.packageCode || "");
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted)
+          setSaveMessage({ tone: "error", text: explainLoanError(error) });
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingPackages(false);
+      });
+    return () => controller.abort();
+  }, [token]);
 
   // Ignore stale or hand-edited values from an older stored draft.
   const storedDraft: Partial<LoanDraft> =
     draft && typeof draft === "object" ? draft : DEFAULT_DRAFT;
-  const amount = AMOUNTS.includes(
-    storedDraft.amount as (typeof AMOUNTS)[number],
-  )
-    ? (storedDraft.amount as number)
-    : DEFAULT_AMOUNT;
-  const tenure = TENURES.includes(
-    storedDraft.tenure as (typeof TENURES)[number],
-  )
-    ? (storedDraft.tenure as number)
-    : DEFAULT_TENURE;
+  const amount =
+    Number.isSafeInteger(storedDraft.amount) && (storedDraft.amount ?? -1) >= 0
+      ? storedDraft.amount!
+      : DEFAULT_AMOUNT;
+  const tenure =
+    Number.isSafeInteger(storedDraft.tenure) && (storedDraft.tenure ?? 0) > 0
+      ? storedDraft.tenure!
+      : DEFAULT_TENURE;
   const purpose = PURPOSES.includes(storedDraft.purpose ?? "")
     ? (storedDraft.purpose as string)
     : PURPOSES[0];
   const details =
     typeof storedDraft.details === "string" ? storedDraft.details : "";
 
+  const quoteFingerprint = JSON.stringify({
+    packageCode,
+    amount,
+    tenure,
+    income,
+    region,
+    debt,
+  });
+  const selectedPackage = packages.find(
+    (item) => item.packageCode === packageCode,
+  );
+  const withinPackage =
+    !!selectedPackage &&
+    amount >= selectedPackage.minAmount &&
+    amount <= selectedPackage.maxAmount &&
+    selectedPackage.termMonths.includes(tenure);
   const updateDraft = (patch: Partial<LoanDraft>) => {
+    setQuote(null);
+    quotedFingerprint.current = null;
     setDraft((previous) => ({
       ...DEFAULT_DRAFT,
       ...(previous ?? DEFAULT_DRAFT),
@@ -105,10 +152,88 @@ const LoanRegisterPage = () => {
     });
   };
 
-  const monthly = useMemo(
-    () => monthlyPayment(amount, tenure),
-    [amount, tenure],
-  );
+  const handleQuote = async () => {
+    if (!token || !withinPackage) {
+      setSaveMessage({
+        tone: "error",
+        text: "Chọn số tiền và kỳ hạn hợp lệ trong gói vay đang hoạt động.",
+      });
+      return;
+    }
+    setBusy(true);
+    setQuote(null);
+    const requestedFingerprint = quoteFingerprint;
+    quotedFingerprint.current = requestedFingerprint;
+    try {
+      const result = await preQuoteLoan(token, {
+        loanPackageId: packageCode,
+        requestedAmount: amount,
+        termMonths: tenure,
+        monthlyIncome: income,
+        regionCode: region,
+        existingMonthlyDebt: debt,
+      });
+      if (quotedFingerprint.current === requestedFingerprint) {
+        setQuote(result);
+        setSaveMessage(null);
+      }
+    } catch (error) {
+      setSaveMessage({ tone: "error", text: explainLoanError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (
+      !token ||
+      !withinPackage ||
+      !quote ||
+      quotedFingerprint.current !== quoteFingerprint ||
+      quote.loanPackageId !== packageCode ||
+      quote.requestedAmount !== amount ||
+      quote.termMonths !== tenure
+    ) {
+      setSaveMessage({
+        tone: "error",
+        text: "Bạn cần xem báo giá API mới nhất trước khi tạo hồ sơ.",
+      });
+      return;
+    }
+    if (!sourceAccountId.trim()) {
+      setSaveMessage({
+        tone: "error",
+        text: "Vui lòng xác nhận ID tài khoản nhận giải ngân.",
+      });
+      return;
+    }
+    if (purpose.startsWith("Khác") && !details.trim()) {
+      setSaveMessage({
+        tone: "error",
+        text: "Vui lòng nhập mục đích vay cụ thể.",
+      });
+      return;
+    }
+    const payload = {
+      loanPackageId: packageCode,
+      requestedAmount: amount,
+      termMonths: tenure,
+      disbursementAccountId: sourceAccountId.trim(),
+    };
+    const fingerprint = JSON.stringify(payload);
+    const scope = `create-loan:${user?.id ?? "anonymous"}`;
+    const idempotencyKey = getOrCreateIdempotencyKey(scope, fingerprint);
+    setBusy(true);
+    try {
+      const result = await createLoan(token, payload, idempotencyKey);
+      clearIdempotencyKey(scope, fingerprint);
+      navigate(loanApplication(result.id));
+    } catch (error) {
+      setSaveMessage({ tone: "error", text: explainLoanError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col bg-background text-on-surface">
@@ -168,19 +293,51 @@ const LoanRegisterPage = () => {
             Vay vốn cá nhân theo lương
           </h2>
           <p className="relative mt-2 text-xs text-white/80">
-            Lãi suất ưu đãi từ{" "}
-            <strong className="text-lg text-white">13.8%</strong> /năm · Phê
-            duyệt siêu tốc 15 phút
+            Lãi suất và khoản trả góp do ngân hàng tính qua API. Kết quả chính
+            thức phụ thuộc vào thẩm định và Offer.
           </p>
         </section>
 
+        <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
+          <label
+            className="block text-sm font-bold text-primary"
+            htmlFor="loan-package"
+          >
+            Gói vay hiện có
+          </label>
+          <select
+            id="loan-package"
+            disabled={loadingPackages || busy}
+            value={packageCode}
+            onChange={(e) => {
+              setPackageCode(e.target.value);
+              setQuote(null);
+              quotedFingerprint.current = null;
+            }}
+            className="w-full rounded-xl border border-outline-variant p-3 text-sm"
+          >
+            {!packageCode && <option value="">Chưa có gói vay khả dụng</option>}
+            {packages.map((p) => (
+              <option key={p.packageCode} value={p.packageCode}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          {!loadingPackages && packages.length === 0 && (
+            <p role="alert" className="text-xs text-error">
+              Chưa có gói vay ACTIVE trên backend. Không thể tạo hồ sơ.
+            </p>
+          )}
+        </section>
         <section className="space-y-4 rounded-2xl bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-primary">
               Số tiền đề nghị vay
             </h2>
             <span className="text-[10px] text-on-surface-variant">
-              Tối đa: 200.000.000 đ
+              {selectedPackage
+                ? `Tối đa: ${vnd(selectedPackage.maxAmount)}`
+                : "Theo gói vay"}
             </span>
           </div>
           <div className="flex items-center rounded-2xl bg-surface-container-low px-4 py-2">
@@ -192,6 +349,21 @@ const LoanRegisterPage = () => {
             </output>
             <span className="text-xl font-bold text-secondary">đ</span>
           </div>
+          <label className="block text-xs font-semibold text-primary">
+            Hoặc nhập số tiền theo hạn mức gói vay
+            <input
+              type="number"
+              min={1}
+              step={1000000}
+              value={amount === 0 ? "" : amount}
+              onChange={(e) =>
+                updateDraft({
+                  amount: e.target.value === "" ? 0 : Number(e.target.value),
+                })
+              }
+              className="mt-2 w-full rounded-xl border border-outline-variant p-3 text-sm"
+            />
+          </label>
           <div
             className="grid grid-cols-4 gap-2"
             aria-label="Gợi ý số tiền"
@@ -203,8 +375,13 @@ const LoanRegisterPage = () => {
                 type="button"
                 role="radio"
                 aria-checked={amount === value}
+                disabled={
+                  !!selectedPackage &&
+                  (value < selectedPackage.minAmount ||
+                    value > selectedPackage.maxAmount)
+                }
                 onClick={() => updateDraft({ amount: value })}
-                className={`rounded-xl py-2 text-xs font-semibold transition-transform active:scale-95 ${amount === value ? "bg-secondary text-white shadow-md shadow-secondary/25" : "bg-surface-container text-on-surface-variant"}`}
+                className={`rounded-xl disabled:opacity-35 py-2 text-xs font-semibold transition-transform active:scale-95 ${amount === value ? "bg-secondary text-white shadow-md shadow-secondary/25" : "bg-surface-container text-on-surface-variant"}`}
               >
                 {value / 1_000_000} Tr
               </button>
@@ -226,19 +403,30 @@ const LoanRegisterPage = () => {
             role="radiogroup"
             aria-label="Kỳ hạn vay"
           >
-            {TENURES.map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={tenure === value}
-                onClick={() => updateDraft({ tenure: value })}
-                className={`rounded-xl py-2 text-sm font-bold ${tenure === value ? "bg-secondary text-white shadow-md shadow-secondary/25" : "bg-surface-container text-on-surface-variant"}`}
-              >
-                <span className="block">{value}</span>
-                <span className="text-[10px] font-normal">Tháng</span>
-              </button>
-            ))}
+            {Array.from(
+              new Set<number>([
+                ...TENURES,
+                ...(selectedPackage?.termMonths ?? []),
+              ]),
+            )
+              .sort((a, b) => a - b)
+              .map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={tenure === value}
+                  disabled={
+                    !!selectedPackage &&
+                    !selectedPackage.termMonths.includes(value)
+                  }
+                  onClick={() => updateDraft({ tenure: value })}
+                  className={`rounded-xl disabled:opacity-35 py-2 text-sm font-bold ${tenure === value ? "bg-secondary text-white shadow-md shadow-secondary/25" : "bg-surface-container text-on-surface-variant"}`}
+                >
+                  <span className="block">{value}</span>
+                  <span className="text-[10px] font-normal">Tháng</span>
+                </button>
+              ))}
           </div>
         </section>
 
@@ -349,15 +537,123 @@ const LoanRegisterPage = () => {
               <span className="h-2 w-2 rounded-full bg-white" />
             </span>
           </div>
+          <label className="block text-xs">
+            ID tài khoản giải ngân (xác minh theo tài khoản đã đăng nhập)
+            <input
+              value={sourceAccountId}
+              onChange={(e) => {
+                setSourceAccountId(e.target.value);
+              }}
+              className="mt-1 w-full rounded-xl border p-3 text-xs"
+            />
+          </label>
+          <p className="text-[10px] text-on-surface-variant">
+            Backend xác thực quyền sở hữu tài khoản. Không dùng số tài khoản
+            hiển thị làm account ID.
+          </p>
         </section>
 
+        <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-bold text-primary">
+            Thông tin báo giá dự kiến
+          </h2>
+          <label className="block text-xs">
+            Thu nhập tháng (VND)
+            <input
+              type="number"
+              min={1}
+              value={income}
+              onChange={(e) => {
+                setIncome(Number(e.target.value));
+                setQuote(null);
+                quotedFingerprint.current = null;
+              }}
+              className="mt-1 w-full rounded-xl border p-3 text-sm"
+            />
+          </label>
+          <label className="block text-xs">
+            Khu vực
+            <select
+              value={region}
+              onChange={(e) => {
+                setRegion(e.target.value as typeof region);
+                setQuote(null);
+                quotedFingerprint.current = null;
+              }}
+              className="mt-1 w-full rounded-xl border p-3 text-sm"
+            >
+              <option value="KV01">KV01 - HCM / Hà Nội / Cần Thơ</option>
+              <option value="KV02">KV02 - Huế / Đà Nẵng / Hải Phòng</option>
+              <option value="KV03">KV03 - Khu vực khác</option>
+            </select>
+          </label>
+          <label className="block text-xs">
+            Nợ phải trả hàng tháng hiện tại (VND)
+            <input
+              type="number"
+              min={0}
+              value={debt}
+              onChange={(e) => {
+                setDebt(Number(e.target.value));
+                setQuote(null);
+                quotedFingerprint.current = null;
+              }}
+              className="mt-1 w-full rounded-xl border p-3 text-sm"
+            />
+          </label>
+          <p className="text-xs text-on-surface-variant">
+            Thông tin tự khai chỉ dùng để tính thử. Lãi suất chính thức lấy từ
+            Evidence đã xác minh và Offer.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleQuote()}
+            disabled={!withinPackage || busy}
+            className="w-full rounded-full bg-primary p-3 text-sm font-bold text-white disabled:opacity-40"
+          >
+            {busy ? "Đang xử lý..." : "Tính lãi và lịch trả qua API"}
+          </button>
+          {quote && (
+            <p role="status" className="text-xs">
+              Lãi suất dự kiến:{" "}
+              <strong>{percentBps(quote.annualRateBps)}</strong> · Tổng lãi:{" "}
+              {vnd(quote.totalInterest)} · DTI:{" "}
+              {quote.affordability?.dtiStatus ?? "Chưa rõ"}. Không phải Offer
+              chính thức.
+            </p>
+          )}
+        </section>
+        {quote && (
+          <details className="rounded-2xl bg-white p-4 shadow-sm">
+            <summary className="cursor-pointer text-sm font-bold text-primary">
+              Lịch trả góp dự kiến ({quote.provisionalSchedule?.length ?? 0} kỳ)
+            </summary>
+            <p className="mt-2 text-xs text-on-surface-variant">
+              Chỉ là dự tính, không phải lịch trả nợ hợp đồng.
+            </p>
+            {quote.provisionalSchedule?.map((item) => (
+              <div
+                key={item.installmentNo}
+                className="mt-2 rounded-xl border p-3 text-xs"
+              >
+                <strong>Kỳ {item.installmentNo}</strong> ·{" "}
+                {item.dueDate.slice(0, 10)}
+                <p>
+                  Gốc {vnd(item.principalAmount)} · Lãi{" "}
+                  {vnd(item.interestAmount)}
+                </p>
+                <p className="font-semibold">Tổng {vnd(item.totalPayment)}</p>
+              </div>
+            ))}
+          </details>
+        )}
         <section className="space-y-3 rounded-2xl bg-surface-container-high/60 p-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-primary">
               Tóm tắt khoản vay
             </h2>
             <span className="text-[10px] text-on-surface-variant">
-              Lãi suất tạm tính
+              {quote ? percentBps(quote.annualRateBps) : "Chưa có báo giá"}
             </span>
           </div>
           <dl className="space-y-2 text-xs">
@@ -390,7 +686,7 @@ const LoanRegisterPage = () => {
               </p>
             </div>
             <strong className="text-right text-lg text-primary">
-              ~{formatMoney(monthly)}
+              {quote ? `~${formatMoney(quote.estimatedMonthlyPayment)}` : "—"}
               <span className="ml-1 text-xs text-secondary">đ/tháng</span>
             </strong>
           </div>
@@ -418,6 +714,21 @@ const LoanRegisterPage = () => {
           className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-secondary text-base font-bold text-white shadow-lg shadow-secondary/30 transition-transform active:scale-[0.98]"
         >
           Lưu bản nháp
+        </button>
+        <button
+          type="button"
+          disabled={busy || !quote || !withinPackage}
+          onClick={() => void handleCreate()}
+          className="flex h-14 w-full items-center justify-center rounded-full bg-primary text-base font-bold text-white disabled:opacity-40"
+        >
+          Tạo hồ sơ vay trên hệ thống
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate(routes.loanApplications)}
+          className="w-full rounded-xl border p-3 text-sm font-semibold text-primary"
+        >
+          Xem hồ sơ đã tạo
         </button>
         <p className="flex items-center justify-center gap-1 text-center text-[10px] text-on-surface-variant">
           <ShieldIcon className="h-3.5 w-3.5 text-secondary" /> Thông tin được
