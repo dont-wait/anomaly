@@ -9,7 +9,6 @@ import TransactionHistoryPage from "@/pages/TransactionHistoryPage";
 import TransactionDetailPage from "@/pages/TransactionDetailPage";
 import LoanRegisterPage from "@/pages/LoanRegisterPage";
 import SavingsPage from "@/features/savings/SavingsPage";
-import { isProtectedRoute, parseTransactionId, routes } from "./routes";
 import LoanApplicationsPage from "@/pages/LoanApplicationsPage";
 import LoanContractsPage from "@/pages/LoanContractsPage";
 import {
