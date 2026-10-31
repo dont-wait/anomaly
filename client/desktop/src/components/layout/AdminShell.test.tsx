@@ -56,6 +56,7 @@ describe("AdminShell", () => {
     );
 
     expect(screen.getByRole("complementary").className).toContain("sticky");
+    expect(screen.getByRole("complementary").className).toContain("top-0");
     expect(screen.getByRole("complementary").className).toContain("h-dvh");
     expect(
       screen.getByRole("navigation", { name: "Menu admin" }).className,
