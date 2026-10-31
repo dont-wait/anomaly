@@ -3,6 +3,8 @@ AGENTS.md
 .env
 .codex
 .yarn
+*.jks
+*.keystore
 # Created by https://www.toptal.com/developers/gitignore/api/go,python
 # Edit at https://www.toptal.com/developers/gitignore?templates=go,python
 

@@ -15,6 +15,8 @@ help:
 	  '  emulator         Mở pixel_33 với camera trước dùng webcam0 ở terminal 1' \
 	  '  android          Chạy Android (ưu tiên USB; ANDROID_DEVICE=SERIAL để chọn máy)' \
 	  '  desktop          Chạy client Linux desktop' \
+	  '  release          Build bộ cài app: APP_PLATFORM=linux|windows|android' \
+	  '                   Cần VITE_API_ENDPOINT=https://...; xem docs/release-apps.md ở root' \
 	  '' \
 	  'Đổi camera trước: make emulator CAMERA_FRONT=webcam1 (hoặc emulated nếu không có webcam).' \
 	  'Các lệnh tự vào Nix shell. Cài dependencies trước khi chạy client.' \
@@ -37,3 +39,8 @@ android:
 
 desktop:
 	nix develop .\#default --command bash -c 'set -e; mkdir -p "$$HOME/.local/bin"; corepack enable --install-directory "$$HOME/.local/bin"; export PATH="$$HOME/.local/bin:$$PATH"; exec yarn workspace anomaly-mobile tauri dev'
+
+# Run the same release pipeline from client/ or the monorepo root.
+.PHONY: release release-check release-test
+release release-check release-test:
+	$(MAKE) -C .. $@

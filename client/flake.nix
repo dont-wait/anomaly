@@ -124,6 +124,7 @@
             nativeBuildInputs = with pkgs; [
               cargo-tauri
               nodejs_22
+              python3
               pkg-config
               rust-analyzer-unwrapped
               rustToolchain
@@ -144,6 +145,7 @@
               cargo-tauri
               nodejs_22
               nsis
+              python3
               pkg-config
               pkgsCross.mingwW64.stdenv.cc
               rustToolchain
@@ -166,6 +168,7 @@
           android = pkgs.mkShell {
             nativeBuildInputs = [
               pkgs.nodejs_24
+              pkgs.python3
               pkgs.yarn
               pkgs.jdk17
               pkgs.pkg-config
