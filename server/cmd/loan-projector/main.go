@@ -13,6 +13,7 @@ import (
 
 	"github.com/dont-wait/anomaly/internal/application/loan/commands"
 	"github.com/dont-wait/anomaly/internal/domain"
+	loandomain "github.com/dont-wait/anomaly/internal/domain/loan"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/dont-wait/anomaly/internal/infrastructure/loanadapter"
 	"github.com/dont-wait/anomaly/internal/infrastructure/mongo"
@@ -69,6 +70,21 @@ func main() {
 	defer eventstore.Disconnect(es)
 
 	repo := eventstore.NewLoanRepository(es)
+
+	if len(os.Args) == 2 && os.Args[1] == "--backfill-loan-timeline" {
+		if err := read.StartLoanTimelineBackfill(ctx); err != nil {
+			log.Fatal().Err(err).Msg("start loan timeline backfill")
+		}
+		count, err := backfillLoanTimeline(ctx, es, read)
+		if err != nil {
+			log.Fatal().Err(err).Msg("loan timeline backfill failed")
+		}
+		if err := read.FinishLoanTimelineBackfill(ctx); err != nil {
+			log.Fatal().Err(err).Msg("finish loan timeline backfill")
+		}
+		log.Info().Int("events", count).Msg("loan timeline backfill completed")
+		return
+	}
 
 	// Chỉ cho phép reset Loan Read Model khi quản trị viên
 	// chủ động yêu cầu và xác nhận đã sao lưu dữ liệu.
@@ -191,6 +207,9 @@ func main() {
 
 		if err := read.Save(ctx, app, revision); err != nil {
 			log.Fatal().Err(err).Msg("save recovered loan failed")
+		}
+		if err := replayLoanTimeline(ctx, es, read, app); err != nil {
+			log.Fatal().Err(err).Msg("save recovered loan timeline failed")
 		}
 
 		if err := read.ResolveProjectionFailure(ctx, loanID); err != nil {
@@ -426,6 +445,20 @@ func main() {
 								Msg("loan projection write failed")
 							break
 						}
+						if err := read.SaveLoanTimelineEvent(
+							ctx,
+							app,
+							recorded.EventID.String(),
+							recorded.EventType,
+							recorded.EventNumber,
+							recorded.CreatedDate,
+							recorded.Data,
+						); err != nil {
+							log.Error().Err(err).
+								Str("loan", id).
+								Msg("loan timeline write failed")
+							break
+						}
 					}
 				}
 
@@ -578,6 +611,131 @@ func latestEventStorePosition(ctx context.Context, client *esdb.Client) (mongo.L
 		Prepare: recorded.Position.Prepare,
 		EventID: recorded.EventID.String(),
 	}, nil
+}
+
+// replayLoanTimeline rebuilds every timeline row for a recovered loan before
+// its projection failure is marked resolved. Timeline writes are idempotent,
+// so this is safe even when some events were already projected.
+func replayLoanTimeline(ctx context.Context, client *esdb.Client, read *mongo.LoanReadModel, app *loandomain.Application) error {
+	if app == nil || strings.TrimSpace(app.Id) == "" {
+		return fmt.Errorf("recovered loan application is missing")
+	}
+	const pageSize = 4096
+	opts := esdb.ReadStreamOptions{}
+	for {
+		stream, err := client.ReadStream(ctx, "loan-application-"+app.Id, opts, pageSize)
+		if err != nil {
+			return err
+		}
+		eventsInPage := 0
+		var lastRevision uint64
+		for {
+			recorded, recvErr := stream.Recv()
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+			if recvErr != nil {
+				stream.Close()
+				return recvErr
+			}
+			eventsInPage++
+			lastRevision = recorded.Event.EventNumber
+			if err := read.SaveLoanTimelineEvent(
+				ctx,
+				app,
+				recorded.Event.EventID.String(),
+				recorded.Event.EventType,
+				recorded.Event.EventNumber,
+				recorded.Event.CreatedDate,
+				recorded.Event.Data,
+			); err != nil {
+				stream.Close()
+				return err
+			}
+		}
+		stream.Close()
+		if eventsInPage < pageSize {
+			return nil
+		}
+		opts = esdb.ReadStreamOptions{From: esdb.Revision(lastRevision + 1)}
+	}
+}
+
+// backfillLoanTimeline rebuilds the account-scoped loan timeline without
+// touching the loan projector checkpoint or emitting new business events.
+// ReadAll positions are inclusive, so replaying a page boundary is safe
+// because timeline writes are idempotent by EventID.
+func backfillLoanTimeline(ctx context.Context, client *esdb.Client, read *mongo.LoanReadModel) (int, error) {
+	const pageSize = 4096
+	apps := make(map[string]*loandomain.Application)
+	var afterTime time.Time
+	var afterID string
+	for {
+		items, hasMore, err := read.ListAllPage(ctx, 100, afterTime, afterID)
+		if err != nil {
+			return 0, err
+		}
+		for _, app := range items {
+			if app != nil {
+				apps[app.Id] = app
+			}
+		}
+		if !hasMore || len(items) == 0 {
+			break
+		}
+		last := items[len(items)-1]
+		afterTime, afterID = last.CreatedAt, last.Id
+	}
+
+	count := 0
+	opts := esdb.ReadAllOptions{}
+	for {
+		stream, err := client.ReadAll(ctx, opts, pageSize)
+		if err != nil {
+			return count, err
+		}
+		eventsInPage := 0
+		var lastPosition esdb.Position
+		for {
+			event, recvErr := stream.Recv()
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+			if recvErr != nil {
+				stream.Close()
+				return count, recvErr
+			}
+			eventsInPage++
+			lastPosition = event.Event.Position
+			if !strings.HasPrefix(event.Event.StreamID, "loan-application-") {
+				continue
+			}
+			loanID := strings.TrimPrefix(event.Event.StreamID, "loan-application-")
+			app := apps[loanID]
+			if app == nil {
+				continue
+			}
+			if err := read.SaveLoanTimelineEvent(
+				ctx,
+				app,
+				event.Event.EventID.String(),
+				event.Event.EventType,
+				event.Event.EventNumber,
+				event.Event.CreatedDate,
+				event.Event.Data,
+			); err != nil {
+				stream.Close()
+				return count, err
+			}
+			count++
+		}
+		stream.Close()
+		if eventsInPage < pageSize {
+			break
+		}
+		opts = esdb.ReadAllOptions{From: lastPosition}
+	}
+	return count, nil
 }
 
 func backfillLoanContracts(

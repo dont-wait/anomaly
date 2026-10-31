@@ -23,6 +23,7 @@ const categoryLabels: Record<TimelineCategory, string> = {
   transfer: "Transfer",
   otp: "OTP",
   login: "Login",
+  loan: "Khoản vay",
 };
 
 const eventLabels: Record<string, string> = {
@@ -44,6 +45,21 @@ const eventLabels: Record<string, string> = {
   BankAccountCreated: "Tài khoản được tạo",
   BankAccountUpdated: "Tài khoản được cập nhật",
   BankBalanceSeeded: "Số dư được thiết lập",
+  LoanApplicationCreated: "Hồ sơ vay được tạo",
+  LoanDocumentAdded: "Hồ sơ vay được bổ sung chứng từ",
+  LoanApplicationSubmitted: "Hồ sơ vay được gửi",
+  LoanReviewStarted: "Bắt đầu thẩm định khoản vay",
+  LoanApplicationAssessed: "Khoản vay được thẩm định",
+  LoanApplicationApproved: "Hồ sơ vay được phê duyệt",
+  LoanApplicationRejected: "Hồ sơ vay bị từ chối",
+  LoanOfferIssued: "Đề nghị khoản vay được phát hành",
+  LoanOfferAccepted: "Đề nghị khoản vay được chấp nhận",
+  LoanOfferRejected: "Đề nghị khoản vay bị từ chối",
+  LoanContractConfirmed: "Hợp đồng vay được xác nhận",
+  LoanDisbursementPrepared: "Khoản vay được chuẩn bị giải ngân",
+  LoanDisbursed: "Khoản vay được giải ngân",
+  LoanDisbursementCredited: "Tiền vay được cộng vào tài khoản",
+  LoanInstallmentPaid: "Đã trả một kỳ khoản vay",
 };
 
 function formatDateTime(value: string): string {
@@ -84,12 +100,26 @@ function detailLines(item: TimelineItem, currency: string): string[] {
   if (typeof details.cancellationReason === "string") lines.push(`Lý do hủy: ${details.cancellationReason}`);
   if (typeof details.attemptsLeft === "number") lines.push(`Còn lại: ${details.attemptsLeft} lượt`);
   if (item.transactionId) lines.push(`Giao dịch: ${item.transactionId}`);
+  if (item.loanId) lines.push(`Khoản vay: ${item.loanId}`);
+  if (typeof details.applicationNo === "string") lines.push(`Mã hồ sơ: ${details.applicationNo}`);
+  const requestedAmount = formatMoney(details.requestedAmount, currency);
+  if (requestedAmount) lines.push(`Số tiền đề nghị: ${requestedAmount}`);
+  if (typeof details.decision === "string") lines.push(`Kết quả: ${details.decision}`);
+  if (typeof details.totalScore === "number") lines.push(`Điểm thẩm định: ${details.totalScore}`);
+  if (typeof details.annualRateBps === "number") lines.push(`Lãi suất: ${(details.annualRateBps / 100).toFixed(2)}%/năm`);
+  if (typeof details.installmentNo === "number") lines.push(`Kỳ trả: ${details.installmentNo}`);
+  const principal = formatMoney(details.principalAmount, currency);
+  const interest = formatMoney(details.interestAmount, currency);
+  if (principal) lines.push(`Gốc kỳ này: ${principal}`);
+  if (interest) lines.push(`Lãi kỳ này: ${interest}`);
+  const outstanding = formatMoney(details.outstandingPrincipalAfter, currency);
+  if (outstanding) lines.push(`Dư nợ gốc còn lại: ${outstanding}`);
   return lines;
 }
 
 function TimelineCard({ item, currency }: { item: TimelineItem; currency: string }) {
-  const isPositive = item.eventType.endsWith("Succeeded") || item.eventType === "TransferCompleted";
-  const isNegative = item.eventType.endsWith("Failed") || item.eventType.endsWith("Expired") || item.eventType.endsWith("Exceeded") || item.eventType === "TransferCancelled";
+  const isPositive = item.eventType.endsWith("Succeeded") || item.eventType === "TransferCompleted" || item.eventType === "LoanDisbursementCredited" || item.eventType === "LoanDisbursed";
+  const isNegative = item.eventType.endsWith("Failed") || item.eventType.endsWith("Expired") || item.eventType.endsWith("Exceeded") || item.eventType === "TransferCancelled" || item.eventType === "LoanApplicationRejected" || item.eventType === "LoanOfferRejected";
   const details = detailLines(item, currency);
   return (
     <article className={`${surface} grid grid-cols-[28px_minmax(0,1fr)_auto] gap-3 rounded-(--admin-radius-md) border border-(--admin-border) p-3`}>

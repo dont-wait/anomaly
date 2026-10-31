@@ -202,7 +202,6 @@ func main() {
 	auditRepository := eventstore.NewAuditRepository(esClient)
 	transferRepository := mongo.NewTransferRepository(mongoClient, config.MongoConfig.MongoDBName)
 	bank := eventstore.NewBankRepository(esClient, transferRepository)
-	adminTimelineHandler := adminhandler.NewTimelineHandler(esClient, bank)
 	legacyAccounts, err := mongoClient.Database(config.MongoConfig.MongoDBName).Collection("accounts").EstimatedDocumentCount(ctx)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("check existing account data")
@@ -258,6 +257,7 @@ func main() {
 			Err(err).
 			Msg("ensure loan projection indexes")
 	}
+	adminTimelineHandler := adminhandler.NewTimelineHandler(esClient, bank, loanRead)
 
 	// Evidence do nhân viên xác nhận.
 	loanEvidence := loanadapter.NewEvidenceStore(

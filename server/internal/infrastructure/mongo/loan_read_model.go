@@ -3,6 +3,7 @@ package mongo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain/loan"
@@ -39,6 +40,44 @@ func (m *LoanReadModel) LoanProjectionRebuilding(
 
 	// Unknown states must fail closed.
 	return state.Status != "ready", nil
+}
+
+// StartLoanTimelineBackfill marks the loan projection unavailable while an
+// operator rebuilds the account-scoped timeline. Missing state is treated as
+// ready for normal reads, but is explicitly created before backfill starts.
+func (m *LoanReadModel) StartLoanTimelineBackfill(ctx context.Context) error {
+	var state struct {
+		Status string `bson:"status"`
+	}
+	err := m.db.Collection("loan_projection_state").FindOne(
+		ctx,
+		bson.M{"_id": loanRecoveryStateID},
+	).Decode(&state)
+	if err != nil && !errors.Is(err, mongodrv.ErrNoDocuments) {
+		return err
+	}
+	if state.Status != "" && state.Status != "ready" {
+		return fmt.Errorf("loan projection is already %s", state.Status)
+	}
+	_, err = m.db.Collection("loan_projection_state").UpdateOne(
+		ctx,
+		bson.M{"_id": loanRecoveryStateID},
+		bson.M{"$set": bson.M{"status": "rebuilding", "updated_at": time.Now().UTC()}},
+		options.UpdateOne().SetUpsert(true),
+	)
+	return err
+}
+
+// FinishLoanTimelineBackfill re-enables timeline reads after every event has
+// been written successfully. A failed backfill deliberately leaves the state
+// as rebuilding so the API cannot expose a partial history.
+func (m *LoanReadModel) FinishLoanTimelineBackfill(ctx context.Context) error {
+	_, err := m.db.Collection("loan_projection_state").UpdateOne(
+		ctx,
+		bson.M{"_id": loanRecoveryStateID, "status": "rebuilding"},
+		bson.M{"$set": bson.M{"status": "ready", "updated_at": time.Now().UTC()}},
+	)
+	return err
 }
 
 type LoanReadModel struct {
@@ -89,7 +128,11 @@ func (m *LoanReadModel) EnsureIndexes(
 		return err
 	}
 
-	return ensureLoanRepaymentIndexes(ctx, m.db)
+	if err := ensureLoanRepaymentIndexes(ctx, m.db); err != nil {
+		return err
+	}
+
+	return m.EnsureLoanTimelineIndexes(ctx)
 }
 
 // Lưu aggregate Loan đã replay
@@ -335,6 +378,10 @@ func (m *LoanReadModel) ResetAfterInvalidCheckpoint(
 	_, err = m.db.Collection(
 		"loan_applications_read",
 	).DeleteMany(ctx, bson.M{})
+	if err != nil {
+		return err
+	}
+	_, err = m.db.Collection(loanTimelineCollection).DeleteMany(ctx, bson.M{})
 	if err != nil {
 		return err
 	}
