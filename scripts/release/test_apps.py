@@ -11,7 +11,8 @@ class InstallerSafetyTests(unittest.TestCase):
     def test_unusable_release_endpoints_are_rejected(self):
         for endpoint in ('', 'http://api.example.com', 'https://localhost:8080',
                          'https://127.0.0.1', 'https://[::1]', 'https://0.0.0.0',
-                         'https://user:password@api.example.com', 'https://api.example.com?key=secret'):
+                         'https://user:password@api.example.com', 'https://api.example.com?key=secret',
+                         'https://api.example.com:abc', 'https://api.example.com:65536'):
             with self.subTest(endpoint=endpoint), self.assertRaises(ValueError):
                 apps.validate_endpoint(endpoint)
         apps.validate_endpoint('https://api.example.com/api')

@@ -24,6 +24,10 @@ TARGETS = {
 def validate_endpoint(endpoint):
     url = urlsplit(endpoint)
     host = (url.hostname or "").lower().rstrip(".")
+    try:
+        url.port
+    except ValueError as error:
+        raise ValueError("VITE_API_ENDPOINT must contain a valid port") from error
     if url.scheme != "https" or not host or url.username or url.password or url.query or url.fragment:
         raise ValueError("VITE_API_ENDPOINT must be an HTTPS URL without credentials/query/fragment")
     if host == "localhost" or host.endswith(".localhost"):
