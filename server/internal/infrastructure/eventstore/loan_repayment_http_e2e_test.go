@@ -18,6 +18,7 @@ import (
 	repaycommands "github.com/dont-wait/anomaly/internal/application/loan/commands"
 	repayqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
 	"github.com/dont-wait/anomaly/internal/domain"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	loandomain "github.com/dont-wait/anomaly/internal/domain/loan"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/infrastructure/auth"
@@ -105,6 +106,8 @@ func TestLoanRepaymentHTTPE2E(t *testing.T) {
 		IdCardFrontUrl: "kyc/" + owner.Id + "/id-card-front/e2e",
 		IdCardBackUrl:  "kyc/" + owner.Id + "/id-card-back/e2e",
 		LiveVideoUrl:   "kyc/" + owner.Id + "/live-video/e2e",
+		// Persistence fixture; this is not a biometric accuracy assertion.
+		Evidence: &accountdomain.KYCEvidence{MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true}, MatchScore: 0.9, LivenessScore: 1,
 	})
 	if err != nil {
 		t.Fatal(err)

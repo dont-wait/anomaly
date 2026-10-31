@@ -39,6 +39,5 @@ it("supports protected loan application and contract detail routes", () => {
   expect(isProtectedRoute(contract)).toBe(true);
   expect(isProtectedRoute(routes.loanApplications)).toBe(true);
   expect(isProtectedRoute(routes.loanContracts)).toBe(true);
-  expect(isProtectedRoute(routes.loanAdmin)).toBe(true);
   expect(parseLoanContractId(`${routes.loanContracts}/%E0`)).toBeNull();
 });

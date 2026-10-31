@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { navigate, routes, loanContract } from "@/app/routes";
 import { useAuth } from "@/features/auth/useAuth";
 import {
@@ -18,11 +18,24 @@ import {
 } from "@/features/loans/api";
 import { explainLoanError, vnd } from "@/features/loans/format";
 import {
+  clearIdempotencyKey,
+  getOrCreateIdempotencyKey,
+} from "@/features/loans/idempotency";
+import {
   Action,
   LoanLayout,
   Notice,
   Panel,
 } from "@/features/loans/components/LoanLayout";
+
+const appendUnique = <T,>(
+  current: T[],
+  incoming: T[],
+  key: (item: T) => string,
+) => {
+  const seen = new Set(current.map(key));
+  return [...current, ...incoming.filter((item) => !seen.has(key(item)))];
+};
 
 export default function LoanContractsPage({ loanId }: { loanId?: string }) {
   const { token, user } = useAuth();
@@ -44,7 +57,6 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const repayRetry = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!token) return;
@@ -120,7 +132,6 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
     }
     setQuote(null);
     setRepaymentResult(null);
-    repayRetry.current = null;
     await run(async () => {
       const next = await quoteRepayment(
         token,
@@ -139,23 +150,30 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
       setError("Báo giá đã hết hạn. Vui lòng lấy báo giá mới.");
       return;
     }
-    const fingerprint = `${loanId}:${quote.quoteId}:${sourceAccountId.trim()}`;
-    if (!repayRetry.current || repayRetry.current.fingerprint !== fingerprint) {
-      repayRetry.current = { fingerprint, key: crypto.randomUUID() };
-    }
+    const fingerprint = `${quote.quoteId}:${sourceAccountId.trim()}`;
+    const scope = `repay:${user?.id ?? "anonymous"}:${loanId}`;
+    const idempotencyKey = getOrCreateIdempotencyKey(scope, fingerprint);
     await run(async () => {
       const result = await confirmRepayment(
         token,
         loanId,
         quote.quoteId,
         sourceAccountId.trim(),
-        repayRetry.current!.key,
+        idempotencyKey,
       );
+      clearIdempotencyKey(scope, fingerprint);
       setRepaymentResult(result);
       setQuote(null);
-      repayRetry.current = null;
       // Read projection may lag; payment result is authoritative until refresh.
     }, "Giao dịch trả nợ đã được ghi nhận. Tải lại để kiểm tra lịch và dư nợ.");
+  };
+
+  /** After a successful payment the local schedule is stale until reloaded. */
+  const reloadAfterRepayment = async () => {
+    await run(async () => {
+      await refresh();
+      setRepaymentResult(null);
+    }, "Đã tải lại dư nợ và lịch trả nợ.");
   };
 
   return (
@@ -195,7 +213,9 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
                     token,
                     nextContractCursor,
                   );
-                  setContracts((old) => [...old, ...page.items]);
+                  setContracts((old) =>
+                    appendUnique(old, page.items, (item) => item.loanId),
+                  );
                   setNextContractCursor(page.nextCursor);
                 }, "Đã tải thêm hợp đồng.");
               }}
@@ -273,7 +293,25 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
               ))}
             </Panel>
           )}
+          {schedule && repaymentResult && (
+            <Panel title="Kết quả trả nợ">
+              <Notice
+                message={`Đã thanh toán kỳ ${repaymentResult.installmentNo}: ${vnd(repaymentResult.amount)}. Mã: ${repaymentResult.paymentId}. Dư nợ sau trả: ${vnd(repaymentResult.outstandingPrincipalAfter)}.`}
+              />
+              <p className="text-xs text-on-surface-variant">
+                Không thể trả lại kỳ vừa thanh toán. Tải lại để lấy kỳ kế tiếp.
+              </p>
+              <Action
+                secondary
+                disabled={busy}
+                onClick={() => void reloadAfterRepayment()}
+              >
+                Tải lại dư nợ / lịch sử
+              </Action>
+            </Panel>
+          )}
           {schedule &&
+            !repaymentResult &&
             schedule.status !== "completed" &&
             schedule.nextInstallmentNo > 0 && (
               <Panel title="Thanh toán kỳ tới hạn">
@@ -288,7 +326,6 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
                     onChange={(e) => {
                       setSourceAccountId(e.target.value);
                       setQuote(null);
-                      repayRetry.current = null;
                     }}
                     className="mt-1 w-full rounded-xl border p-3 text-sm"
                   />
@@ -316,11 +353,6 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
                       Xác nhận trả {vnd(quote.totalAmount)}
                     </Action>
                   </div>
-                )}
-                {repaymentResult && (
-                  <Notice
-                    message={`Đã thanh toán kỳ ${repaymentResult.installmentNo}: ${vnd(repaymentResult.amount)}. Mã: ${repaymentResult.paymentId}. Dư nợ sau trả: ${vnd(repaymentResult.outstandingPrincipalAfter)}.`}
-                  />
                 )}
               </Panel>
             )}
@@ -360,7 +392,9 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
                       loanId,
                       nextPaymentCursor,
                     );
-                    setPayments((old) => [...old, ...page.items]);
+                    setPayments((old) =>
+                      appendUnique(old, page.items, (item) => item.paymentId),
+                    );
                     setNextPaymentCursor(page.nextCursor);
                   }, "Đã tải thêm lịch sử.");
                 }}

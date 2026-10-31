@@ -18,6 +18,10 @@ import {
   type LoanQuote,
 } from "@/features/loans/api";
 import { explainLoanError, percentBps, vnd } from "@/features/loans/format";
+import {
+  clearIdempotencyKey,
+  getOrCreateIdempotencyKey,
+} from "@/features/loans/idempotency";
 
 const AMOUNTS = [30_000_000, 50_000_000, 100_000_000, 200_000_000] as const;
 const TENURES = [6, 12, 24, 36] as const;
@@ -71,7 +75,6 @@ const LoanRegisterPage = () => {
   const [sourceAccountId, setSourceAccountId] = useState(user?.id ?? "");
   const [quote, setQuote] = useState<LoanQuote | null>(null);
   const [busy, setBusy] = useState(false);
-  const createRetry = useRef<{ payload: string; key: string } | null>(null);
   const quotedFingerprint = useRef<string | null>(null);
   useEffect(() => {
     if (!token) return;
@@ -95,7 +98,7 @@ const LoanRegisterPage = () => {
   const storedDraft: Partial<LoanDraft> =
     draft && typeof draft === "object" ? draft : DEFAULT_DRAFT;
   const amount =
-    Number.isSafeInteger(storedDraft.amount) && (storedDraft.amount ?? 0) > 0
+    Number.isSafeInteger(storedDraft.amount) && (storedDraft.amount ?? -1) >= 0
       ? storedDraft.amount!
       : DEFAULT_AMOUNT;
   const tenure =
@@ -127,7 +130,6 @@ const LoanRegisterPage = () => {
   const updateDraft = (patch: Partial<LoanDraft>) => {
     setQuote(null);
     quotedFingerprint.current = null;
-    createRetry.current = null;
     setDraft((previous) => ({
       ...DEFAULT_DRAFT,
       ...(previous ?? DEFAULT_DRAFT),
@@ -219,13 +221,12 @@ const LoanRegisterPage = () => {
       disbursementAccountId: sourceAccountId.trim(),
     };
     const fingerprint = JSON.stringify(payload);
-    if (!createRetry.current || createRetry.current.payload !== fingerprint) {
-      createRetry.current = { payload: fingerprint, key: crypto.randomUUID() };
-    }
+    const scope = `create-loan:${user?.id ?? "anonymous"}`;
+    const idempotencyKey = getOrCreateIdempotencyKey(scope, fingerprint);
     setBusy(true);
     try {
-      const result = await createLoan(token, payload, createRetry.current.key);
-      createRetry.current = null;
+      const result = await createLoan(token, payload, idempotencyKey);
+      clearIdempotencyKey(scope, fingerprint);
       navigate(loanApplication(result.id));
     } catch (error) {
       setSaveMessage({ tone: "error", text: explainLoanError(error) });
@@ -354,8 +355,12 @@ const LoanRegisterPage = () => {
               type="number"
               min={1}
               step={1000000}
-              value={amount}
-              onChange={(e) => updateDraft({ amount: Number(e.target.value) })}
+              value={amount === 0 ? "" : amount}
+              onChange={(e) =>
+                updateDraft({
+                  amount: e.target.value === "" ? 0 : Number(e.target.value),
+                })
+              }
               className="mt-2 w-full rounded-xl border border-outline-variant p-3 text-sm"
             />
           </label>
@@ -538,7 +543,6 @@ const LoanRegisterPage = () => {
               value={sourceAccountId}
               onChange={(e) => {
                 setSourceAccountId(e.target.value);
-                createRetry.current = null;
               }}
               className="mt-1 w-full rounded-xl border p-3 text-xs"
             />

@@ -9,7 +9,9 @@ import {
 import App from "./App";
 
 vi.mock("react-chartjs-2", () => ({
-  Line: (props: { "aria-label"?: string }) => <canvas data-testid="chart-canvas" aria-label={props["aria-label"]} />,
+  Line: (props: { "aria-label"?: string }) => (
+    <canvas data-testid="chart-canvas" aria-label={props["aria-label"]} />
+  ),
 }));
 
 const session = {
@@ -73,7 +75,34 @@ describe("App admin route", () => {
       }),
     ).toBeTruthy();
     expect(screen.getAllByText("Admin Staff")).toHaveLength(2);
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/auth/me"), expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/auth/me"),
+      expect.anything(),
+    );
+  });
+
+  it("renders the loan review workspace", async () => {
+    localStorage.setItem("anomaly.admin.session", JSON.stringify(session));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              status: 200,
+              message: "ok",
+              data: adminProfile,
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    window.location.hash = "#/admin/loan-applications";
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: /Thẩm định hồ sơ vay/i }),
+    ).toBeTruthy();
   });
 
   it("renders the shared shell for another protected route", async () => {

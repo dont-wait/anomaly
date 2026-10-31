@@ -250,18 +250,30 @@ export async function downloadLoanDocument(
   id: string,
   documentId: string,
 ): Promise<Blob> {
-  const response = await fetch(
-    `${API_BASE_URL.replace(/\/+$/, "")}${path(id)}/documents/${encodeURIComponent(documentId)}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
-  if (!response.ok)
-    throw new ApiError(
-      response.status,
-      `Không tải được chứng từ (HTTP ${response.status}).`,
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(
+      `${API_BASE_URL.replace(/\/+$/, "")}${path(id)}/documents/${encodeURIComponent(documentId)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      },
     );
-  return response.blob();
+    if (!response.ok)
+      throw new ApiError(
+        response.status,
+        `Không tải được chứng từ (HTTP ${response.status}).`,
+      );
+    return await response.blob();
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw new ApiError(0, "Tải chứng từ quá lâu. Vui lòng thử lại.");
+    throw new ApiError(0, "Không tải được chứng từ. Vui lòng thử lại.");
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // Offer and contract OTP (PR #116)

@@ -102,7 +102,8 @@ it("requires a detail when the custom purpose is selected", () => {
     screen.getByPlaceholderText("Mô tả mục đích sử dụng khoản vay..."),
     {
       target: { value: "Vay mua thiết bị văn phòng" },
-    });
+    },
+  );
   fireEvent.click(screen.getByRole("button", { name: "Lưu bản nháp" }));
 
   expect(screen.getByText(/Đã lưu bản nháp/)).toBeTruthy();

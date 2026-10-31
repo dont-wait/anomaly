@@ -7,7 +7,6 @@ export const routes = {
   loanRegister: "#/loan/register",
   loanApplications: "#/loan/applications",
   loanContracts: "#/loan/contracts",
-  loanAdmin: "#/loan/admin",
 } as const;
 
 const LOAN_APPLICATION_PREFIX = `${routes.loanApplications}/`;
@@ -63,7 +62,6 @@ const PROTECTED_ROUTES: readonly string[] = [
   routes.loanRegister,
   routes.loanApplications,
   routes.loanContracts,
-  routes.loanAdmin,
 ];
 
 export const isProtectedRoute = (hash: string) =>

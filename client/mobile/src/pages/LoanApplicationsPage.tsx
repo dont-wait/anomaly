@@ -20,6 +20,7 @@ import {
   type LoanOffer,
 } from "@/features/loans/api";
 import { explainLoanError, percentBps, vnd } from "@/features/loans/format";
+import { ApiError } from "@/shared/lib/http";
 import {
   Action,
   LoanLayout,
@@ -28,6 +29,15 @@ import {
 } from "@/features/loans/components/LoanLayout";
 
 /** Read-only status is refreshed from API after every action; never infer success from clicks. */
+const appendUnique = <T,>(
+  current: T[],
+  incoming: T[],
+  key: (item: T) => string,
+) => {
+  const seen = new Set(current.map(key));
+  return [...current, ...incoming.filter((item) => !seen.has(key(item)))];
+};
+
 export default function LoanApplicationsPage({
   applicationId,
 }: {
@@ -61,8 +71,12 @@ export default function LoanApplicationsPage({
     if (detail.status === "approved") {
       try {
         setOffer(await getLoanOffer(token, applicationId));
-      } catch {
+      } catch (e) {
         setOffer(null);
+        // A missing offer (404) is a valid state; surface everything else.
+        if (!(e instanceof ApiError && e.status === 404)) {
+          setError(explainLoanError(e));
+        }
       }
     } else {
       setOffer(detail.offer ?? null);
@@ -179,7 +193,9 @@ export default function LoanApplicationsPage({
                 setBusy(true);
                 void listLoans(token, cursor)
                   .then((page) => {
-                    setItems((old) => [...old, ...page.items]);
+                    setItems((old) =>
+                      appendUnique(old, page.items, (item) => item.id),
+                    );
                     setCursor(page.nextCursor);
                   })
                   .catch((e: unknown) => setError(explainLoanError(e)))

@@ -10,7 +10,6 @@ import TransactionDetailPage from "@/pages/TransactionDetailPage";
 import LoanRegisterPage from "@/pages/LoanRegisterPage";
 import LoanApplicationsPage from "@/pages/LoanApplicationsPage";
 import LoanContractsPage from "@/pages/LoanContractsPage";
-import LoanAdminPage from "@/pages/LoanAdminPage";
 import {
   isProtectedRoute,
   parseTransactionId,
@@ -72,8 +71,6 @@ export function AppRouter() {
       return <LoanApplicationsPage />;
     case routes.loanContracts:
       return <LoanContractsPage />;
-    case routes.loanAdmin:
-      return <LoanAdminPage />;
     case routes.register:
       return <RegisterPage />;
     default:
