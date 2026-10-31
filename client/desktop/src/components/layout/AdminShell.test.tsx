@@ -80,6 +80,18 @@ describe("AdminShell", () => {
     ).toHaveLength(2);
   });
 
+  it("does not render environment and assignment actions in the header", () => {
+    render(
+      <AdminShell currentRoute={routes.monitor} user={user}>
+        <div>Dashboard content</div>
+      </AdminShell>,
+    );
+
+    expect(screen.queryByText("PROD · V0.4")).toBeNull();
+    expect(screen.queryByText("UTC+7")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Nhận việc tiếp theo" })).toBeNull();
+  });
+
   it("toggles the sidebar from the operator row", () => {
     render(
       <AdminShell currentRoute={routes.monitor} user={user}>

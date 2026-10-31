@@ -3,6 +3,7 @@ import { consumeRiskStream, getMonitorDashboard } from "./api/monitorApi";
 import { MonitorPage } from "./MonitorPage";
 import { MonitorDashboardSkeleton } from "./components/MonitorDashboardSkeleton";
 import { RiskTrendChart } from "./components/RiskTrendChart";
+import { routes } from "@/app/routes";
 
 vi.mock("./api/monitorApi", () => ({
   consumeRiskStream: vi.fn(() => new Promise<void>(() => undefined)),
@@ -57,6 +58,35 @@ describe("MonitorPage", () => {
     expect(screen.getByText("0.9821")).toBeTruthy();
     expect(screen.getAllByText("Chặn").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Xu hướng rủi ro (24h)" })).toBeTruthy();
+  });
+
+  it("shows only the five most recent requests", async () => {
+    const firstAssessment = dashboard.snapshot.recentAssessments[0];
+    if (!firstAssessment) throw new Error("Expected a test assessment");
+    const assessments = Array.from({ length: 6 }, (_, index) => {
+      const transactionId = `TX00${index + 1}`;
+      return {
+        ...firstAssessment,
+        assessmentId: `assessment-${index + 1}`,
+        transactionId,
+        transaction: firstAssessment.transaction
+          ? { ...firstAssessment.transaction, transactionId }
+          : null,
+      };
+    });
+    vi.mocked(getMonitorDashboard).mockResolvedValueOnce({
+      ...dashboard,
+      snapshot: { ...dashboard.snapshot, recentAssessments: assessments },
+    });
+
+    render(<MonitorPage />);
+
+    expect(await screen.findByText("TX006")).toBeTruthy();
+    expect(screen.getByText("TX002")).toBeTruthy();
+    expect(screen.queryByText("TX001")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Xem tất cả" }));
+    expect(window.location.hash).toBe(routes.audit);
   });
 
   it("renders the reusable dashboard skeleton", () => {
