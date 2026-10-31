@@ -31,6 +31,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -120,6 +121,7 @@ type loanQuoteResponse struct {
 }
 
 type Handler struct {
+	Log           *zerolog.Logger
 	Create        *commands.CreateLoanApplicationCommandHandler
 	Add           *commands.AddLoanDocumentCommandHandler
 	Submit        *commands.SubmitLoanApplicationCommandHandler

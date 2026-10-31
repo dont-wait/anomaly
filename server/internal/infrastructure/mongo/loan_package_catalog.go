@@ -84,15 +84,21 @@ func (c *LoanPackageCatalog) SeedDefaultPackage(ctx context.Context) (bool, erro
 	if existing != nil {
 		return false, nil
 	}
-	_, err = c.db.Collection("loan_packages").InsertOne(ctx, bson.M{
+	writeCtx, cancel := context.WithTimeout(ctx, catalogReadTimeout)
+	defer cancel()
+	_, err = c.db.Collection("loan_packages").InsertOne(writeCtx, bson.M{
 		"status":       "ACTIVE",
 		"package_code": code,
 		"name":         "Vay tín chấp theo lương",
 		"min_amount":   int64(1_000_000),
 		"max_amount":   int64(500_000_000),
 		"term_options": bson.A{
-			bson.M{"months": 6}, bson.M{"months": 12}, bson.M{"months": 24},
-			bson.M{"months": 36}, bson.M{"months": 48}, bson.M{"months": 60},
+			bson.M{"months": 6},
+			bson.M{"months": 12},
+			bson.M{"months": 24},
+			bson.M{"months": 36},
+			bson.M{"months": 48},
+			bson.M{"months": 60},
 		},
 		"created_at": time.Now().UTC(),
 	})

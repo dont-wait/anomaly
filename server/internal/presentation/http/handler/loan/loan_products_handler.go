@@ -8,6 +8,7 @@ import (
 	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/seeder"
+	"github.com/rs/zerolog"
 )
 
 func (h *Handler) listLoanPackages(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +33,11 @@ func (h *Handler) seedLoanCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := seeder.SeedLoanCatalog(r.Context(), h.CatalogSeeder)
 	if err != nil {
+		log := h.Log
+		if log == nil {
+			log = zerolog.Ctx(r.Context())
+		}
+		log.Error().Err(err).Str("method", r.Method).Str("path", r.URL.Path).Msg("seed loan catalog failed")
 		fail(w, http.StatusServiceUnavailable, "loan catalog seeding failed")
 		return
 	}
