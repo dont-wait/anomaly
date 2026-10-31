@@ -40,6 +40,23 @@ export function AppRouter() {
     }
   }, [isProtected, status]);
 
+  useEffect(() => {
+    if (hash === routes.login && status === AUTH_STATUS.AUTHENTICATED) {
+      window.location.hash = routes.dashboard;
+    }
+  }, [hash, status]);
+
+  if (
+    hash === routes.login &&
+    (status === AUTH_STATUS.IDLE || status === AUTH_STATUS.RESTORING)
+  ) {
+    return (
+      <div className="p-6 text-sm text-gray-500" role="status">
+        Đang khôi phục phiên đăng nhập...
+      </div>
+    );
+  }
+
   if (isProtected && status !== AUTH_STATUS.AUTHENTICATED) {
     return (
       <div className="p-6 text-sm text-gray-500">
@@ -55,7 +72,12 @@ export function AppRouter() {
 
   const applicationId = parseLoanApplicationId(hash);
   if (applicationId)
-    return <LoanApplicationsPage applicationId={applicationId} />;
+    return (
+      <>
+        <LoanApplicationsPage />
+        <LoanApplicationsPage applicationId={applicationId} />
+      </>
+    );
   const loanId = parseLoanContractId(hash);
   if (loanId) return <LoanContractsPage loanId={loanId} />;
 

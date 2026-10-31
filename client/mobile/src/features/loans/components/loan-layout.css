@@ -1,0 +1,159 @@
+.loan-shell {
+  min-height: 100dvh;
+  color: #131b2e;
+  background: radial-gradient(ellipse at 100% 1%, #e9ddff 0%, transparent 40%),
+    linear-gradient(160deg, #faf8ff 0%, #f2f3ff 58%, #faf8ff 100%);
+  font-family: "Be Vietnam Pro", system-ui, sans-serif;
+  font-size: 14px;
+}
+
+.loan-surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 448px;
+  min-height: 100dvh;
+  margin: 0 auto;
+}
+
+.loan-overlay {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  font-family: "Be Vietnam Pro", system-ui, sans-serif;
+}
+
+.loan-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: rgb(13 18 37 / 42%);
+}
+
+.loan-surface-overlay {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 100% 1%, #e9ddff 0%, transparent 40%),
+    linear-gradient(160deg, #faf8ff 0%, #f2f3ff 58%, #faf8ff 100%);
+  box-shadow: -12px 0 36px rgb(27 34 70 / 18%);
+  animation: loan-slide-in 220ms ease-out;
+}
+
+.loan-header {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 15px;
+  border-bottom: 1px solid #e2e7ff;
+  background: rgb(255 255 255 / 74%);
+  backdrop-filter: blur(16px);
+}
+
+.loan-header h1 {
+  color: #00236f;
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.loan-home-link {
+  flex-shrink: 0;
+  border-radius: 20px;
+  padding: 8px 11px;
+  color: #00236f;
+  background: #eaedff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.loan-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 11px 16px;
+  border-bottom: 1px solid #e2e7ff;
+  background: rgb(255 255 255 / 70%);
+}
+
+.loan-nav-button {
+  border-radius: 22px;
+  padding: 8px 11px;
+  color: #00236f;
+  background: #eaedff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.loan-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 15px;
+  overflow-y: auto;
+  padding: 17px 16px 28px;
+}
+
+.loan-panel {
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 24px;
+  padding: 17px;
+  background: rgb(255 255 255 / 93%);
+  box-shadow: 0 5px 16px rgb(55 64 125 / 6%);
+}
+
+.loan-panel h2 {
+  margin-bottom: 14px;
+  color: #00236f;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.loan-action {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 24px;
+  padding: 10px 16px;
+  color: white;
+  background: #00236f;
+  box-shadow: 0 6px 15px rgb(0 35 111 / 14%);
+  font-size: 13px;
+  font-weight: 750;
+  transition: transform 150ms, opacity 150ms;
+}
+
+.loan-action:not(:disabled):active { transform: scale(.985); }
+.loan-action:disabled { cursor: not-allowed; opacity: .5; box-shadow: none; }
+.loan-action-secondary { color: #00236f; background: #e5eaff; box-shadow: none; }
+
+.loan-notice {
+  border-radius: 18px;
+  padding: 12px;
+  color: #4b2696;
+  background: #efe8ff;
+  font-size: 11px;
+}
+
+.loan-notice-error { color: #93000a; background: #ffdad6; }
+
+@keyframes loan-slide-in {
+  from { transform: translateX(24px); opacity: .7; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loan-surface-overlay { animation: none; }
+  .loan-action { transition: none; }
+}

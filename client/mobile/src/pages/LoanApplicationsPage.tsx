@@ -157,6 +157,7 @@ export default function LoanApplicationsPage({
   return (
     <LoanLayout
       title={applicationId ? "Chi tiết hồ sơ vay" : "Danh sách hồ sơ vay"}
+      overlay={Boolean(applicationId)}
     >
       {error && <Notice message={error} error />}
       {message && <Notice message={message} />}
@@ -166,8 +167,8 @@ export default function LoanApplicationsPage({
             + Tạo hồ sơ vay
           </Action>
           {items.length === 0 && (
-            <p className="text-sm">
-              Chưa có hồ sơ (hoặc read model đang đồng bộ).
+            <p className="text-sm text-center">
+              Chưa có hồ sơ
             </p>
           )}
           {items.map((app) => (
