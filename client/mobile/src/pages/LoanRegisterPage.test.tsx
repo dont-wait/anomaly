@@ -1,11 +1,27 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AUTH_STATUS } from "@/features/auth/authStatus";
 import {
   AuthContext,
   type AuthContextValue,
 } from "@/features/auth/authContext";
 import LoanRegisterPage from "./LoanRegisterPage";
+
+vi.mock("@/features/loans/api", () => ({
+  listLoanPackages: vi.fn(async () => ({
+    items: [
+      {
+        packageCode: "PERSONAL_UNSECURED_SALARY",
+        name: "Vay cá nhân",
+        minAmount: 10_000_000,
+        maxAmount: 200_000_000,
+        termMonths: [6, 12, 24, 36],
+      },
+    ],
+  })),
+  preQuoteLoan: vi.fn(),
+  createLoan: vi.fn(),
+}));
 
 const auth: AuthContextValue = {
   status: AUTH_STATUS.AUTHENTICATED,
@@ -82,9 +98,12 @@ it("requires a detail when the custom purpose is selected", () => {
     "Vui lòng nhập mục đích vay cụ thể",
   );
 
-  fireEvent.change(screen.getByRole("textbox"), {
-    target: { value: "Vay mua thiết bị văn phòng" },
-  });
+  fireEvent.change(
+    screen.getByPlaceholderText("Mô tả mục đích sử dụng khoản vay..."),
+    {
+      target: { value: "Vay mua thiết bị văn phòng" },
+    },
+  );
   fireEvent.click(screen.getByRole("button", { name: "Lưu bản nháp" }));
 
   expect(screen.getByText(/Đã lưu bản nháp/)).toBeTruthy();

@@ -16,6 +16,7 @@ import (
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/domain"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
 	"github.com/dont-wait/anomaly/internal/domain/risk"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
@@ -111,6 +112,8 @@ func TestTransferRiskALLOWHTTPE2E(t *testing.T) {
 	if _, err := commands.NewVerifyAccountCommandHandler(bank).Handle(ctx, commands.VerifyAccountCommand{
 		AccountID: ids[0], IdCardFrontUrl: "kyc/" + ids[0] + "/id-card-front/front",
 		IdCardBackUrl: "kyc/" + ids[0] + "/id-card-back/back", LiveVideoUrl: "kyc/" + ids[0] + "/live-video/live",
+		// Persistence fixture; this is not a biometric accuracy assertion.
+		Evidence: &accountdomain.KYCEvidence{MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true}, MatchScore: 0.9, LivenessScore: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
