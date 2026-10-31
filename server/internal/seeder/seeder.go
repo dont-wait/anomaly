@@ -20,7 +20,12 @@ type Repository interface {
 
 // Dependencies holds shared repositories used by seeders.
 type Dependencies struct {
-	Accounts Repository
+	Accounts    Repository
+	LoanCatalog LoanCatalogSeeder
+}
+
+type LoanCatalogSeeder interface {
+	SeedDefaultPackage(context.Context) (bool, error)
 }
 
 type (

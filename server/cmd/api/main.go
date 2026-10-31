@@ -273,6 +273,7 @@ func main() {
 		loanEvidence,
 		mediaRepo,
 	)
+	loanHandler.Log = logger
 
 	packageCatalog := mongo.NewLoanPackageCatalog(mongoClient, config.MongoConfig.MongoDBName)
 	// Fail startup loudly if existing package codes are duplicated.

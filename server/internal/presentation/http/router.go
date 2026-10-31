@@ -56,6 +56,7 @@ func newRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler
 			router,
 			loanHandlers[0],
 			tokenSvc,
+			accountHandler.RequireCurrentAdmin,
 		)
 	}
 	router.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
