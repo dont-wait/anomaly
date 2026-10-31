@@ -309,10 +309,10 @@ func main() {
 	}
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouterWithSavingsAndAdminMonitor(
+	mux = presentation.NewRouterWithAdminMonitor(
 		mux, accountHandler, mediaHandler, otpHandler, transactionHandler,
 		tokenSvc, config.DocsConfig.SwaggerEnabled,
-		savingsHandler, adminMonitorHandler, loanHandler,
+		adminMonitorHandler, savingsHandler, loanHandler,
 	)
 
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")

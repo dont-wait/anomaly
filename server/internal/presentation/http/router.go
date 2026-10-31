@@ -30,13 +30,9 @@ func NewRouterWithSavings(mux *http.ServeMux, accountHandler *account.Handler, m
 	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, savingsHandler, nil, loanHandlers...)
 }
 
-// NewRouterWithAdminMonitor adds admin monitoring while preserving older callers.
-func NewRouterWithAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, adminMonitorHandler *admin.MonitorHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
-	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, adminMonitorHandler, loanHandlers...)
-}
-
-// NewRouterWithSavingsAndAdminMonitor enables both features on the same API instance.
-func NewRouterWithSavingsAndAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, adminMonitorHandler *admin.MonitorHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
+// NewRouterWithAdminMonitor adds optional API groups to the existing router.
+// Savings is explicit; loan handlers remain variadic for compatibility.
+func NewRouterWithAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, adminMonitorHandler *admin.MonitorHandler, savingsHandler *savings.Handler, loanHandlers ...*loan.Handler) *http.ServeMux {
 	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, savingsHandler, adminMonitorHandler, loanHandlers...)
 }
 
