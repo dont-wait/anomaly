@@ -8,6 +8,8 @@ import TransferPage from "@/pages/TransferPage";
 import TransactionHistoryPage from "@/pages/TransactionHistoryPage";
 import TransactionDetailPage from "@/pages/TransactionDetailPage";
 import LoanRegisterPage from "@/pages/LoanRegisterPage";
+import SavingsPage from "@/features/savings/SavingsPage";
+import { isProtectedRoute, parseTransactionId, routes } from "./routes";
 import LoanApplicationsPage from "@/pages/LoanApplicationsPage";
 import LoanContractsPage from "@/pages/LoanContractsPage";
 import {
@@ -67,6 +69,8 @@ export function AppRouter() {
       return <TransactionHistoryPage />;
     case routes.loanRegister:
       return <LoanRegisterPage />;
+    case routes.savings:
+      return <SavingsPage />;
     case routes.loanApplications:
       return <LoanApplicationsPage />;
     case routes.loanContracts:

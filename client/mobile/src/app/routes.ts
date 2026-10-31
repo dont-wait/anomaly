@@ -5,6 +5,7 @@ export const routes = {
   transfer: "#/transfer",
   transactions: "#/transactions",
   loanRegister: "#/loan/register",
+  savings: "#/savings",
   loanApplications: "#/loan/applications",
   loanContracts: "#/loan/contracts",
 } as const;
@@ -60,6 +61,7 @@ const PROTECTED_ROUTES: readonly string[] = [
   routes.transfer,
   routes.transactions,
   routes.loanRegister,
+  routes.savings,
   routes.loanApplications,
   routes.loanContracts,
 ];
