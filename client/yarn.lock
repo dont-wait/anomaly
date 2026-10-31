@@ -668,9 +668,9 @@
     "@tauri-apps/cli-win32-x64-msvc" "2.11.4"
 
 "@tauri-apps/plugin-opener@2":
-  version "2.7.0"
-  resolved "https://registry.yarnpkg.com/@tauri-apps/plugin-opener/-/plugin-opener-2.7.0.tgz#14d631a70282cbc07b46f4442ba6085d2200f301"
-  integrity sha512-mBorYfVKh9Lt7s4ZFtKbMUTxBw+Y/sVmSlKCtkkoBgMTC/DIbt/kaPm67L/2djAUqDI1wbixy5OHHVmipjuGMw==
+  version "2.7.2"
+  resolved "https://registry.yarnpkg.com/@tauri-apps/plugin-opener/-/plugin-opener-2.7.2.tgz#698f34eeb66d167792f7a113f3567c7bdff4294a"
+  integrity sha512-LyybP1VSzTMQiaFYcsbAse47KpivlyXdLZMQzGLEnkgQacGESnpjAfFoQ6h5sqWgAdZDH9szYjPzHMpv0Sz+TQ==
   dependencies:
     "@tauri-apps/api" "^2.12.0"
 
