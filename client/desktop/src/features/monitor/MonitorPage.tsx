@@ -208,30 +208,18 @@ function RiskBreakdown({ snapshot }: { snapshot: MonitorSnapshot }) {
 }
 
 function RiskRequestsTable({ assessments, onSelect }: { assessments: RiskAssessment[]; onSelect: (assessment: RiskAssessment) => void }) {
-  const [query, setQuery] = useState("");
-  const [riskFilter, setRiskFilter] = useState("ALL");
-  const [statusFilter, setStatusFilter] = useState("ALL");
-  const normalizedQuery = query.trim().toLowerCase();
-  const statusOptions = ["awaiting_otp", "success", "failed", "cancelled", "expired"];
-  const filteredAssessments = assessments.filter((assessment) => {
-    const transaction = assessment.transaction;
-    const matchesQuery = !normalizedQuery || [assessment.transactionId, transaction?.sourceAccountNo, transaction?.sourceAccountName, transaction?.destinationName].some((value) => value?.toLowerCase().includes(normalizedQuery));
-    const matchesRisk = riskFilter === "ALL" || assessment.riskLevel === riskFilter;
-    const matchesStatus = statusFilter === "ALL" || transaction?.status === statusFilter;
-    return matchesQuery && matchesRisk && matchesStatus;
-  });
+  const recentAssessments = [...assessments].reverse().slice(0, 5);
+  const filteredAssessments = [...recentAssessments].reverse();
 
   return (
     <section className={`${surfaceSubtle} flex min-h-80 flex-col justify-between rounded-(--admin-radius-md) p-3`}>
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
           <div className="flex items-center gap-2"><h2 className="text-[16px] leading-5 font-semibold text-(--admin-text) uppercase">Các yêu cầu gần đây</h2></div>
-          <span className="text-[12px] text-(--admin-text-muted)">{filteredAssessments.length}/{assessments.length} kết quả</span>
-        </div>
-        <div className="mb-2 flex flex-wrap gap-2">
-          <label className="relative min-w-56 flex-1"><span className="sr-only">Tìm giao dịch</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm mã giao dịch hoặc tài khoản..." className={`${surface} h-8 w-full rounded-sm px-2.5 text-[12px] text-(--admin-text) outline-none placeholder:text-(--admin-text-muted) focus:ring-1 focus:ring-(--admin-primary)`} /></label>
-          <label><span className="sr-only">Lọc mức rủi ro</span><select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value)} className={`${surface} h-8 rounded-sm px-2 text-[12px] text-(--admin-text) outline-none`}><option value="ALL">Tất cả mức rủi ro</option><option value="NORMAL">Bình thường</option><option value="WARNING">Cảnh báo</option><option value="BLOCK">Chặn</option></select></label>
-          <label><span className="sr-only">Lọc trạng thái</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className={`${surface} h-8 rounded-sm px-2 text-[12px] text-(--admin-text) outline-none`}><option value="ALL">Tất cả trạng thái</option>{statusOptions.map((status) => <option key={status} value={status}>{transactionStatusLabel(status)}</option>)}</select></label>
+          <div className="flex items-center gap-3">
+            <span className="text-[12px] text-(--admin-text-muted)">{recentAssessments.length} yêu cầu mới nhất</span>
+            <button className="h-7 rounded-sm border border-(--admin-primary-strong) bg-(--admin-primary) px-2.5 text-[12px] font-semibold text-white transition-colors hover:bg-(--admin-primary-strong)" type="button" onClick={() => navigate(routes.audit)}>Xem tất cả</button>
+          </div>
         </div>
         {filteredAssessments.length === 0 ? <div className="grid min-h-48 place-items-center text-[12px] text-(--admin-text-muted)">{assessments.length === 0 ? "Chưa có dữ liệu trong khoảng thời gian này." : "Không tìm thấy kết quả phù hợp."}</div> : <div className="w-full overflow-x-auto"><table className="w-full min-w-250 text-left"><thead><tr className={`${surface} h-7 text-[10px] font-semibold uppercase tracking-[0.04em] text-(--admin-text-muted)`}><th className="px-2">Mã giao dịch</th><th className="px-2">Tài khoản gửi</th><th className="px-2 text-right">Số tiền</th><th className="px-2 text-center">Điểm rủi ro</th><th className="px-2 text-center">Mức rủi ro</th><th className="px-2 text-center">Kết quả</th><th className="px-2 text-center">Trạng thái</th><th className="px-2 text-center">Ngưỡng</th><th className="px-2 text-right">Thời điểm</th></tr></thead><tbody>{[...filteredAssessments].reverse().map((assessment) => <tr key={assessment.assessmentId} onClick={() => onSelect(assessment)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect(assessment); }} role="button" tabIndex={0} className={`h-9 cursor-pointer transition-colors ${surfaceHover}`}><td className={`${mono} px-2 text-[11px] font-bold text-(--admin-primary)`}>{assessment.transactionId}</td><td className="max-w-35 truncate px-2 text-[12px] text-(--admin-text-secondary)" title={assessment.transaction?.sourceAccountName || undefined}>{assessment.transaction?.sourceAccountNo || "—"}</td><td className={`${mono} px-2 text-right text-[11px] text-(--admin-text)`}>{assessment.transaction ? formatMoney(assessment.transaction.amount, assessment.transaction.currency) : "—"}</td><td className={`${mono} px-2 text-center text-[12px] font-semibold text-(--admin-text)`}>{assessment.riskScore.toFixed(4)}</td><td className="px-2 text-center"><span className={`${mono} rounded-sm px-1.5 py-1 text-[10px] font-bold ${assessment.riskLevel === "BLOCK" ? "bg-[#5b2427] text-[#ffb4ab]" : assessment.riskLevel === "WARNING" ? "bg-[#4b3b1d] text-[#f6d58a]" : "bg-(--admin-surface-hover) text-(--admin-text-secondary)"}`}>{riskLevelLabel(assessment.riskLevel)}</span></td><td className={`${mono} px-2 text-center text-[11px] font-bold ${assessment.decision === "BLOCK" ? "text-(--admin-danger)" : "text-(--admin-primary)"}`}>{decisionLabel(assessment.decision)}</td><td className="px-2 text-center"><TransactionStatusIcon status={assessment.transaction?.status} /></td><td className={`${mono} px-2 text-center text-[12px] text-(--admin-text)`}>{assessment.threshold.toFixed(4)}</td><td className={`${mono} px-2 text-right text-[10px] text-(--admin-text-muted)`}>{new Date(assessment.receivedAt).toLocaleTimeString("vi-VN", { hour12: false })}</td></tr>)}</tbody></table></div>}
       </div>

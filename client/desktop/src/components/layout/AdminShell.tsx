@@ -4,7 +4,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRightFromBracket,
   faBell,
-  faBolt,
   faChartLine,
   faChevronLeft,
   faChevronRight,
@@ -279,19 +278,6 @@ export function AdminShell({
             </label>
           </div>
           <div className="flex items-center gap-2">
-            <span className="rounded-(--admin-radius-md) border border-(--admin-border) px-2.5 py-1.5 font-(family-name:--admin-font-mono) text-[10px] tracking-[0.03em] text-(--admin-text-secondary) max-[1200px]:hidden">
-              PROD · V0.4
-            </span>
-            <span className="rounded-(--admin-radius-md) border border-(--admin-border) px-2.5 py-1.5 font-(family-name:--admin-font-mono) text-[10px] tracking-[0.03em] text-(--admin-text-secondary) max-[600px]:hidden">
-              UTC+7
-            </span>
-            <button
-              className="flex h-9 items-center gap-2 rounded-(--admin-radius-md) border border-[#1d4ed8] bg-[#2563eb] px-3 font-(family-name:--admin-font-sans) text-[13px] font-semibold text-white hover:bg-[#1d4ed8] max-[1100px]:hidden"
-              type="button"
-            >
-              <FontAwesomeIcon icon={faBolt} aria-hidden="true" />
-              Nhận việc tiếp theo
-            </button>
             <button
               className="relative grid h-8 w-8 place-items-center text-(--admin-text-secondary) hover:text-(--admin-text)"
               type="button"
