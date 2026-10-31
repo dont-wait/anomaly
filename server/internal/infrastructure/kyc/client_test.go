@@ -120,3 +120,23 @@ func TestVerifyFaceRejectsInconsistentVerifiedResponse(t *testing.T) {
 		t.Fatal("expected inconsistent response to be rejected")
 	}
 }
+
+func TestVerifyFacePOCRequiresExplicitClientOptIn(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"poc_bypass": true, "success": true, "decision": "VERIFIED", "match_score": 0, "liveness_score": 0,
+			"analysis": accountdomain.KYCEvidence{RequestID: r.Header.Get("X-Request-ID"), ModelID: "poc-bypass", PipelineVersion: "poc-v1", MatchingStatus: "not_run", LivenessStatus: "not_run"},
+		})
+	}))
+	defer server.Close()
+	for _, enabled := range []bool{false, true} {
+		result, err := NewClient(server.URL).WithPOCBypass(enabled).VerifyFace(context.Background(), Media{}, Media{}, "TURN_HEAD_LEFT_RIGHT_BLINK")
+		if enabled {
+			if err != nil || !result.ValidVerified() || !result.POCBypass {
+				t.Fatalf("POC enabled: result=%+v err=%v", result, err)
+			}
+		} else if err == nil {
+			t.Fatal("POC accepted without opt-in")
+		}
+	}
+}

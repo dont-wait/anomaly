@@ -19,7 +19,10 @@ Các feature cần gửi:
 - `new_device`: thiết bị có phải thiết bị mới không
 
 Ngoài `model_features`, model input có `ip_address` là IP nguồn do API quan sát
-lúc tạo giao dịch; nếu không xác định được thì dùng `UNKNOWN`.
+lúc tạo giao dịch. Consumer mock dùng `UNKNOWN` khi thiếu IP. `anomaly-service`
+giữ IP có thật trong training request (`payload.ip_address`); dữ liệu cũ thiếu IP
+không được bổ sung giá trị giả. Bundle GATv2 hiện chưa có feature IP nên không
+đưa field này vào inference input.
 
 `last_tx_at` dùng timestamp RFC3339, thống nhất với `occurred_at` trong event
 envelope. Nếu chưa có giao dịch trước đó thì giá trị là `null`.
@@ -154,9 +157,9 @@ commit rolling feature state sau khi debit/credit thành công.
 5. Tạo envelope có `model_features`.
 6. Publish envelope vào `anomaly.bank.events.v1`.
 7. ACK `TransferCreated` sau khi Kafka xác nhận.
-8. Model publish risk decision vào `anomaly.bank.risk-decisions.v1`.
-9. API server lưu decision tạm thời; confirm dùng decision để trả `PENDING`,
-   `ALLOW` hoặc `BLOCK`.
+8. Model publish scoring response vào `anomaly.bank.risk-decisions.v1`.
+9. API server lưu model assessment vào `risk_decisions`; Admin Dashboard đọc
+   assessment này qua snapshot API và SSE.
 10. `ALLOW` tạo `TransferCompleted`; `BLOCK` tạo `TransferFailed`.
 11. Chỉ sau `TransferCompleted`, relay cập nhật rolling state và receiver/device
     history.

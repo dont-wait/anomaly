@@ -43,3 +43,71 @@ func TestRiskDecisionMigrationCreatesCollectionsAndIndexes(t *testing.T) {
 		t.Fatalf("rejection indexes = %+v", commands[3].Indexes)
 	}
 }
+
+func TestRiskAssessmentMigrationRemainsAtVersion13(t *testing.T) {
+	path := filepath.Join("../../migrations", "000013_create_risk_assessments.up.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var commands []struct {
+		Create        string `json:"create"`
+		CreateIndexes string `json:"createIndexes"`
+	}
+	if err := json.Unmarshal(body, &commands); err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 2 || commands[0].Create != "risk_assessments" || commands[1].CreateIndexes != "risk_assessments" {
+		t.Fatalf("unexpected version 13 migration: %+v", commands)
+	}
+}
+
+func TestRiskDecisionConsolidationMigrationUsesMongoDropIndexField(t *testing.T) {
+	path := filepath.Join("../../migrations", "000014_unify_risk_decisions.up.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var commands []struct {
+		Drop        string `json:"drop"`
+		Delete      string `json:"delete"`
+		DropIndexes string `json:"dropIndexes"`
+		Index       string `json:"index"`
+		Indexes     any    `json:"indexes"`
+	}
+	if err := json.Unmarshal(body, &commands); err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 4 {
+		t.Fatalf("version 14 migration has %d commands, want 4", len(commands))
+	}
+	if commands[0].Drop != "risk_assessments" {
+		t.Fatalf("first command = %+v, want drop risk_assessments", commands[0])
+	}
+	if commands[1].DropIndexes != "risk_decisions" || commands[1].Index != "*" || commands[1].Indexes != nil {
+		t.Fatalf("drop command = %+v", commands[1])
+	}
+	if commands[2].Delete != "risk_decisions" {
+		t.Fatalf("cleanup command = %+v", commands[2])
+	}
+}
+
+func TestRiskDecisionCursorMigrationCreatesCursorIndex(t *testing.T) {
+	path := filepath.Join("../../migrations", "000015_add_risk_decision_cursor.up.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var commands []struct {
+		CreateIndexes string `json:"createIndexes"`
+		Indexes       []struct {
+			Name string `json:"name"`
+		} `json:"indexes"`
+	}
+	if err := json.Unmarshal(body, &commands); err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 1 || commands[0].CreateIndexes != "risk_decisions" || len(commands[0].Indexes) != 1 || commands[0].Indexes[0].Name != "risk_decision_cursor" {
+		t.Fatalf("unexpected version 15 migration: %+v", commands)
+	}
+}

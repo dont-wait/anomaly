@@ -46,6 +46,7 @@ class AnalysisResponse(BaseModel):
 
 
 class VerifyFaceResponse(BaseModel):
+    poc_bypass: bool = False
     success: bool
     decision: Decision
     reason_code: ReasonCode | None = None

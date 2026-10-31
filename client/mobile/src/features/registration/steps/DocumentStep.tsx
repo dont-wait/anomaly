@@ -1,8 +1,29 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RegistrationFlowState } from "../useRegistrationFlow";
 import { Notice, Next, StepHeading } from "../components/StepPrimitives";
 import { faCamera, faIdCard } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+
+function snapshotFile(file: File): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onabort = () => reject(new Error("Image read cancelled"));
+    reader.onload = () => {
+      if (!(reader.result instanceof ArrayBuffer)) {
+        reject(new Error("Image could not be read"));
+        return;
+      }
+      resolve(
+        new File([reader.result], file.name, {
+          type: file.type,
+          lastModified: file.lastModified,
+        }),
+      );
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
 
 function ImagePreview({ file, label }: { file: File; label: string }) {
   const image = useRef<HTMLImageElement>(null);
@@ -24,6 +45,45 @@ export function DocumentStep({
   RegistrationFlowState,
   "error" | "setError" | "documents" | "setDocuments" | "heading" | "submit"
 >) {
+  const revisions = useRef({ front: 0, back: 0 });
+  const [reading, setReading] = useState({ front: false, back: false });
+  useEffect(() => {
+    const current = revisions.current;
+    return () => {
+      current.front++;
+      current.back++;
+    };
+  }, []);
+
+  async function selectImage(side: "front" | "back", file: File) {
+    const revision = ++revisions.current[side];
+    setDocuments((current) => ({ ...current, [side]: null }));
+    setReading((current) => ({ ...current, [side]: false }));
+    if (
+      !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
+      !file.size ||
+      file.size > 10 * 1024 * 1024
+    ) {
+      setError("Chọn ảnh JPG, PNG hoặc WebP không rỗng và không quá 10 MB.");
+      return;
+    }
+    setReading((current) => ({ ...current, [side]: true }));
+    setError("");
+    try {
+      // Android capture files can change/disappear after another camera opens.
+      // Read their bytes while the input still owns the temporary file.
+      const snapshot = await snapshotFile(file);
+      if (revisions.current[side] !== revision) return;
+      setDocuments((current) => ({ ...current, [side]: snapshot }));
+    } catch {
+      if (revisions.current[side] === revision)
+        setError("Không đọc được ảnh CCCD. Vui lòng chụp hoặc chọn lại ảnh.");
+    } finally {
+      if (revisions.current[side] === revision)
+        setReading((current) => ({ ...current, [side]: false }));
+    }
+  }
+
   return (
     <>
       <StepHeading headingRef={heading} title="Chụp ảnh CCCD" icon={faIdCard}>
@@ -55,20 +115,7 @@ export function DocumentStep({
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  if (
-                    !["image/jpeg", "image/png", "image/webp"].includes(
-                      file.type,
-                    ) ||
-                    !file.size ||
-                    file.size > 10 * 1024 * 1024
-                  ) {
-                    setError(
-                      "Chọn ảnh JPG, PNG hoặc WebP không rỗng và không quá 10 MB.",
-                    );
-                    return;
-                  }
-                  setDocuments((current) => ({ ...current, [side]: file }));
-                  setError("");
+                  void selectImage(side, file);
                 }}
               />
             </label>
@@ -84,7 +131,11 @@ export function DocumentStep({
             {error}
           </p>
         )}
-        <Next disabled={!documents.front || !documents.back} />
+        <Next
+          disabled={
+            reading.front || reading.back || !documents.front || !documents.back
+          }
+        />
       </form>
     </>
   );

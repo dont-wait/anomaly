@@ -212,8 +212,11 @@ go run .
 
 Publisher GATv2 nằm tại `anomaly-service` và chạy như một service riêng. Service
 này dùng Kafka `TransferCreated` làm trigger, đọc event gốc + history từ
-EventStoreDB (payload Kafka đã pseudonymize), chạy bundle GATv2 local rồi publish
-`anomaly.bank.risk.v1` và training record. Xem
+EventStoreDB, chạy bundle GATv2 local rồi publish decision đúng schema mock cùng
+HMAC `signature` vào `anomaly.bank.risk-decisions.v1`, cùng training record. Policy
+đã chốt: label `1 → BLOCK`, `0 → ALLOW`; lỗi inference giữ offset để retry. Server
+xác minh chữ ký/correlation trước khi lưu `risk_decisions`. Dừng `consumer-mock`
+trước khi dùng worker thật; ALLOW vẫn cần OTP hợp lệ khi confirm. Xem
 [anomaly-service/README.md](../anomaly-service/README.md).
 
 Để gửi thử một message từ Kafka CLI:
@@ -552,10 +555,12 @@ contains `eventId`, `transactionId`, `eventType`, `schemaVersion`, `sequence`,
 or `transfer` snapshots used to rebuild API state. The training repo owns its
 checkpoint, dataset, feature extraction, labels and model pipeline.
 
-`anomaly-service` reads the raw `banking` stream directly with `esdbclient`
-because the Kafka relay pseudonymizes account/device identifiers needed by the
-GATv2 graph. Kafka is only a trigger there. Training records contain the raw
-request event and model response, not labels; supervised retraining still needs an
+`anomaly-service` uses Kafka as a trigger and reads the canonical `banking` stream
+directly with `esdbclient` to reconstruct request-time history. The relay preserves
+the banking payload. The service enriches request device/auth/IP metadata from
+the same record's transfer snapshot; IP is retained for training/audit while the
+current frozen bundle does not use IP features. Training records contain the
+request and model response, not labels; supervised retraining still needs an
 outcome joined later by `transaction_id`.
 
 Offline cutover records carry `historical: true`; their balance snapshots describe

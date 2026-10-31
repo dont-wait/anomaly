@@ -3,9 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,9 +11,7 @@ import (
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/domain"
-	"github.com/dont-wait/anomaly/internal/domain/risk"
 	"github.com/dont-wait/anomaly/internal/domain/riskassessment"
-	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	kafkainfra "github.com/dont-wait/anomaly/internal/infrastructure/kafka"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/google/uuid"
@@ -24,101 +19,20 @@ import (
 	kafkago "github.com/segmentio/kafka-go"
 )
 
-type riskResponseStore interface {
-	Save(context.Context, risk.Decision) error
-	Reject(context.Context, string, int, int64, []byte, string) error
-}
-
 type riskMessageRejector interface {
 	Reject(context.Context, string, int, int64, []byte, string) error
 }
 
-type riskDecisionUnsigned struct {
-	TransferID    string    `json:"transfer_id"`
-	SourceEventID string    `json:"source_event_id"`
-	Decision      string    `json:"decision"`
-	IsAnomalous   bool      `json:"is_anomalous"`
-	RiskScore     float64   `json:"risk_score"`
-	ModelVersion  string    `json:"model_version"`
-	EvaluatedAt   time.Time `json:"evaluated_at"`
-}
-
-type riskDecisionEnvelope struct {
-	TransferID    string    `json:"transfer_id"`
-	SourceEventID string    `json:"source_event_id"`
-	Decision      string    `json:"decision"`
-	IsAnomalous   *bool     `json:"is_anomalous"`
-	RiskScore     *float64  `json:"risk_score"`
-	ModelVersion  string    `json:"model_version"`
-	EvaluatedAt   time.Time `json:"evaluated_at"`
-	Signature     string    `json:"signature"`
-}
-
-func handleRiskDecision(ctx context.Context, message kafkago.Message, store riskResponseStore, log zerolog.Logger, signingKey string) error {
-	decision, err := decodeRiskDecision(message.Value, signingKey)
-	if err != nil {
-		if parkErr := store.Reject(ctx, message.Topic, message.Partition, message.Offset, message.Value, err.Error()); parkErr != nil {
-			return fmt.Errorf("park invalid risk decision: %w", parkErr)
-		}
-		log.Warn().Str("topic", message.Topic).Int("partition", message.Partition).Int64("offset", message.Offset).Msg("invalid risk decision parked")
-		return nil
+func decodeModelResponse(payload []byte, signingKey string) (riskassessment.ModelResponse, error) {
+	var input struct {
+		riskassessment.ModelResponse
+		RiskScore      *float64 `json:"risk_score"`
+		PredictedLabel *int     `json:"predicted_label"`
+		Threshold      *float64 `json:"threshold"`
 	}
-	// Storage/network failures remain retryable: never commit these offsets.
-	return store.Save(ctx, decision)
-}
-
-func decodeRiskDecision(payload []byte, signingKey string) (risk.Decision, error) {
-	var input riskDecisionEnvelope
-	if err := json.Unmarshal(payload, &input); err != nil {
-		return risk.Decision{}, fmt.Errorf("invalid risk response JSON: %w", err)
-	}
-	if strings.TrimSpace(signingKey) == "" {
-		return risk.Decision{}, fmt.Errorf("risk decision signing key is not configured")
-	}
-	if input.IsAnomalous == nil || input.RiskScore == nil {
-		return risk.Decision{}, fmt.Errorf("risk assessment fields are required")
-	}
-	unsigned := riskDecisionUnsigned{
-		TransferID: input.TransferID, SourceEventID: input.SourceEventID, Decision: input.Decision,
-		IsAnomalous: *input.IsAnomalous, RiskScore: *input.RiskScore,
-		ModelVersion: input.ModelVersion, EvaluatedAt: input.EvaluatedAt,
-	}
-	expectedSignature := signRiskDecision(unsigned, signingKey)
-	if !hmac.Equal([]byte(strings.ToLower(strings.TrimSpace(input.Signature))), []byte(expectedSignature)) {
-		return risk.Decision{}, fmt.Errorf("invalid risk decision signature")
-	}
-	decision := risk.Decision{
-		TransferID: input.TransferID, SourceEventID: input.SourceEventID, Decision: input.Decision,
-		Assessment: risk.Assessment{
-			Decision: input.Decision, IsAnomalous: unsigned.IsAnomalous,
-			RiskScore: unsigned.RiskScore, ModelVersion: input.ModelVersion, EvaluatedAt: input.EvaluatedAt,
-		},
-	}
-	if err := decision.Validate(); err != nil {
-		return risk.Decision{}, err
-	}
-	if _, err := uuid.Parse(decision.TransferID); err != nil || decision.SourceEventID != journal.EventID(decision.TransferID, journal.Created) {
-		return risk.Decision{}, fmt.Errorf("invalid risk decision correlation")
-	}
-	return decision, nil
-}
-
-func isModelResponse(payload []byte) bool {
-	var envelope struct {
-		TransactionID  string `json:"transaction_id"`
-		PredictedLabel *int   `json:"predicted_label"`
-	}
-	if err := json.Unmarshal(payload, &envelope); err != nil {
-		return false
-	}
-	return envelope.TransactionID != "" || envelope.PredictedLabel != nil
-}
-
-func decodeModelResponse(payload []byte) (riskassessment.ModelResponse, error) {
-	var response riskassessment.ModelResponse
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&response); err != nil {
+	if err := decoder.Decode(&input); err != nil {
 		return riskassessment.ModelResponse{}, fmt.Errorf("invalid model response JSON: %w", err)
 	}
 	var extra any
@@ -128,7 +42,20 @@ func decodeModelResponse(payload []byte) (riskassessment.ModelResponse, error) {
 		}
 		return riskassessment.ModelResponse{}, fmt.Errorf("invalid trailing model response data: %w", err)
 	}
+	if input.RiskScore == nil || input.PredictedLabel == nil || input.Threshold == nil {
+		return riskassessment.ModelResponse{}, fmt.Errorf("risk_score, predicted_label and threshold are required and cannot be null")
+	}
+	response := input.ModelResponse
+	response.RiskScore = *input.RiskScore
+	response.PredictedLabel = *input.PredictedLabel
+	response.Threshold = *input.Threshold
 	if err := response.Validate(); err != nil {
+		return riskassessment.ModelResponse{}, err
+	}
+	if strings.TrimSpace(signingKey) == "" {
+		return riskassessment.ModelResponse{}, fmt.Errorf("model response signing key is not configured")
+	}
+	if err := riskassessment.Verify(response, signingKey); err != nil {
 		return riskassessment.ModelResponse{}, err
 	}
 	return response, nil
@@ -139,9 +66,10 @@ func handleModelResponse(
 	message kafkago.Message,
 	store *mongorepo.RiskAssessmentRepository,
 	rejector riskMessageRejector,
+	signingKey string,
 	log zerolog.Logger,
 ) error {
-	response, err := decodeModelResponse(message.Value)
+	response, err := decodeModelResponse(message.Value, signingKey)
 	if err != nil {
 		if parkErr := rejector.Reject(ctx, message.Topic, message.Partition, message.Offset, message.Value, err.Error()); parkErr != nil {
 			return fmt.Errorf("park invalid model response: %w", parkErr)
@@ -161,7 +89,7 @@ func handleModelResponse(
 	if err != nil {
 		return err
 	}
-	_, err = store.Save(ctx, assessment)
+	inserted, err := store.Save(ctx, assessment)
 	if err != nil {
 		if errors.Is(err, mongorepo.ErrRiskAssessmentConflict) {
 			if parkErr := rejector.Reject(ctx, message.Topic, message.Partition, message.Offset, message.Value, err.Error()); parkErr != nil {
@@ -172,45 +100,45 @@ func handleModelResponse(
 		}
 		return err
 	}
+	log.Info().Str("transaction_id", response.TransactionID).
+		Str("model_version", response.ModelVersion).Str("feature_version", response.FeatureVersion).
+		Bool("inserted", inserted).Msg("model assessment stored")
 	return nil
 }
 
-func signRiskDecision(input riskDecisionUnsigned, signingKey string) string {
-	payload, _ := json.Marshal(input)
-	hasher := hmac.New(sha256.New, []byte(signingKey))
-	_, _ = hasher.Write(payload)
-	return hex.EncodeToString(hasher.Sum(nil))
-}
-
-func runRiskDecisionConsumer(ctx context.Context, config *domain.KafkaConfig, store *mongorepo.RiskDecisionRepository, assessments *mongorepo.RiskAssessmentRepository, log zerolog.Logger) {
+func runRiskDecisionConsumer(ctx context.Context, config *domain.KafkaConfig, store *mongorepo.RiskAssessmentRepository, log zerolog.Logger) {
+	retryDelay := time.Second
 	for ctx.Err() == nil {
 		consumer, err := kafkainfra.NewConsumer(config.Brokers, config.RiskDecisionTopic, config.RiskDecisionGroup)
 		if err != nil {
 			log.Error().Err(err).Msg("create risk decision consumer failed")
-			if !waitRiskConsumerRetry(ctx) {
+			if !waitRiskConsumerRetry(ctx, retryDelay) {
 				return
 			}
+			retryDelay = nextRiskConsumerRetry(retryDelay)
 			continue
 		}
+		startedAt := time.Now()
 		err = consumer.Consume(ctx, func(messageCtx context.Context, message kafkago.Message) error {
-			if isModelResponse(message.Value) {
-				return handleModelResponse(messageCtx, message, assessments, store, log)
-			}
-			return handleRiskDecision(messageCtx, message, store, log, config.RiskDecisionSigningKey)
+			return handleModelResponse(messageCtx, message, store, store, config.RiskDecisionSigningKey, log)
 		})
 		_ = consumer.Close()
 		if ctx.Err() != nil {
 			return
 		}
 		log.Error().Err(err).Msg("risk decision consumer stopped; retrying")
-		if !waitRiskConsumerRetry(ctx) {
+		if time.Since(startedAt) >= 30*time.Second {
+			retryDelay = time.Second
+		}
+		if !waitRiskConsumerRetry(ctx, retryDelay) {
 			return
 		}
+		retryDelay = nextRiskConsumerRetry(retryDelay)
 	}
 }
 
-func waitRiskConsumerRetry(ctx context.Context) bool {
-	timer := time.NewTimer(2 * time.Second)
+func waitRiskConsumerRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
@@ -218,4 +146,15 @@ func waitRiskConsumerRetry(ctx context.Context) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+func nextRiskConsumerRetry(current time.Duration) time.Duration {
+	if current >= 30*time.Second {
+		return 30 * time.Second
+	}
+	current *= 2
+	if current > 30*time.Second {
+		return 30 * time.Second
+	}
+	return current
 }

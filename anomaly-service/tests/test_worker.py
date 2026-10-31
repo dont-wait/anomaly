@@ -61,12 +61,44 @@ def test_handle_message_publishes_then_records():
     predictor, output, training = FakePredictor(), FakeOutput(), FakeTraining()
     result = handle_message(json.dumps(request_event()).encode(), predictor, output, training)
 
-    assert result["transaction_id"] == "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
-    assert result["event_id"] == "6d1f3f0e-5f4a-4d5f-9d1a-2b3c4d5e6f70"
+    assert result["transfer_id"] == "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+    assert result["source_event_id"] == "6d1f3f0e-5f4a-4d5f-9d1a-2b3c4d5e6f70"
+    assert result["decision"] == "BLOCK"
+    assert result["is_anomalous"] is True
     assert predictor.event_ids == ["6d1f3f0e-5f4a-4d5f-9d1a-2b3c4d5e6f70"]
     assert len(output.items) == 1
     assert len(training.items) == 1
     assert training.items[0][1] == {"eventId": "raw", "occurredAt": "2026-10-19T10:30:00Z"}
+
+
+@pytest.mark.parametrize("score,label,decision", [(0.08, 0, "ALLOW"), (0.9821, 1, "BLOCK")])
+def test_worker_publishes_signed_decision_using_model_result(score, label, decision):
+    from app.publisher import KafkaOutputPublisher, sign_risk_event
+
+    sent = []
+
+    class Future:
+        def get(self, *, timeout):
+            assert timeout == 30
+
+    class Producer:
+        def send(self, topic, *, key, value):
+            sent.append((key, json.loads(value)))
+            return Future()
+
+    model_result = prediction(risk_score=score, predicted_label=label)
+    predictor = FakePredictor(PredictorResult(
+        model_result, request={"occurredAt": "2026-10-19T10:30:00Z"}
+    ))
+    training = FakeTraining()
+    publisher = KafkaOutputPublisher(Producer(), "risk", signing_key="test-only-secret")
+    result = handle_message(json.dumps(request_event()).encode(), predictor, publisher, training)
+    assert result["decision"] == decision
+    assert result["is_anomalous"] is bool(label)
+    assert sent == [
+        (model_result.transaction_id.encode(), sign_risk_event(result, "test-only-secret"))
+    ]
+    assert training.items[0][2].as_dict() == model_result.as_dict()
 
 
 def test_non_request_event_is_committed_without_prediction():
@@ -83,7 +115,7 @@ def test_non_request_event_is_committed_without_prediction():
     assert training.items == []
 
 
-def test_canonical_request_timestamp_is_used_for_output():
+def test_canonical_request_timestamp_is_used_for_training():
     request = {
         "eventId": "raw",
         "transactionId": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
@@ -92,7 +124,7 @@ def test_canonical_request_timestamp_is_used_for_output():
     predictor = FakePredictor(PredictorResult(prediction(), request=request))
     output, training = FakeOutput(), FakeTraining()
     result = handle_message(json.dumps(request_event()).encode(), predictor, output, training)
-    assert result["occurred_at"] == request["occurredAt"]
+    assert "occurred_at" not in result
     assert training.items[0][0].occurred_at == request["occurredAt"]
     assert training.items[0][0].occurred_at_us == 1792405800000000
 

@@ -100,6 +100,7 @@ func (l *Loader) LoadHTTPConfig() *HTTPConfig {
 }
 
 type KYCConfig struct {
+	POCBypass             bool
 	ServiceURL            string
 	ServiceToken          string
 	MaxAttempts           int
@@ -119,6 +120,7 @@ func (l *Loader) LoadKYCConfig() *KYCConfig {
 		return value
 	}
 	return &KYCConfig{
+		POCBypass:  l.LoadEnvBool("KYC_POC_BYPASS", false),
 		ServiceURL: l.LoadEnvOr("KYC_SERVICE_URL", "http://localhost:8090"), ServiceToken: l.LoadEnvOr("KYC_SERVICE_TOKEN", ""),
 		MaxAttempts: positive("KYC_MAX_ATTEMPTS", 3), AttemptWindow: l.LoadEnvDuration("KYC_ATTEMPT_WINDOW", 24*time.Hour),
 		AttemptTTL: l.LoadEnvDuration("KYC_ATTEMPT_TTL", 2*time.Minute), MaxConcurrentAttempts: positive("KYC_MAX_CONCURRENT_ATTEMPTS", 8), StartsPerMinute: positive("KYC_STARTS_PER_MINUTE", 6),

@@ -6,7 +6,9 @@ import (
 
 func TestSelectModelInputFromBankEvent(t *testing.T) {
 	input, ok, err := selectModelInput([]byte(`{
+      "event_id":"event-1",
       "event_type":"TransferCreated",
+      "occurred_at":"2026-10-17T00:50:00Z",
       "model_features": {
         "avg_amount_7d": 12500000,
         "tx_count_1h": 3,
@@ -47,14 +49,14 @@ func TestSelectModelInputIgnoresOtherEvents(t *testing.T) {
 }
 
 func TestSelectModelInputRequiresProducerFeatures(t *testing.T) {
-	_, ok, err := selectModelInput([]byte(`{"event_type":"TransferCreated","payload":{"transfer":{"ID":"TX001","Source":{"AccountNo":"ACC001"},"Destination":{"AccountNo":"ACC002"},"Amount":1,"CreatedAt":"2026-10-17T00:50:00Z"}}}`))
+	_, ok, err := selectModelInput([]byte(`{"event_id":"event-1","event_type":"TransferCreated","payload":{"transfer":{"ID":"TX001","Source":{"AccountNo":"ACC001"},"Destination":{"AccountNo":"ACC002"},"Amount":1,"CreatedAt":"2026-10-17T00:50:00Z"}}}`))
 	if err == nil || !ok {
 		t.Fatalf("selectModelInput() = selected=%v error=%v, want missing feature error", ok, err)
 	}
 }
 
 func TestSelectModelInputUsesUnknownMetadata(t *testing.T) {
-	input, ok, err := selectModelInput([]byte(`{"event_type":"TransferCreated","model_features":{"avg_amount_7d":0,"tx_count_1h":0,"tx_count_24h":0,"last_tx_at":null,"new_receiver":false,"new_device":false},"payload":{"transfer":{"ID":"TX001","Type":"transfer","Source":{"AccountNo":"ACC001"},"Destination":{"AccountNo":"ACC002"},"Amount":1,"CreatedAt":"2026-10-17T00:50:00Z","Authentication":{"Verified":true}}}}`))
+	input, ok, err := selectModelInput([]byte(`{"event_id":"event-1","event_type":"TransferCreated","model_features":{"avg_amount_7d":0,"tx_count_1h":0,"tx_count_24h":0,"last_tx_at":null,"new_receiver":false,"new_device":false},"payload":{"transfer":{"ID":"TX001","Type":"transfer","Source":{"AccountNo":"ACC001"},"Destination":{"AccountNo":"ACC002"},"Amount":1,"CreatedAt":"2026-10-17T00:50:00Z","Authentication":{"Verified":true}}}}`))
 	if err != nil || !ok {
 		t.Fatalf("selectModelInput() = %#v/%v/%v, want selected input", input, ok, err)
 	}

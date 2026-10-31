@@ -24,12 +24,18 @@ async def realtime(socket: WebSocket):
     reserved = False
     worker = None
     try:
+        from app.services.poc_pipeline import PocVisionPipeline
+
+        pipeline = await asyncio.to_thread(get_vision_pipeline)
+        if isinstance(pipeline, PocVisionPipeline):
+            await pipeline.realtime(socket)
+            return
+
         from app.services.document_processor import reference_face
         from app.services.face_matcher import VideoEvidence
         from app.services.real_pipeline import CHALLENGE, RealVisionPipeline
         from app.services.video_processor import VideoDecoder
 
-        pipeline = await asyncio.to_thread(get_vision_pipeline)
         if not isinstance(pipeline, RealVisionPipeline):
             raise ValueError("realtime requires real backend")
         config = await asyncio.wait_for(socket.receive_json(), 5)
