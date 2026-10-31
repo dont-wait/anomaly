@@ -89,7 +89,11 @@ func (m *LoanReadModel) EnsureIndexes(
 		return err
 	}
 
-	return ensureLoanRepaymentIndexes(ctx, m.db)
+	if err := ensureLoanRepaymentIndexes(ctx, m.db); err != nil {
+		return err
+	}
+
+	return m.EnsureLoanTimelineIndexes(ctx)
 }
 
 // Lưu aggregate Loan đã replay
@@ -335,6 +339,10 @@ func (m *LoanReadModel) ResetAfterInvalidCheckpoint(
 	_, err = m.db.Collection(
 		"loan_applications_read",
 	).DeleteMany(ctx, bson.M{})
+	if err != nil {
+		return err
+	}
+	_, err = m.db.Collection(loanTimelineCollection).DeleteMany(ctx, bson.M{})
 	if err != nil {
 		return err
 	}
