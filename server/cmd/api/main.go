@@ -292,8 +292,30 @@ func main() {
 		rdb,
 	)
 
+	// An invalid savings catalog must fail CLOSED for savings without making
+	// unrelated account, transfer and loan APIs unavailable. Operators must
+	// repair the catalog and restart this instance before enabling Savings.
+	savingsCatalog := mongo.NewSavingsPackageCatalog(mongoClient, config.MongoConfig.MongoDBName)
+	savingsRead := mongo.NewSavingsRead(mongoClient, config.MongoConfig.MongoDBName)
+	savingsHandler := composition.NewSavingsHandler(savingsCatalog, bank, rdb, savingsRead)
+	if err := savingsRead.EnsureIndexes(ctx); err != nil {
+		logger.Error().Err(err).Msg("savings read indexes unavailable; savings read API disabled")
+		savingsHandler.Read = nil
+	} else {
+		go mongo.NewSavingsMaturityWorker(mongoClient, config.MongoConfig.MongoDBName, bank).Run(ctx)
+	}
+	if err := savingsCatalog.EnsureSeeded(ctx); err != nil {
+		logger.Error().Err(err).Msg("savings catalog unavailable; savings APIs disabled (banking APIs remain up)")
+		savingsHandler.Service = nil
+		savingsHandler.Commands = nil
+	}
+
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouterWithAdminMonitor(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, config.DocsConfig.SwaggerEnabled, adminMonitorHandler, adminTimelineHandler, loanHandler)
+	mux = presentation.NewRouterWithSavingsAndAdminMonitor(
+		mux, accountHandler, mediaHandler, otpHandler, transactionHandler,
+		tokenSvc, config.DocsConfig.SwaggerEnabled,
+		savingsHandler, adminMonitorHandler, adminTimelineHandler, loanHandler,
+	)
 
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
 	allowedOrigins := helpers.SplitCSV(loader.LoadEnvOr(

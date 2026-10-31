@@ -70,9 +70,13 @@ func (p *BankProjection) Apply(ctx context.Context, record journal.Record, revis
 				if err := p.profile(sc, a); err != nil {
 					return nil, err
 				}
-				if err := p.balance(sc, journal.FinancialAccountID(a.Id), a.Balance.Current, sequence, bankImportBalanceAt(a, record.At)); err != nil {
+				if err := p.importedBalance(sc, journal.FinancialAccountID(a.Id), a.Balance.Current, sequence, bankImportBalanceAt(a, record.At)); err != nil {
 					return nil, err
 				}
+			}
+		case journal.SavingsOpened, journal.SavingsSettled:
+			if err := p.savingsMovement(sc, record, sequence); err != nil {
+				return nil, err
 			}
 		case journal.LoanDisbursementCredited:
 			if err := p.balance(
@@ -248,6 +252,63 @@ func (p *BankProjection) profile(ctx context.Context, a *accountdomain.UserAccou
 		}
 	}
 	return nil
+}
+
+// importedBalance bridges legacy Mongo financial_version values into the new
+// banking stream's revision space. For example, an imported account may have
+// financial_version=7 while BankImported has sequence=1. Leaving 7 in place
+// would silently skip the first six canonical balance updates.
+//
+// The first import can rebase the VERSION, never the BALANCE, but only if Mongo
+// still contains the exact baseline snapshot. A persistent marker distinguishes
+// the one-time cutover from replay after subsequent banking transactions. This
+// update is part of the same Mongo transaction as the banking checkpoint.
+func (p *BankProjection) importedBalance(ctx context.Context, id string, baseline, version int64, at time.Time) error {
+	if version != 1 {
+		return fmt.Errorf("BankImported must be the first banking event, got sequence %d", version)
+	}
+	objectID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+	accounts := p.db.Collection("accounts")
+	result, err := accounts.UpdateOne(ctx, bson.M{
+		"financial_id":                    objectID,
+		"balance.current":                 baseline,
+		"banking_import_baseline_version": bson.M{"$exists": false},
+	}, bson.M{"$set": bson.M{
+		"financial_version":               version,
+		"banking_import_baseline_version": version,
+		"updated_at":                      at,
+	}})
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 1 {
+		return nil
+	}
+
+	var existing struct {
+		FinancialVersion int64  `bson:"financial_version"`
+		ImportVersion    *int64 `bson:"banking_import_baseline_version"`
+		Balance          struct {
+			Current int64 `bson:"current"`
+		} `bson:"balance"`
+	}
+	if err := accounts.FindOne(ctx, bson.M{"financial_id": objectID}).Decode(&existing); err != nil {
+		return fmt.Errorf("cannot verify imported baseline for account %s: %w", id, err)
+	}
+	if importedBaselineAlreadyApplied(existing.ImportVersion, existing.FinancialVersion, version) {
+		if existing.FinancialVersion == version && existing.Balance.Current != baseline {
+			return fmt.Errorf("imported account %s has changed balance without a newer banking version", id)
+		}
+		return nil // checkpoint replay: never rewind newer canonical balances
+	}
+	return fmt.Errorf("banking import baseline mismatch for account %s; refusing to rewrite financial state", id)
+}
+
+func importedBaselineAlreadyApplied(marker *int64, current, imported int64) bool {
+	return marker != nil && *marker == imported && current >= imported
 }
 
 func (p *BankProjection) balance(ctx context.Context, id string, balance, version int64, at time.Time) error {
