@@ -3,9 +3,11 @@ package loan
 import (
 	"errors"
 	"net/http"
+	"os"
 
 	loanqueries "github.com/dont-wait/anomaly/internal/application/loan/queries"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
+	"github.com/dont-wait/anomaly/internal/seeder"
 )
 
 func (h *Handler) listLoanPackages(w http.ResponseWriter, r *http.Request) {
@@ -21,6 +23,25 @@ func (h *Handler) listLoanPackages(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, struct {
 		Items []loanqueries.LoanPackage `json:"items"`
 	}{Items: products})
+}
+
+func (h *Handler) seedLoanCatalog(w http.ResponseWriter, r *http.Request) {
+	if err := seeder.ValidateEnvironment(os.Getenv("APP_ENV"), os.Getenv("SEED_DEMO_ENABLED")); err != nil {
+		fail(w, http.StatusForbidden, "loan catalog seeding is disabled")
+		return
+	}
+	created, err := seeder.SeedLoanCatalog(r.Context(), h.CatalogSeeder)
+	if err != nil {
+		fail(w, http.StatusServiceUnavailable, "loan catalog seeding failed")
+		return
+	}
+	result := "already_exists"
+	if created {
+		result = "created"
+	}
+	httpx.WriteJSON(w, http.StatusOK, struct {
+		Status string `json:"status"`
+	}{Status: result})
 }
 
 func (h *Handler) createPreApplicationQuote(w http.ResponseWriter, r *http.Request) {

@@ -131,9 +131,12 @@ type Handler struct {
 	ContractOTP   ContractOTPService
 	ContractEmail ContractEmailReader
 
-	Repayment           *RepaymentHTTP
-	Contracts           *loanqueries.LoanContractQueryService
-	Products            *loanqueries.LoanProductCatalogQueryService
+	Repayment     *RepaymentHTTP
+	Contracts     *loanqueries.LoanContractQueryService
+	Products      *loanqueries.LoanProductCatalogQueryService
+	CatalogSeeder interface {
+		SeedDefaultPackage(context.Context) (bool, error)
+	}
 	PreApplicationQuote *loanqueries.PreApplicationQuoteQueryService
 
 	Read     Reader
@@ -173,6 +176,7 @@ func RegisterRoutes(
 	router *openapi.Registry,
 	h *Handler,
 	tokens accountqueries.TokenService,
+	currentAdmin ...func(http.Handler) http.Handler,
 ) {
 	if h == nil {
 		return
@@ -321,6 +325,17 @@ func RegisterRoutes(
 		)
 
 		router.Handle(pattern, protected, op)
+	}
+	if len(currentAdmin) > 0 && currentAdmin[0] != nil {
+		secured := middleware.RequireAuth(tokens)(currentAdmin[0](http.HandlerFunc(h.seedLoanCatalog)))
+		router.Handle("POST /api/admin/loans/catalog/seed", secured, openapi.Operation{
+			ID: "seedLoanCatalog", Summary: "Seed the default loan catalog for local development",
+			Tags: []string{"Admin Loans"}, Auth: true,
+			Response: struct {
+				Status string `json:"status"`
+			}{},
+			FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusServiceUnavailable},
+		})
 	}
 
 	auth(
