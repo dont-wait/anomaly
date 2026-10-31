@@ -14,6 +14,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	"github.com/dont-wait/anomaly/internal/domain/audit"
+	"github.com/dont-wait/anomaly/internal/domain/timeline"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
@@ -27,20 +28,37 @@ const (
 	maxTimelineScan     = 10000
 	defaultTimelinePage = 20
 	maxTimelinePage     = 20
-	timelineCursorV2    = 2
+	timelineCursorV3    = 3
 )
 
 type accountTimelineLookup interface {
 	FindAll(context.Context) ([]*accountdomain.UserAccount, error)
 }
 
-type TimelineHandler struct {
-	client   *esdb.Client
-	accounts accountTimelineLookup
+type loanTimelineLookup interface {
+	NextLoanTimelineEvent(context.Context, string, time.Time, string) (*timeline.LoanEvent, error)
 }
 
-func NewTimelineHandler(client *esdb.Client, accounts accountTimelineLookup) *TimelineHandler {
-	return &TimelineHandler{client: client, accounts: accounts}
+type loanTimelineReadiness interface {
+	LoanProjectionRebuilding(context.Context) (bool, error)
+}
+
+type TimelineHandler struct {
+	client       *esdb.Client
+	accounts     accountTimelineLookup
+	loanTimeline loanTimelineLookup
+	loanReady    loanTimelineReadiness
+}
+
+func NewTimelineHandler(client *esdb.Client, accounts accountTimelineLookup, loanTimeline ...loanTimelineLookup) *TimelineHandler {
+	handler := &TimelineHandler{client: client, accounts: accounts}
+	if len(loanTimeline) > 0 {
+		handler.loanTimeline = loanTimeline[0]
+		if ready, ok := loanTimeline[0].(loanTimelineReadiness); ok {
+			handler.loanReady = ready
+		}
+	}
+	return handler
 }
 
 func RegisterTimelineRoutes(router *openapi.Registry, handler *TimelineHandler, tokenSvc queries.TokenService, currentAdmin func(http.Handler) http.Handler) {
@@ -55,18 +73,20 @@ func RegisterTimelineRoutes(router *openapi.Registry, handler *TimelineHandler, 
 			{Name: "limit", In: "query", Type: "integer", Example: "20"},
 			{Name: "cursor", In: "query", Type: "string"},
 		},
-		Response: timelineResponse{}, FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusInternalServerError},
+		Response: timelineResponse{}, FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusInternalServerError, http.StatusServiceUnavailable},
 	})
 }
 
 type timelineCursor struct {
-	Version         int    `json:"version"`
-	AccountID       string `json:"accountId"`
-	Category        string `json:"category"`
-	From            string `json:"from"`
-	To              string `json:"to"`
-	BankingRevision *int64 `json:"bankingRevision,omitempty"`
-	AuditRevision   *int64 `json:"auditRevision,omitempty"`
+	Version         int        `json:"version"`
+	AccountID       string     `json:"accountId"`
+	Category        string     `json:"category"`
+	From            string     `json:"from"`
+	To              string     `json:"to"`
+	BankingRevision *int64     `json:"bankingRevision,omitempty"`
+	AuditRevision   *int64     `json:"auditRevision,omitempty"`
+	LoanOccurredAt  *time.Time `json:"loanOccurredAt,omitempty"`
+	LoanEventID     string     `json:"loanEventId,omitempty"`
 }
 
 type timelineAccountDTO struct {
@@ -90,6 +110,7 @@ type timelineItemDTO struct {
 	AccountID      string         `json:"accountId,omitempty"`
 	ActorID        string         `json:"actorId,omitempty"`
 	TransactionID  string         `json:"transactionId,omitempty"`
+	LoanID         string         `json:"loanId,omitempty"`
 	Summary        string         `json:"summary"`
 	Details        map[string]any `json:"details,omitempty"`
 }
@@ -114,7 +135,6 @@ func (h *TimelineHandler) Events(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not resolve account", http.StatusInternalServerError)
 		return
 	}
-
 	from, to, err := parseTimelineRange(r.URL.Query().Get("from"), r.URL.Query().Get("to"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -127,8 +147,19 @@ func (h *TimelineHandler) Events(w http.ResponseWriter, r *http.Request) {
 		category = "all"
 	}
 	if !validTimelineCategory(category) {
-		http.Error(w, "category must be all, account, transfer, otp, or login", http.StatusBadRequest)
+		http.Error(w, "category must be all, account, transfer, otp, login, or loan", http.StatusBadRequest)
 		return
+	}
+	if h.loanReady != nil && (category == "all" || category == "loan") {
+		rebuilding, readyErr := h.loanReady.LoanProjectionRebuilding(ctx)
+		if readyErr != nil {
+			http.Error(w, "could not check loan timeline readiness", http.StatusInternalServerError)
+			return
+		}
+		if rebuilding {
+			http.Error(w, "loan timeline projection is rebuilding", http.StatusServiceUnavailable)
+			return
+		}
 	}
 	limit := parseTimelineLimit(r.URL.Query().Get("limit"))
 	cursor, err := decodeTimelineCursor(r.URL.Query().Get("cursor"))
@@ -197,17 +228,19 @@ func accountDTO(account *accountdomain.UserAccount) timelineAccountDTO {
 }
 
 type timelineCandidate struct {
-	item     timelineItemDTO
-	revision int64
-	next     int64
-	source   string
+	item           timelineItemDTO
+	revision       int64
+	next           int64
+	source         string
+	loanOccurredAt *time.Time
+	loanEventID    string
 }
 
 func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *accountdomain.UserAccount, from, to time.Time, fromRaw, toRaw, category string, cursor timelineCursor, limit int) ([]timelineItemDTO, string, bool, error) {
 	financialID := journal.FinancialAccountID(account.Id)
 	positions := cursor
 	budget := maxTimelineScan
-	var bankingCandidate, auditCandidate *timelineCandidate
+	var bankingCandidate, auditCandidate, loanCandidate *timelineCandidate
 	items := make([]timelineItemDTO, 0, limit)
 
 	for len(items) < limit {
@@ -224,18 +257,29 @@ func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *account
 				return nil, "", false, err
 			}
 		}
-		if bankingCandidate == nil && auditCandidate == nil {
+		if loanCandidate == nil {
+			loanCandidate, positions.LoanOccurredAt, positions.LoanEventID, err = h.nextLoanCandidate(ctx, account.Id, from, to, category, positions.LoanOccurredAt, positions.LoanEventID, &budget)
+			if err != nil {
+				return nil, "", false, err
+			}
+		}
+		if bankingCandidate == nil && auditCandidate == nil && loanCandidate == nil {
 			break
 		}
-		selected := selectTimelineCandidate(bankingCandidate, auditCandidate)
+		selected := selectTimelineCandidate(bankingCandidate, auditCandidate, loanCandidate)
 		if selected == bankingCandidate {
 			items = append(items, bankingCandidate.item)
 			positions.BankingRevision = int64Pointer(bankingCandidate.next)
 			bankingCandidate = nil
-		} else {
+		} else if selected == auditCandidate {
 			items = append(items, auditCandidate.item)
 			positions.AuditRevision = int64Pointer(auditCandidate.next)
 			auditCandidate = nil
+		} else {
+			items = append(items, loanCandidate.item)
+			positions.LoanOccurredAt = loanCandidate.loanOccurredAt
+			positions.LoanEventID = loanCandidate.loanEventID
+			loanCandidate = nil
 		}
 	}
 
@@ -253,11 +297,18 @@ func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *account
 			return nil, "", false, err
 		}
 	}
-	hasMore := bankingCandidate != nil || auditCandidate != nil
+	if loanCandidate == nil {
+		var err error
+		loanCandidate, positions.LoanOccurredAt, positions.LoanEventID, err = h.nextLoanCandidate(ctx, account.Id, from, to, category, positions.LoanOccurredAt, positions.LoanEventID, &budget)
+		if err != nil {
+			return nil, "", false, err
+		}
+	}
+	hasMore := bankingCandidate != nil || auditCandidate != nil || loanCandidate != nil
 	if !hasMore {
 		return items, "", false, nil
 	}
-	positions.Version = timelineCursorV2
+	positions.Version = timelineCursorV3
 	positions.AccountID = account.Id
 	positions.Category = category
 	positions.From = fromRaw
@@ -272,14 +323,17 @@ func timelineCandidateAfter(left, right *timelineCandidate) bool {
 	return left.item.OccurredAt.After(right.item.OccurredAt)
 }
 
-func selectTimelineCandidate(banking, audit *timelineCandidate) *timelineCandidate {
-	if banking == nil {
-		return audit
+func selectTimelineCandidate(candidates ...*timelineCandidate) *timelineCandidate {
+	var selected *timelineCandidate
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		if selected == nil || timelineCandidateAfter(candidate, selected) {
+			selected = candidate
+		}
 	}
-	if audit == nil || timelineCandidateAfter(banking, audit) {
-		return banking
-	}
-	return audit
+	return selected
 }
 
 func int64Pointer(value int64) *int64 { return &value }
@@ -333,6 +387,45 @@ func (h *TimelineHandler) nextAuditCandidate(ctx context.Context, from, to time.
 		position = int64Pointer(next)
 	}
 	return nil, position, errTimelineTooLarge
+}
+
+func (h *TimelineHandler) nextLoanCandidate(ctx context.Context, accountID string, from, to time.Time, category string, position *time.Time, eventID string, budget *int) (*timelineCandidate, *time.Time, string, error) {
+	if h.loanTimeline == nil {
+		return nil, position, eventID, nil
+	}
+	currentAt, currentID := timelineTimeValue(position), eventID
+	for *budget > 0 {
+		(*budget)--
+		event, err := h.loanTimeline.NextLoanTimelineEvent(ctx, accountID, currentAt, currentID)
+		if err != nil {
+			return nil, position, eventID, err
+		}
+		if event == nil {
+			return nil, timelineTimePointer(currentAt), currentID, nil
+		}
+		currentAt, currentID = event.OccurredAt, event.EventID
+		item := loanTimelineItem(*event)
+		if timelineMatches(item, from, to, category) {
+			return &timelineCandidate{
+				item: item, loanOccurredAt: timelineTimePointer(event.OccurredAt), loanEventID: event.EventID,
+			}, position, eventID, nil
+		}
+	}
+	return nil, position, eventID, errTimelineTooLarge
+}
+
+func timelineTimeValue(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return *value
+}
+
+func timelineTimePointer(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	return &value
 }
 
 type timelineRecorded struct {
@@ -413,6 +506,33 @@ func bankingTimelineItem(recorded timelineRecorded, accountID, financialID strin
 			return timelineItemDTO{}, false, nil
 		}
 		item.Category, item.Summary = "account", "Dữ liệu tài khoản được nhập"
+	case journal.LoanDisbursementCredited:
+		if record.AccountID != accountID {
+			return timelineItemDTO{}, false, nil
+		}
+		item.Category, item.Summary = "loan", "Khoản vay được giải ngân vào tài khoản"
+		item.LoanID = record.LoanID
+		item.Details["amount"] = record.LoanAmount
+		item.Details["direction"] = "in"
+		item.Details["currency"] = "VND"
+		item.Details["balanceBefore"] = int64Value(record.BalanceBefore)
+		item.Details["balanceAfter"] = int64Value(record.BalanceAfter)
+	case journal.LoanInstallmentPaid:
+		if record.AccountID != accountID || record.LoanPayment == nil {
+			return timelineItemDTO{}, false, nil
+		}
+		payment := record.LoanPayment
+		item.Category, item.Summary = "loan", "Đã trả một kỳ khoản vay"
+		item.LoanID = payment.LoanID
+		item.Details["amount"] = payment.Amount
+		item.Details["principalAmount"] = payment.PrincipalAmount
+		item.Details["interestAmount"] = payment.InterestAmount
+		item.Details["installmentNo"] = payment.InstallmentNo
+		item.Details["outstandingPrincipalAfter"] = payment.OutstandingPrincipalAfter
+		item.Details["direction"] = "out"
+		item.Details["currency"] = "VND"
+		item.Details["balanceBefore"] = int64Value(record.BalanceBefore)
+		item.Details["balanceAfter"] = int64Value(record.BalanceAfter)
 	default:
 		if record.Event == nil || !journal.IsTransferEvent(record.Type) {
 			return timelineItemDTO{}, false, nil
@@ -462,6 +582,21 @@ func bankingTimelineItem(recorded timelineRecorded, accountID, financialID strin
 		item.OccurredAt = recorded.Created
 	}
 	return item, item.Summary != "", nil
+}
+
+func int64Value(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func loanTimelineItem(event timeline.LoanEvent) timelineItemDTO {
+	return timelineItemDTO{
+		EventID: event.EventID, EventType: event.EventType, Category: "loan", OccurredAt: event.OccurredAt,
+		SourceStream: event.SourceStream, SourceRevision: event.SourceRevision, AccountID: event.AccountID,
+		LoanID: event.LoanID, Summary: event.Summary, Details: event.Details,
+	}
 }
 
 func auditTimelineItem(recorded timelineRecorded, event audit.Event) (timelineItemDTO, bool) {
@@ -518,7 +653,7 @@ func timelineMatches(item timelineItemDTO, from, to time.Time, category string) 
 
 func validTimelineCategory(category string) bool {
 	switch category {
-	case "all", "account", "transfer", "otp", "login":
+	case "all", "account", "transfer", "otp", "login", "loan":
 		return true
 	default:
 		return false
@@ -568,7 +703,7 @@ func decodeTimelineCursor(value string) (timelineCursor, error) {
 		return timelineCursor{}, err
 	}
 	var cursor timelineCursor
-	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.Version != timelineCursorV2 || cursor.AccountID == "" || cursor.Category == "" || cursor.BankingRevision == nil || cursor.AuditRevision == nil || invalidTimelineRevision(cursor.BankingRevision) || invalidTimelineRevision(cursor.AuditRevision) {
+	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.Version != timelineCursorV3 || cursor.AccountID == "" || cursor.Category == "" || cursor.BankingRevision == nil || cursor.AuditRevision == nil || invalidTimelineRevision(cursor.BankingRevision) || invalidTimelineRevision(cursor.AuditRevision) || (cursor.LoanEventID != "" && cursor.LoanOccurredAt == nil) || (cursor.LoanEventID == "" && cursor.LoanOccurredAt != nil) {
 		return timelineCursor{}, errors.New("invalid cursor")
 	}
 	return cursor, nil

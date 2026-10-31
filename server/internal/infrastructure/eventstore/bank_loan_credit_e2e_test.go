@@ -9,6 +9,7 @@ import (
 	"time"
 
 	commands "github.com/dont-wait/anomaly/internal/application/account/commands"
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	"github.com/google/uuid"
@@ -63,6 +64,8 @@ func TestLoanCreditExactlyOnceInCanonicalBankStream(
 				account.Id + "/id-card-back/back",
 			LiveVideoUrl: "kyc/" +
 				account.Id + "/live-video/live",
+			// Persistence fixture; this is not a biometric accuracy assertion.
+			Evidence: &accountdomain.KYCEvidence{MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true}, MatchScore: 0.9, LivenessScore: 1,
 		},
 	)
 	if err != nil {

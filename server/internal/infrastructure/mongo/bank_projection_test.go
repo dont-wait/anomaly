@@ -30,3 +30,26 @@ func TestBankImportBalanceAt(t *testing.T) {
 		})
 	}
 }
+
+func TestImportedBaselineAlreadyApplied(t *testing.T) {
+	one, two := int64(1), int64(2)
+	cases := []struct {
+		name    string
+		marker  *int64
+		current int64
+		want    bool
+	}{
+		{"not yet imported", nil, 7, false},
+		{"first projection complete", &one, 1, true},
+		{"replay after deposits", &one, 9, true},
+		{"corrupt version", &one, 0, false},
+		{"wrong import marker", &two, 9, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := importedBaselineAlreadyApplied(tc.marker, tc.current, 1); got != tc.want {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

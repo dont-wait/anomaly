@@ -109,6 +109,7 @@ type Record struct {
 	BalanceBefore *int64                       `json:"balanceBefore,omitempty"`
 	BalanceAfter  *int64                       `json:"balanceAfter,omitempty"`
 	LoanPayment   *LoanInstallmentPayment      `json:"loanPayment,omitempty"`
+	Savings       *SavingsMovement             `json:"savings,omitempty"`
 }
 
 func DecodeRecord(data []byte, eventID, eventType string) (Record, error) {
@@ -161,6 +162,22 @@ func DecodeRecord(data []byte, eventID, eventType string) (Record, error) {
 			)
 		}
 
+	case SavingsOpened, SavingsSettled:
+		if r.Savings == nil || r.BalanceBefore == nil || r.BalanceAfter == nil || r.AccountID != r.Savings.Contract.SourceAccountID ||
+			r.ID != EventID(r.Savings.Contract.ID, r.Type) || r.At.IsZero() ||
+			r.Savings.Validate(r.Type) != nil {
+			return r, fmt.Errorf("invalid savings banking record")
+		}
+		if r.Type == SavingsOpened {
+			if *r.BalanceBefore < r.Savings.Contract.Principal || *r.BalanceAfter != *r.BalanceBefore-r.Savings.Contract.Principal || !r.At.Equal(r.Savings.Contract.OpenedAt) {
+				return r, fmt.Errorf("invalid savings debit")
+			}
+		} else {
+			payout := r.Savings.Contract.Settlement.TotalAmount
+			if *r.BalanceBefore < 0 || payout > math.MaxInt64-*r.BalanceBefore || *r.BalanceAfter != *r.BalanceBefore+payout || !r.At.Equal(r.Savings.Contract.Settlement.SettledAt) {
+				return r, fmt.Errorf("invalid savings credit")
+			}
+		}
 	case LoanInstallmentPaid:
 		if r.LoanPayment == nil {
 			return r, fmt.Errorf("missing loan payment")

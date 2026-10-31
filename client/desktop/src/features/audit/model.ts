@@ -1,4 +1,4 @@
-export type TimelineCategory = "all" | "account" | "transfer" | "otp" | "login";
+export type TimelineCategory = "all" | "account" | "transfer" | "otp" | "login" | "loan";
 
 export interface TimelineAccount {
   id: string;
@@ -21,6 +21,7 @@ export interface TimelineItem {
   accountId?: string;
   actorId?: string;
   transactionId?: string;
+  loanId?: string;
   summary: string;
   details?: Record<string, unknown>;
 }

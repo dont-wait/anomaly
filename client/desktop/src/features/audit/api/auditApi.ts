@@ -49,6 +49,8 @@ export async function getAccountTimeline(
   if (!response.ok) {
     const message = response.status === 413
       ? "Lịch sử quá lớn, hãy thu hẹp khoảng thời gian."
+      : response.status === 503
+        ? "Lịch sử khoản vay đang được đồng bộ, vui lòng thử lại sau."
       : response.status === 404
         ? "Không tìm thấy tài khoản."
         : "Không thể tải lịch sử tài khoản.";

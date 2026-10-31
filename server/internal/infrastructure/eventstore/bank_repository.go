@@ -8,13 +8,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	"github.com/dont-wait/anomaly/internal/domain/risk"
+	savingsdomain "github.com/dont-wait/anomaly/internal/domain/savings"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/google/uuid"
@@ -27,7 +30,9 @@ import (
 // against the same revision. Mongo is used only for paginated read projections.
 type BankRepository struct {
 	*mongorepo.TransferRepository
-	client *esdb.Client
+	client  *esdb.Client
+	cacheMu sync.Mutex
+	cached  *bankState
 }
 
 func NewBankRepository(client *esdb.Client, reads *mongorepo.TransferRepository) *BankRepository {
@@ -46,14 +51,18 @@ type loanCreditState struct {
 }
 
 type bankState struct {
-	Accounts     map[string]*accountdomain.UserAccount
-	Balances     map[string]int64
-	Transfers    map[string]transferState
-	Keys         map[string]string
-	Exists       bool
-	Revision     uint64
-	LoanCredits  map[string]loanCreditState
-	LoanPayments map[string]journal.LoanInstallmentPayment
+	Accounts              map[string]*accountdomain.UserAccount
+	Balances              map[string]int64
+	Transfers             map[string]transferState
+	Keys                  map[string]string
+	Exists                bool
+	Revision              uint64
+	LoanCredits           map[string]loanCreditState
+	LoanPayments          map[string]journal.LoanInstallmentPayment
+	Savings               map[string]journal.SavingsMovement
+	SavingsKeys           map[string]string
+	SavingsQuotes         map[string]string
+	SavingsWithdrawalKeys map[string]string
 }
 
 // The JWT actor is a UserAccount ID. CustomerId is the stable profile owner ID.
@@ -75,9 +84,40 @@ func financialID(id string) bson.ObjectID {
 	return result
 }
 
+// cloneBankState gives each read/mutation its own maps. Cache state must never
+// be modified by a request: only event replay is allowed to advance it.
+func cloneBankState(s *bankState) *bankState {
+	if s == nil {
+		return nil
+	}
+	copy := *s
+	copy.Accounts = maps.Clone(s.Accounts)
+	copy.Balances = maps.Clone(s.Balances)
+	copy.Transfers = maps.Clone(s.Transfers)
+	copy.Keys = maps.Clone(s.Keys)
+	copy.LoanCredits = maps.Clone(s.LoanCredits)
+	copy.LoanPayments = maps.Clone(s.LoanPayments)
+	copy.Savings = maps.Clone(s.Savings)
+	copy.SavingsKeys = maps.Clone(s.SavingsKeys)
+	copy.SavingsQuotes = maps.Clone(s.SavingsQuotes)
+	copy.SavingsWithdrawalKeys = maps.Clone(s.SavingsWithdrawalKeys)
+	return &copy
+}
+
+// load uses a process-local incremental stream snapshot. It reads only events
+// AFTER the cached revision, from the EventStoreDB leader; CAS on append still
+// protects banking mutations. A cold instance rebuilds from event zero once.
 func (r *BankRepository) load(ctx context.Context) (*bankState, error) {
-	s := &bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}, Transfers: map[string]transferState{}, Keys: map[string]string{}, LoanCredits: map[string]loanCreditState{}, LoanPayments: map[string]journal.LoanInstallmentPayment{}}
+	r.cacheMu.Lock()
+	defer r.cacheMu.Unlock()
+
+	s := cloneBankState(r.cached)
 	var from esdb.StreamPosition = esdb.Start{}
+	if s == nil {
+		s = &bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}, Transfers: map[string]transferState{}, Keys: map[string]string{}, LoanCredits: map[string]loanCreditState{}, LoanPayments: map[string]journal.LoanInstallmentPayment{}, Savings: map[string]journal.SavingsMovement{}, SavingsKeys: map[string]string{}, SavingsQuotes: map[string]string{}, SavingsWithdrawalKeys: map[string]string{}}
+	} else if s.Exists {
+		from = esdb.Revision(s.Revision + 1)
+	}
 	for {
 		stream, err := r.client.ReadStream(ctx, journal.BankStream, esdb.ReadStreamOptions{From: from, RequiresLeader: true}, PAGESIZE)
 		if err != nil {
@@ -113,6 +153,9 @@ func (r *BankRepository) load(ctx context.Context) (*bankState, error) {
 		}
 		stream.Close()
 		if count < PAGESIZE {
+			// Cache only after replay succeeds completely; keep the previous
+			// revision if decoding or applying any event fails.
+			r.cached = cloneBankState(s)
 			return s, nil
 		}
 		from = esdb.Revision(s.Revision + 1)
@@ -153,6 +196,33 @@ func (s *bankState) apply(record journal.Record) error {
 			s.Accounts[a.Id] = a
 			s.Balances[financialID(a.Id).Hex()] = a.Balance.Current
 		}
+	case journal.SavingsOpened, journal.SavingsSettled:
+		if record.Savings == nil || record.BalanceBefore == nil || record.BalanceAfter == nil {
+			return fmt.Errorf("missing savings journal")
+		}
+		m := *record.Savings
+		c := m.Contract
+		key := financialID(c.SourceAccountID).Hex()
+		if !ownedByCustomer(s.Accounts, m.ActorID, c.SourceAccountID) || s.Accounts[c.SourceAccountID].CustomerId != c.CustomerID || s.Balances[key] != *record.BalanceBefore {
+			return fmt.Errorf("savings ownership or balance mismatch")
+		}
+		previous, exists := s.Savings[c.ID]
+		if record.Type == journal.SavingsOpened {
+			if exists || s.SavingsKeys[m.OpeningKey] != "" || s.SavingsQuotes[m.OpeningQuoteID] != "" || !strings.HasPrefix(m.OpeningKey, m.ActorID+":") {
+				return fmt.Errorf("duplicate savings opening")
+			}
+			s.SavingsKeys[m.OpeningKey] = c.ID
+			s.SavingsQuotes[m.OpeningQuoteID] = c.ID
+		} else {
+			if !exists || previous.Contract.Status == savingsdomain.ContractSettled || previous.OpeningQuoteID != m.OpeningQuoteID || previous.OpeningKey != m.OpeningKey || previous.Contract.Principal != c.Principal || previous.Contract.MaturityAt != c.MaturityAt || previous.Contract.SourceAccountID != c.SourceAccountID || previous.Contract.CustomerID != c.CustomerID || previous.ActorID != m.ActorID || previous.Contract.SavingsNo != c.SavingsNo || previous.Contract.PackageID != c.PackageID || previous.Contract.TermMonths != c.TermMonths || previous.Contract.AnnualRateBps != c.AnnualRateBps || !previous.Contract.OpenedAt.Equal(c.OpenedAt) || (s.SavingsWithdrawalKeys[m.WithdrawalKey] != "" && s.SavingsWithdrawalKeys[m.WithdrawalKey] != c.ID) {
+				return fmt.Errorf("invalid savings transition")
+			}
+		}
+		if record.Type == journal.SavingsSettled {
+			s.SavingsWithdrawalKeys[m.WithdrawalKey] = c.ID
+		}
+		s.Balances[key] = *record.BalanceAfter
+		s.Savings[c.ID] = m
 	case journal.LoanDisbursementCredited:
 		if _, exists := s.LoanCredits[record.LoanID]; exists {
 			return fmt.Errorf("duplicate loan credit journal")

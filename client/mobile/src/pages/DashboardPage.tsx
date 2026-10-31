@@ -198,13 +198,29 @@ const DashboardPage = () => {
               Ưu đãi riêng cho bạn
             </span>
             <span className="mt-1 block text-base font-bold">
-              Đăng ký khoản vay trong 15 phút
+              Đăng ký vay vốn cá nhân
             </span>
           </span>
           <span aria-hidden="true" className="text-2xl">
             →
           </span>
         </button>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => navigate(routes.loanApplications)}
+            className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-primary shadow-sm"
+          >
+            Hồ sơ vay của tôi
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(routes.loanContracts)}
+            className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-primary shadow-sm"
+          >
+            Hợp đồng / Trả nợ
+          </button>
+        </div>
         <PromoBanner promo={promo} />
         <TransactionList
           transactions={transactions}
