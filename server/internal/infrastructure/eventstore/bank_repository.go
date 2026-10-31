@@ -701,6 +701,10 @@ func (r *BankRepository) FailTransfer(ctx context.Context, id, owner string, ass
 }
 
 func (r *BankRepository) CancelPending(ctx context.Context, id string) error {
+	return r.CancelPendingWithReason(ctx, id, "user_cancelled")
+}
+
+func (r *BankRepository) CancelPendingWithReason(ctx context.Context, id, reason string) error {
 	_, err := r.mutate(ctx, func(s *bankState) (*journal.Record, any, error) {
 		state, ok := s.Transfers[id]
 		if !ok || state.Tx.Status != "awaiting_otp" {
@@ -710,7 +714,9 @@ func (r *BankRepository) CancelPending(ctx context.Context, id string) error {
 		cancelledAt := time.Now().UTC()
 		tx.Status = "cancelled"
 		tx.CancelledAt = &cancelledAt
-		record, err := transferRecord(tx, eventFor(tx, journal.Cancelled, state.Event.Sequence+1, cancelledAt))
+		e := eventFor(tx, journal.Cancelled, state.Event.Sequence+1, cancelledAt)
+		e.Payload.CancellationReason = reason
+		record, err := transferRecord(tx, e)
 		return record, nil, err
 	})
 	return err

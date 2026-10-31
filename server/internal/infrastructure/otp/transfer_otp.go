@@ -40,33 +40,33 @@ return 1
 // Returns {status, attempts left}: expired=0, invalid=1, verified=2, exceeded=3.
 var transferOTPVerifyScript = redis.NewScript(`
 if redis.call('EXISTS', KEYS[3]) == 1 then
-	return {2, tonumber(ARGV[2])}
+	return {2, tonumber(ARGV[2]), 0}
 end
 
 local stored = redis.call('GET', KEYS[1])
 if not stored then
-	return {0, 0}
+	return {0, 0, 0}
 end
 
 local ttl = redis.call('PTTL', KEYS[1])
 if ttl <= 0 then
 	redis.call('DEL', KEYS[1], KEYS[2])
-	return {0, 0}
+	return {0, 0, 0}
 end
 
 if stored == ARGV[1] then
 	redis.call('SET', KEYS[3], '1', 'PX', ttl)
 	redis.call('DEL', KEYS[1], KEYS[2])
-	return {2, tonumber(ARGV[2])}
+	return {2, tonumber(ARGV[2]), 1}
 end
 
 local attempts = redis.call('INCR', KEYS[2])
 if attempts >= tonumber(ARGV[2]) then
 	redis.call('DEL', KEYS[1], KEYS[2])
-	return {3, 0}
+	return {3, 0, 0}
 end
 redis.call('PEXPIRE', KEYS[2], ttl)
-return {1, tonumber(ARGV[2]) - attempts}
+return {1, tonumber(ARGV[2]) - attempts, 0}
 `)
 
 type TransferMailSender interface {
@@ -151,6 +151,16 @@ func (s *TransferOTPStore) issue(ctx context.Context, transferID, email string) 
 // Verify replaces a valid challenge with an authorization that remains usable
 // until the caller consumes it after the canonical EventStore append commits.
 func (s *TransferOTPStore) Verify(ctx context.Context, transferID, code string) (int, error) {
+	result, err := s.VerifyWithState(ctx, transferID, code)
+	return result.AttemptsLeft, err
+}
+
+type TransferOTPVerification struct {
+	AttemptsLeft  int
+	NewlyVerified bool
+}
+
+func (s *TransferOTPStore) VerifyWithState(ctx context.Context, transferID, code string) (TransferOTPVerification, error) {
 	// Invalid code syntax is deliberately sent through the same atomic failure
 	// path so it consumes an attempt exactly like any other wrong code.
 	if err := otpdomain.ValidateCode(code); err != nil {
@@ -162,23 +172,24 @@ func (s *TransferOTPStore) Verify(ctx context.Context, transferID, code string) 
 		s.verifiedKey(transferID),
 	}, code, transferOTPAttempts).Int64Slice()
 	if err != nil {
-		return 0, err
+		return TransferOTPVerification{}, err
 	}
-	if len(result) != 2 {
-		return 0, fmt.Errorf("unexpected transfer OTP verification result length: %d", len(result))
+	if len(result) != 3 {
+		return TransferOTPVerification{}, fmt.Errorf("unexpected transfer OTP verification result length: %d", len(result))
 	}
 	left := int(result[1])
+	verification := TransferOTPVerification{AttemptsLeft: left, NewlyVerified: result[2] == 1}
 	switch result[0] {
 	case 0:
-		return 0, ErrTransferOTPExpired
+		return verification, ErrTransferOTPExpired
 	case 1:
-		return left, ErrTransferOTPInvalid
+		return verification, ErrTransferOTPInvalid
 	case 2:
-		return left, nil
+		return verification, nil
 	case 3:
-		return 0, ErrTransferOTPExceeded
+		return verification, ErrTransferOTPExceeded
 	default:
-		return 0, fmt.Errorf("unexpected transfer OTP verification result: %d", result[0])
+		return TransferOTPVerification{}, fmt.Errorf("unexpected transfer OTP verification result: %d", result[0])
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/dont-wait/anomaly/internal/domain/audit"
 	maildomain "github.com/dont-wait/anomaly/internal/domain/mail"
 	otpdomain "github.com/dont-wait/anomaly/internal/domain/otp"
 )
@@ -135,6 +136,22 @@ type fakeSender struct {
 	sendErr error
 	lastTo  string
 	lastMsg maildomain.MailMessage
+}
+
+type auditRecorderFake struct {
+	mu     sync.Mutex
+	events []audit.Event
+	err    error
+}
+
+func (r *auditRecorderFake) Record(_ context.Context, event audit.Event) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.err != nil {
+		return r.err
+	}
+	r.events = append(r.events, event)
+	return nil
 }
 
 func (s *fakeSender) Send(_ context.Context, msg maildomain.MailMessage) error {
@@ -269,6 +286,79 @@ func TestVerifyOTPSuccessConsumesKey(t *testing.T) {
 	}
 	if err := h.Handle(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "123456"}); err != otpdomain.ErrOTPExpired {
 		t.Fatalf("second Handle() error = %v, want ErrOTPExpired (consumed)", err)
+	}
+}
+
+func TestVerifyOTPWithAuditRecordsSuccessAndFailure(t *testing.T) {
+	store := newFakeStore()
+	recorder := &auditRecorderFake{}
+	ctx := context.Background()
+	if err := store.Set(ctx, "a@b.co", "123456", time.Minute); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	h := NewVerifyOTPHandler(store, recorder)
+
+	if err := h.HandleWithAudit(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "654321"}); err != otpdomain.ErrOTPInvalid {
+		t.Fatalf("invalid HandleWithAudit() error = %v", err)
+	}
+	if err := h.HandleWithAudit(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "123456"}); err != nil {
+		t.Fatalf("success HandleWithAudit() error = %v", err)
+	}
+	if len(recorder.events) != 2 {
+		t.Fatalf("audit events = %d, want 2", len(recorder.events))
+	}
+	if recorder.events[0].Type != audit.EmailOTPVerificationFailed || recorder.events[1].Type != audit.EmailOTPVerificationSucceeded {
+		t.Fatalf("audit event types = %q, %q", recorder.events[0].Type, recorder.events[1].Type)
+	}
+	if recorder.events[0].EmailHash == "" || recorder.events[0].OperationID == "" {
+		t.Fatal("audit event is missing correlation fields")
+	}
+}
+
+func TestVerifyOTPWithAuditReturnsRecorderError(t *testing.T) {
+	store := newFakeStore()
+	recorder := &auditRecorderFake{err: errors.New("event store down")}
+	ctx := context.Background()
+	if err := store.Set(ctx, "a@b.co", "123456", time.Minute); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	h := NewVerifyOTPHandler(store, recorder)
+	if err := h.HandleWithAudit(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "123456"}); err == nil || err.Error() != "event store down" {
+		t.Fatalf("HandleWithAudit() error = %v, want recorder error", err)
+	}
+}
+
+func TestVerifyOTPWithAuditRecordsExpired(t *testing.T) {
+	recorder := &auditRecorderFake{}
+	h := NewVerifyOTPHandler(newFakeStore(), recorder)
+
+	if err := h.HandleWithAudit(context.Background(), VerifyOTPCommand{Email: "a@b.co", Code: "123456"}); err != otpdomain.ErrOTPExpired {
+		t.Fatalf("HandleWithAudit() error = %v, want ErrOTPExpired", err)
+	}
+	if len(recorder.events) != 1 || recorder.events[0].Type != audit.EmailOTPExpired {
+		t.Fatalf("audit events = %#v, want one EmailOTPExpired event", recorder.events)
+	}
+}
+
+func TestVerifyOTPWithAuditRecordsAttemptsExceeded(t *testing.T) {
+	store := newFakeStore()
+	recorder := &auditRecorderFake{}
+	ctx := context.Background()
+	if err := store.Set(ctx, "a@b.co", "123456", time.Minute); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	h := NewVerifyOTPHandler(store, recorder)
+
+	for range maxVerifyAttempts {
+		if err := h.HandleWithAudit(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "654321"}); err != otpdomain.ErrOTPInvalid {
+			t.Fatalf("invalid attempt error = %v, want ErrOTPInvalid", err)
+		}
+	}
+	if err := h.HandleWithAudit(ctx, VerifyOTPCommand{Email: "a@b.co", Code: "654321"}); err != otpdomain.ErrOTPExpired {
+		t.Fatalf("exhausted attempt error = %v, want ErrOTPExpired", err)
+	}
+	if len(recorder.events) != maxVerifyAttempts+1 || recorder.events[len(recorder.events)-1].Type != audit.EmailOTPAttemptsExceeded {
+		t.Fatalf("last audit event = %#v, want EmailOTPAttemptsExceeded", recorder.events)
 	}
 }
 

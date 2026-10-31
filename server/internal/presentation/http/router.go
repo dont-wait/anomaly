@@ -22,32 +22,32 @@ import (
 // thuộc trực tiếp vào infrastructure, đúng dependency rule của Clean
 // Architecture.
 func NewRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, loanHandlers ...*loan.Handler) *http.ServeMux {
-	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, nil, loanHandlers...)
+	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, nil, nil, loanHandlers...)
 }
 
 // NewRouterWithSavings adds the Savings API while preserving older callers.
 func NewRouterWithSavings(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, loanHandlers ...*loan.Handler) *http.ServeMux {
-	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, savingsHandler, nil, loanHandlers...)
+	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, savingsHandler, nil, nil, loanHandlers...)
 }
 
-// NewRouterWithAdminMonitor adds admin monitoring while preserving older callers.
-func NewRouterWithAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, adminMonitorHandler *admin.MonitorHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
-	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, adminMonitorHandler, loanHandlers...)
+// NewRouterWithAdminMonitor adds admin monitoring and the audit timeline.
+func NewRouterWithAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, adminMonitorHandler *admin.MonitorHandler, timelineHandler *admin.TimelineHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
+	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, adminMonitorHandler, timelineHandler, loanHandlers...)
 }
 
-// NewRouterWithSavingsAndAdminMonitor enables both features on the same API instance.
-func NewRouterWithSavingsAndAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, adminMonitorHandler *admin.MonitorHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
-	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, savingsHandler, adminMonitorHandler, loanHandlers...)
+// NewRouterWithSavingsAndAdminMonitor enables Savings, admin monitoring and the audit timeline together.
+func NewRouterWithSavingsAndAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, adminMonitorHandler *admin.MonitorHandler, timelineHandler *admin.TimelineHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
+	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, savingsHandler, adminMonitorHandler, timelineHandler, loanHandlers...)
 }
 
-func newRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, adminMonitorHandler *admin.MonitorHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
+func newRouter(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, adminMonitorHandler *admin.MonitorHandler, timelineHandler *admin.TimelineHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
 	router := openapi.NewRegistry(mux, swaggerEnabled)
 	account.RegisterRoutes(router, accountHandler, tokenSvc)
 	media.RegisterRoutes(router, mediaHandler, tokenSvc)
 	otp.RegisterRoutes(router, otpHandler)
 	transaction.RegisterRoutes(router, transactionHandler, tokenSvc)
 	if adminMonitorHandler != nil {
-		admin.RegisterRoutes(router, adminMonitorHandler, tokenSvc, accountHandler.RequireCurrentAdmin)
+		admin.RegisterRoutes(router, adminMonitorHandler, tokenSvc, accountHandler.RequireCurrentAdmin, timelineHandler)
 	}
 	if len(loanHandlers) > 0 &&
 		loanHandlers[0] != nil {

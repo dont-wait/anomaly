@@ -213,6 +213,11 @@ func (p *BankProjection) Apply(ctx context.Context, record journal.Record, revis
 				}
 				// Recover API crashes between the canonical append and risk cleanup.
 				// Finalization and the projection checkpoint commit together.
+				// Both stores are finalized: risk_decisions backs the OTP store,
+				// risk_assessments backs the admin dashboard stream.
+				if err := NewRiskDecisionRepository(p.client, p.db.Name()).Finalize(sc, tx.ID); err != nil {
+					return nil, err
+				}
 				if err := NewRiskAssessmentRepository(p.client, p.db.Name()).Finalize(sc, tx.ID); err != nil {
 					return nil, err
 				}
