@@ -72,9 +72,15 @@ func main() {
 	repo := eventstore.NewLoanRepository(es)
 
 	if len(os.Args) == 2 && os.Args[1] == "--backfill-loan-timeline" {
+		if err := read.StartLoanTimelineBackfill(ctx); err != nil {
+			log.Fatal().Err(err).Msg("start loan timeline backfill")
+		}
 		count, err := backfillLoanTimeline(ctx, es, read)
 		if err != nil {
 			log.Fatal().Err(err).Msg("loan timeline backfill failed")
+		}
+		if err := read.FinishLoanTimelineBackfill(ctx); err != nil {
+			log.Fatal().Err(err).Msg("finish loan timeline backfill")
 		}
 		log.Info().Int("events", count).Msg("loan timeline backfill completed")
 		return
@@ -201,6 +207,9 @@ func main() {
 
 		if err := read.Save(ctx, app, revision); err != nil {
 			log.Fatal().Err(err).Msg("save recovered loan failed")
+		}
+		if err := replayLoanTimeline(ctx, es, read, app); err != nil {
+			log.Fatal().Err(err).Msg("save recovered loan timeline failed")
 		}
 
 		if err := read.ResolveProjectionFailure(ctx, loanID); err != nil {
@@ -602,6 +611,54 @@ func latestEventStorePosition(ctx context.Context, client *esdb.Client) (mongo.L
 		Prepare: recorded.Position.Prepare,
 		EventID: recorded.EventID.String(),
 	}, nil
+}
+
+// replayLoanTimeline rebuilds every timeline row for a recovered loan before
+// its projection failure is marked resolved. Timeline writes are idempotent,
+// so this is safe even when some events were already projected.
+func replayLoanTimeline(ctx context.Context, client *esdb.Client, read *mongo.LoanReadModel, app *loandomain.Application) error {
+	if app == nil || strings.TrimSpace(app.Id) == "" {
+		return fmt.Errorf("recovered loan application is missing")
+	}
+	const pageSize = 4096
+	opts := esdb.ReadStreamOptions{}
+	for {
+		stream, err := client.ReadStream(ctx, "loan-application-"+app.Id, opts, pageSize)
+		if err != nil {
+			return err
+		}
+		eventsInPage := 0
+		var lastRevision uint64
+		for {
+			recorded, recvErr := stream.Recv()
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+			if recvErr != nil {
+				stream.Close()
+				return recvErr
+			}
+			eventsInPage++
+			lastRevision = recorded.Event.EventNumber
+			if err := read.SaveLoanTimelineEvent(
+				ctx,
+				app,
+				recorded.Event.EventID.String(),
+				recorded.Event.EventType,
+				recorded.Event.EventNumber,
+				recorded.Event.CreatedDate,
+				recorded.Event.Data,
+			); err != nil {
+				stream.Close()
+				return err
+			}
+		}
+		stream.Close()
+		if eventsInPage < pageSize {
+			return nil
+		}
+		opts = esdb.ReadStreamOptions{From: esdb.Revision(lastRevision + 1)}
+	}
 }
 
 // backfillLoanTimeline rebuilds the account-scoped loan timeline without
