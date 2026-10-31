@@ -48,6 +48,24 @@ describe("AdminShell", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the sidebar fixed to the viewport while its menu scrolls", () => {
+    render(
+      <AdminShell currentRoute={routes.monitor} user={user}>
+        <div>Dashboard content</div>
+      </AdminShell>,
+    );
+
+    expect(screen.getByRole("complementary").className).toContain("sticky");
+    expect(screen.getByRole("complementary").className).toContain("top-0");
+    expect(screen.getByRole("complementary").className).toContain("h-dvh");
+    expect(
+      screen.getByRole("navigation", { name: "Menu admin" }).className,
+    ).toContain("overflow-y-auto");
+    expect(
+      screen.getByRole("navigation", { name: "Menu admin" }).className,
+    ).toContain("min-h-0");
+  });
+
   it("renders the signed-in admin profile", () => {
     render(
       <AdminShell currentRoute={routes.monitor} user={user}>

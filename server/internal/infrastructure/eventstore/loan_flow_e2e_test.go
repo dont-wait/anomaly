@@ -111,6 +111,8 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 		if _, err := accountcommands.NewVerifyAccountCommandHandler(bank).Handle(ctx, accountcommands.VerifyAccountCommand{
 			AccountID: a.Id, IdCardFrontUrl: "kyc/" + a.Id + "/id-card-front/front",
 			IdCardBackUrl: "kyc/" + a.Id + "/id-card-back/back", LiveVideoUrl: "kyc/" + a.Id + "/live-video/live",
+			// Persistence fixture; this is not a biometric accuracy assertion.
+			Evidence: &accountdomain.KYCEvidence{MatchingStatus: "passed", LivenessStatus: "passed", ChallengePassed: true, SubjectConsistencyPassed: true}, MatchScore: 0.9, LivenessScore: 1,
 		}); err != nil {
 			t.Fatal(err)
 		}

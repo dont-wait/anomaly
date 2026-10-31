@@ -40,6 +40,7 @@ type Payload struct {
 	Channel                  string           `json:"channel" bson:"channel"`
 	Status                   string           `json:"status" bson:"status"`
 	FailureReason            string           `json:"failureReason,omitempty" bson:"failure_reason,omitempty"`
+	CancellationReason       string           `json:"cancellationReason,omitempty" bson:"cancellation_reason,omitempty"`
 	RiskAssessment           *risk.Assessment `json:"riskAssessment,omitempty" bson:"risk_assessment,omitempty"`
 	SourceBalanceBefore      *int64           `json:"sourceBalanceBefore,omitempty" bson:"source_balance_before,omitempty"`
 	SourceBalanceAfter       *int64           `json:"sourceBalanceAfter,omitempty" bson:"source_balance_after,omitempty"`

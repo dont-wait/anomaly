@@ -68,7 +68,7 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { label: "Event Explorer", route: routes.audit, icon: faCode },
       {
-        label: "Timeline",
+        label: "Lịch sử tài khoản",
         route: routes.auditAccounts,
         icon: faClockRotateLeft,
       },
@@ -126,10 +126,10 @@ export function AdminShell({
 
   return (
     <div
-      className={`grid min-h-screen ${shellColumns} bg-(--admin-background) text-(--admin-text) transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:transition-none max-[900px]:grid-cols-[64px_minmax(0,1fr)]`}
+      className={`grid min-h-dvh ${shellColumns} bg-(--admin-background) text-(--admin-text) transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:transition-none max-[900px]:grid-cols-[64px_minmax(0,1fr)]`}
     >
       <aside
-        className="flex min-h-screen flex-col overflow-hidden border-r border-(--admin-border) bg-(--admin-surface)"
+        className="sticky top-0 flex h-dvh min-h-0 self-start flex-col overflow-hidden border-r border-(--admin-border) bg-(--admin-surface)"
         aria-label="Điều hướng admin"
       >
         <div
@@ -159,7 +159,7 @@ export function AdminShell({
         </div>
 
         <nav
-          className={`w-full flex-1 overflow-y-auto py-4 ${isCollapsed ? "px-2" : "px-3"} max-[900px]:px-2`}
+          className={`min-h-0 w-full flex-1 overscroll-y-contain overflow-y-auto py-4 ${isCollapsed ? "px-2" : "px-3"} max-[900px]:px-2`}
           aria-label="Menu admin"
         >
           {navigationGroups.map((group) => (
