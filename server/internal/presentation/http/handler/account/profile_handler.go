@@ -551,7 +551,7 @@ func readProfileUpload(w http.ResponseWriter, r *http.Request, field string, lim
 		return nil, fmt.Errorf("invalid multipart upload: %w", err)
 	}
 	if r.MultipartForm != nil {
-		defer r.MultipartForm.RemoveAll()
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
 	}
 	file, header, err := r.FormFile(field)
 	if err != nil {
