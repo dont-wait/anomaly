@@ -69,6 +69,7 @@ const DashboardPage = () => {
   const [transactionsReloadKey, setTransactionsReloadKey] = useState(0);
   const [balanceRefreshing, setBalanceRefreshing] = useState(false);
   const [profileSidebarOpen, setProfileSidebarOpen] = useState(false);
+  const [moreServicesOpen, setMoreServicesOpen] = useState(false);
 
   const refreshBalance = async () => {
     if (balanceRefreshing) return;
@@ -186,41 +187,27 @@ const DashboardPage = () => {
           actions={quickActions}
           onSelect={(action) => {
             if (action.icon === "transfer") navigate(routes.transfer);
+            if (action.icon === "savings") navigate(routes.savings);
+            if (action.id === "qa_more") setMoreServicesOpen((open) => !open);
           }}
         />
-        <button
-          type="button"
-          onClick={() => navigate(routes.loanRegister)}
-          className="flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-primary to-secondary px-5 py-4 text-left text-white shadow-lg shadow-secondary/20 transition-transform active:scale-[0.99]"
-        >
-          <span>
-            <span className="block text-xs font-medium text-white/75">
-              Ưu đãi riêng cho bạn
-            </span>
-            <span className="mt-1 block text-base font-bold">
-              Đăng ký vay vốn cá nhân
-            </span>
-          </span>
-          <span aria-hidden="true" className="text-2xl">
-            →
-          </span>
-        </button>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => navigate(routes.loanApplications)}
-            className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-primary shadow-sm"
+        {moreServicesOpen && (
+          <div
+            aria-label="Dịch vụ khác"
+            className="rounded-2xl bg-white p-3 shadow-sm"
           >
-            Hồ sơ vay của tôi
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(routes.loanContracts)}
-            className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-primary shadow-sm"
-          >
-            Hợp đồng / Trả nợ
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMoreServicesOpen(false);
+                navigate(routes.loanApplications);
+              }}
+              className="w-full rounded-xl border border-gray-100 px-4 py-3 text-left text-sm font-semibold text-primary"
+            >
+              Vay vốn
+            </button>
+          </div>
+        )}
         <PromoBanner promo={promo} />
         <TransactionList
           transactions={transactions}
@@ -239,6 +226,7 @@ const DashboardPage = () => {
       <ProfileSidebar
         open={profileSidebarOpen}
         name={account.ownerName}
+        token={token}
         onClose={() => setProfileSidebarOpen(false)}
         onLogout={() => {
           setProfileSidebarOpen(false);

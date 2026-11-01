@@ -43,6 +43,10 @@ const auth: AuthContextValue = {
   login: async () => auth.user!,
   logout: () => undefined,
   refreshProfile: async () => auth.user,
+  updateProfile: async () => auth.user!,
+  changePassword: async () => undefined,
+  uploadProfileAvatar: async () => auth.user,
+  uploadProfileDocument: async () => auth.user,
 };
 
 const renderPage = () =>
