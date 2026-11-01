@@ -98,7 +98,8 @@ export function AppRouter() {
   }
 
   const applicationId = parseLoanApplicationId(hash);
-  if (applicationId) return <LoanApplicationsRoute applicationId={applicationId} />;
+  if (applicationId)
+    return <LoanApplicationsRoute applicationId={applicationId} />;
   const loanId = parseLoanContractId(hash);
   if (loanId) return <LoanContractsPage loanId={loanId} />;
 

@@ -12,7 +12,9 @@ vi.mock("./api/monitorApi", () => ({
 }));
 
 vi.mock("react-chartjs-2", () => ({
-  Line: (props: { "aria-label"?: string }) => <canvas data-testid="chart-canvas" aria-label={props["aria-label"]} />,
+  Line: (props: { "aria-label"?: string }) => (
+    <canvas data-testid="chart-canvas" aria-label={props["aria-label"]} />
+  ),
 }));
 
 const dashboard = {
@@ -25,14 +27,41 @@ const dashboard = {
     anomalousCount: 1,
     anomalyRate: 0.5,
     averageRiskScore: 0.5533,
-    timeseries: [{ timestamp: "2026-10-28T10:00:00Z", assessmentCount: 2, anomalousCount: 1, averageRiskScore: 0.5533 }],
-    recentAssessments: [{
-      assessmentId: "assessment-1", transactionId: "TX001", riskScore: 0.9821,
-      predictedLabel: 1 as const, threshold: 0.9517, modelVersion: "model-v1",
-      riskLevel: "BLOCK" as const, decision: "BLOCK" as const,
-      featureVersion: "features-v1", receivedAt: "2026-10-28T10:00:00Z",
-      transaction: { transactionId: "TX001", sourceAccountNo: "ACC001", sourceAccountName: "Nguyen Van A", destinationAccountNo: "ACC002", destinationName: "Tran Thi B", amount: 50000000, fee: 0, currency: "VND", channel: "mobile", status: "awaiting_otp", createdAt: "2026-10-28T09:59:00Z" },
-    }],
+    timeseries: [
+      {
+        timestamp: "2026-10-28T10:00:00Z",
+        assessmentCount: 2,
+        anomalousCount: 1,
+        averageRiskScore: 0.5533,
+      },
+    ],
+    recentAssessments: [
+      {
+        assessmentId: "assessment-1",
+        transactionId: "TX001",
+        riskScore: 0.9821,
+        predictedLabel: 1 as const,
+        threshold: 0.9517,
+        modelVersion: "model-v1",
+        riskLevel: "BLOCK" as const,
+        decision: "BLOCK" as const,
+        featureVersion: "features-v1",
+        receivedAt: "2026-10-28T10:00:00Z",
+        transaction: {
+          transactionId: "TX001",
+          sourceAccountNo: "ACC001",
+          sourceAccountName: "Nguyen Van A",
+          destinationAccountNo: "ACC002",
+          destinationName: "Tran Thi B",
+          amount: 50000000,
+          fee: 0,
+          currency: "VND",
+          channel: "mobile",
+          status: "awaiting_otp",
+          createdAt: "2026-10-28T09:59:00Z",
+        },
+      },
+    ],
     modelVersions: [{ label: "model-v1", count: 2 }],
     normalCount: 0,
     warningCount: 0,
@@ -53,11 +82,17 @@ describe("MonitorPage", () => {
   it("renders model assessment data from the snapshot", async () => {
     render(<MonitorPage />);
 
-    expect(await screen.findByRole("heading", { name: /Giám sát rủi ro/i })).toBeTruthy();
-    expect((await screen.findAllByText("TX001")).length).toBeGreaterThanOrEqual(1);
+    expect(
+      await screen.findByRole("heading", { name: /Giám sát rủi ro/i }),
+    ).toBeTruthy();
+    expect((await screen.findAllByText("TX001")).length).toBeGreaterThanOrEqual(
+      1,
+    );
     expect(screen.getByText("0.9821")).toBeTruthy();
     expect(screen.getAllByText("Chặn").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByRole("heading", { name: "Xu hướng rủi ro (24h)" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Xu hướng rủi ro (24h)" }),
+    ).toBeTruthy();
   });
 
   it("shows only the five most recent requests", async () => {
@@ -92,37 +127,67 @@ describe("MonitorPage", () => {
   it("renders the reusable dashboard skeleton", () => {
     const { container } = render(<MonitorDashboardSkeleton />);
 
-    expect(screen.getByRole("status", { name: "Đang tải dashboard" })).toBeTruthy();
-    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(10);
+    expect(
+      screen.getByRole("status", { name: "Đang tải dashboard" }),
+    ).toBeTruthy();
+    expect(
+      container.querySelectorAll('[data-slot="skeleton"]').length,
+    ).toBeGreaterThan(10);
   });
 
   it("shows the dashboard skeleton when the initial request takes longer", async () => {
     vi.useFakeTimers();
-    vi.mocked(getMonitorDashboard).mockImplementation(() => new Promise(() => undefined));
+    vi.mocked(getMonitorDashboard).mockImplementation(
+      () => new Promise(() => undefined),
+    );
     render(<MonitorPage />);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(120);
     });
 
-    expect(screen.getByRole("status", { name: "Đang tải dashboard" })).toBeTruthy();
+    expect(
+      screen.getByRole("status", { name: "Đang tải dashboard" }),
+    ).toBeTruthy();
   });
 
   it("renders an empty state when the risk series has no data", () => {
     render(<RiskTrendChart series={[]} />);
 
-    expect(screen.getByRole("status", { name: "Chưa có dữ liệu" })).toBeTruthy();
+    expect(
+      screen.getByRole("status", { name: "Chưa có dữ liệu" }),
+    ).toBeTruthy();
     expect(screen.queryByTestId("chart-canvas")).toBeNull();
   });
 
   it("changes the time range", async () => {
-    vi.mocked(getMonitorDashboard).mockResolvedValueOnce(dashboard).mockResolvedValueOnce({ ...dashboard, range: "7d", snapshot: { ...dashboard.snapshot, totalAssessments: 0, anomalousCount: 0, anomalyRate: 0, recentAssessments: [], modelVersions: [], timeseries: [] } });
+    vi.mocked(getMonitorDashboard)
+      .mockResolvedValueOnce(dashboard)
+      .mockResolvedValueOnce({
+        ...dashboard,
+        range: "7d",
+        snapshot: {
+          ...dashboard.snapshot,
+          totalAssessments: 0,
+          anomalousCount: 0,
+          anomalyRate: 0,
+          recentAssessments: [],
+          modelVersions: [],
+          timeseries: [],
+        },
+      });
     render(<MonitorPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "7 ngày" }));
 
-    expect(await screen.findByText("Chưa có dữ liệu trong khoảng thời gian này.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "7 ngày" }).getAttribute("aria-pressed")).toBe("true");
+    expect(
+      await screen.findByText("Chưa có dữ liệu trong khoảng thời gian này."),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "7 ngày" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("renders the Chart.js risk trend canvas", async () => {

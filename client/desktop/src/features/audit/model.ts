@@ -1,4 +1,5 @@
-export type TimelineCategory = "all" | "account" | "transfer" | "otp" | "login" | "loan";
+export type TimelineCategory =
+  "all" | "account" | "transfer" | "otp" | "login" | "loan";
 
 export interface TimelineAccount {
   id: string;

@@ -203,9 +203,7 @@ describe("loan application detail overlay", () => {
 
   const openSecondPageDetail = async () => {
     renderRouter();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Trang sau" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Trang sau" }));
     const row = (await screen.findByText("APP-2")).closest("button")!;
     row.focus();
     fireEvent.click(row);

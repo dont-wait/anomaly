@@ -68,16 +68,14 @@ it("requests a complete date-range summary independently of the transaction page
   } as Response);
   vi.stubGlobal("fetch", fetchMock);
 
-  const summary = await getTransactionSummary(
-    "access-token",
-    { from: "2026-08-01", to: "2026-08-31" },
-  );
+  const summary = await getTransactionSummary("access-token", {
+    from: "2026-08-01",
+    to: "2026-08-31",
+  });
 
   const requestUrl = new URL(String(fetchMock.mock.calls[0][0]));
   expect(requestUrl.pathname).toBe("/api/transactions/summary");
-  expect(requestUrl.searchParams.get("from")).toBe(
-    "2026-08-01T00:00:00+07:00",
-  );
+  expect(requestUrl.searchParams.get("from")).toBe("2026-08-01T00:00:00+07:00");
   expect(requestUrl.searchParams.get("to")).toBe(
     "2026-08-31T23:59:59.999999999+07:00",
   );

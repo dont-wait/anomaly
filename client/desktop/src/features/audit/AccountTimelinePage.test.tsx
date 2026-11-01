@@ -27,7 +27,13 @@ const response = {
       sourceRevision: 12,
       transactionId: "tx-1",
       summary: "Chuyển tiền thành công",
-      details: { amount: 500000, balanceBefore: 2000000, balanceAfter: 1500000, currency: "VND", direction: "out" },
+      details: {
+        amount: 500000,
+        balanceBefore: 2000000,
+        balanceAfter: 1500000,
+        currency: "VND",
+        direction: "out",
+      },
     },
   ],
   hasMore: false,
@@ -51,32 +57,66 @@ describe("AccountTimelinePage", () => {
     vi.mocked(getAccountTimeline).mockResolvedValue(response);
     render(<AccountTimelinePage />);
 
-    fireEvent.change(screen.getByPlaceholderText(/Account ID/i), { target: { value: "ACC-0001" } });
+    fireEvent.change(screen.getByPlaceholderText(/Account ID/i), {
+      target: { value: "ACC-0001" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Xem lịch sử" }));
 
     expect(await screen.findByText("Alice Nguyen")).toBeTruthy();
     expect(screen.getByText("Chuyển tiền thành công")).toBeTruthy();
     expect(screen.getByText("Giao dịch: tx-1")).toBeTruthy();
-    await waitFor(() => expect(getAccountTimeline).toHaveBeenCalledWith("ACC-0001", expect.objectContaining({ category: "all" })));
+    await waitFor(() =>
+      expect(getAccountTimeline).toHaveBeenCalledWith(
+        "ACC-0001",
+        expect.objectContaining({ category: "all" }),
+      ),
+    );
   });
 
   it("uses the submitted query and cursor for pagination", async () => {
     vi.mocked(getAccountTimeline)
-      .mockResolvedValueOnce({ ...response, nextCursor: "cursor-1", hasMore: true })
-      .mockResolvedValueOnce({ ...response, nextCursor: undefined, hasMore: false });
+      .mockResolvedValueOnce({
+        ...response,
+        nextCursor: "cursor-1",
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        ...response,
+        nextCursor: undefined,
+        hasMore: false,
+      });
     render(<AccountTimelinePage />);
 
-    fireEvent.change(screen.getByPlaceholderText(/Account ID/i), { target: { value: "ACC-0001" } });
+    fireEvent.change(screen.getByPlaceholderText(/Account ID/i), {
+      target: { value: "ACC-0001" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Xem lịch sử" }));
     await screen.findByText("Alice Nguyen");
 
-    const nextButton = screen.getByRole("button", { name: "Trang sau →" }) as HTMLButtonElement;
+    const nextButton = screen.getByRole("button", {
+      name: "Trang sau →",
+    }) as HTMLButtonElement;
     expect(nextButton.disabled).toBe(false);
     fireEvent.click(nextButton);
 
-    await waitFor(() => expect(getAccountTimeline).toHaveBeenNthCalledWith(2, "account-1", expect.objectContaining({ category: "all", cursor: "cursor-1", limit: 20 })));
+    await waitFor(() =>
+      expect(getAccountTimeline).toHaveBeenNthCalledWith(
+        2,
+        "account-1",
+        expect.objectContaining({
+          category: "all",
+          cursor: "cursor-1",
+          limit: 20,
+        }),
+      ),
+    );
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Loại event" }), { target: { value: "otp" } });
-    expect((screen.getByRole("button", { name: "Trang sau →" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByRole("combobox", { name: "Loại event" }), {
+      target: { value: "otp" },
+    });
+    expect(
+      (screen.getByRole("button", { name: "Trang sau →" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

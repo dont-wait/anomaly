@@ -267,15 +267,16 @@ func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *account
 			break
 		}
 		selected := selectTimelineCandidate(bankingCandidate, auditCandidate, loanCandidate)
-		if selected == bankingCandidate {
+		switch selected {
+		case bankingCandidate:
 			items = append(items, bankingCandidate.item)
 			positions.BankingRevision = int64Pointer(bankingCandidate.next)
 			bankingCandidate = nil
-		} else if selected == auditCandidate {
+		case auditCandidate:
 			items = append(items, auditCandidate.item)
 			positions.AuditRevision = int64Pointer(auditCandidate.next)
 			auditCandidate = nil
-		} else {
+		default:
 			items = append(items, loanCandidate.item)
 			positions.LoanOccurredAt = loanCandidate.loanOccurredAt
 			positions.LoanEventID = loanCandidate.loanEventID

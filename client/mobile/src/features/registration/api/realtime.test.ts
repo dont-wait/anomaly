@@ -82,7 +82,9 @@ it("authenticates by message, orders binary chunks, and waits for the server bef
   await vi.waitFor(() =>
     expect(socket.sent.filter((m) => m instanceof Uint8Array)).toHaveLength(2),
   );
-  const binary = socket.sent.filter((m) => m instanceof Uint8Array) as Uint8Array[];
+  const binary = socket.sent.filter(
+    (m) => m instanceof Uint8Array,
+  ) as Uint8Array[];
   expect([...binary[0]]).toEqual([1, 0, 0, 0, 0, 11, 22, 33]);
   expect([...binary[1]]).toEqual([1, 0, 0, 0, 1, 44, 55]);
   socket.emit("ack", 3, { chunkSeq: 0 });

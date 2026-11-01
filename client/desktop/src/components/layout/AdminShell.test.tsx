@@ -89,7 +89,9 @@ describe("AdminShell", () => {
 
     expect(screen.queryByText("PROD · V0.4")).toBeNull();
     expect(screen.queryByText("UTC+7")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Nhận việc tiếp theo" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Nhận việc tiếp theo" }),
+    ).toBeNull();
   });
 
   it("toggles the sidebar from the operator row", () => {

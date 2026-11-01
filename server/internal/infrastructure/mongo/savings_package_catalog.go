@@ -91,7 +91,7 @@ func (c *SavingsPackageCatalog) ListActive(ctx context.Context) ([]savingsquerie
 	if err != nil {
 		return nil, err
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var records []savingsPackageRecord
 	if err := cur.All(ctx, &records); err != nil {
 		return nil, err

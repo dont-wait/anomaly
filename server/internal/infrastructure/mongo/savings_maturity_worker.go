@@ -54,7 +54,7 @@ func (w *SavingsMaturityWorker) RunOnce(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	type dueRow struct {
 		ID         string    `bson:"_id"`
 		CustomerID string    `bson:"customer_id"`

@@ -12,7 +12,14 @@ import {
 import { Line } from "react-chartjs-2";
 import type { RiskSeriesPoint, TimeRange } from "../model";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+);
 
 const chartColors = {
   border: "#b4c5ff",
@@ -95,8 +102,17 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
   const [mode, setMode] = useState<ChartMode>("risk");
   const tooltipRef = useRef<TooltipState | null>(null);
   const hasData = series.length > 0;
-  const values = series.map((point) => mode === "risk" ? point.averageRiskScore * 100 : mode === "volume" ? point.assessmentCount : point.anomalousCount);
-  const chartMax = mode === "risk" ? 100 : Math.max(1, Math.ceil(Math.max(...values, 1) * 1.2));
+  const values = series.map((point) =>
+    mode === "risk"
+      ? point.averageRiskScore * 100
+      : mode === "volume"
+        ? point.assessmentCount
+        : point.anomalousCount,
+  );
+  const chartMax =
+    mode === "risk"
+      ? 100
+      : Math.max(1, Math.ceil(Math.max(...values, 1) * 1.2));
   const peakIndex = hasData ? values.indexOf(Math.max(...values)) : -1;
   const peakPoint = series[peakIndex];
   const labels = series.map((point) => formatTime(point.timestamp));
@@ -156,7 +172,10 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
             return;
           }
           updateTooltip({
-            left: Math.min(86, Math.max(14, (tooltip.caretX / chart.width) * 100)),
+            left: Math.min(
+              86,
+              Math.max(14, (tooltip.caretX / chart.width) * 100),
+            ),
             top: Math.max(20, (tooltip.caretY / chart.height) * 100 - 8),
             timestamp: formatTime(point.timestamp),
             riskScore: values[item.dataIndex] ?? 0,
@@ -189,46 +208,132 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
   };
 
   return (
-    <section className="bg-(--admin-surface-subtle) h-full min-h-75 flex flex-col justify-between rounded-(--admin-radius-md) p-3" data-testid="risk-trend-chart">
+    <section
+      className="bg-(--admin-surface-subtle) h-full min-h-75 flex flex-col justify-between rounded-(--admin-radius-md) p-3"
+      data-testid="risk-trend-chart"
+    >
       <div className="flex flex-col justify-between gap-2 pb-2 md:flex-row md:items-center">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">Xu hướng rủi ro ({range})</h2>
-          <div className="bg-(--admin-surface) flex rounded-sm p-0.5" role="group" aria-label="Chỉ số biểu đồ">
-            {([['risk', 'Điểm rủi ro'], ['volume', 'Số yêu cầu'], ['alerts', 'Bất thường']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)} className={`rounded-sm px-2 py-1 text-[10px] font-semibold ${mode === value ? "bg-(--admin-primary) text-white" : "text-(--admin-text-muted) hover:text-(--admin-text)"}`}>{label}</button>)}
+          <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">
+            Xu hướng rủi ro ({range})
+          </h2>
+          <div
+            className="bg-(--admin-surface) flex rounded-sm p-0.5"
+            role="group"
+            aria-label="Chỉ số biểu đồ"
+          >
+            {(
+              [
+                ["risk", "Điểm rủi ro"],
+                ["volume", "Số yêu cầu"],
+                ["alerts", "Bất thường"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={mode === value}
+                onClick={() => setMode(value)}
+                className={`rounded-sm px-2 py-1 text-[10px] font-semibold ${mode === value ? "bg-(--admin-primary) text-white" : "text-(--admin-text-muted) hover:text-(--admin-text)"}`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
         <div className="font-(family-name:--admin-font-mono) flex flex-wrap items-center gap-2 text-[10px] text-(--admin-text-muted)">
-          {peakPoint && <span className="rounded-sm bg-[#3b2930] px-1.5 py-1 text-[#ffb4ab]">{mode === "risk" ? `Cao nhất ${(values[peakIndex] ?? 0).toFixed(2)} điểm` : mode === "volume" ? `Nhiều nhất ${values[peakIndex] ?? 0} yêu cầu` : `Nhiều nhất ${values[peakIndex] ?? 0} bất thường`} · {formatTime(peakPoint.timestamp)}</span>}
-          {hasData && <><span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-(--admin-primary)" />Điểm rủi ro trung bình</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-(--admin-danger)" />Yêu cầu bất thường</span></>}
+          {peakPoint && (
+            <span className="rounded-sm bg-[#3b2930] px-1.5 py-1 text-[#ffb4ab]">
+              {mode === "risk"
+                ? `Cao nhất ${(values[peakIndex] ?? 0).toFixed(2)} điểm`
+                : mode === "volume"
+                  ? `Nhiều nhất ${values[peakIndex] ?? 0} yêu cầu`
+                  : `Nhiều nhất ${values[peakIndex] ?? 0} bất thường`}{" "}
+              · {formatTime(peakPoint.timestamp)}
+            </span>
+          )}
+          {hasData && (
+            <>
+              <span className="flex items-center gap-1">
+                <span className="h-0.5 w-3 bg-(--admin-primary)" />
+                Điểm rủi ro trung bình
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-sm bg-(--admin-danger)" />
+                Yêu cầu bất thường
+              </span>
+            </>
+          )}
         </div>
       </div>
       <div className="relative my-2 h-50 w-full">
-        {hasData ? <Line
-          data={data}
-          options={options}
-          plugins={[createRiskMarkerPlugin(peakIndex)]}
-          aria-label="Biểu đồ điểm rủi ro trong khoảng thời gian đã chọn"
-        /> : <div className="absolute inset-0 grid place-items-center rounded-sm border border-dashed border-(--admin-border) bg-(--admin-surface) px-4 text-center" aria-label="Chưa có dữ liệu" role="status">
-          <div>
-            <strong className="block text-[13px] font-semibold text-(--admin-text)">Chưa có dữ liệu</strong>
-            <span className="mt-1 block text-[11px] text-(--admin-text-muted)">Thử chọn khoảng thời gian khác.</span>
+        {hasData ? (
+          <Line
+            data={data}
+            options={options}
+            plugins={[createRiskMarkerPlugin(peakIndex)]}
+            aria-label="Biểu đồ điểm rủi ro trong khoảng thời gian đã chọn"
+          />
+        ) : (
+          <div
+            className="absolute inset-0 grid place-items-center rounded-sm border border-dashed border-(--admin-border) bg-(--admin-surface) px-4 text-center"
+            aria-label="Chưa có dữ liệu"
+            role="status"
+          >
+            <div>
+              <strong className="block text-[13px] font-semibold text-(--admin-text)">
+                Chưa có dữ liệu
+              </strong>
+              <span className="mt-1 block text-[11px] text-(--admin-text-muted)">
+                Thử chọn khoảng thời gian khác.
+              </span>
+            </div>
           </div>
-        </div>}
+        )}
         {hasData && hoverTooltip && (
           <div
             className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-sm border border-(--admin-border) bg-(--admin-surface-hover) px-2.5 py-2 shadow-md"
-            style={{ left: `${hoverTooltip.left}%`, top: `${hoverTooltip.top}%` }}
+            style={{
+              left: `${hoverTooltip.left}%`,
+              top: `${hoverTooltip.top}%`,
+            }}
             role="status"
             aria-live="polite"
           >
-            <strong className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[10px] text-(--admin-primary)">{hoverTooltip.timestamp}</strong>
-            <span className="font-(family-name:--admin-font-mono) mt-1 block whitespace-nowrap text-[10px] text-(--admin-text)">{mode === "risk" ? "Điểm rủi ro" : mode === "volume" ? "Số yêu cầu" : "Yêu cầu bất thường"}: {hoverTooltip.riskScore.toFixed(mode === "risk" ? 2 : 0)}</span>
-            <span className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[9px] text-(--admin-text-muted)">{hoverTooltip.alertCount} yêu cầu · {hoverTooltip.highRiskCount} bất thường</span>
+            <strong className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[10px] text-(--admin-primary)">
+              {hoverTooltip.timestamp}
+            </strong>
+            <span className="font-(family-name:--admin-font-mono) mt-1 block whitespace-nowrap text-[10px] text-(--admin-text)">
+              {mode === "risk"
+                ? "Điểm rủi ro"
+                : mode === "volume"
+                  ? "Số yêu cầu"
+                  : "Yêu cầu bất thường"}
+              : {hoverTooltip.riskScore.toFixed(mode === "risk" ? 2 : 0)}
+            </span>
+            <span className="font-(family-name:--admin-font-mono) block whitespace-nowrap text-[9px] text-(--admin-text-muted)">
+              {hoverTooltip.alertCount} yêu cầu · {hoverTooltip.highRiskCount}{" "}
+              bất thường
+            </span>
           </div>
         )}
       </div>
       <div className="font-(family-name:--admin-font-mono) flex items-center justify-between gap-2 pt-2 text-[10px] text-(--admin-text-muted)">
-        {hasData ? <><span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span><span>HIỆN TẠI</span></> : <span className="mx-auto">Không có điểm dữ liệu trong khoảng thời gian này</span>}
+        {hasData ? (
+          <>
+            <span>00:00</span>
+            <span>04:00</span>
+            <span>08:00</span>
+            <span>12:00</span>
+            <span>16:00</span>
+            <span>20:00</span>
+            <span>HIỆN TẠI</span>
+          </>
+        ) : (
+          <span className="mx-auto">
+            Không có điểm dữ liệu trong khoảng thời gian này
+          </span>
+        )}
       </div>
     </section>
   );

@@ -69,9 +69,15 @@ it("accepts a wrapped 502 SYSTEM_ERROR without consuming an attempt", async () =
 it("rejects VERIFIED without a verified user", async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(
-      response({ status: 200, message: "completed", data: { decision: "VERIFIED" } }),
-    ),
+    vi
+      .fn()
+      .mockResolvedValue(
+        response({
+          status: 200,
+          message: "completed",
+          data: { decision: "VERIFIED" },
+        }),
+      ),
   );
   await expect(
     completeKyc(
