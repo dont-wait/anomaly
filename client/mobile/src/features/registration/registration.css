@@ -16,22 +16,22 @@
     font: inherit;
   }
 
-/* UA đặt fieldset là min-width: min-content, nên flex-item bên trong không
+  /* UA đặt fieldset là min-width: min-content, nên flex-item bên trong không
    co lại được và đẩy tràn thẻ bọc. Preflight của Tailwind đã lo
    margin/padding/border, còn min-width thì không. */
-.auth-app fieldset {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
+  .auth-app fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
 
-.auth-app button {
-  cursor: pointer;
-  transition:
-    background 0.2s,
-    transform 0.2s;
-}
+  .auth-app button {
+    cursor: pointer;
+    transition:
+      background 0.2s,
+      transform 0.2s;
+  }
 
   .auth-app button:disabled {
     cursor: not-allowed;

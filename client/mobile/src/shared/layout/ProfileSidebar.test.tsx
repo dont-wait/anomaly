@@ -117,19 +117,61 @@ describe("ProfileSidebar", () => {
     expect(screen.getAllByText("a@example.com").length).toBeGreaterThan(0);
   });
 
-  it("sends only changed nested address fields and no email", async () => {
+  it("sends reviewed fields for approval instead of saving them directly", async () => {
     const value = auth();
+    const fetchMock = vi.mocked(fetch);
     renderSidebar(value);
     fireEvent.click(screen.getByText("Cập nhật thông tin"));
-    expect(screen.queryByLabelText("Email")).toBeNull();
+    type("Họ và tên", "Nguyễn Văn B");
+    fireEvent.click(screen.getByText("Gửi yêu cầu duyệt"));
 
-    type("Tỉnh/thành", "HN");
-    fireEvent.click(screen.getByText("Lưu thay đổi"));
-
-    await screen.findByText("Đã cập nhật thông tin.");
-    expect(value.updateProfile).toHaveBeenCalledWith({
-      address: { provinceCode: "HN" },
+    await screen.findByText(/Đã gửi yêu cầu/);
+    expect(value.updateProfile).not.toHaveBeenCalled();
+    const call = fetchMock.mock.calls.find(([url]) =>
+      String(url).endsWith("/api/auth/me/profile-changes"),
+    )!;
+    expect(JSON.parse(String(call[1]?.body))).toEqual({
+      fullName: "Nguyễn Văn B",
     });
+    expect(screen.queryByLabelText("Số CCCD")).toBeNull();
+  });
+
+  it("shows pending and rejected change states", () => {
+    const first = renderSidebar(
+      auth({
+        user: {
+          ...user,
+          profileChange: {
+            id: "c1",
+            status: "PENDING",
+            fullName: "Tên chờ duyệt",
+            requestedAt: "2026-11-01T00:00:00Z",
+          },
+        },
+      }),
+    );
+    fireEvent.click(screen.getByText("Cập nhật thông tin"));
+    expect(screen.getByText(/đang chờ ngân hàng duyệt/)).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>("Họ và tên").value).toBe(
+      "Tên chờ duyệt",
+    );
+    first.unmount();
+
+    renderSidebar(
+      auth({
+        user: {
+          ...user,
+          profileChange: {
+            id: "c1",
+            status: "REJECTED",
+            rejectionReason: "Sai tên",
+            requestedAt: "2026-11-01T00:00:00Z",
+          },
+        },
+      }),
+    );
+    fireEvent.click(screen.getByText("Cập nhật thông tin"));
+    expect(screen.getByRole("alert").textContent).toContain("Sai tên");
   });
 
   it("accepts a spaced phone number and sends it normalized", async () => {
@@ -144,15 +186,13 @@ describe("ProfileSidebar", () => {
     expect(screen.queryByText("Lưu thay đổi")).toBeNull();
   });
 
-  it("disables saving until something changes and masks verified identity", () => {
+  it("disables saving until the phone changes", () => {
     renderSidebar(auth());
     fireEvent.click(screen.getByText("Cập nhật thông tin"));
 
     expect(screen.getByText<HTMLButtonElement>("Lưu thay đổi").disabled).toBe(
       true,
     );
-    expect(screen.getByText("•••• 1234")).toBeTruthy();
-    expect(screen.queryByLabelText("Họ và tên")).toBeNull();
   });
 
   it("reloads on conflict and keeps the customer's input", async () => {
@@ -163,34 +203,58 @@ describe("ProfileSidebar", () => {
     });
     renderSidebar(value);
     fireEvent.click(screen.getByText("Cập nhật thông tin"));
-    type("Tỉnh/thành", "HN");
+    type("Số điện thoại", "0987654321");
     fireEvent.click(screen.getByText("Lưu thay đổi"));
 
     await screen.findByText(/vừa được thay đổi/);
     expect(value.refreshProfile).toHaveBeenCalled();
-    expect(screen.getByLabelText<HTMLInputElement>("Tỉnh/thành").value).toBe(
-      "HN",
+    expect(screen.getByLabelText<HTMLInputElement>("Số điện thoại").value).toBe(
+      "0987654321",
     );
     expect(screen.queryByText("Đã cập nhật thông tin.")).toBeNull();
   });
 
-  it("requires both OTPs to confirm a pending email", async () => {
+  it("confirms a pending email with only the new address OTP", async () => {
     const value = auth({ user: { ...user, pendingEmail: "new@example.com" } });
     renderSidebar(value);
     fireEvent.click(screen.getByText("Cập nhật thông tin"));
     fireEvent.click(screen.getByText("Đổi email"));
 
+    expect(screen.queryByLabelText("Mã gửi đến email hiện tại")).toBeNull();
     const submit = screen.getByText<HTMLButtonElement>("Xác minh email");
-    type("Mã gửi đến email hiện tại", "111111");
     expect(submit.disabled).toBe(true);
     type("Mã gửi đến email mới", "222222");
     fireEvent.click(submit);
 
     await waitFor(() =>
       expect(value.confirmEmailChange).toHaveBeenCalledWith({
-        currentEmailOtp: "111111",
         newEmailOtp: "222222",
       }),
+    );
+  });
+
+  it("requires the current password to start an email change and clears it", async () => {
+    const value = auth();
+    renderSidebar(value);
+    fireEvent.click(screen.getByText("Cập nhật thông tin"));
+    fireEvent.click(screen.getByText("Đổi email"));
+
+    const submit = screen.getByText<HTMLButtonElement>("Gửi mã xác minh");
+    type("Email mới", "new@example.com");
+    expect(submit.disabled).toBe(true);
+    type("Mật khẩu hiện tại", "Current1!");
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(value.startEmailChange).toHaveBeenCalledWith({
+        newEmail: "new@example.com",
+        currentPassword: "Current1!",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText<HTMLInputElement>("Mật khẩu hiện tại").value,
+      ).toBe(""),
     );
   });
 

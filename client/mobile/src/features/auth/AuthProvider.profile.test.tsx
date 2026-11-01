@@ -117,7 +117,10 @@ describe("AuthProvider profile state", () => {
     refreshFails = true;
 
     await act(async () => {
-      await auth().startEmailChange("new@example.com");
+      await auth().startEmailChange({
+        newEmail: "new@example.com",
+        currentPassword: "secret",
+      });
     });
 
     expect(auth().user?.pendingEmail).toBe("new@example.com");

@@ -121,17 +121,20 @@ type loanQuoteResponse struct {
 }
 
 type Handler struct {
-	Log           *zerolog.Logger
-	Create        *commands.CreateLoanApplicationCommandHandler
-	Add           *commands.AddLoanDocumentCommandHandler
-	Submit        *commands.SubmitLoanApplicationCommandHandler
-	Review        *commands.StartLoanReviewCommandHandler
-	Assess        *commands.AssessLoanApplicationCommandHandler
-	Decide        *commands.ManualLoanDecisionCommandHandler
-	Disburse      *commands.DisburseLoanCommandHandler
-	Offer         *commands.LoanOfferCommandHandler
-	ContractOTP   ContractOTPService
-	ContractEmail ContractEmailReader
+	Log            *zerolog.Logger
+	Create         *commands.CreateLoanApplicationCommandHandler
+	Add            *commands.AddLoanDocumentCommandHandler
+	Submit         *commands.SubmitLoanApplicationCommandHandler
+	Review         *commands.StartLoanReviewCommandHandler
+	DocumentReview *commands.ReviewLoanDocumentCommandHandler
+	Delete         *commands.DeleteLoanApplicationCommandHandler
+	AttachProfile  *commands.AttachProfileDocumentsCommandHandler
+	Assess         *commands.AssessLoanApplicationCommandHandler
+	Decide         *commands.ManualLoanDecisionCommandHandler
+	Disburse       *commands.DisburseLoanCommandHandler
+	Offer          *commands.LoanOfferCommandHandler
+	ContractOTP    ContractOTPService
+	ContractEmail  ContractEmailReader
 
 	Repayment     *RepaymentHTTP
 	Contracts     *loanqueries.LoanContractQueryService
@@ -381,6 +384,21 @@ func RegisterRoutes(
 		"submitPersonalLoan",
 	)
 	auth(
+		"DELETE /api/loans/{applicationId}",
+		h.deleteApplication,
+		"deletePersonalLoan",
+	)
+	auth(
+		"POST /api/loans/{applicationId}/documents/from-profile",
+		h.attachProfileDocuments,
+		"attachPersonalLoanProfileDocuments",
+	)
+	auth(
+		"POST /api/loans/{applicationId}/documents/{documentId}/verification",
+		h.reviewDocument,
+		"reviewPersonalLoanDocument",
+	)
+	auth(
 		"POST /api/loans/{applicationId}/review",
 		h.review,
 		"startPersonalLoanReview",
@@ -531,7 +549,8 @@ func (h *Handler) application(
 		return nil, err
 	}
 
-	if a == nil {
+	// Hồ sơ đã xóa không còn tồn tại với mọi API, kể cả admin.
+	if a == nil || a.Status == domain.ApplicationStatusDeleted {
 		return nil, fmt.Errorf("loan application not found")
 	}
 
@@ -585,10 +604,11 @@ func (h *Handler) create(
 	}
 
 	var req struct {
-		LoanPackageID         string `json:"loanPackageId"`
-		DisbursementAccountID string `json:"disbursementAccountId"`
-		RequestedAmount       int64  `json:"requestedAmount"`
-		TermMonths            int    `json:"termMonths"`
+		LoanPackageID         string                     `json:"loanPackageId"`
+		DisbursementAccountID string                     `json:"disbursementAccountId"`
+		RequestedAmount       int64                      `json:"requestedAmount"`
+		TermMonths            int                        `json:"termMonths"`
+		Declared              *domain.DeclaredFinancials `json:"declared"`
 	}
 
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
@@ -610,6 +630,7 @@ func (h *Handler) create(
 			RequestedAmount:       req.RequestedAmount,
 			TermMonths:            req.TermMonths,
 			IdempotencyKey:        key,
+			Declared:              req.Declared,
 		},
 	)
 	if err != nil {
@@ -939,10 +960,15 @@ func (h *Handler) download(
 	}
 	defer func() { _ = res.Body.Close() }()
 
-	w.Header().Set(
-		"Content-Type",
-		"application/octet-stream",
-	)
+	// Loại file đã xác minh khi upload, để admin xem trước được. Loại khác giữ
+	// octet-stream; nosniff chặn trình duyệt tự đoán.
+	contentType := "application/octet-stream"
+	switch document.MIMEType {
+	case "application/pdf", "image/jpeg", "image/png":
+		contentType = document.MIMEType
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set(
 		"X-Content-Type-Options",
 		"nosniff",
@@ -984,6 +1010,86 @@ func (h *Handler) submit(
 		return
 	}
 
+	httpx.WriteJSON(w, 200, result)
+}
+
+// DELETE /api/loans/{applicationId}
+func (h *Handler) deleteApplication(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	a, err := h.application(r, true)
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+	if err := h.Delete.Handle(r.Context(), a.Id, a.CustomerId); err != nil {
+		if errors.Is(err, domain.ErrInvalidApplicationStatus) {
+			fail(w, 409, "only unsent loan applications can be deleted")
+			return
+		}
+		serviceError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /api/loans/{applicationId}/documents/from-profile
+func (h *Handler) attachProfileDocuments(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	a, err := h.application(r, true)
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+	result, err := h.AttachProfile.Handle(r.Context(), a.Id, a.CustomerId)
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, 200, result)
+}
+
+// POST /api/loans/{applicationId}/documents/{documentId}/verification
+func (h *Handler) reviewDocument(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if err := h.admin(r); err != nil {
+		serviceError(w, err)
+		return
+	}
+	a, err := h.application(r, false)
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+	var req struct {
+		Decision string `json:"decision"`
+		Reason   string `json:"reason"`
+	}
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		fail(w, 400, "invalid document review JSON")
+		return
+	}
+	actor, _, _ := claims(r)
+	result, err := h.DocumentReview.Handle(r.Context(), commands.ReviewLoanDocumentCommand{
+		ApplicationID: a.Id,
+		DocumentID:    r.PathValue("documentId"),
+		Decision:      req.Decision,
+		Reason:        req.Reason,
+		ActorID:       actor,
+	})
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidApplicationStatus) {
+			fail(w, 409, "loan application is not under review")
+			return
+		}
+		serviceError(w, err)
+		return
+	}
 	httpx.WriteJSON(w, 200, result)
 }
 
@@ -1078,6 +1184,12 @@ func (h *Handler) attest(
 		Sources:               req.Sources,
 		VerifiedBy:            actor,
 		VerifiedAt:            time.Now().UTC(),
+	}
+
+	// Xác nhận chứng từ phải khớp kết quả duyệt từng file, không chỉ là một ô tick.
+	if req.DocumentsVerified && !a.AllDocumentsVerified() {
+		fail(w, 422, "all loan documents must be verified first")
+		return
 	}
 
 	if err := e.ValidateFor(a); err != nil {

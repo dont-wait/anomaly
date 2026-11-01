@@ -37,7 +37,10 @@ export function useLoginForm() {
       setPassword("");
       navigate(routes.dashboard);
     } catch (submitError) {
-      if (submitError instanceof ApiError && submitError.hasCode("KYC_REQUIRED")) {
+      if (
+        submitError instanceof ApiError &&
+        submitError.hasCode("KYC_REQUIRED")
+      ) {
         try {
           const session = await createKycSession({
             cccdNumber: cccd,

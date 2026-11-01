@@ -25,7 +25,9 @@ export const formatDate = (iso: string) =>
 export function addMonths(isoDate: string, months: number): string {
   const date = new Date(isoDate);
   const targetMonth = date.getUTCMonth() + months;
-  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), targetMonth + 1, 0)).getUTCDate();
+  const lastDay = new Date(
+    Date.UTC(date.getUTCFullYear(), targetMonth + 1, 0),
+  ).getUTCDate();
   const result = new Date(date);
   result.setUTCDate(1);
   result.setUTCMonth(targetMonth);
@@ -48,7 +50,14 @@ export function estimateSavings(
   const days = (Date.parse(maturityAt) - Date.parse(openedAt)) / 86_400_000;
   // Rounded to VND for a display estimate; exact computation comes from backend.
   const interest = Math.round((amount * term.rate * days) / 36_500);
-  return { amount, termMonths, annualRate: term.rate, openedAt, maturityAt, interest };
+  return {
+    amount,
+    termMonths,
+    annualRate: term.rate,
+    openedAt,
+    maturityAt,
+    interest,
+  };
 }
 
 export function parseAmount(input: string): number {

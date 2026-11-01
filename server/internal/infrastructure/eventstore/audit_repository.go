@@ -89,10 +89,7 @@ func (r *AuditRepository) streamRevision(ctx context.Context, streamID, eventID 
 		}
 		count := 0
 		item, err := stream.Recv()
-		for {
-			if errors.Is(err, io.EOF) {
-				break
-			}
+		for !errors.Is(err, io.EOF) {
 			if err != nil {
 				// Depending on the EventStoreDB client/server path, a
 				// missing stream can be reported while opening the read or

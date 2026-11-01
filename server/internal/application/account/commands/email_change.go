@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/crypto/bcrypt"
 
 	appotp "github.com/dont-wait/anomaly/internal/application/otp"
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
@@ -27,23 +28,24 @@ type EmailChangeNotifier interface {
 	NotifyEmailChanged(ctx context.Context, previous, next string)
 }
 
-// EmailChangeHandler requires an OTP from both addresses: verifying only the new
-// one would let someone holding a stolen token move the account to their inbox.
+// EmailChangeHandler requires the current password and an OTP from the new
+// address. The password stops someone holding a stolen token from moving the
+// account to their own inbox, where they would receive loan-contract OTPs.
 type EmailChangeHandler struct {
 	repo     AccountRepository
-	current  appotp.ContractOTPService
 	next     appotp.ContractOTPService
+	limiter  PasswordAttemptLimiter
 	pending  PendingEmailStore
 	notifier EmailChangeNotifier
 	ttl      time.Duration
 	logger   zerolog.Logger
 }
 
-func NewEmailChangeHandler(repo AccountRepository, current, next appotp.ContractOTPService, pending PendingEmailStore, notifier EmailChangeNotifier, ttl time.Duration, logger zerolog.Logger) *EmailChangeHandler {
-	return &EmailChangeHandler{repo: repo, current: current, next: next, pending: pending, notifier: notifier, ttl: ttl, logger: logger}
+func NewEmailChangeHandler(repo AccountRepository, next appotp.ContractOTPService, limiter PasswordAttemptLimiter, pending PendingEmailStore, notifier EmailChangeNotifier, ttl time.Duration, logger zerolog.Logger) *EmailChangeHandler {
+	return &EmailChangeHandler{repo: repo, next: next, limiter: limiter, pending: pending, notifier: notifier, ttl: ttl, logger: logger}
 }
 
-func (h *EmailChangeHandler) Start(ctx context.Context, accountID, newEmail string) error {
+func (h *EmailChangeHandler) Start(ctx context.Context, accountID, newEmail, currentPassword, source string) error {
 	newEmail = strings.TrimSpace(newEmail)
 	parsed, err := mail.ParseAddress(newEmail)
 	if err != nil || parsed.Address != newEmail {
@@ -56,17 +58,18 @@ func (h *EmailChangeHandler) Start(ctx context.Context, accountID, newEmail stri
 	if account == nil {
 		return accountdomain.ErrAccountNotFound
 	}
+	// Check the password first so email availability is not exposed to token holders.
+	if err := h.verifyPassword(ctx, account, currentPassword, source); err != nil {
+		return err
+	}
 	if strings.EqualFold(account.Email, newEmail) {
 		return accountdomain.ErrInvalidEmail
 	}
 	if err := h.ensureAvailable(ctx, accountID, newEmail); err != nil {
 		return err
 	}
-	if _, err := h.current.Issue(ctx, accountID, account.Email); err != nil {
-		return err
-	}
 	if _, err := h.next.Issue(ctx, accountID, newEmail); err != nil {
-		return errors.Join(err, h.current.Consume(ctx, accountID))
+		return err
 	}
 	if err := h.pending.Set(ctx, accountID, newEmail, h.ttl); err != nil {
 		return errors.Join(err, h.clear(ctx, accountID))
@@ -74,7 +77,7 @@ func (h *EmailChangeHandler) Start(ctx context.Context, accountID, newEmail stri
 	return nil
 }
 
-func (h *EmailChangeHandler) Confirm(ctx context.Context, accountID, currentOTP, newOTP string) error {
+func (h *EmailChangeHandler) Confirm(ctx context.Context, accountID, newOTP string) error {
 	newEmail, err := h.pending.Get(ctx, accountID)
 	if err != nil {
 		return err
@@ -82,7 +85,7 @@ func (h *EmailChangeHandler) Confirm(ctx context.Context, accountID, currentOTP,
 	if newEmail == "" {
 		return appotp.ErrExpired
 	}
-	if err := h.verify(ctx, accountID, currentOTP, newOTP); err != nil {
+	if _, err := h.next.Verify(ctx, accountID, newOTP); err != nil {
 		if errors.Is(err, appotp.ErrExceeded) {
 			return errors.Join(err, h.clear(ctx, accountID))
 		}
@@ -116,12 +119,30 @@ func (h *EmailChangeHandler) Confirm(ctx context.Context, accountID, currentOTP,
 	return nil
 }
 
-func (h *EmailChangeHandler) verify(ctx context.Context, accountID, currentOTP, newOTP string) error {
-	if _, err := h.current.Verify(ctx, accountID, currentOTP); err != nil {
-		return err
+func (h *EmailChangeHandler) verifyPassword(ctx context.Context, account *accountdomain.UserAccount, password, source string) error {
+	if h.limiter != nil {
+		allowed, err := h.limiter.Allow(ctx, account.Id, source)
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			return accountdomain.ErrTooManyAttempts
+		}
 	}
-	_, err := h.next.Verify(ctx, accountID, newOTP)
-	return err
+	if bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(password)) != nil {
+		if h.limiter != nil {
+			if err := h.limiter.RecordFailure(ctx, account.Id, source); err != nil {
+				return err
+			}
+		}
+		return accountdomain.ErrCurrentPassword
+	}
+	if h.limiter != nil {
+		if err := h.limiter.Reset(ctx, account.Id); err != nil {
+			h.logger.Warn().Err(err).Msg("reset password attempts failed")
+		}
+	}
+	return nil
 }
 
 func (h *EmailChangeHandler) ensureAvailable(ctx context.Context, accountID, email string) error {
@@ -136,5 +157,5 @@ func (h *EmailChangeHandler) ensureAvailable(ctx context.Context, accountID, ema
 }
 
 func (h *EmailChangeHandler) clear(ctx context.Context, accountID string) error {
-	return errors.Join(h.current.Consume(ctx, accountID), h.next.Consume(ctx, accountID), h.pending.Delete(ctx, accountID))
+	return errors.Join(h.next.Consume(ctx, accountID), h.pending.Delete(ctx, accountID))
 }

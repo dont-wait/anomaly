@@ -1,6 +1,11 @@
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
 import { ApiError, joinUrl, requestApi, toApiError } from "@/shared/lib/http";
-import type { AuthUser, ProfileDocumentSlot, ProfileMedia } from "./profile";
+import type {
+  ProfileChangeInput,
+  AuthUser,
+  ProfileDocumentSlot,
+  ProfileMedia,
+} from "./profile";
 
 const UPLOAD_TIMEOUT_MS = 120_000;
 const NETWORK_ERROR =
@@ -9,13 +14,20 @@ const NETWORK_ERROR =
 export type UploadProgress = (percent: number) => void;
 
 export interface ProfileUpdateInput {
-  phone?: string;
-  address?: { line?: string; provinceCode?: string };
+  phone: string;
 }
 
 export function updateCurrentProfile(token: string, input: ProfileUpdateInput) {
   return requestApi<AuthUser>(API_ENDPOINTS.AUTH.PROFILE, {
     method: "PATCH",
+    body: input,
+    token,
+  });
+}
+
+export function requestProfileChange(token: string, input: ProfileChangeInput) {
+  return requestApi<AuthUser>(API_ENDPOINTS.AUTH.PROFILE_CHANGES, {
+    method: "POST",
     body: input,
     token,
   });
@@ -32,17 +44,20 @@ export function changeCurrentPassword(
   });
 }
 
-export function startEmailChange(token: string, newEmail: string) {
+export function startEmailChange(
+  token: string,
+  input: { newEmail: string; currentPassword: string },
+) {
   return requestApi<unknown>(API_ENDPOINTS.AUTH.EMAIL_CHANGE, {
     method: "POST",
-    body: { newEmail },
+    body: input,
     token,
   });
 }
 
 export function confirmEmailChange(
   token: string,
-  input: { currentEmailOtp: string; newEmailOtp: string },
+  input: { newEmailOtp: string },
 ) {
   return requestApi<unknown>(API_ENDPOINTS.AUTH.EMAIL_CHANGE_CONFIRM, {
     method: "POST",

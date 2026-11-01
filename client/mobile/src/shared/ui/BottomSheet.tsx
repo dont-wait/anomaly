@@ -7,7 +7,8 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { CloseIcon } from "@/shared/icons";
+import { faXmark } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 const EXIT_MS = 200;
 /** Kéo xuống quá ngưỡng này thì đóng sheet */
@@ -173,7 +174,7 @@ export const BottomSheet = ({
                 aria-label="Đóng"
                 className="-mr-2 flex h-11 w-11 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-secondary/10 focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:outline-none"
               >
-                <CloseIcon className="h-5 w-5" />
+                <FontAwesomeIcon icon={faXmark} className="h-5 w-5" />
               </button>
             )}
           </div>

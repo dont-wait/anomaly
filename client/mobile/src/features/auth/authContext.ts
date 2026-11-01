@@ -29,9 +29,11 @@ export interface AuthContextValue extends AuthState {
     currentPassword: string;
     newPassword: string;
   }) => Promise<void>;
-  startEmailChange: (newEmail: string) => Promise<AuthUser | null>;
+  startEmailChange: (input: {
+    newEmail: string;
+    currentPassword: string;
+  }) => Promise<AuthUser | null>;
   confirmEmailChange: (input: {
-    currentEmailOtp: string;
     newEmailOtp: string;
   }) => Promise<AuthUser | null>;
   uploadProfileAvatar: (

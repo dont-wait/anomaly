@@ -10,7 +10,7 @@
 }
 .profile-overline {
   color: #6b38d4;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.08em;
 }
@@ -55,19 +55,19 @@
   padding: 5px 9px;
   color: #fff;
   background: rgb(255 255 255 / 18%);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
 }
 .profile-account-number {
   display: block;
   margin-top: 7px;
-  font-size: 21px;
+  font-size: 20px;
   letter-spacing: 0.06em;
 }
 .profile-caption {
   margin-top: 7px;
   color: #69718b;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.6;
 }
 .profile-account-card .profile-overline,
@@ -91,7 +91,7 @@
 .profile-document a,
 .profile-document button {
   color: #6b38d4;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
 }
 .profile-row {
@@ -100,7 +100,7 @@
   gap: 12px;
   padding: 9px 0;
   border-bottom: 1px solid #f0f1f9;
-  font-size: 10px;
+  font-size: 12px;
 }
 .profile-row:last-of-type {
   border-bottom: 0;
@@ -111,7 +111,7 @@
 .profile-row strong {
   max-width: 62%;
   color: #252f50;
-  font-size: 10px;
+  font-size: 12px;
   text-align: right;
   overflow-wrap: anywhere;
 }
@@ -156,7 +156,7 @@
 .profile-back {
   align-self: flex-start;
   color: #6b38d4;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 .profile-field {
@@ -164,7 +164,7 @@
   flex-direction: column;
   gap: 6px;
   color: #444651;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
 }
 .profile-input {
@@ -187,16 +187,8 @@
   padding: 11px;
   color: #4b2696;
   background: #f0eaff;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
-}
-.profile-source-label {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: #444651;
-  font-size: 10px;
-  font-weight: 650;
 }
 .profile-image-preview {
   width: 112px;
@@ -214,7 +206,7 @@
   border-radius: 15px;
   padding: 11px;
   background: #f7f7ff;
-  font-size: 10px;
+  font-size: 12px;
 }
 .profile-document strong {
   color: #00236f;
@@ -222,13 +214,13 @@
 .profile-document p {
   margin-top: 4px;
   color: #646b80;
-  font-size: 9px;
+  font-size: 12px;
 }
 .profile-message,
 .profile-error {
   border-radius: 14px;
   padding: 11px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.6;
 }
 .profile-message {
@@ -260,12 +252,12 @@
   border-radius: 50%;
   color: white;
   background: #00236f;
-  font-size: 9px;
+  font-size: 12px;
 }
 .profile-form-group {
   margin-top: 4px;
   color: #6b38d4;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
 }
 .profile-form .profile-field {
@@ -293,7 +285,7 @@
 }
 .profile-readonly span {
   color: #646b80;
-  font-size: 11px;
+  font-size: 12px;
 }
 .profile-readonly strong {
   color: #252f50;
@@ -301,7 +293,7 @@
 }
 .profile-readonly small {
   color: #4b2696;
-  font-size: 11px;
+  font-size: 12px;
 }
 .profile-readonly button {
   flex-shrink: 0;
@@ -322,48 +314,15 @@
   padding: 10px 0;
   background: white;
 }
-.profile-source-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.profile-source-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.profile-source-button {
-  position: relative;
-  display: flex;
-  min-height: 46px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border-radius: 18px;
-  padding: 10px;
-  color: #00236f;
-  background: #e5eaff;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.profile-source-button:focus-within {
-  outline: 2px solid #6b38d4;
-  outline-offset: 2px;
-}
-.profile-source-button.is-disabled {
-  opacity: 0.45;
-  cursor: default;
-}
 .profile-field-error {
   color: #93000a;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
 }
 .profile-link {
   align-self: flex-start;
   color: #6b38d4;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
 }
 .profile-progress {

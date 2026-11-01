@@ -301,7 +301,9 @@ export function useTransferFlow(
     try {
       const record = await confirmTransfer(token, transferId.current, otp);
       if (record.status === "RISK_CHECK_PENDING") {
-        setOtpError("Đang kiểm tra giao dịch. Vui lòng thử xác nhận lại sau ít phút.");
+        setOtpError(
+          "Đang kiểm tra giao dịch. Vui lòng thử xác nhận lại sau ít phút.",
+        );
         return;
       }
       if (record.status === "failed") {

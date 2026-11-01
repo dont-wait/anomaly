@@ -29,7 +29,7 @@ func (s *testSavingsStore) List(_ context.Context, customer, status string, limi
 		if c.CustomerID != customer {
 			continue
 		}
-		if after != nil && !c.OpenedAt.Before(after.OpenedAt) && !(c.OpenedAt.Equal(after.OpenedAt) && c.SavingsID < after.ID) {
+		if after != nil && !c.OpenedAt.Before(after.OpenedAt) && (!c.OpenedAt.Equal(after.OpenedAt) || c.SavingsID >= after.ID) {
 			continue
 		}
 		switch status {

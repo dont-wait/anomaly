@@ -203,9 +203,7 @@ describe("loan application detail overlay", () => {
 
   const openSecondPageDetail = async () => {
     renderRouter();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Xem thêm hồ sơ" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Trang sau" }));
     const row = (await screen.findByText("APP-2")).closest("button")!;
     row.focus();
     fireEvent.click(row);
@@ -226,7 +224,7 @@ describe("loan application detail overlay", () => {
     expect(listLoans).toHaveBeenCalledTimes(2);
     expect(screen.getByText("APP-1")).toBeTruthy();
     expect(screen.getByText("APP-2").closest("button")!.textContent).toContain(
-      "submitted",
+      "Chờ duyệt",
     );
   });
 

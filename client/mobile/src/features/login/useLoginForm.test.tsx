@@ -54,7 +54,9 @@ it("resumes KYC without establishing an auth session when login requires KYC", a
   });
 
   await act(async () => {
-    await result.current.handleSubmit({ preventDefault() {} } as FormEvent<HTMLFormElement>);
+    await result.current.handleSubmit({
+      preventDefault() {},
+    } as FormEvent<HTMLFormElement>);
   });
 
   expect(authLogin).toHaveBeenCalledTimes(1);

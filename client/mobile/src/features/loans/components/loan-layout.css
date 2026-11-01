@@ -1,7 +1,8 @@
 .loan-shell {
   min-height: 100dvh;
   color: #131b2e;
-  background: radial-gradient(ellipse at 100% 1%, #e9ddff 0%, transparent 40%),
+  background:
+    radial-gradient(ellipse at 100% 1%, #e9ddff 0%, transparent 40%),
     linear-gradient(160deg, #faf8ff 0%, #f2f3ff 58%, #faf8ff 100%);
   font-family: "Be Vietnam Pro", system-ui, sans-serif;
   font-size: 14px;
@@ -38,8 +39,10 @@
   height: 100%;
   min-height: 0;
   margin: 0;
-  overflow: hidden;
-  background: radial-gradient(ellipse at 100% 1%, #e9ddff 0%, transparent 40%),
+  /* clip, không phải hidden: hidden vẫn cuộn được bằng focus, làm nội dung biến mất. */
+  overflow: clip;
+  background:
+    radial-gradient(ellipse at 100% 1%, #e9ddff 0%, transparent 40%),
     linear-gradient(160deg, #faf8ff 0%, #f2f3ff 58%, #faf8ff 100%);
   box-shadow: -12px 0 36px rgb(27 34 70 / 18%);
   animation: loan-slide-in 220ms ease-out;
@@ -78,7 +81,7 @@
   padding: 8px 11px;
   color: #00236f;
   background: #eaedff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -96,7 +99,7 @@
   padding: 8px 11px;
   color: #00236f;
   background: #eaedff;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -133,31 +136,87 @@
   color: white;
   background: #00236f;
   box-shadow: 0 6px 15px rgb(0 35 111 / 14%);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 750;
-  transition: transform 150ms, opacity 150ms;
+  transition:
+    transform 150ms,
+    opacity 150ms;
 }
 
-.loan-action:not(:disabled):active { transform: scale(.985); }
-.loan-action:disabled { cursor: not-allowed; opacity: .5; box-shadow: none; }
-.loan-action-secondary { color: #00236f; background: #e5eaff; box-shadow: none; }
+.loan-action:not(:disabled):active {
+  transform: scale(0.985);
+}
+.loan-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+}
+.loan-action-secondary {
+  color: #00236f;
+  background: #e5eaff;
+  box-shadow: none;
+}
 
 .loan-notice {
   border-radius: 18px;
   padding: 12px;
   color: #4b2696;
   background: #efe8ff;
-  font-size: 11px;
+  font-size: 12px;
 }
 
-.loan-notice-error { color: #93000a; background: #ffdad6; }
+.loan-notice-error {
+  color: #93000a;
+  background: #ffdad6;
+}
 
 @keyframes loan-slide-in {
-  from { transform: translateX(24px); opacity: .7; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(24px);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loan-surface-overlay { animation: none; }
-  .loan-action { transition: none; }
+  .loan-surface-overlay {
+    animation: none;
+  }
+  .loan-action {
+    transition: none;
+  }
+}
+
+.loan-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loan-nav-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.loan-nav-button[aria-current="page"] {
+  color: #fff;
+  background: #00236f;
+}
+
+.loan-nav-create {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22px;
+  color: #6b38d4;
+  background: #f0eaff;
+  font-size: 14px;
+  font-weight: 700;
 }

@@ -105,6 +105,12 @@ export interface LoanOffer {
   acceptedAt?: string;
   confirmedAt?: string;
 }
+export interface DeclaredFinancials {
+  monthlyIncome: number;
+  existingMonthlyDebt: number;
+  regionCode: "KV01" | "KV02" | "KV03";
+  purpose: string;
+}
 export interface LoanApplication {
   id: string;
   applicationNo: string;
@@ -201,6 +207,15 @@ export interface VerifiedEvidenceInput {
 }
 
 // Product and pre-application quote (PR #115)
+export const attachLoanProfileDocuments = (
+  token: string,
+  applicationId: string,
+) =>
+  requestJson<LoanApplication>(
+    `/api/loans/${encodeURIComponent(applicationId)}/documents/from-profile`,
+    { method: "POST", token },
+  );
+
 export const listLoanPackages = (token: string, signal?: AbortSignal) =>
   get<{ items: LoanPackage[] }>(`${root}/packages`, token, signal);
 export const preQuoteLoan = (token: string, input: LoanPreQuoteInput) =>
@@ -214,6 +229,7 @@ export const createLoan = (
     requestedAmount: number;
     termMonths: number;
     disbursementAccountId: string;
+    declared: DeclaredFinancials;
   },
   idempotencyKey: string,
 ) => post<LoanApplication>(root, token, input, idempotencyKey);
@@ -224,6 +240,8 @@ export const listLoans = (token: string, cursor?: string, all = false) =>
   );
 export const getLoan = (token: string, id: string) =>
   get<LoanApplication>(path(id), token);
+export const deleteLoan = (token: string, id: string) =>
+  requestJson<void>(path(id), { method: "DELETE", token });
 export const submitLoan = (token: string, id: string) =>
   post<LoanApplication>(`${path(id)}/submit`, token);
 export const getApplicationQuote = (token: string, id: string) =>
@@ -261,10 +279,7 @@ export async function downloadLoanDocument(
       },
     );
     if (!response.ok)
-      throw new ApiError(
-        response.status,
-        `Không tải được chứng từ (HTTP ${response.status}).`,
-      );
+      throw new ApiError(response.status, "Không tải được chứng từ.");
     return await response.blob();
   } catch (error) {
     if (error instanceof ApiError) throw error;

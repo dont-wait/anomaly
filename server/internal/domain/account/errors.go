@@ -22,5 +22,7 @@ var (
 	ErrInvalidProfile         = errors.New("invalid profile data")
 	ErrCurrentPassword        = errors.New("current password is incorrect")
 	ErrTooManyAttempts        = errors.New("too many attempts")
+	ErrProfileChangeClosed    = errors.New("profile change request is no longer pending")
+	ErrSelfProfileReview      = errors.New("admins cannot review their own profile change")
 	ErrConcurrentUpdate       = errors.New("account was modified concurrently")
 )

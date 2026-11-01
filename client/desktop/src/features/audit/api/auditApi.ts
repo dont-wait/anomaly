@@ -1,4 +1,7 @@
-import { API_BASE_URL, readAdminSession } from "@/features/auth/api/adminSession";
+import {
+  API_BASE_URL,
+  readAdminSession,
+} from "@/features/auth/api/adminSession";
 import type { TimelineCategory, TimelineResponse } from "../model";
 
 export class AuditApiError extends Error {
@@ -39,21 +42,25 @@ export async function getAccountTimeline(
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/api/admin/audit/accounts/${encodeURIComponent(account)}/events?${query.toString()}`, {
-      headers: authHeaders(),
-      signal: options.signal,
-    });
+    response = await fetch(
+      `${API_BASE_URL}/api/admin/audit/accounts/${encodeURIComponent(account)}/events?${query.toString()}`,
+      {
+        headers: authHeaders(),
+        signal: options.signal,
+      },
+    );
   } catch {
     throw new AuditApiError();
   }
   if (!response.ok) {
-    const message = response.status === 413
-      ? "Lịch sử quá lớn, hãy thu hẹp khoảng thời gian."
-      : response.status === 503
-        ? "Lịch sử khoản vay đang được đồng bộ, vui lòng thử lại sau."
-      : response.status === 404
-        ? "Không tìm thấy tài khoản."
-        : "Không thể tải lịch sử tài khoản.";
+    const message =
+      response.status === 413
+        ? "Lịch sử quá lớn, hãy thu hẹp khoảng thời gian."
+        : response.status === 503
+          ? "Lịch sử khoản vay đang được đồng bộ, vui lòng thử lại sau."
+          : response.status === 404
+            ? "Không tìm thấy tài khoản."
+            : "Không thể tải lịch sử tài khoản.";
     throw new AuditApiError(message, response.status);
   }
   try {

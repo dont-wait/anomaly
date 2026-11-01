@@ -6,7 +6,9 @@ const mono = "font-(family-name:--admin-font-mono)";
 
 function MetricSkeleton() {
   return (
-    <div className={`${surfaceSubtle} flex min-h-23 flex-col justify-between rounded-(--admin-radius-md) p-3`}>
+    <div
+      className={`${surfaceSubtle} flex min-h-23 flex-col justify-between rounded-(--admin-radius-md) p-3`}
+    >
       <div className="flex items-center justify-between gap-2">
         <Skeleton className="h-3 w-20" />
         <Skeleton className="h-3.5 w-3.5 rounded-full" />
@@ -22,7 +24,9 @@ function MetricSkeleton() {
 
 function ChartSkeleton() {
   return (
-    <section className={`${surfaceSubtle} flex min-h-75 flex-col rounded-(--admin-radius-md) p-3`}>
+    <section
+      className={`${surfaceSubtle} flex min-h-75 flex-col rounded-(--admin-radius-md) p-3`}
+    >
       <div className="flex items-center justify-between gap-2 pb-2">
         <div className="flex items-center gap-2">
           <Skeleton className="h-5 w-44" />
@@ -31,7 +35,12 @@ function ChartSkeleton() {
         <Skeleton className="h-3 w-28" />
       </div>
       <div className="relative my-2 h-50 overflow-hidden rounded-sm bg-(--admin-surface)">
-        <svg className="absolute inset-0 h-full w-full animate-pulse" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true">
+        <svg
+          className="absolute inset-0 h-full w-full animate-pulse"
+          viewBox="0 0 600 200"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
           <g stroke="var(--admin-border)" strokeWidth="1" opacity="0.7">
             <line x1="24" y1="32" x2="576" y2="32" />
             <line x1="24" y1="100" x2="576" y2="100" />
@@ -55,11 +64,19 @@ function ChartSkeleton() {
             opacity="0.45"
             vectorEffect="non-scaling-stroke"
           />
-          <circle cx="392" cy="82" r="4" fill="var(--admin-primary)" opacity="0.5" />
+          <circle
+            cx="392"
+            cy="82"
+            r="4"
+            fill="var(--admin-primary)"
+            opacity="0.5"
+          />
         </svg>
       </div>
       <div className={`${mono} flex items-center justify-between gap-2 pt-2`}>
-        {Array.from({ length: 7 }, (_, index) => <Skeleton key={index} className="h-3 w-10" />)}
+        {Array.from({ length: 7 }, (_, index) => (
+          <Skeleton key={index} className="h-3 w-10" />
+        ))}
       </div>
     </section>
   );
@@ -67,7 +84,9 @@ function ChartSkeleton() {
 
 function BreakdownSkeleton() {
   return (
-    <section className={`${surfaceSubtle} flex min-h-75 flex-col justify-between gap-6 rounded-(--admin-radius-md) p-3`}>
+    <section
+      className={`${surfaceSubtle} flex min-h-75 flex-col justify-between gap-6 rounded-(--admin-radius-md) p-3`}
+    >
       <div>
         <div className="flex items-center justify-between gap-2 pb-2">
           <Skeleton className="h-5 w-48" />
@@ -76,7 +95,10 @@ function BreakdownSkeleton() {
         <Skeleton className="my-2 h-3 w-full" />
         <div className="grid grid-cols-2 gap-1">
           {Array.from({ length: 4 }, (_, index) => (
-            <div key={index} className={`${surface} flex items-center justify-between rounded-sm px-2 py-1`}>
+            <div
+              key={index}
+              className={`${surface} flex items-center justify-between rounded-sm px-2 py-1`}
+            >
               <Skeleton className="h-3 w-16" />
               <Skeleton className="h-3 w-5" />
             </div>
@@ -103,7 +125,9 @@ function BreakdownSkeleton() {
 
 function AccountsTableSkeleton() {
   return (
-    <section className={`${surfaceSubtle} flex min-h-80 flex-col justify-between rounded-(--admin-radius-md) p-3`}>
+    <section
+      className={`${surfaceSubtle} flex min-h-80 flex-col justify-between rounded-(--admin-radius-md) p-3`}
+    >
       <div>
         <div className="flex items-center justify-between gap-2 pb-2">
           <div className="flex items-center gap-2">
@@ -114,12 +138,22 @@ function AccountsTableSkeleton() {
         </div>
         <div className="overflow-hidden rounded-sm">
           <div className={`${surface} grid grid-cols-6 gap-2 p-2`}>
-            {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-3 w-full" />)}
+            {Array.from({ length: 6 }, (_, index) => (
+              <Skeleton key={index} className="h-3 w-full" />
+            ))}
           </div>
           <div className="grid gap-px">
             {Array.from({ length: 5 }, (_, row) => (
-              <div key={row} className={`${surface} grid grid-cols-6 items-center gap-2 p-2`}>
-                {Array.from({ length: 6 }, (_, column) => <Skeleton key={column} className={`h-3 ${column === 1 ? "w-24" : column === 4 ? "ml-auto w-20" : "w-full"}`} />)}
+              <div
+                key={row}
+                className={`${surface} grid grid-cols-6 items-center gap-2 p-2`}
+              >
+                {Array.from({ length: 6 }, (_, column) => (
+                  <Skeleton
+                    key={column}
+                    className={`h-3 ${column === 1 ? "w-24" : column === 4 ? "ml-auto w-20" : "w-full"}`}
+                  />
+                ))}
               </div>
             ))}
           </div>
@@ -135,7 +169,9 @@ function AccountsTableSkeleton() {
 
 function AlertStreamSkeleton() {
   return (
-    <section className={`${surfaceSubtle} flex min-h-80 flex-col justify-between rounded-(--admin-radius-md) p-3`}>
+    <section
+      className={`${surfaceSubtle} flex min-h-80 flex-col justify-between rounded-(--admin-radius-md) p-3`}
+    >
       <div>
         <div className="flex items-center justify-between gap-2 pb-2">
           <div className="flex items-center gap-1.5">
@@ -146,7 +182,10 @@ function AlertStreamSkeleton() {
         </div>
         <div className="grid gap-1">
           {Array.from({ length: 4 }, (_, index) => (
-            <div key={index} className={`${surface} flex items-start justify-between gap-2 rounded-sm p-2`}>
+            <div
+              key={index}
+              className={`${surface} flex items-start justify-between gap-2 rounded-sm p-2`}
+            >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <Skeleton className="h-4 w-14" />
@@ -174,15 +213,25 @@ export function MonitorDashboardSkeleton() {
   return (
     <div className="grid gap-1" aria-label="Đang tải dashboard" role="status">
       <div className="grid grid-cols-2 gap-1 lg:grid-cols-5">
-        {Array.from({ length: 5 }, (_, index) => <MetricSkeleton key={index} />)}
+        {Array.from({ length: 5 }, (_, index) => (
+          <MetricSkeleton key={index} />
+        ))}
       </div>
       <div className="grid grid-cols-12 gap-1">
-        <div className="col-span-12 xl:col-span-8"><ChartSkeleton /></div>
-        <div className="col-span-12 xl:col-span-4"><BreakdownSkeleton /></div>
+        <div className="col-span-12 xl:col-span-8">
+          <ChartSkeleton />
+        </div>
+        <div className="col-span-12 xl:col-span-4">
+          <BreakdownSkeleton />
+        </div>
       </div>
       <div className="grid grid-cols-12 gap-1">
-        <div className="col-span-12 lg:col-span-7"><AccountsTableSkeleton /></div>
-        <div className="col-span-12 lg:col-span-5"><AlertStreamSkeleton /></div>
+        <div className="col-span-12 lg:col-span-7">
+          <AccountsTableSkeleton />
+        </div>
+        <div className="col-span-12 lg:col-span-5">
+          <AlertStreamSkeleton />
+        </div>
       </div>
     </div>
   );

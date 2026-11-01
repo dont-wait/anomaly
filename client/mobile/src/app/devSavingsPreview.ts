@@ -2,6 +2,9 @@
 // route, and the production build must never serve it.
 export const SAVINGS_PREVIEW_HASH = "#/preview/savings";
 
-export function shouldShowSavingsPreview(hash: string, isDev: boolean): boolean {
+export function shouldShowSavingsPreview(
+  hash: string,
+  isDev: boolean,
+): boolean {
   return isDev && hash === SAVINGS_PREVIEW_HASH;
 }

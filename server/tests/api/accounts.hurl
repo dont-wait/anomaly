@@ -2,6 +2,11 @@ POST {{base_url}}/api/auth/register
 {
   "username": "hurl-{{newUuid}}",
   "cccdNumber": "{{cccd}}",
+  "phone": "0912345678",
+  "addressLine": "12 Nguyen Trai",
+  "provinceCode": "HCM",
+  "issuedPlace": "Cuc CSQLHC",
+  "permanentAddress": "Ha Noi",
   "cccdIssuedDate": "2020-06-15T00:00:00Z",
   "dob": "1995-03-20T00:00:00Z",
   "email": "hurl-{{newUuid}}@example.com",

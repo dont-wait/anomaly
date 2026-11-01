@@ -68,7 +68,11 @@ beforeEach(() => {
         data: { verified: true },
       });
     if (String(url).endsWith(API_ENDPOINTS.KYC.COMPLETE))
-      return response({ status: 200, message: "KYC completed", data: verified });
+      return response({
+        status: 200,
+        message: "KYC completed",
+        data: verified,
+      });
     if (String(url).endsWith(API_ENDPOINTS.AUTH.REGISTER))
       return response(
         {
@@ -104,9 +108,14 @@ async function prepare() {
       id: "012345678901",
       dob: "1995-01-01",
       issuedDate: "2020-01-01",
+      phone: "0912345678",
+      addressLine: "12 Nguyen Trai",
+      provinceCode: "HCM",
+      issuedPlace: "Cuc CSQLHC",
+      permanentAddress: "Ha Noi",
     });
-     hook.result.current.setPassword(testPassword);
-     hook.result.current.setConfirm(testPassword);
+    hook.result.current.setPassword(testPassword);
+    hook.result.current.setConfirm(testPassword);
     hook.result.current.go("password");
   });
   return hook;
@@ -513,11 +522,16 @@ it("orders profile, password, account creation, then face verification", async (
       id: "012345678901",
       dob: "1995-01-01",
       issuedDate: "2020-01-01",
+      phone: "0912345678",
+      addressLine: "12 Nguyen Trai",
+      provinceCode: "HCM",
+      issuedPlace: "Cuc CSQLHC",
+      permanentAddress: "Ha Noi",
     });
     result.current.setEmail("a@example.com");
     result.current.setDocuments({ front, back });
-     result.current.setPassword(testPassword);
-     result.current.setConfirm(testPassword);
+    result.current.setPassword(testPassword);
+    result.current.setConfirm(testPassword);
     result.current.go("profile");
   });
 
@@ -562,7 +576,12 @@ it("registers before liveness, uses the KYC token, and never logs in", async () 
     dob: "1995-01-01T00:00:00Z",
     cccdIssuedDate: "2020-01-01T00:00:00Z",
     email: "a@example.com",
-     password: testPassword,
+    password: testPassword,
+    phone: "0912345678",
+    addressLine: "12 Nguyen Trai",
+    provinceCode: "HCM",
+    issuedPlace: "Cuc CSQLHC",
+    permanentAddress: "Ha Noi",
     idempotencyKey: expect.any(String),
   });
   const commit = fetchMock.mock.calls.find(([url]) =>
@@ -579,11 +598,14 @@ it("creates the unverified account before KYC and preserves attempts on system e
   act(() => result.current.submit(submitEvent));
   await waitFor(() => expect(result.current.screen).toBe("face"));
   fetchMock.mockResolvedValue(
-    response({
-      status: 502,
-      message: "Unavailable",
-      data: { decision: "SYSTEM_ERROR", reasonMessage: "Unavailable" },
-    }, 502),
+    response(
+      {
+        status: 502,
+        message: "Unavailable",
+        data: { decision: "SYSTEM_ERROR", reasonMessage: "Unavailable" },
+      },
+      502,
+    ),
   );
   await act(async () => {
     await result.current.verifyVideo(video);

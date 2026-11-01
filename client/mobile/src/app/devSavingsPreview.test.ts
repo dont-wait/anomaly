@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { SAVINGS_PREVIEW_HASH, shouldShowSavingsPreview } from "./devSavingsPreview";
+import {
+  SAVINGS_PREVIEW_HASH,
+  shouldShowSavingsPreview,
+} from "./devSavingsPreview";
 
 describe("Savings-only mock preview", () => {
   it("is available only at the exact preview hash during development", () => {

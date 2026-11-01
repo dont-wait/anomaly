@@ -203,10 +203,7 @@ export const TransactionDateRangePicker = ({
               aria-label="Tháng sau"
               className="flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-secondary/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <FontAwesomeIcon
-                icon={faChevronRight}
-                className="h-3.5 w-3.5"
-              />
+              <FontAwesomeIcon icon={faChevronRight} className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -225,8 +222,7 @@ export const TransactionDateRangePicker = ({
               const disabled = day < minDate || day > maxDate;
               const isStart = day === draft.from;
               const isEnd = day === draft.to;
-              const inRange =
-                hasCompleteRange && isDateInRange(day, draft);
+              const inRange = hasCompleteRange && isDateInRange(day, draft);
               const today = day === maxDate;
 
               return (
@@ -255,9 +251,7 @@ export const TransactionDateRangePicker = ({
                           ? "text-secondary-strong hover:bg-secondary/15"
                           : "text-on-surface hover:bg-secondary/10"
                     } ${
-                      today && !isStart && !isEnd
-                        ? "ring-1 ring-secondary"
-                        : ""
+                      today && !isStart && !isEnd ? "ring-1 ring-secondary" : ""
                     } disabled:cursor-not-allowed disabled:text-on-surface-variant/35`}
                   >
                     {dateValueToDate(day).getUTCDate()}

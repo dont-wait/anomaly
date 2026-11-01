@@ -308,6 +308,26 @@ services:
     networks:
       - anomaly-network
 
+  redis-insight:
+    container_name: anomaly-redis-insight
+    image: redis/redisinsight:2.70.0
+    # Loopback only: the UI has no login and stores the saved Redis connection.
+    ports:
+      - "127.0.0.1:5540:5540"
+    environment:
+      # Preconfigures the local Redis so no manual connection is needed.
+      RI_REDIS_HOST: redis
+      RI_REDIS_PORT: 6379
+      RI_REDIS_ALIAS: anomaly-redis
+      RI_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is not set}
+    volumes:
+      - redis-insight-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - anomaly-network
+
   rustfs:
     container_name: anomaly-rustfs
     image: rustfs/rustfs:latest
@@ -360,6 +380,7 @@ volumes:
   mongo-data:
   mongo-key-data:
   redis-data:
+  redis-insight-data:
   kafka-data:
   rustfs-data:
   rustfs-logs:

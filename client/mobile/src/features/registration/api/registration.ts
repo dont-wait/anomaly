@@ -10,6 +10,11 @@ export interface RegisterInput {
   dob: string;
   email: string;
   password: string;
+  phone: string;
+  addressLine: string;
+  provinceCode: string;
+  issuedPlace: string;
+  permanentAddress: string;
 }
 export interface RegisterResult {
   user: AuthUser;

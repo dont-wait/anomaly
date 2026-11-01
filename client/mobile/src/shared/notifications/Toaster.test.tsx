@@ -1,4 +1,10 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Toaster } from "./Toaster";
 import { toast, TOAST_DURATION_MS } from "./toast";
@@ -13,7 +19,9 @@ afterEach(() => {
 it("automatically hides the notification after five seconds", () => {
   render(<Toaster />);
   act(() => toast.error("Không thể đăng nhập"));
-  expect(screen.getByRole("alert").textContent).toContain("Không thể đăng nhập");
+  expect(screen.getByRole("alert").textContent).toContain(
+    "Không thể đăng nhập",
+  );
   act(() => vi.advanceTimersByTime(TOAST_DURATION_MS - 1));
   expect(screen.queryByRole("alert")).not.toBeNull();
   act(() => vi.advanceTimersByTime(1));

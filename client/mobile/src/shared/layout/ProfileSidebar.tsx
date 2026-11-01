@@ -19,6 +19,7 @@ import {
   formatDate,
   maskTail,
 } from "@/features/profile/profileHelpers";
+import { provinceName } from "@/features/profile/provinces";
 import {
   useProfileDocuments,
   useProfileImage,
@@ -179,7 +180,10 @@ export const ProfileSidebar = ({
                 <ProfileRow
                   label="Địa chỉ"
                   value={
-                    [user?.address?.line, user?.address?.provinceCode]
+                    [
+                      user?.address?.line,
+                      provinceName(user?.address?.provinceCode),
+                    ]
                       .filter(Boolean)
                       .join(", ") || NOT_SET
                   }
@@ -253,8 +257,12 @@ export const ProfileSidebar = ({
             <EditProfilePanel
               onBack={backToOverview}
               onChangeEmail={() => openSection("email")}
-              onSaved={() => {
-                setNotice("Đã cập nhật thông tin.");
+              onSaved={(submitted) => {
+                setNotice(
+                  submitted
+                    ? "Đã gửi yêu cầu. Thông tin đổi sau khi ngân hàng duyệt."
+                    : "Đã cập nhật thông tin.",
+                );
                 backToOverview();
               }}
             />

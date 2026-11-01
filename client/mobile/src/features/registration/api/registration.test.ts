@@ -32,6 +32,11 @@ it("reads the wrapped registration user and KYC credential", async () => {
     dob: "1995-01-01T00:00:00Z",
     email: "a@example.com",
     password: testPassword,
+    phone: "0912345678",
+    addressLine: "12 Nguyen Trai",
+    provinceCode: "HCM",
+    issuedPlace: "Cuc",
+    permanentAddress: "Ha Noi",
   });
 
   expect(result.user.id).toBe("account-1");

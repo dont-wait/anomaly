@@ -7,20 +7,33 @@ afterEach(() => cleanup());
 describe("Stitch savings UI mock", () => {
   it("shows the savings list, filters and opens a detail screen", () => {
     render(<SavingsPage />);
-    expect(screen.getByRole("heading", { name: "Tiết kiệm của tôi" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Tiết kiệm của tôi" }),
+    ).toBeTruthy();
     expect(screen.getByText("#TK-2026-9921")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Đã đáo hạn \(1\)/ }));
     expect(screen.queryByText("#TK-2026-9921")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /#TK-2025-4108/ }));
-    expect(screen.getByRole("heading", { name: "Chi tiết sổ tiết kiệm" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Rút tiền tiết kiệm" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Chi tiết sổ tiết kiệm" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Rút tiền tiết kiệm" }),
+    ).toBeTruthy();
   });
 
   it("requires consent for both mock deposit and mock withdrawal", () => {
     render(<SavingsPage />);
     fireEvent.click(screen.getByRole("button", { name: /Gửi tiết kiệm mới/ }));
-    expect(screen.getByRole("heading", { name: "Mở sổ tiết kiệm" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Mở sổ tiết kiệm" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Bước 1/3")).toBeTruthy();
+    expect(screen.queryByRole("radiogroup", { name: "Kỳ hạn gửi" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Tiếp tục/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^6 tháng/ }));
+    expect(screen.getByText("Bước 2/3")).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: /^6 tháng/ }));
     const confirm = screen.getByRole("button", { name: /Xác nhận gửi/ });
     expect(confirm.hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("checkbox"));
@@ -32,7 +45,11 @@ describe("Stitch savings UI mock", () => {
   it("blocks withdrawal of an active contract", () => {
     render(<SavingsPage />);
     fireEvent.click(screen.getByRole("button", { name: /#TK-2026-9921/ }));
-    expect(screen.getByRole("button", { name: "Chưa đến ngày đáo hạn" }).hasAttribute("disabled")).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Chưa đến ngày đáo hạn" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
   });
 
   it("settles only a matured fixture, changing mock state without an API call", () => {
@@ -44,6 +61,8 @@ describe("Stitch savings UI mock", () => {
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(confirm);
     expect(screen.getByText("Rút tiết kiệm thành công!")).toBeTruthy();
-    expect(screen.getByText(/tiền không được cộng vào tài khoản thật/)).toBeTruthy();
+    expect(
+      screen.getByText(/tiền không được cộng vào tài khoản thật/),
+    ).toBeTruthy();
   });
 });

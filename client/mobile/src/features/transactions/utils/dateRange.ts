@@ -74,13 +74,10 @@ export const allowedTransactionDateRange = (
   return { from: addMonths(today, -2), to: today };
 };
 
-export const toRfc3339Start = (value: string) =>
-  `${value}T00:00:00+07:00`;
+export const toRfc3339Start = (value: string) => `${value}T00:00:00+07:00`;
 
 export const toRfc3339End = (value: string) =>
   `${value}T23:59:59.999999999+07:00`;
 
-export const isDateInRange = (
-  value: string,
-  range: TransactionDateRange,
-) => value >= range.from && value <= range.to;
+export const isDateInRange = (value: string, range: TransactionDateRange) =>
+  value >= range.from && value <= range.to;

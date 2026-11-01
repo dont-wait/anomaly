@@ -1,9 +1,23 @@
-import { useEffect, useId, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { faArrowLeft, faPlus } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { navigate, routes } from "@/app/routes";
 import "./loan-layout.css";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+const LOAN_TABS = [
+  { label: "Hồ sơ vay", route: routes.loanApplications },
+  { label: "Khoản vay / Trả nợ", route: routes.loanContracts },
+];
 
 export function LoanLayout({
   title,
@@ -15,6 +29,7 @@ export function LoanLayout({
   overlay?: boolean;
 }) {
   const titleId = useId();
+  const currentHash = window.location.hash;
   const surface = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
 
@@ -55,39 +70,63 @@ export function LoanLayout({
 
   return (
     <div className={overlay ? "loan-overlay" : "loan-shell"}>
-      {overlay && <button type="button" tabIndex={-1} aria-label="Đóng chi tiết hồ sơ vay" onClick={() => navigate(routes.loanApplications)} className="loan-backdrop" />}
-      <section ref={surface} role={overlay ? "dialog" : undefined} aria-modal={overlay ? true : undefined} aria-labelledby={overlay ? titleId : undefined} tabIndex={overlay ? -1 : undefined} onKeyDown={overlay ? onKeyDown : undefined} className={overlay ? "loan-surface loan-surface-overlay" : "loan-surface"}>
-      <header className="loan-header">
+      {overlay && (
         <button
           type="button"
-          onClick={() => navigate(routes.dashboard)}
-          className="loan-home-link"
-        >
-          ← Trang chủ
-        </button>
-        <h1 id={titleId}>{title}</h1>
-      </header>
-      <nav className="loan-nav">
-        <button
-          className="loan-nav-button"
-          onClick={() => navigate(routes.loanRegister)}
-        >
-          Đăng ký vay
-        </button>
-        <button
-          className="loan-nav-button"
+          tabIndex={-1}
+          aria-label="Đóng chi tiết hồ sơ vay"
           onClick={() => navigate(routes.loanApplications)}
-        >
-          Hồ sơ vay
-        </button>
-        <button
-          className="loan-nav-button"
-          onClick={() => navigate(routes.loanContracts)}
-        >
-          Khoản vay / Trả nợ
-        </button>
-      </nav>
-      <main className="loan-content">{children}</main>
+          className="loan-backdrop"
+        />
+      )}
+      <section
+        ref={surface}
+        role={overlay ? "dialog" : undefined}
+        aria-modal={overlay ? true : undefined}
+        aria-labelledby={overlay ? titleId : undefined}
+        tabIndex={overlay ? -1 : undefined}
+        onKeyDown={overlay ? onKeyDown : undefined}
+        className={
+          overlay ? "loan-surface loan-surface-overlay" : "loan-surface"
+        }
+      >
+        <header className="loan-header">
+          <button
+            type="button"
+            onClick={() => navigate(routes.dashboard)}
+            className="loan-home-link"
+          >
+            <FontAwesomeIcon icon={faArrowLeft} className="mr-1.5" />
+            Trang chủ
+          </button>
+          <h1 id={titleId}>{title}</h1>
+        </header>
+        <nav className="loan-nav" aria-label="Điều hướng vay vốn">
+          <div className="loan-nav-tabs">
+            {LOAN_TABS.map((tab) => (
+              <button
+                key={tab.route}
+                type="button"
+                aria-current={
+                  currentHash.startsWith(tab.route) ? "page" : undefined
+                }
+                className="loan-nav-button"
+                onClick={() => navigate(tab.route)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="loan-nav-create"
+            onClick={() => navigate(routes.loanRegister)}
+          >
+            <FontAwesomeIcon icon={faPlus} className="mr-1.5" />
+            Tạo mới hồ sơ vay
+          </button>
+        </nav>
+        <main className="loan-content">{children}</main>
       </section>
     </div>
   );

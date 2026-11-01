@@ -4,6 +4,7 @@ export const API_ENDPOINTS = {
     REGISTER: "/api/auth/register",
     ME: "/api/auth/me",
     PROFILE: "/api/auth/me/profile",
+    PROFILE_CHANGES: "/api/auth/me/profile-changes",
     PASSWORD: "/api/auth/me/password",
     EMAIL_CHANGE: "/api/auth/me/email-change",
     EMAIL_CHANGE_CONFIRM: "/api/auth/me/email-change/confirm",

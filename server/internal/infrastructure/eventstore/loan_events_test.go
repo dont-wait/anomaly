@@ -990,3 +990,33 @@ func TestApplyLoanEvent_ReplayPreparedDisbursement(t *testing.T) {
 		t.Fatal("remaining balance must be zero after final installment")
 	}
 }
+
+func TestReplayLoanDocumentReviewed(t *testing.T) {
+	app, base := prepareLoanReviewReplay(t)
+	documentID := app.Documents[0].DocumentId
+	mustReplayLoanEvent(t, app, EventLoanDocumentReviewed, map[string]any{
+		"documentId": documentID, "decision": "rejected", "reason": "Ảnh mờ",
+		"reviewerId": "admin", "reviewedAt": base.Add(time.Hour),
+	})
+	document := app.Documents[0]
+	if document.VerificationStatus != "rejected" || document.RejectionReason != "Ảnh mờ" || document.ReviewedBy != "admin" {
+		t.Fatalf("document = %#v", document)
+	}
+	if err := applyLoanEvent(app, EventLoanDocumentReviewed, loanReplayJSON(t, map[string]any{
+		"documentId": "missing", "decision": "verified", "reviewerId": "admin", "reviewedAt": base,
+	})); err == nil {
+		t.Fatal("expected an error for an unknown document")
+	}
+}
+
+func TestReplayLoanApplicationDeletedOnlyFromDraft(t *testing.T) {
+	app, base := prepareLoanReviewReplay(t)
+	if err := applyLoanEvent(app, EventLoanApplicationDeleted, loanReplayJSON(t, map[string]any{"deletedAt": base})); err == nil {
+		t.Fatal("expected an error when deleting a reviewed application")
+	}
+	draft := &loandomain.Application{Id: "draft", Status: loandomain.ApplicationStatusDraft}
+	mustReplayLoanEvent(t, draft, EventLoanApplicationDeleted, map[string]any{"deletedAt": base})
+	if draft.Status != loandomain.ApplicationStatusDeleted {
+		t.Fatalf("status = %s", draft.Status)
+	}
+}

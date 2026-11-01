@@ -316,6 +316,8 @@ func (r *LoanRepository) AppendBatch(
 		switch event.EventType {
 		case EventLoanApplicationCreated,
 			EventLoanDocumentAdded,
+			EventLoanDocumentReviewed,
+			EventLoanApplicationDeleted,
 			EventLoanApplicationSubmitted,
 			EventLoanReviewStarted,
 			EventLoanApplicationAssessed,

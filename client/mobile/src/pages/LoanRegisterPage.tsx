@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  ArrowLeftIcon,
-  ChevronDownIcon,
-  CheckIcon,
-  ShieldIcon,
-  UserIcon,
-} from "@/shared/icons";
-import { Logo } from "@/shared/layout/Logo";
+import { faShieldHalved, faWallet } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { navigate, routes, loanApplication } from "@/app/routes";
 import { useAuth } from "@/features/auth/useAuth";
 import { useLocalStorage } from "@/shared/hooks";
@@ -17,12 +11,18 @@ import {
   type LoanPackage,
   type LoanQuote,
 } from "@/features/loans/api";
-import { explainLoanError, percentBps, vnd } from "@/features/loans/format";
+import {
+  dtiStatusMeta,
+  explainLoanError,
+  percentBps,
+  vnd,
+} from "@/features/loans/format";
+import { MoneyInput } from "@/features/loans/components/MoneyInput";
 import {
   clearIdempotencyKey,
   getOrCreateIdempotencyKey,
 } from "@/features/loans/idempotency";
-import { SelectSheet } from "@/shared/ui";
+import { ChoiceList, StepForm } from "@/shared/ui";
 
 const AMOUNTS = [30_000_000, 50_000_000, 100_000_000, 200_000_000] as const;
 const TENURES = [6, 12, 24, 36] as const;
@@ -37,11 +37,57 @@ const PURPOSES = [
 const DEFAULT_AMOUNT = 50_000_000;
 const DEFAULT_TENURE = 12;
 
+const REGIONS = [
+  { value: "KV01", label: "HCM, Hà Nội, Cần Thơ" },
+  { value: "KV02", label: "Huế, Đà Nẵng, Hải Phòng" },
+  { value: "KV03", label: "Khu vực khác" },
+] as const;
+type RegionCode = (typeof REGIONS)[number]["value"];
+
+const ALL_STEPS = [
+  "package",
+  "amount",
+  "term",
+  "purpose",
+  "income",
+  "debt",
+  "region",
+  "review",
+] as const;
+type StepId = (typeof ALL_STEPS)[number];
+
+const STEP_TEXT: Record<StepId, { heading: string; hint?: string }> = {
+  package: { heading: "Chọn gói vay" },
+  amount: { heading: "Bạn muốn vay bao nhiêu?" },
+  term: { heading: "Bạn muốn trả trong bao lâu?" },
+  purpose: {
+    heading: "Bạn vay để làm gì?",
+    hint: "Giúp AnomalyBank áp dụng chính sách phù hợp nhất.",
+  },
+  income: {
+    heading: "Thu nhập mỗi tháng của bạn?",
+    hint: "Thông tin tự khai chỉ để tính thử, chưa phải kết quả thẩm định.",
+  },
+  debt: {
+    heading: "Bạn đang trả nợ bao nhiêu mỗi tháng?",
+    hint: "Không có khoản nợ nào thì để trống.",
+  },
+  region: { heading: "Bạn đang sống ở khu vực nào?" },
+  review: {
+    heading: "Xem lại khoản vay",
+    hint: "Kiểm tra thông tin trước khi tải chứng từ.",
+  },
+};
+
 interface LoanDraft {
   amount: number;
   tenure: number;
   purpose: string;
   details: string;
+  income: number;
+  debt: number;
+  region: RegionCode;
+  step?: StepId;
 }
 
 const DEFAULT_DRAFT: LoanDraft = {
@@ -49,30 +95,29 @@ const DEFAULT_DRAFT: LoanDraft = {
   tenure: DEFAULT_TENURE,
   purpose: PURPOSES[0],
   details: "",
+  income: 20_000_000,
+  debt: 0,
+  region: "KV01",
 };
+
+const validMoney = (value: unknown, fallback: number) =>
+  Number.isSafeInteger(value) && (value as number) >= 0
+    ? (value as number)
+    : fallback;
 
 interface SaveMessage {
   tone: "success" | "error";
   text: string;
 }
 
-const formatMoney = (value: number) =>
-  new Intl.NumberFormat("vi-VN").format(value);
-
 const LoanRegisterPage = () => {
   const { user, token } = useAuth();
-  const [draft, setDraft] = useLocalStorage<LoanDraft>(
-    `anomaly:loan-draft:${user?.id ?? "anonymous"}`,
-    DEFAULT_DRAFT,
-  );
+  const draftKey = `anomaly:loan-draft:${user?.id ?? "anonymous"}`;
+  const [draft, setDraft] = useLocalStorage<LoanDraft>(draftKey, DEFAULT_DRAFT);
   const [saveMessage, setSaveMessage] = useState<SaveMessage | null>(null);
-  const [purposeOpen, setPurposeOpen] = useState(false);
   const [packages, setPackages] = useState<LoanPackage[]>([]);
   const [packageCode, setPackageCode] = useState("");
   const [loadingPackages, setLoadingPackages] = useState(true);
-  const [income, setIncome] = useState(20_000_000);
-  const [region, setRegion] = useState<"KV01" | "KV02" | "KV03">("KV01");
-  const [debt, setDebt] = useState(0);
   const sourceAccountId = user?.id ?? "";
   const [quote, setQuote] = useState<LoanQuote | null>(null);
   const [busy, setBusy] = useState(false);
@@ -112,6 +157,19 @@ const LoanRegisterPage = () => {
   const details =
     typeof storedDraft.details === "string" ? storedDraft.details : "";
 
+  const income = validMoney(storedDraft.income, DEFAULT_DRAFT.income);
+  const debt = validMoney(storedDraft.debt, DEFAULT_DRAFT.debt);
+  const region =
+    REGIONS.find((item) => item.value === storedDraft.region)?.value ??
+    DEFAULT_DRAFT.region;
+
+  // Chỉ có một gói thì không cần hỏi.
+  const steps = ALL_STEPS.filter(
+    (item) => item !== "package" || packages.length > 1,
+  );
+  const step = steps.find((item) => item === storedDraft.step) ?? steps[0];
+  const stepIndex = steps.indexOf(step);
+
   const quoteFingerprint = JSON.stringify({
     packageCode,
     amount,
@@ -128,6 +186,17 @@ const LoanRegisterPage = () => {
     amount >= selectedPackage.minAmount &&
     amount <= selectedPackage.maxAmount &&
     selectedPackage.termMonths.includes(tenure);
+  const amountError =
+    selectedPackage && amount > 0
+      ? amount < selectedPackage.minAmount
+        ? `Tối thiểu ${vnd(selectedPackage.minAmount)}`
+        : amount > selectedPackage.maxAmount
+          ? `Tối đa ${vnd(selectedPackage.maxAmount)}`
+          : undefined
+      : undefined;
+  const dti = quote
+    ? dtiStatusMeta[quote.affordability?.dtiStatus ?? ""]
+    : null;
   const updateDraft = (patch: Partial<LoanDraft>) => {
     setQuote(null);
     quotedFingerprint.current = null;
@@ -139,18 +208,14 @@ const LoanRegisterPage = () => {
     setSaveMessage(null);
   };
 
-  const handleSaveDraft = () => {
-    if (purpose.startsWith("Khác") && !details.trim()) {
-      setSaveMessage({
-        tone: "error",
-        text: "Vui lòng nhập mục đích vay cụ thể trước khi lưu bản nháp.",
-      });
-      return;
-    }
-    setSaveMessage({
-      tone: "success",
-      text: "Đã lưu bản nháp trên thiết bị này. Hồ sơ chưa được gửi lên hệ thống.",
-    });
+  // Đổi bước không làm mất báo giá; chỉ đổi dữ liệu mới hủy báo giá.
+  const goTo = (next: StepId) => {
+    setSaveMessage(null);
+    setDraft((previous) => ({
+      ...DEFAULT_DRAFT,
+      ...(previous ?? DEFAULT_DRAFT),
+      step: next,
+    }));
   };
 
   const handleQuote = async () => {
@@ -162,6 +227,7 @@ const LoanRegisterPage = () => {
       return;
     }
     setBusy(true);
+    setSaveMessage(null);
     setQuote(null);
     const requestedFingerprint = quoteFingerprint;
     quotedFingerprint.current = requestedFingerprint;
@@ -197,14 +263,14 @@ const LoanRegisterPage = () => {
     ) {
       setSaveMessage({
         tone: "error",
-        text: "Bạn cần xem báo giá API mới nhất trước khi tạo hồ sơ.",
+        text: "Vui lòng xem báo giá mới nhất trước khi tạo hồ sơ.",
       });
       return;
     }
     if (!sourceAccountId.trim()) {
       setSaveMessage({
         tone: "error",
-        text: "Vui lòng xác nhận ID tài khoản nhận giải ngân.",
+        text: "Không xác định được tài khoản nhận giải ngân.",
       });
       return;
     }
@@ -220,6 +286,12 @@ const LoanRegisterPage = () => {
       requestedAmount: amount,
       termMonths: tenure,
       disbursementAccountId: sourceAccountId.trim(),
+      declared: {
+        monthlyIncome: income,
+        existingMonthlyDebt: debt,
+        regionCode: region,
+        purpose: purpose.startsWith("Khác") ? details.trim() : purpose,
+      },
     };
     const fingerprint = JSON.stringify(payload);
     const scope = `create-loan:${user?.id ?? "anonymous"}`;
@@ -228,6 +300,8 @@ const LoanRegisterPage = () => {
     try {
       const result = await createLoan(token, payload, idempotencyKey);
       clearIdempotencyKey(scope, fingerprint);
+      // Hồ sơ đã tạo: lần đăng ký sau phải bắt đầu lại từ đầu.
+      window.localStorage.removeItem(draftKey);
       navigate(loanApplication(result.id));
     } catch (error) {
       setSaveMessage({ tone: "error", text: explainLoanError(error) });
@@ -236,127 +310,91 @@ const LoanRegisterPage = () => {
     }
   };
 
+  const goNext = () => {
+    if (step === "review") {
+      void handleCreate();
+      return;
+    }
+    const next = steps[stepIndex + 1];
+    goTo(next);
+    if (next === "review") void handleQuote();
+  };
+  const goBack = () => {
+    if (stepIndex === 0) navigate(routes.loanApplications);
+    else goTo(steps[stepIndex - 1]);
+  };
+  const needsDetails = purpose.startsWith("Khác");
+  const canContinue: Record<StepId, boolean> = {
+    package: !!selectedPackage,
+    amount: !!selectedPackage && amount > 0 && !amountError,
+    term: !selectedPackage || selectedPackage.termMonths.includes(tenure),
+    purpose: !needsDetails || !!details.trim(),
+    income: income > 0,
+    debt: true,
+    region: withinPackage && income > 0,
+    review: !!quote && withinPackage,
+  };
+  const message = saveMessage && (
+    <p
+      role={saveMessage.tone === "error" ? "alert" : "status"}
+      className={`rounded-xl px-4 py-3 text-center text-sm font-semibold ${
+        saveMessage.tone === "error"
+          ? "bg-error-container text-on-error-container"
+          : "bg-success-container text-on-success-container"
+      }`}
+    >
+      {saveMessage.text}
+    </p>
+  );
+
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-background text-on-surface">
-      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-primary/5 bg-background/90 px-4 backdrop-blur-xl">
-        <div className="flex min-w-0 items-center gap-2">
-          <button
-            type="button"
-            aria-label="Quay lại"
-            onClick={() => navigate(routes.dashboard)}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary active:bg-surface-container"
-          >
-            <ArrowLeftIcon />
-          </button>
-          <Logo className="!h-8" />
-          <div className="min-w-0 border-l border-outline-variant pl-2">
-            <p className="truncate text-[10px] font-bold uppercase tracking-widest text-secondary">
-              AnomalyBank
-            </p>
-            <h1 className="truncate text-sm font-bold text-primary">
-              Đăng ký vay vốn
-            </h1>
-          </div>
-        </div>
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white">
-          <UserIcon className="h-4 w-4" />
-        </div>
-      </header>
+    <StepForm
+      title="Đăng ký vay vốn"
+      stepId={step}
+      stepNumber={stepIndex + 1}
+      stepCount={steps.length}
+      heading={STEP_TEXT[step].heading}
+      hint={STEP_TEXT[step].hint}
+      canContinue={canContinue[step]}
+      continueLabel={step === "review" ? "Tiếp tục tải chứng từ" : "Tiếp tục"}
+      busy={busy}
+      onBack={goBack}
+      onNext={goNext}
+    >
+      {step === "package" && (
+        <ChoiceList
+          label="Gói vay"
+          value={packageCode}
+          options={packages.map((item) => ({
+            value: item.packageCode,
+            label: item.name,
+            description: `Từ ${vnd(item.minAmount)} đến ${vnd(item.maxAmount)}`,
+          }))}
+          onChoose={(value) => {
+            setPackageCode(value);
+            setQuote(null);
+            quotedFingerprint.current = null;
+          }}
+          onConfirm={goNext}
+        />
+      )}
 
-      <main className="flex-1 space-y-4 overflow-y-auto px-4 pb-8 pt-4">
-        <section className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-primary">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-xs font-bold text-white">
-                1
-              </span>
-              <h2 className="text-sm font-bold">Thông tin khoản vay</h2>
-            </div>
-            <span className="rounded-full bg-secondary-container px-3 py-1 text-[10px] font-semibold text-primary">
-              Bước 1 / 3
-            </span>
-          </div>
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-container">
-            <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-primary to-secondary" />
-          </div>
-          <p className="mt-2 text-xs text-on-surface-variant">
-            Hồ sơ sẽ tự động lưu dưới dạng <strong>Bản nháp</strong> trên thiết
-            bị này.
-          </p>
-        </section>
-
-        <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-container via-primary to-secondary p-5 text-white shadow-md">
-          <div className="absolute -bottom-10 -right-5 h-32 w-32 rounded-full bg-secondary-container/30 blur-2xl" />
-          <p className="relative inline-flex rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider">
-            ✦ Gói vay đặc quyền
-          </p>
-          <h2 className="relative mt-3 text-xl font-bold">
-            Vay vốn cá nhân theo lương
-          </h2>
-          <p className="relative mt-2 text-xs text-white/80">
-            Lãi suất và khoản trả góp do ngân hàng tính qua API. Kết quả chính
-            thức phụ thuộc vào thẩm định và Offer.
-          </p>
-        </section>
-
-        <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-          <div className="block text-sm font-bold text-primary">
-            Gói vay hiện có
-          </div>
-          <SelectSheet
-            id="loan-package"
-            label="Gói vay hiện có"
-            disabled={loadingPackages || busy}
-            value={packageCode}
-            onChange={(value) => {
-              setPackageCode(value);
-              setQuote(null);
-              quotedFingerprint.current = null;
-            }}
-            placeholder="Chưa có gói vay khả dụng"
-            options={packages.map((p) => ({ value: p.packageCode, label: p.name }))}
+      {step === "amount" && (
+        <>
+          <MoneyInput
+            label="Số tiền đề nghị vay"
+            size="lg"
+            value={amount}
+            onChange={(value) => updateDraft({ amount: value })}
+            error={amountError}
+            hint={
+              selectedPackage
+                ? `Từ ${vnd(selectedPackage.minAmount)} đến ${vnd(selectedPackage.maxAmount)}`
+                : undefined
+            }
+            suggestMin={selectedPackage?.minAmount}
+            suggestMax={selectedPackage?.maxAmount}
           />
-          {!loadingPackages && packages.length === 0 && (
-            <p role="alert" className="text-xs text-error">
-              Chưa có gói vay ACTIVE trên backend. Không thể tạo hồ sơ.
-            </p>
-          )}
-        </section>
-        <section className="space-y-4 rounded-2xl bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-primary">
-              Số tiền đề nghị vay
-            </h2>
-            <span className="text-[10px] text-on-surface-variant">
-              {selectedPackage
-                ? `Tối đa: ${vnd(selectedPackage.maxAmount)}`
-                : "Theo gói vay"}
-            </span>
-          </div>
-          <div className="flex items-center rounded-2xl bg-surface-container-low px-4 py-2">
-            <output
-              aria-label="Số tiền đề nghị vay"
-              className="flex-1 text-3xl font-bold tracking-tight text-primary"
-            >
-              {formatMoney(amount)}
-            </output>
-            <span className="text-xl font-bold text-secondary">đ</span>
-          </div>
-          <label className="block text-xs font-semibold text-primary">
-            Hoặc nhập số tiền theo hạn mức gói vay
-            <input
-              type="number"
-              min={1}
-              step={1000000}
-              value={amount === 0 ? "" : amount}
-              onChange={(e) =>
-                updateDraft({
-                  amount: e.target.value === "" ? 0 : Number(e.target.value),
-                })
-              }
-              className="mt-2 w-full rounded-xl border border-outline-variant p-3 text-sm"
-            />
-          </label>
           <div
             className="grid grid-cols-4 gap-2"
             aria-label="Gợi ý số tiền"
@@ -374,107 +412,59 @@ const LoanRegisterPage = () => {
                     value > selectedPackage.maxAmount)
                 }
                 onClick={() => updateDraft({ amount: value })}
-                className={`rounded-xl disabled:opacity-35 py-2 text-xs font-semibold transition-transform active:scale-95 ${amount === value ? "bg-secondary text-white shadow-md shadow-secondary/25" : "bg-surface-container text-on-surface-variant"}`}
+                className={`min-h-11 rounded-xl text-xs font-semibold disabled:opacity-35 ${amount === value ? "bg-secondary text-white" : "bg-surface-container text-on-surface-variant"}`}
               >
                 {value / 1_000_000} Tr
               </button>
             ))}
           </div>
-        </section>
-
-        <section className="space-y-4 rounded-2xl bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-primary">
-              Kỳ hạn vay mong muốn
-            </h2>
-            <span className="rounded-full bg-secondary-container px-2.5 py-1 text-[10px] font-semibold text-primary">
-              {tenure} Tháng
-            </span>
-          </div>
-          <div
-            className="grid grid-cols-4 gap-2"
-            role="radiogroup"
-            aria-label="Kỳ hạn vay"
-          >
-            {Array.from(
-              new Set<number>([
-                ...TENURES,
-                ...(selectedPackage?.termMonths ?? []),
-              ]),
-            )
-              .sort((a, b) => a - b)
-              .map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={tenure === value}
-                  disabled={
-                    !!selectedPackage &&
-                    !selectedPackage.termMonths.includes(value)
-                  }
-                  onClick={() => updateDraft({ tenure: value })}
-                  className={`rounded-xl disabled:opacity-35 py-2 text-sm font-bold ${tenure === value ? "bg-secondary text-white shadow-md shadow-secondary/25" : "bg-surface-container text-on-surface-variant"}`}
-                >
-                  <span className="block">{value}</span>
-                  <span className="text-[10px] font-normal">Tháng</span>
-                </button>
-              ))}
-          </div>
-        </section>
-
-        <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-          <div>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-primary">
-                Mục đích vay <span className="text-error">*</span>
-              </h2>
-              <span className="text-[10px] font-medium text-secondary">
-                Bắt buộc
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-on-surface-variant">
-              Giúp AnomalyBank áp dụng chính sách ưu đãi phù hợp nhất.
+          {!loadingPackages && packages.length === 0 && (
+            <p role="alert" className="text-sm text-error">
+              Hiện chưa có gói vay khả dụng. Vui lòng quay lại sau.
             </p>
-          </div>
-          <button
-            type="button"
-            aria-expanded={purposeOpen}
-            onClick={() => setPurposeOpen((open) => !open)}
-            className="flex w-full items-center justify-between rounded-2xl bg-surface-container-low px-4 py-3 text-left text-sm font-semibold text-primary"
-          >
-            <span className="truncate">{purpose}</span>
-            <ChevronDownIcon
-              className={`h-5 w-5 text-secondary transition-transform ${purposeOpen ? "rotate-180" : ""}`}
-            />
-          </button>
-          {purposeOpen && (
-            <div
-              role="listbox"
-              aria-label="Mục đích vay"
-              className="space-y-1 rounded-2xl border border-outline-variant/30 bg-white p-1 shadow-lg"
-            >
-              {PURPOSES.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  role="option"
-                  aria-selected={purpose === item}
-                  onClick={() => {
-                    updateDraft({ purpose: item });
-                    setPurposeOpen(false);
-                  }}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-xs ${purpose === item ? "bg-secondary-container font-semibold text-primary" : "text-on-surface-variant hover:bg-surface-container-low"}`}
-                >
-                  <span>{item}</span>
-                  {purpose === item && (
-                    <CheckIcon className="h-4 w-4 text-secondary" />
-                  )}
-                </button>
-              ))}
-            </div>
           )}
-          {purpose.startsWith("Khác") && (
+        </>
+      )}
+
+      {step === "term" && (
+        <ChoiceList
+          label="Kỳ hạn vay"
+          value={String(tenure)}
+          options={Array.from(
+            new Set<number>([
+              ...TENURES,
+              ...(selectedPackage?.termMonths ?? []),
+            ]),
+          )
+            .sort((a, b) => a - b)
+            .map((value) => ({
+              value: String(value),
+              label: `${value} tháng`,
+              disabled:
+                !!selectedPackage &&
+                !selectedPackage.termMonths.includes(value),
+            }))}
+          onChoose={(value) => {
+            updateDraft({ tenure: Number(value) });
+          }}
+          onConfirm={goNext}
+        />
+      )}
+
+      {step === "purpose" && (
+        <>
+          <ChoiceList
+            label="Mục đích vay"
+            value={purpose}
+            options={PURPOSES.map((item) => ({ value: item, label: item }))}
+            onChoose={(value) => {
+              updateDraft({ purpose: value });
+            }}
+            onConfirm={() => {
+              if (canContinue.purpose) goNext();
+            }}
+          />
+          {needsDetails && (
             <label className="block text-xs font-semibold text-primary">
               Nhập mục đích vay cụ thể <span className="text-error">*</span>
               <textarea
@@ -484,7 +474,7 @@ const LoanRegisterPage = () => {
                 }
                 maxLength={250}
                 rows={3}
-                className="mt-2 w-full resize-none rounded-2xl bg-surface-container-low p-3 text-xs font-normal outline-none focus:ring-2 focus:ring-secondary/30"
+                className="mt-2 w-full resize-none rounded-2xl bg-surface-container-low p-3 text-sm font-normal outline-none focus:ring-2 focus:ring-secondary/30"
                 placeholder="Mô tả mục đích sử dụng khoản vay..."
               />
               <span className="mt-1 block text-right font-normal text-outline">
@@ -492,230 +482,183 @@ const LoanRegisterPage = () => {
               </span>
             </label>
           )}
-        </section>
+        </>
+      )}
 
-        <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-          <div>
-            <h2 className="text-sm font-bold text-primary">
-              Tài khoản nhận giải ngân
-            </h2>
-            <p className="mt-1 text-xs text-on-surface-variant">
-              Khoản vay sẽ tự động chuyển vào tài khoản thanh toán chính.
-            </p>
-          </div>
-          <div className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-surface-container-low to-surface-container p-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary-container text-secondary">
-                ▰
-              </div>
-              <div>
-                <p className="text-sm font-bold text-primary">
-                  AnomalyPay{" "}
-                  <span className="rounded-full bg-secondary-container px-2 py-0.5 text-[9px] font-semibold text-primary">
-                    Chính chủ
-                  </span>
-                </p>
-                <p className="text-xs tracking-widest">
-                  •••• {user?.accountNo.slice(-4) ?? "----"}
-                </p>
-                <p className="text-[10px] text-on-surface-variant">
-                  Số dư khả dụng:{" "}
-                  <strong className="text-primary">
-                    {formatMoney(user?.amount ?? 0)} đ
-                  </strong>
-                </p>
-              </div>
-            </div>
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary">
-              <span className="h-2 w-2 rounded-full bg-white" />
-            </span>
-          </div>
-        </section>
+      {step === "income" && (
+        <MoneyInput
+          label="Thu nhập mỗi tháng"
+          size="lg"
+          value={income}
+          onChange={(value) => updateDraft({ income: value })}
+        />
+      )}
 
-        <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-bold text-primary">
-            Thông tin báo giá dự kiến
-          </h2>
-          <label className="block text-xs">
-            Thu nhập tháng (VND)
-            <input
-              type="number"
-              min={1}
-              value={income}
-              onChange={(e) => {
-                setIncome(Number(e.target.value));
-                setQuote(null);
-                quotedFingerprint.current = null;
-              }}
-              className="mt-1 w-full rounded-xl border p-3 text-sm"
-            />
-          </label>
-          <div className="block text-xs">
-            Khu vực
-            <SelectSheet
-              label="Khu vực"
-              value={region}
-              onChange={(value) => {
-                setRegion(value as typeof region);
-                setQuote(null);
-                quotedFingerprint.current = null;
-              }}
-              options={[
-                { value: "KV01", label: "KV01 - HCM / Hà Nội / Cần Thơ" },
-                { value: "KV02", label: "KV02 - Huế / Đà Nẵng / Hải Phòng" },
-                { value: "KV03", label: "KV03 - Khu vực khác" },
-              ]}
-            />
-          </div>
-          <label className="block text-xs">
-            Nợ phải trả hàng tháng hiện tại (VND)
-            <input
-              type="number"
-              min={0}
-              value={debt}
-              onChange={(e) => {
-                setDebt(Number(e.target.value));
-                setQuote(null);
-                quotedFingerprint.current = null;
-              }}
-              className="mt-1 w-full rounded-xl border p-3 text-sm"
-            />
-          </label>
-          <p className="text-xs text-on-surface-variant">
-            Thông tin tự khai chỉ dùng để tính thử. Lãi suất chính thức lấy từ
-            Evidence đã xác minh và Offer.
-          </p>
-          <button
-            type="button"
-            onClick={() => void handleQuote()}
-            disabled={!withinPackage || busy}
-            className="w-full rounded-full bg-primary p-3 text-sm font-bold text-white disabled:opacity-40"
-          >
-            {busy ? "Đang xử lý..." : "Tính lãi và lịch trả qua API"}
-          </button>
-          {quote && (
-            <p role="status" className="text-xs">
-              Lãi suất dự kiến:{" "}
-              <strong>{percentBps(quote.annualRateBps)}</strong> · Tổng lãi:{" "}
-              {vnd(quote.totalInterest)} · DTI:{" "}
-              {quote.affordability?.dtiStatus ?? "Chưa rõ"}. Không phải Offer
-              chính thức.
-            </p>
-          )}
-        </section>
-        {quote && (
-          <details className="rounded-2xl bg-white p-4 shadow-sm">
-            <summary className="cursor-pointer text-sm font-bold text-primary">
-              Lịch trả góp dự kiến ({quote.provisionalSchedule?.length ?? 0} kỳ)
-            </summary>
-            <p className="mt-2 text-xs text-on-surface-variant">
-              Chỉ là dự tính, không phải lịch trả nợ hợp đồng.
-            </p>
-            {quote.provisionalSchedule?.map((item) => (
-              <div
-                key={item.installmentNo}
-                className="mt-2 rounded-xl border p-3 text-xs"
-              >
-                <strong>Kỳ {item.installmentNo}</strong> ·{" "}
-                {item.dueDate.slice(0, 10)}
-                <p>
-                  Gốc {vnd(item.principalAmount)} · Lãi{" "}
-                  {vnd(item.interestAmount)}
-                </p>
-                <p className="font-semibold">Tổng {vnd(item.totalPayment)}</p>
+      {step === "debt" && (
+        <MoneyInput
+          label="Khoản trả nợ hiện tại mỗi tháng"
+          size="lg"
+          value={debt}
+          onChange={(value) => updateDraft({ debt: value })}
+        />
+      )}
+
+      {step === "region" && (
+        <ChoiceList
+          label="Khu vực"
+          value={region}
+          options={[...REGIONS]}
+          onChoose={(value) => {
+            updateDraft({ region: value as RegionCode });
+          }}
+          onConfirm={() => {
+            if (canContinue.region) goNext();
+          }}
+        />
+      )}
+
+      {step === "review" && (
+        <>
+          <dl className="space-y-2 rounded-2xl bg-white p-4 text-sm shadow-sm">
+            {[
+              ["Gói vay", selectedPackage?.name ?? "Đang tải..."],
+              ["Số tiền vay", vnd(amount)],
+              ["Kỳ hạn", `${tenure} tháng`],
+              ["Mục đích", needsDetails ? details : purpose],
+              ["Thu nhập mỗi tháng", vnd(income)],
+              ["Trả nợ mỗi tháng", vnd(debt)],
+              [
+                "Khu vực",
+                REGIONS.find((item) => item.value === region)?.label ?? "",
+              ],
+            ].map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-3">
+                <dt className="shrink-0 text-on-surface-variant">{label}</dt>
+                <dd className="min-w-0 text-right font-semibold break-words text-primary">
+                  {value}
+                </dd>
               </div>
             ))}
-          </details>
-        )}
-        <section className="space-y-3 rounded-2xl bg-surface-container-high/60 p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-primary">
-              Tóm tắt khoản vay
-            </h2>
-            <span className="text-[10px] text-on-surface-variant">
-              {quote ? percentBps(quote.annualRateBps) : "Chưa có báo giá"}
-            </span>
-          </div>
-          <dl className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <dt className="text-on-surface-variant">
-                Tổng số tiền đề nghị vay:
-              </dt>
-              <dd className="font-bold text-primary">
-                {formatMoney(amount)} đ
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-on-surface-variant">Thời hạn hoàn trả:</dt>
-              <dd className="font-semibold text-primary">{tenure} tháng</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-on-surface-variant">Phương thức trả nợ:</dt>
-              <dd className="rounded-full bg-surface-container px-2 py-0.5 font-semibold text-secondary">
-                Trả góp đều
-              </dd>
-            </div>
           </dl>
-          <div className="flex items-center justify-between rounded-2xl bg-white p-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-secondary">
-                Ước tính trả hàng tháng
-              </p>
+
+          {quote ? (
+            <div
+              role="status"
+              className="space-y-3 rounded-2xl bg-surface-container-low p-4"
+            >
+              <div>
+                <p className="text-xs text-on-surface-variant">
+                  Trả mỗi tháng khoảng
+                </p>
+                <p className="text-2xl font-bold text-primary">
+                  {vnd(quote.estimatedMonthlyPayment)}
+                </p>
+              </div>
+              <dl className="space-y-2 text-xs">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-on-surface-variant">Lãi suất dự kiến</dt>
+                  <dd className="font-semibold text-primary">
+                    {percentBps(quote.annualRateBps)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-on-surface-variant">Tổng lãi</dt>
+                  <dd className="font-semibold text-primary">
+                    {vnd(quote.totalInterest)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-on-surface-variant">Tổng phải trả</dt>
+                  <dd className="font-semibold text-primary">
+                    {vnd(quote.totalRepayment)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-on-surface-variant">Khả năng trả nợ</dt>
+                  <dd
+                    className={`rounded-full px-2.5 py-0.5 font-semibold ${dti?.className ?? "bg-gray-100 text-gray-700"}`}
+                  >
+                    {dti?.label ?? "Chưa rõ"}
+                  </dd>
+                </div>
+              </dl>
+              {quote.affordability?.withinIncomeLimit === false && (
+                <p className="text-xs text-error">
+                  Số tiền vượt hạn mức theo thu nhập (
+                  {vnd(quote.affordability.incomeLimit)}).
+                </p>
+              )}
               <p className="text-xs text-on-surface-variant">
-                Gốc + Lãi dự kiến
+                <FontAwesomeIcon
+                  icon={faShieldHalved}
+                  className="mr-1 text-secondary"
+                />
+                Không phải đề nghị chính thức. Lãi suất chính thức do ngân hàng
+                xác định sau thẩm định.
               </p>
             </div>
-            <strong className="text-right text-lg text-primary">
-              {quote ? `~${formatMoney(quote.estimatedMonthlyPayment)}` : "—"}
-              <span className="ml-1 text-xs text-secondary">đ/tháng</span>
-            </strong>
-          </div>
-          <p className="text-[10px] text-outline">
-            <ShieldIcon className="mr-1 inline h-3.5 w-3.5 text-secondary" />
-            Khoản thanh toán thực tế sẽ được xác định sau khi thẩm định hồ sơ.
-          </p>
-        </section>
+          ) : (
+            !busy && (
+              <button
+                type="button"
+                disabled={!withinPackage || income <= 0}
+                onClick={() => void handleQuote()}
+                className="min-h-12 w-full rounded-full bg-surface-container px-4 text-sm font-bold text-primary disabled:opacity-40"
+              >
+                Xem báo giá dự kiến
+              </button>
+            )
+          )}
+          {busy && !quote && (
+            <p
+              role="status"
+              className="text-center text-sm text-on-surface-variant"
+            >
+              Đang tính báo giá...
+            </p>
+          )}
 
-        {saveMessage && (
-          <p
-            role={saveMessage.tone === "error" ? "alert" : "status"}
-            className={`rounded-xl px-4 py-3 text-center text-xs font-semibold ${
-              saveMessage.tone === "error"
-                ? "bg-error-container text-on-error-container"
-                : "bg-success-container text-on-success-container"
-            }`}
-          >
-            {saveMessage.text}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={handleSaveDraft}
-          className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-secondary text-base font-bold text-white shadow-lg shadow-secondary/30 transition-transform active:scale-[0.98]"
-        >
-          Lưu bản nháp
-        </button>
-        <button
-          type="button"
-          disabled={busy || !quote || !withinPackage}
-          onClick={() => void handleCreate()}
-          className="flex h-14 w-full items-center justify-center rounded-full bg-primary text-base font-bold text-white disabled:opacity-40"
-        >
-          Tạo hồ sơ vay trên hệ thống
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate(routes.loanApplications)}
-          className="w-full rounded-xl border p-3 text-sm font-semibold text-primary"
-        >
-          Xem hồ sơ đã tạo
-        </button>
-        <p className="flex items-center justify-center gap-1 text-center text-[10px] text-on-surface-variant">
-          <ShieldIcon className="h-3.5 w-3.5 text-secondary" /> Thông tin được
-          bảo mật theo chuẩn PCI DSS
-        </p>
-      </main>
-    </div>
+          {quote && (
+            <details className="rounded-2xl bg-white p-4 shadow-sm">
+              <summary className="cursor-pointer text-sm font-bold text-primary">
+                Lịch trả góp dự kiến ({quote.provisionalSchedule?.length ?? 0}{" "}
+                kỳ)
+              </summary>
+              {quote.provisionalSchedule?.map((item) => (
+                <div
+                  key={item.installmentNo}
+                  className="mt-2 rounded-xl border p-3 text-xs"
+                >
+                  <strong>Kỳ {item.installmentNo}</strong> ·{" "}
+                  {item.dueDate.slice(0, 10)}
+                  <p>
+                    Gốc {vnd(item.principalAmount)} · Lãi{" "}
+                    {vnd(item.interestAmount)}
+                  </p>
+                  <p className="font-semibold">Tổng {vnd(item.totalPayment)}</p>
+                </div>
+              ))}
+            </details>
+          )}
+
+          <div className="flex items-center gap-3 rounded-2xl bg-surface-container-low p-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-secondary-container text-secondary">
+              <FontAwesomeIcon icon={faWallet} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-on-surface-variant">
+                Tài khoản nhận giải ngân
+              </p>
+              <p className="text-sm font-bold text-primary">
+                •••• {user?.accountNo.slice(-4) ?? "----"}
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+
+      {message}
+    </StepForm>
   );
 };
 

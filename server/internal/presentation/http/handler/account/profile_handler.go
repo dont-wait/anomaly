@@ -3,8 +3,8 @@ package account
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -40,75 +40,19 @@ type profileMediaDownloader interface {
 	Download(context.Context, string) (*rustfs.DownloadResult, error)
 }
 
-// profileUpdateRequest documents PATCH /api/auth/me/profile. Omitted fields keep
-// their current value; null is rejected, so the body is decoded from raw JSON.
+// profileUpdateRequest: unknown fields are rejected, so identity and address
+// data cannot be changed through this endpoint.
 type profileUpdateRequest struct {
-	Phone   *string                `json:"phone,omitempty"`
-	Address *profileAddressRequest `json:"address,omitempty"`
-}
-
-type profileAddressRequest struct {
-	Line         *string `json:"line,omitempty"`
-	ProvinceCode *string `json:"provinceCode,omitempty"`
-}
-
-type rawProfileUpdate struct {
-	Phone   json.RawMessage `json:"phone"`
-	Address json.RawMessage `json:"address"`
-}
-
-type rawProfileAddress struct {
-	Line         json.RawMessage `json:"line"`
-	ProvinceCode json.RawMessage `json:"provinceCode"`
+	Phone string `json:"phone"`
 }
 
 type emailChangeStartRequest struct {
-	NewEmail string `json:"newEmail"`
+	NewEmail        string `json:"newEmail"`
+	CurrentPassword string `json:"currentPassword"`
 }
 
 type emailChangeConfirmRequest struct {
-	CurrentEmailOtp string `json:"currentEmailOtp"`
-	NewEmailOtp     string `json:"newEmailOtp"`
-}
-
-// optionalString returns nil for an omitted field and rejects null or non-strings.
-func optionalString(raw json.RawMessage) (*string, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	if string(bytes.TrimSpace(raw)) == "null" {
-		return nil, accountdomain.ErrInvalidProfile
-	}
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return nil, accountdomain.ErrInvalidProfile
-	}
-	return &value, nil
-}
-
-func decodeProfileUpdate(accountID string, body rawProfileUpdate) (commands.UpdateCustomerProfileCommand, error) {
-	cmd := commands.UpdateCustomerProfileCommand{AccountID: accountID}
-	var err error
-	if cmd.Phone, err = optionalString(body.Phone); err != nil {
-		return cmd, err
-	}
-	if body.Address == nil {
-		return cmd, nil
-	}
-	if string(bytes.TrimSpace(body.Address)) == "null" {
-		return cmd, accountdomain.ErrInvalidProfile
-	}
-	decoder := json.NewDecoder(bytes.NewReader(body.Address))
-	decoder.DisallowUnknownFields()
-	var address rawProfileAddress
-	if err := decoder.Decode(&address); err != nil {
-		return cmd, accountdomain.ErrInvalidProfile
-	}
-	if cmd.AddressLine, err = optionalString(address.Line); err != nil {
-		return cmd, err
-	}
-	cmd.ProvinceCode, err = optionalString(address.ProvinceCode)
-	return cmd, err
+	NewEmailOtp string `json:"newEmailOtp"`
 }
 
 type changePasswordRequest struct {
@@ -129,16 +73,12 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, h.logger, middleware.ErrInvalidToken, func(error) int { return http.StatusUnauthorized })
 		return
 	}
-	var req rawProfileUpdate
+	var req profileUpdateRequest
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
 		return
 	}
-	cmd, err := decodeProfileUpdate(claims.UserID, req)
-	if err != nil {
-		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
-		return
-	}
+	cmd := commands.UpdateCustomerProfileCommand{AccountID: claims.UserID, Phone: req.Phone}
 	account, err := h.updateProfile.Handle(r.Context(), cmd)
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
@@ -198,7 +138,14 @@ func (h *Handler) StartEmailChange(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
 		return
 	}
-	if err := h.emailChange.Start(r.Context(), claims.UserID, req.NewEmail); err != nil {
+	if err := h.emailChange.Start(r.Context(), claims.UserID, req.NewEmail, req.CurrentPassword, passwordAttemptSource(r)); err != nil {
+		switch {
+		case errors.Is(err, accountdomain.ErrCurrentPassword):
+			h.recordProfileAudit(r, claims.UserID, "EmailChangePasswordFailed")
+		case errors.Is(err, accountdomain.ErrTooManyAttempts):
+			h.recordProfileAudit(r, claims.UserID, "EmailChangeThrottled")
+			w.Header().Set("Retry-After", strconv.Itoa(int(h.passwordRetryAfter.Seconds())))
+		}
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return
 	}
@@ -223,7 +170,7 @@ func (h *Handler) ConfirmEmailChange(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
 		return
 	}
-	if err := h.emailChange.Confirm(r.Context(), claims.UserID, req.CurrentEmailOtp, req.NewEmailOtp); err != nil {
+	if err := h.emailChange.Confirm(r.Context(), claims.UserID, req.NewEmailOtp); err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return
 	}
@@ -251,6 +198,90 @@ func passwordAttemptSource(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+type profileChangeRequest struct {
+	FullName         string `json:"fullName,omitempty"`
+	AddressLine      string `json:"addressLine,omitempty"`
+	ProvinceCode     string `json:"provinceCode,omitempty"`
+	IssuedPlace      string `json:"issuedPlace,omitempty"`
+	PermanentAddress string `json:"permanentAddress,omitempty"`
+}
+
+type profileChangeDecisionRequest struct {
+	Decision string `json:"decision"`
+	Reason   string `json:"reason"`
+}
+
+// RequestProfileChange lưu đề nghị đổi thông tin để admin duyệt.
+func (h *Handler) RequestProfileChange(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims == nil {
+		httpx.WriteError(w, h.logger, middleware.ErrInvalidToken, func(error) int { return http.StatusUnauthorized })
+		return
+	}
+	var req profileChangeRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
+		return
+	}
+	account, err := h.profileChange.Submit(r.Context(), claims.UserID, commands.ProfileChangeInput{FullName: req.FullName, AddressLine: req.AddressLine, ProvinceCode: req.ProvinceCode, IssuedPlace: req.IssuedPlace, PermanentAddress: req.PermanentAddress})
+	if err != nil {
+		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	h.recordProfileAudit(r, claims.UserID, "ProfileChangeRequested")
+	httpx.WriteSuccess(w, http.StatusOK, "Profile change submitted", h.profileResponse(r.Context(), account))
+}
+
+// ListProfileChanges trả các đề nghị đang chờ admin duyệt.
+func (h *Handler) ListProfileChanges(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	accounts, err := h.getAll.Handle(r.Context(), queries.GetAllAccountsQuery{})
+	if err != nil {
+		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	items := make([]ProfileChangeReviewItem, 0)
+	for _, account := range accounts {
+		if account.Customer == nil || account.Customer.ProfileChange == nil || account.Customer.ProfileChange.Status != accountdomain.ProfileChangePending {
+			continue
+		}
+		customer := account.Customer
+		items = append(items, ProfileChangeReviewItem{
+			AccountID: account.Id,
+			Username:  account.Username,
+			Current: ProfileChangeCurrent{
+				FullName: customer.Profile.FullName, AddressLine: customer.Profile.Address.Line, ProvinceCode: customer.Profile.Address.ProvinceCode,
+				IssuedPlace: customer.Identity.IssuedPlace, PermanentAddress: customer.Identity.PermanentAddress,
+			},
+			Change: toProfileChangeResponse(customer.ProfileChange),
+		})
+	}
+	httpx.WriteSuccess(w, http.StatusOK, "Profile changes retrieved", items)
+}
+
+// DecideProfileChange duyệt hoặc từ chối đề nghị. requestId chống duyệt nhầm bản cũ.
+func (h *Handler) DecideProfileChange(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims == nil {
+		httpx.WriteError(w, h.logger, middleware.ErrInvalidToken, func(error) int { return http.StatusUnauthorized })
+		return
+	}
+	var req profileChangeDecisionRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
+		return
+	}
+	accountID := r.PathValue("accountId")
+	if err := h.profileChange.Decide(r.Context(), claims.UserID, accountID, r.PathValue("requestId"), req.Decision, req.Reason); err != nil {
+		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	h.recordProfileAudit(r, accountID, "ProfileChangeReviewed")
+	httpx.WriteSuccess(w, http.StatusOK, "Profile change reviewed", map[string]bool{"reviewed": true})
 }
 
 func (h *Handler) UploadProfileAvatar(w http.ResponseWriter, r *http.Request) {
@@ -313,7 +344,7 @@ func (h *Handler) uploadProfileMedia(w http.ResponseWriter, r *http.Request, ava
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusServiceUnavailable })
 		return
 	}
-	media := accountdomain.ProfileMedia{ID: mediaID, Type: kind, FileName: file.fileName, ContentType: file.contentType, StorageKey: key, SizeBytes: int64(len(file.data)), UploadedAt: time.Now().UTC(), Status: "ACTIVE"}
+	media := accountdomain.ProfileMedia{ID: mediaID, Type: kind, FileName: file.fileName, ContentType: file.contentType, StorageKey: key, SizeBytes: int64(len(file.data)), SHA256: fmt.Sprintf("%x", sha256.Sum256(file.data)), UploadedAt: time.Now().UTC(), Status: "ACTIVE"}
 	var previousKey string
 	if avatar {
 		if account.Customer.Avatar != nil {
@@ -455,7 +486,7 @@ func (h *Handler) DownloadProfileMedia(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer result.Body.Close()
+	defer func() { _ = result.Body.Close() }()
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-store")
@@ -557,7 +588,7 @@ func readProfileUpload(w http.ResponseWriter, r *http.Request, field string, lim
 	if err != nil {
 		return nil, fmt.Errorf("missing upload file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	if header.Size <= 0 || header.Size > limit {
 		return nil, errProfileFileTooLarge
 	}

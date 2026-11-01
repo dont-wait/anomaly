@@ -41,7 +41,7 @@ export function BankSelect({
     const q = query.trim().toLocaleLowerCase();
     if (!q) return banks;
     return banks.filter((bank) =>
-      (`${bank.shortName} ${bank.name} ${bank.code}`).toLowerCase().includes(q),
+      `${bank.shortName} ${bank.name} ${bank.code}`.toLowerCase().includes(q),
     );
   }, [banks, query]);
 

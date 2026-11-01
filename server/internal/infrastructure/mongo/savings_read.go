@@ -88,7 +88,7 @@ func (r *SavingsRead) List(ctx context.Context, customer, status string, limit i
 	if err != nil {
 		return nil, err
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var rows []savingsqueries.SavingsContract
 	if err := cur.All(ctx, &rows); err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func (r *SavingsRead) History(ctx context.Context, customer, id string) ([]savin
 	if err != nil {
 		return nil, err
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var records []savingsqueries.SavingsHistoryItem
 	if err := cur.All(ctx, &records); err != nil {
 		return nil, err
@@ -152,7 +152,7 @@ func (r *SavingsRead) Notifications(ctx context.Context, customer string, limit 
 	if err != nil {
 		return nil, err
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var items []savingsqueries.SavingsNotice
 	if err := cur.All(ctx, &items); err != nil {
 		return nil, err

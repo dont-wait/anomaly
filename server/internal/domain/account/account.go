@@ -55,6 +55,7 @@ type ProfileMedia struct {
 	ContentType string
 	StorageKey  string
 	SizeBytes   int64
+	SHA256      string
 	UploadedAt  time.Time
 	Status      string
 }
@@ -73,12 +74,35 @@ type CreditProfile struct {
 	UpdatedAt time.Time
 }
 
+const (
+	ProfileChangePending  = "PENDING"
+	ProfileChangeApproved = "APPROVED"
+	ProfileChangeRejected = "REJECTED"
+)
+
+// ProfileChangeRequest giữ thông tin khách đề nghị đổi cho đến khi admin duyệt.
+// Trường rỗng nghĩa là không đổi. Hồ sơ thật chỉ thay đổi khi được duyệt.
+type ProfileChangeRequest struct {
+	Id               string
+	FullName         string
+	AddressLine      string
+	ProvinceCode     string
+	IssuedPlace      string
+	PermanentAddress string
+	Status           string
+	RejectionReason  string
+	RequestedAt      time.Time
+	ReviewedAt       *time.Time
+	ReviewedBy       string
+}
+
 type Customer struct {
 	Id                   string
 	CustomerCode         string
 	Profile              CustomerProfile
 	Avatar               *ProfileMedia
 	Documents            []ProfileMedia
+	ProfileChange        *ProfileChangeRequest
 	Identity             CustomerIdentity
 	VerifiedKYCSessionId string
 	KYCStatus            KYCStatus

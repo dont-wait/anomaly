@@ -112,6 +112,7 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	register := request(t, http.MethodPost, `{
 		"username":"alice",
 		"cccdNumber":"001234567890",
+		"phone": "0912345678", "addressLine": "12 Nguyen Trai", "provinceCode": "HCM", "issuedPlace": "Cuc CSQLHC", "permanentAddress": "Ha Noi",
 		"cccdIssuedDate":"2020-01-01T00:00:00Z",
 		"dob":"2000-01-01T00:00:00Z",
 		"email":"alice@example.com",
@@ -167,6 +168,7 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	adminRegister := request(t, http.MethodPost, `{
 		"username":"admin",
 		"cccdNumber":"009876543210",
+		"phone": "0912345678", "addressLine": "12 Nguyen Trai", "provinceCode": "HCM", "issuedPlace": "Cuc CSQLHC", "permanentAddress": "Ha Noi",
 		"cccdIssuedDate":"2020-01-01T00:00:00Z",
 		"dob":"1990-01-01T00:00:00Z",
 		"email":"admin@example.com",
@@ -278,6 +280,7 @@ func TestVerifiedRegistrationReplayDoesNotMintKYCToken(t *testing.T) {
 	body := `{
 		"idempotencyKey":"f2c758e3-eaed-4c70-b322-d630fe934c2f",
 		"username":"replay-user","cccdNumber":"111222333444",
+		"phone": "0912345678", "addressLine": "12 Nguyen Trai", "provinceCode": "HCM", "issuedPlace": "Cuc CSQLHC", "permanentAddress": "Ha Noi",
 		"cccdIssuedDate":"2020-01-01T00:00:00Z","dob":"1990-01-01T00:00:00Z",
 		"email":"replay@example.com","password":"password123"
 	}`

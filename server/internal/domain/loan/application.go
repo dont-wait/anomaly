@@ -15,6 +15,71 @@ type ApplicationDocument struct {
 	SHA256             string    `json:"sha256"`
 	VerificationStatus string    `json:"verificationStatus"`
 	UploadedAt         time.Time `json:"uploadedAt"`
+	// Kết quả duyệt từng chứng từ. Bỏ trống với chứng từ chưa được duyệt.
+	RejectionReason string     `json:"rejectionReason,omitempty"`
+	ReviewedAt      *time.Time `json:"reviewedAt,omitempty"`
+	ReviewedBy      string     `json:"reviewedBy,omitempty"`
+}
+
+const (
+	DocumentVerified = "verified"
+	DocumentRejected = "rejected"
+
+	maxDocumentRejectionReason = 500
+)
+
+// DeclaredFinancials là thông tin khách tự khai khi tạo hồ sơ. Admin dùng để đối
+// chiếu; chỉ dữ liệu trong evidence đã xác minh mới được dùng để chấm điểm.
+type DeclaredFinancials struct {
+	MonthlyIncome       int64  `json:"monthlyIncome"`
+	ExistingMonthlyDebt int64  `json:"existingMonthlyDebt"`
+	RegionCode          string `json:"regionCode"`
+	Purpose             string `json:"purpose"`
+}
+
+// Validate kiểm tra giá trị khách khai.
+func (d DeclaredFinancials) Validate() error {
+	if d.MonthlyIncome <= 0 || d.ExistingMonthlyDebt < 0 {
+		return fmt.Errorf("invalid declared financials")
+	}
+	switch d.RegionCode {
+	case "KV01", "KV02", "KV03":
+	default:
+		return fmt.Errorf("invalid declared region")
+	}
+	if strings.TrimSpace(d.Purpose) == "" || len([]rune(d.Purpose)) > 500 {
+		return fmt.Errorf("invalid declared purpose")
+	}
+	return nil
+}
+
+var requiredDocumentTypes = []string{
+	"IDENTITY_FRONT",
+	"IDENTITY_BACK",
+	"VNEID_PERSONAL",
+	"VNEID_RESIDENCE",
+	"VSSID_PARTICIPATION",
+	"VSSID_DETAIL",
+	"SALARY_STATEMENT_3_MONTHS",
+}
+
+// AllDocumentsVerified cho biết admin đã duyệt đủ mọi loại chứng từ bắt buộc.
+func (a *Application) AllDocumentsVerified() bool {
+	if a == nil {
+		return false
+	}
+	verified := make(map[string]bool, len(a.Documents))
+	for _, document := range a.Documents {
+		if document.VerificationStatus == DocumentVerified {
+			verified[document.Type] = true
+		}
+	}
+	for _, documentType := range requiredDocumentTypes {
+		if !verified[documentType] {
+			return false
+		}
+	}
+	return true
 }
 
 // ApplicationStatus là trạng thái của hồ sơ vay.
@@ -27,6 +92,8 @@ const (
 	ApplicationStatusApproved    ApplicationStatus = "approved"
 	ApplicationStatusRejected    ApplicationStatus = "rejected"
 	ApplicationStatusDisbursed   ApplicationStatus = "disbursed"
+	// ApplicationStatusDeleted: khách đã xóa hồ sơ chưa gửi. Event vẫn được giữ.
+	ApplicationStatusDeleted ApplicationStatus = "deleted"
 )
 
 // Application đại diện cho một hồ sơ đăng ký vay vốn cá nhân.
@@ -39,6 +106,7 @@ type Application struct {
 	DisbursementAccountId  string                  `json:"disbursementAccountId"`
 	RequestedAmount        int64                   `json:"requestedAmount"`
 	TermMonths             int                     `json:"termMonths"`
+	Declared               *DeclaredFinancials     `json:"declared,omitempty"`
 	Documents              []ApplicationDocument   `json:"documents"`
 	Status                 ApplicationStatus       `json:"status"`
 	CreatedAt              time.Time               `json:"createdAt"`
@@ -222,6 +290,65 @@ func (a *Application) Submit() error {
 	a.SubmittedAt = &now
 	a.UpdatedAt = now
 
+	return nil
+}
+
+// ReviewDocument ghi kết quả duyệt một chứng từ. Chỉ thực hiện được khi hồ sơ
+// đang thẩm định, và có thể đổi kết quả cho đến khi hồ sơ rời trạng thái đó.
+func (a *Application) ReviewDocument(
+	documentID, decision, reason, reviewerID string,
+	reviewedAt time.Time,
+) error {
+	if a == nil {
+		return fmt.Errorf("loan application is nil")
+	}
+	if a.Status != ApplicationStatusUnderReview {
+		return ErrInvalidApplicationStatus
+	}
+	reason = strings.TrimSpace(reason)
+	switch decision {
+	case DocumentVerified:
+		reason = ""
+	case DocumentRejected:
+		if reason == "" || len([]rune(reason)) > maxDocumentRejectionReason {
+			return fmt.Errorf("invalid document rejection reason")
+		}
+	default:
+		return fmt.Errorf("invalid document decision")
+	}
+	if reviewerID == "" || reviewedAt.IsZero() {
+		return fmt.Errorf("document reviewer and time are required")
+	}
+	// Sao chép để các bản sao nông của hồ sơ không thấy thay đổi.
+	documents := append([]ApplicationDocument(nil), a.Documents...)
+	for index := range documents {
+		if documents[index].DocumentId != documentID {
+			continue
+		}
+		documents[index].VerificationStatus = decision
+		documents[index].RejectionReason = reason
+		documents[index].ReviewedAt = &reviewedAt
+		documents[index].ReviewedBy = reviewerID
+		a.Documents = documents
+		a.UpdatedAt = reviewedAt
+		return nil
+	}
+	return fmt.Errorf("loan document not found")
+}
+
+// Delete xóa hồ sơ chưa gửi. Hồ sơ đã gửi phải đi theo luồng thẩm định.
+func (a *Application) Delete(deletedAt time.Time) error {
+	if a == nil {
+		return fmt.Errorf("loan application is nil")
+	}
+	if a.Status != ApplicationStatusDraft {
+		return ErrInvalidApplicationStatus
+	}
+	if deletedAt.IsZero() {
+		return fmt.Errorf("delete timestamp is required")
+	}
+	a.Status = ApplicationStatusDeleted
+	a.UpdatedAt = deletedAt
 	return nil
 }
 

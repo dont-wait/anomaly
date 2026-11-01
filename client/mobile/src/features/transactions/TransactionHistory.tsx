@@ -145,7 +145,8 @@ export const TransactionHistory = ({
       >
         <div className="pointer-events-none absolute -top-10 -right-8 h-32 w-32 rounded-full bg-on-cta/15 blur-2xl" />
         <p className="relative text-sm text-on-cta">
-          {formatDateValue(activeDateRange.from)} - {formatDateValue(activeDateRange.to)}
+          {formatDateValue(activeDateRange.from)} -{" "}
+          {formatDateValue(activeDateRange.to)}
         </p>
         <div className="relative mt-3 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-on-cta/15 p-3">

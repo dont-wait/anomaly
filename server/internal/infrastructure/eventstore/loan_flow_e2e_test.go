@@ -197,6 +197,9 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 				t.Fatal("submit did not persist submitted status")
 			}
 			api.json(t, "POST", base+"/review", admin, nil, nil, 200)
+			for _, document := range submitted.Documents {
+				api.json(t, "POST", base+"/documents/"+document.DocumentId+"/verification", admin, map[string]any{"decision": "verified"}, nil, 200)
+			}
 			e := map[string]any{
 				"monthlySalaries": [3]int64{20_000_000, 20_000_000, 20_000_000}, "regionCode": "KV01",
 				"existingMonthlyDebt": 0, "insuranceMonths": 24, "repaymentHistory": tt.history,

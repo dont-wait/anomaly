@@ -48,6 +48,9 @@ func NewLoanHandler(
 		Submit: commands.NewSubmitLoanApplicationCommandHandler(
 			repo,
 		),
+		AttachProfile:  &commands.AttachProfileDocumentsCommandHandler{Repo: repo, Provider: access, Storage: verifier},
+		Delete:         &commands.DeleteLoanApplicationCommandHandler{Repo: repo},
+		DocumentReview: &commands.ReviewLoanDocumentCommandHandler{Repo: repo, Authorizer: access},
 		Review: commands.NewStartLoanReviewCommandHandler(
 			repo,
 			access,

@@ -18,6 +18,8 @@ var ErrLoanUnsupportedEvent = errors.New("unsupported loan event version")
 const (
 	EventLoanApplicationCreated   = "LoanApplicationCreated"
 	EventLoanDocumentAdded        = "LoanDocumentAdded"
+	EventLoanDocumentReviewed     = "LoanDocumentReviewed"
+	EventLoanApplicationDeleted   = "LoanApplicationDeleted"
 	EventLoanApplicationSubmitted = "LoanApplicationSubmitted"
 	EventLoanReviewStarted        = "LoanReviewStarted"
 	EventLoanApplicationAssessed  = "LoanApplicationAssessed"
@@ -198,6 +200,34 @@ func applyLoanEvent(
 		// Ghi dữ liệu và thời gian gốc từ event.
 		app.Documents = append(app.Documents, p.Document)
 		app.UpdatedAt = p.UpdatedAt
+
+	case EventLoanApplicationDeleted:
+		var p struct {
+			DeletedAt time.Time `json:"deletedAt"`
+		}
+		if err := json.Unmarshal(data, &p); err != nil {
+			return err
+		}
+		if err := app.Delete(p.DeletedAt); err != nil {
+			return fmt.Errorf("invalid loan delete event: %w", err)
+		}
+
+	case EventLoanDocumentReviewed:
+		var p struct {
+			DocumentId string    `json:"documentId"`
+			Decision   string    `json:"decision"`
+			Reason     string    `json:"reason"`
+			ReviewerId string    `json:"reviewerId"`
+			ReviewedAt time.Time `json:"reviewedAt"`
+		}
+		if err := json.Unmarshal(data, &p); err != nil {
+			return err
+		}
+		if err := app.ReviewDocument(
+			p.DocumentId, p.Decision, p.Reason, p.ReviewerId, p.ReviewedAt,
+		); err != nil {
+			return fmt.Errorf("invalid document review event: %w", err)
+		}
 
 	case EventLoanApplicationSubmitted:
 		var p loanApplicationSubmittedPayload

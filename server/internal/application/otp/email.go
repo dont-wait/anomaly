@@ -64,9 +64,9 @@ func otpEmailCopyFor(purpose OTPEmailPurpose) (otpEmailCopy, error) {
 			headerVI: "Đổi email",
 			headerEN: "Email change",
 			titleVI:  "Xác nhận đổi email",
-			introVI:  "Đây là mã OTP để xác nhận đổi email tài khoản. Nếu bạn không yêu cầu, hãy đổi mật khẩu ngay:",
+			introVI:  "Đây là mã OTP để xác nhận dùng email này cho tài khoản. Nếu bạn không yêu cầu, hãy bỏ qua email này:",
 			titleEN:  "Confirm your email change",
-			introEN:  "Your OTP to confirm this email change. If this was not you, change your password now:",
+			introEN:  "Your OTP to confirm this email for your account. If this was not you, ignore this email:",
 		}, nil
 	case OTPEmailTransfer:
 		return otpEmailCopy{

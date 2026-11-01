@@ -1,17 +1,17 @@
-import { useState, type ChangeEvent, type ReactNode } from "react";
-import {
-  faArrowLeft,
-  faCamera,
-  faFolderOpen,
-  faLock,
-} from "@fortawesome/free-solid-svg-icons";
+import { useState, type ReactNode } from "react";
+import { faArrowLeft } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAuth } from "@/features/auth/useAuth";
-import { fetchProfileMedia } from "@/features/auth/api/profileMutations";
+import {
+  fetchProfileMedia,
+  requestProfileChange,
+} from "@/features/auth/api/profileMutations";
 import type { ProfileMedia } from "@/features/auth/api/profile";
-import type { ProfileUpdateInput } from "@/features/auth/api/profileMutations";
 import { passwordRules } from "@/features/registration/model";
 import { ApiError } from "@/shared/lib/http";
+import { FileSourcePicker, SelectSheet } from "@/shared/ui";
+import { PROVINCES } from "./provinces";
+import type { ProfileChangeInput } from "@/features/auth/api/profile";
 import {
   AVATAR_MAX_BYTES,
   AVATAR_TYPES,
@@ -21,7 +21,6 @@ import {
   PHONE_PATTERN,
   documentLabel,
   formatDate,
-  maskTail,
   toProfileError,
   validateUpload,
 } from "./profileHelpers";
@@ -158,50 +157,74 @@ export function EditProfilePanel({
   onBack,
   onChangeEmail,
   onSaved,
-}: PanelProps & { onChangeEmail: () => void; onSaved: () => void }) {
-  const { user, updateProfile, refreshProfile } = useAuth();
+}: PanelProps & {
+  onChangeEmail: () => void;
+  onSaved: (submitted: boolean) => void;
+}) {
+  const { user, token, updateProfile, refreshProfile } = useAuth();
   const { busy, error, run, setError } = useProfileAction();
+  const pending =
+    user?.profileChange?.status === "PENDING" ? user.profileChange : undefined;
+  const rejected =
+    user?.profileChange?.status === "REJECTED" ? user.profileChange : undefined;
   const [phone, setPhone] = useState(user?.phone ?? "");
-  const [line, setLine] = useState(user?.address?.line ?? "");
-  const [province, setProvince] = useState(user?.address?.provinceCode ?? "");
   const [phoneTouched, setPhoneTouched] = useState(false);
-  const [serverFields, setServerFields] = useState<Record<string, string>>({});
+  const [serverPhoneError, setServerPhoneError] = useState<string>();
+  const [fullName, setFullName] = useState(
+    pending?.fullName ?? user?.fullName ?? "",
+  );
+  const [addressLine, setAddressLine] = useState(
+    pending?.addressLine ?? user?.address?.line ?? "",
+  );
+  const [provinceCode, setProvinceCode] = useState(
+    pending?.provinceCode ?? user?.address?.provinceCode ?? "",
+  );
+  const [issuedPlace, setIssuedPlace] = useState(
+    pending?.issuedPlace ?? user?.identity?.issuedPlace ?? "",
+  );
+  const [permanentAddress, setPermanentAddress] = useState(
+    pending?.permanentAddress ?? user?.identity?.permanentAddress ?? "",
+  );
 
   // Khách thường gõ "0901 234 567", nên bỏ khoảng trắng và dấu ngăn trước khi kiểm tra.
   const nextPhone = phone.replace(/[\s.-]/g, "");
-  const nextLine = line.trim();
-  const nextProvince = province.trim();
+  const phoneChanged = nextPhone !== (user?.phone ?? "");
+  const phoneInvalid = phoneChanged && !PHONE_PATTERN.test(nextPhone);
 
-  // PATCH chỉ gửi field đã đổi; field bỏ trống thì backend giữ nguyên.
-  const input: ProfileUpdateInput = {};
-  if (nextPhone !== (user?.phone ?? "")) input.phone = nextPhone;
-  if (nextLine !== (user?.address?.line ?? "")) {
-    input.address = { ...input.address, line: nextLine };
+  // Chỉ gửi trường khác với hồ sơ hiện tại; admin duyệt rồi mới có hiệu lực.
+  const change: ProfileChangeInput = {};
+  const reviewed = [
+    ["fullName", fullName, user?.fullName],
+    ["addressLine", addressLine, user?.address?.line],
+    ["provinceCode", provinceCode, user?.address?.provinceCode],
+    ["issuedPlace", issuedPlace, user?.identity?.issuedPlace],
+    ["permanentAddress", permanentAddress, user?.identity?.permanentAddress],
+  ] as const;
+  for (const [key, value, current] of reviewed) {
+    if (value.trim() !== (current ?? "")) change[key] = value.trim();
   }
-  if (nextProvince !== (user?.address?.provinceCode ?? "")) {
-    input.address = { ...input.address, provinceCode: nextProvince };
-  }
-
-  const phoneInvalid =
-    input.phone !== undefined && !PHONE_PATTERN.test(nextPhone);
-  const lineEmpty = input.address?.line === "";
-  const provinceEmpty = input.address?.provinceCode === "";
-  const hasChanges = input.phone !== undefined || input.address !== undefined;
+  const emptyField = Object.values(change).some((value) => value === "");
+  const needsReview = Object.keys(change).length > 0;
+  const samePending =
+    !!pending &&
+    reviewed.every(([key]) => (pending[key] ?? "") === (change[key] ?? ""));
+  const submitsChange = needsReview && !samePending;
 
   const save = async () => {
-    setServerFields({});
+    setServerPhoneError(undefined);
     let conflict = false;
     const saved = await run(async () => {
       try {
-        await updateProfile(input);
+        if (phoneChanged) await updateProfile({ phone: nextPhone });
+        if (submitsChange) {
+          if (!token) throw new Error("Phiên đăng nhập đã hết hạn.");
+          await requestProfileChange(token, change);
+          await refreshProfile().catch(() => null);
+        }
       } catch (cause) {
         if (cause instanceof ApiError) {
-          setServerFields(
-            Object.fromEntries(
-              cause.errors.flatMap((item) =>
-                item.field ? [[item.field, item.detail]] : [],
-              ),
-            ),
+          setServerPhoneError(
+            cause.errors.find((item) => item.field === "phone")?.detail,
           );
           conflict = cause.status === 409;
         }
@@ -209,7 +232,7 @@ export function EditProfilePanel({
       }
     });
     if (saved) {
-      onSaved();
+      onSaved(submitsChange);
     } else if (conflict) {
       // Tải lại hồ sơ mới nhất nhưng giữ nguyên nội dung khách đang nhập.
       await refreshProfile().catch(() => null);
@@ -226,6 +249,18 @@ export function EditProfilePanel({
       busy={busy}
       error={error}
     >
+      {pending && (
+        <p className="profile-note" role="status">
+          Thay đổi của bạn đang chờ ngân hàng duyệt. Gửi lại sẽ thay thế yêu cầu
+          đang chờ.
+        </p>
+      )}
+      {rejected && (
+        <p className="profile-error" role="alert">
+          Yêu cầu trước không được duyệt: {rejected.rejectionReason}
+        </p>
+      )}
+
       <h4 className="profile-form-group">Liên hệ</h4>
       <ProfileInput
         label="Số điện thoại"
@@ -238,7 +273,7 @@ export function EditProfilePanel({
         error={
           phoneTouched && phoneInvalid
             ? "Số điện thoại gồm 8-16 chữ số, có thể bắt đầu bằng +."
-            : serverFields.phone
+            : serverPhoneError
         }
       />
       <div className="profile-readonly">
@@ -254,45 +289,51 @@ export function EditProfilePanel({
         </button>
       </div>
 
-      <h4 className="profile-form-group">Địa chỉ liên hệ</h4>
+      <h4 className="profile-form-group">Cần ngân hàng duyệt</h4>
+      <ProfileInput
+        label="Họ và tên"
+        autoComplete="name"
+        value={fullName}
+        onChange={setFullName}
+      />
       <ProfileInput
         label="Số nhà, đường"
         autoComplete="street-address"
-        value={line}
-        onChange={setLine}
-        error={
-          lineEmpty
-            ? "Không thể để trống địa chỉ."
-            : serverFields["address.line"]
-        }
+        value={addressLine}
+        onChange={setAddressLine}
+      />
+      <div className="profile-field">
+        Tỉnh/thành
+        <SelectSheet
+          label="Tỉnh/thành"
+          searchable
+          value={provinceCode}
+          placeholder="Chọn tỉnh/thành"
+          onChange={setProvinceCode}
+          options={PROVINCES.map((item) => ({
+            value: item.code,
+            label: item.name,
+          }))}
+        />
+      </div>
+      <ProfileInput
+        label="Nơi cấp CCCD"
+        value={issuedPlace}
+        onChange={setIssuedPlace}
       />
       <ProfileInput
-        label="Tỉnh/thành"
-        autoComplete="address-level1"
-        value={province}
-        onChange={setProvince}
-        error={
-          provinceEmpty
-            ? "Không thể để trống tỉnh/thành."
-            : serverFields["address.provinceCode"]
-        }
+        label="Địa chỉ thường trú"
+        value={permanentAddress}
+        onChange={setPermanentAddress}
       />
-
-      {user?.isVerify && (
-        <>
-          <h4 className="profile-form-group">Đã xác minh</h4>
-          <ReadOnlyRow label="Họ và tên" value={user.fullName} />
-          <ReadOnlyRow label="Ngày sinh" value={formatDate(user.dateOfBirth)} />
-          <ReadOnlyRow
-            label="Số CCCD"
-            value={maskTail(user.identity?.number)}
-          />
-          <p className="profile-caption">
-            Muốn sửa các thông tin này cần gửi yêu cầu hiệu chỉnh kèm chứng từ.
-          </p>
-        </>
+      {emptyField && (
+        <p className="profile-field-error">
+          Không thể để trống thông tin đã có.
+        </p>
       )}
-
+      <p className="profile-caption">
+        Số CCCD, ngày sinh và ngày cấp không thể đổi tại đây.
+      </p>
       <div className="profile-form-actions">
         <button
           type="button"
@@ -306,27 +347,21 @@ export function EditProfilePanel({
           type="button"
           className="profile-action"
           disabled={
-            busy || !hasChanges || phoneInvalid || lineEmpty || provinceEmpty
+            busy ||
+            phoneInvalid ||
+            emptyField ||
+            (!phoneChanged && !submitsChange)
           }
           onClick={() => void save()}
         >
-          {busy ? "Đang lưu..." : "Lưu thay đổi"}
+          {busy
+            ? "Đang gửi..."
+            : submitsChange
+              ? "Gửi yêu cầu duyệt"
+              : "Lưu thay đổi"}
         </button>
       </div>
     </PanelShell>
-  );
-}
-
-function ReadOnlyRow({ label, value }: { label: string; value?: string }) {
-  if (!value) return null;
-  return (
-    <div className="profile-readonly">
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-      <FontAwesomeIcon icon={faLock} aria-label="Không thể sửa" />
-    </div>
   );
 }
 
@@ -334,7 +369,7 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
   const { user, startEmailChange, confirmEmailChange } = useAuth();
   const { busy, message, error, run, setMessage } = useProfileAction();
   const [newEmail, setNewEmail] = useState("");
-  const [currentEmailOtp, setCurrentEmailOtp] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newEmailOtp, setNewEmailOtp] = useState("");
   const [restarting, setRestarting] = useState(false);
 
@@ -342,27 +377,27 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
   const showOtpStep = Boolean(user?.pendingEmail) && !restarting;
 
   const start = async () => {
-    const started = await run(() => startEmailChange(nextEmail), {
-      success: "Đã gửi mã xác minh đến cả email hiện tại và email mới.",
-      badRequest: "Email mới chưa hợp lệ.",
-    });
+    const started = await run(
+      () => startEmailChange({ newEmail: nextEmail, currentPassword }),
+      {
+        success: "Đã gửi mã xác minh đến email mới.",
+        badRequest: "Mật khẩu hiện tại không đúng hoặc email chưa hợp lệ.",
+        logoutOnUnauthorized: false,
+      },
+    );
+    setCurrentPassword("");
     if (started) {
       setRestarting(false);
       setNewEmail("");
-      setCurrentEmailOtp("");
       setNewEmailOtp("");
     }
   };
 
   const confirm = async () => {
-    const confirmed = await run(
-      () => confirmEmailChange({ currentEmailOtp, newEmailOtp }),
-      {
-        success: "Đã đổi email.",
-        badRequest: "Mã xác minh không đúng hoặc đã hết hạn.",
-      },
-    );
-    setCurrentEmailOtp("");
+    const confirmed = await run(() => confirmEmailChange({ newEmailOtp }), {
+      success: "Đã đổi email.",
+      badRequest: "Mã xác minh không đúng hoặc đã hết hạn.",
+    });
     setNewEmailOtp("");
     if (!confirmed) setMessage("");
   };
@@ -377,20 +412,13 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
     >
       <p className="profile-note">
         Email hiện tại ({user?.email}) vẫn được dùng cho đăng nhập, thông báo và
-        mã OTP cho đến khi bạn xác minh xong cả hai địa chỉ.
+        mã OTP cho đến khi bạn xác minh xong email mới.
       </p>
       {showOtpStep ? (
         <>
           <p className="profile-caption">
             Email mới đang chờ: {user?.pendingEmail}
           </p>
-          <ProfileInput
-            label="Mã gửi đến email hiện tại"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={currentEmailOtp}
-            onChange={setCurrentEmailOtp}
-          />
           <ProfileInput
             label="Mã gửi đến email mới"
             inputMode="numeric"
@@ -401,11 +429,7 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
           <button
             type="button"
             className="profile-action"
-            disabled={
-              busy ||
-              !OTP_PATTERN.test(currentEmailOtp) ||
-              !OTP_PATTERN.test(newEmailOtp)
-            }
+            disabled={busy || !OTP_PATTERN.test(newEmailOtp)}
             onClick={() => void confirm()}
           >
             {busy ? "Đang xác minh..." : "Xác minh email"}
@@ -429,11 +453,19 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
             value={newEmail}
             onChange={setNewEmail}
           />
+          <ProfileInput
+            label="Mật khẩu hiện tại"
+            type="password"
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={setCurrentPassword}
+          />
           <button
             type="button"
             className="profile-action"
             disabled={
               busy ||
+              !currentPassword ||
               !EMAIL_PATTERN.test(nextEmail) ||
               nextEmail === user?.email
             }
@@ -508,64 +540,6 @@ export function ChangePasswordPanel({ onBack }: PanelProps) {
         {busy ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
       </button>
     </PanelShell>
-  );
-}
-
-function FileSourcePicker({
-  label,
-  accept,
-  camera,
-  disabled,
-  onSelect,
-}: {
-  label: string;
-  accept: string[];
-  camera: "user" | "environment";
-  disabled: boolean;
-  onSelect: (file: File) => void;
-}) {
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    // Cho phép chọn lại đúng tệp đó sau khi hủy hoặc gặp lỗi.
-    event.target.value = "";
-    if (file) onSelect(file);
-  };
-
-  return (
-    <div className="profile-source-picker">
-      <p className="profile-source-label">{label}</p>
-      <div className="profile-source-actions">
-        <label
-          className={`profile-source-button${disabled ? " is-disabled" : ""}`}
-        >
-          <FontAwesomeIcon icon={faCamera} />
-          Mở camera
-          <input
-            className="sr-only"
-            type="file"
-            accept="image/*"
-            // WebView Android của Tauri chỉ mở camera khi accept đúng là image/*;
-            // định dạng thực tế được validateUpload kiểm tra sau khi chụp.
-            capture={camera}
-            disabled={disabled}
-            onChange={handleChange}
-          />
-        </label>
-        <label
-          className={`profile-source-button${disabled ? " is-disabled" : ""}`}
-        >
-          <FontAwesomeIcon icon={faFolderOpen} />
-          Chọn tệp
-          <input
-            className="sr-only"
-            type="file"
-            accept={accept.join(",")}
-            disabled={disabled}
-            onChange={handleChange}
-          />
-        </label>
-      </div>
-    </div>
   );
 }
 

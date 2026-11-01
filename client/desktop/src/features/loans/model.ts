@@ -10,6 +10,7 @@ export interface LoanDocument {
   documentId: string;
   type: string;
   verificationStatus: string;
+  rejectionReason?: string;
   uploadedAt: string;
   mimeType: string;
   sizeBytes: number;
@@ -28,6 +29,7 @@ export interface LoanOffer {
 export interface LoanApplication {
   id: string;
   applicationNo: string;
+  customerId?: string;
   loanPackageId: string;
   disbursementAccountId: string;
   requestedAmount: number;
@@ -36,6 +38,14 @@ export interface LoanApplication {
   documents: LoanDocument[];
   assessmentDecision?: string;
   assessmentScore?: number;
+  assessmentReasons?: string[];
+  assessedAt?: string | null;
+  declared?: {
+    monthlyIncome: number;
+    existingMonthlyDebt: number;
+    regionCode: string;
+    purpose: string;
+  };
   annualRateBps?: number;
   createdAt: string;
   offer?: LoanOffer;
@@ -58,4 +68,13 @@ export interface VerifiedEvidenceInput {
   financialDataVerified: boolean;
   documentsVerified: boolean;
   sources: string[];
+}
+
+export interface LoanCustomer {
+  id: string;
+  accountNo: string;
+  username: string;
+  email: string;
+  isVerify: boolean;
+  amount: number;
 }

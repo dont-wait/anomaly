@@ -138,7 +138,9 @@
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-md);
   background: var(--admin-background);
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .admin-field-control:focus-within {
@@ -236,7 +238,9 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  transition: background 150ms ease, transform 150ms ease;
+  transition:
+    background 150ms ease,
+    transform 150ms ease;
 }
 
 .admin-login-submit:hover:not(:disabled) {
@@ -287,7 +291,6 @@
   .admin-login-card {
     padding: var(--admin-space-5);
   }
-
 }
 
 @media (prefers-reduced-motion: reduce) {
