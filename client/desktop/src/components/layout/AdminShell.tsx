@@ -12,6 +12,7 @@ import {
   faFileInvoiceDollar,
   faGaugeHigh,
   faIdCard,
+  faUserPen,
   faMagnifyingGlass,
   faMoneyBillTransfer,
   faPlay,
@@ -94,6 +95,11 @@ const navigationGroups: NavigationGroup[] = [
     label: "ĐỊNH DANH",
     items: [
       { label: "Duyệt KYC", route: routes.kyc, icon: faIdCard, badge: "8" },
+      {
+        label: "Duyệt thông tin",
+        route: routes.profileChanges,
+        icon: faUserPen,
+      },
     ],
   },
   {

@@ -19,6 +19,7 @@ type CreateLoanApplicationCommand struct {
 	RequestedAmount       int64
 	TermMonths            int
 	IdempotencyKey        string
+	Declared              *loandomain.DeclaredFinancials
 }
 
 // CreateLoanApplicationCommandHandler điều phối
@@ -130,6 +131,12 @@ func (h *CreateLoanApplicationCommandHandler) Handle(
 	)
 	if err != nil {
 		return nil, err
+	}
+	if cmd.Declared != nil {
+		if err := cmd.Declared.Validate(); err != nil {
+			return nil, err
+		}
+		app.Declared = cmd.Declared
 	}
 
 	// 6. Xác minh tài khoản nhận giải ngân.

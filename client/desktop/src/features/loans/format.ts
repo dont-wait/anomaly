@@ -25,6 +25,27 @@ export const assessmentLabels: Record<string, string> = {
   rejected: "Không đạt",
 };
 
+const ASSESSMENT_REASONS: Record<string, string> = {
+  "DTI requires manual review": "Tỷ lệ nợ trên thu nhập cần xem xét thêm",
+  "DTI exceeds 50 percent": "Tỷ lệ nợ trên thu nhập vượt 50%",
+  "requested amount exceeds income limit":
+    "Số tiền vay vượt hạn mức theo thu nhập",
+  "financial data is not verified": "Dữ liệu tài chính chưa được xác minh",
+  "insurance information is not verified":
+    "Thông tin bảo hiểm chưa được xác minh",
+  "insurance duration requires manual review":
+    "Thời gian đóng BHXH cần xem xét thêm",
+  "insurance duration below 6 months": "Thời gian đóng BHXH dưới 6 tháng",
+  "repayment history is not verified": "Lịch sử trả nợ chưa được xác minh",
+  "previous late repayment requires manual review":
+    "Từng trả chậm, cần xem xét thêm",
+  "outstanding overdue debt": "Đang có nợ quá hạn",
+  "documents are not verified": "Chứng từ chưa được xác minh",
+};
+
+export const assessmentReasonLabel = (reason: string) =>
+  ASSESSMENT_REASONS[reason] ?? "Cần xem xét thêm";
+
 export const offerLabels: Record<string, string> = {
   issued: "Đã gửi, chờ khách phản hồi",
   accepted: "Khách đã chấp nhận",

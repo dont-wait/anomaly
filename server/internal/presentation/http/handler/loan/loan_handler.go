@@ -127,6 +127,7 @@ type Handler struct {
 	Submit         *commands.SubmitLoanApplicationCommandHandler
 	Review         *commands.StartLoanReviewCommandHandler
 	DocumentReview *commands.ReviewLoanDocumentCommandHandler
+	Delete         *commands.DeleteLoanApplicationCommandHandler
 	AttachProfile  *commands.AttachProfileDocumentsCommandHandler
 	Assess         *commands.AssessLoanApplicationCommandHandler
 	Decide         *commands.ManualLoanDecisionCommandHandler
@@ -383,6 +384,11 @@ func RegisterRoutes(
 		"submitPersonalLoan",
 	)
 	auth(
+		"DELETE /api/loans/{applicationId}",
+		h.deleteApplication,
+		"deletePersonalLoan",
+	)
+	auth(
 		"POST /api/loans/{applicationId}/documents/from-profile",
 		h.attachProfileDocuments,
 		"attachPersonalLoanProfileDocuments",
@@ -543,7 +549,8 @@ func (h *Handler) application(
 		return nil, err
 	}
 
-	if a == nil {
+	// Hồ sơ đã xóa không còn tồn tại với mọi API, kể cả admin.
+	if a == nil || a.Status == domain.ApplicationStatusDeleted {
 		return nil, fmt.Errorf("loan application not found")
 	}
 
@@ -597,10 +604,11 @@ func (h *Handler) create(
 	}
 
 	var req struct {
-		LoanPackageID         string `json:"loanPackageId"`
-		DisbursementAccountID string `json:"disbursementAccountId"`
-		RequestedAmount       int64  `json:"requestedAmount"`
-		TermMonths            int    `json:"termMonths"`
+		LoanPackageID         string                     `json:"loanPackageId"`
+		DisbursementAccountID string                     `json:"disbursementAccountId"`
+		RequestedAmount       int64                      `json:"requestedAmount"`
+		TermMonths            int                        `json:"termMonths"`
+		Declared              *domain.DeclaredFinancials `json:"declared"`
 	}
 
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
@@ -622,6 +630,7 @@ func (h *Handler) create(
 			RequestedAmount:       req.RequestedAmount,
 			TermMonths:            req.TermMonths,
 			IdempotencyKey:        key,
+			Declared:              req.Declared,
 		},
 	)
 	if err != nil {
@@ -1004,6 +1013,27 @@ func (h *Handler) submit(
 	httpx.WriteJSON(w, 200, result)
 }
 
+// DELETE /api/loans/{applicationId}
+func (h *Handler) deleteApplication(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	a, err := h.application(r, true)
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+	if err := h.Delete.Handle(r.Context(), a.Id, a.CustomerId); err != nil {
+		if errors.Is(err, domain.ErrInvalidApplicationStatus) {
+			fail(w, 409, "only unsent loan applications can be deleted")
+			return
+		}
+		serviceError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // POST /api/loans/{applicationId}/documents/from-profile
 func (h *Handler) attachProfileDocuments(
 	w http.ResponseWriter,
@@ -1154,6 +1184,12 @@ func (h *Handler) attest(
 		Sources:               req.Sources,
 		VerifiedBy:            actor,
 		VerifiedAt:            time.Now().UTC(),
+	}
+
+	// Xác nhận chứng từ phải khớp kết quả duyệt từng file, không chỉ là một ô tick.
+	if req.DocumentsVerified && !a.AllDocumentsVerified() {
+		fail(w, 422, "all loan documents must be verified first")
+		return
 	}
 
 	if err := e.ValidateFor(a); err != nil {

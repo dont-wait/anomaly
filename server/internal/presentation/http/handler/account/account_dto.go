@@ -25,21 +25,22 @@ type AccountResponsePublic struct {
 // POST /api/kyc/complete, AuthResponse). Chứa đầy đủ field kể
 // cả identity URLs — chỉ user sở hữu tài khoản mới được xem KYC của mình.
 type AccountResponsePrivate struct {
-	Id           string                  `json:"id"`
-	AccountNo    string                  `json:"accountNo"`
-	Username     string                  `json:"username"`
-	FullName     string                  `json:"fullName"`
-	Email        string                  `json:"email"`
-	Currency     string                  `json:"currency"`
-	Role         string                  `json:"role"`
-	IsVerify     bool                    `json:"isVerify"`
-	Amount       int64                   `json:"amount"`
-	Phone        string                  `json:"phone,omitempty"`
-	DateOfBirth  *time.Time              `json:"dateOfBirth,omitempty"`
-	Address      ProfileAddressResponse  `json:"address,omitempty"`
-	Identity     ProfileIdentityResponse `json:"identity,omitempty"`
-	Avatar       *ProfileMediaResponse   `json:"avatar,omitempty"`
-	PendingEmail *string                 `json:"pendingEmail"`
+	Id            string                  `json:"id"`
+	AccountNo     string                  `json:"accountNo"`
+	Username      string                  `json:"username"`
+	FullName      string                  `json:"fullName"`
+	Email         string                  `json:"email"`
+	Currency      string                  `json:"currency"`
+	Role          string                  `json:"role"`
+	IsVerify      bool                    `json:"isVerify"`
+	Amount        int64                   `json:"amount"`
+	Phone         string                  `json:"phone,omitempty"`
+	DateOfBirth   *time.Time              `json:"dateOfBirth,omitempty"`
+	Address       ProfileAddressResponse  `json:"address,omitempty"`
+	Identity      ProfileIdentityResponse `json:"identity,omitempty"`
+	Avatar        *ProfileMediaResponse   `json:"avatar,omitempty"`
+	ProfileChange *ProfileChangeResponse  `json:"profileChange,omitempty"`
+	PendingEmail  *string                 `json:"pendingEmail"`
 }
 
 type ProfileAddressResponse struct {
@@ -63,6 +64,43 @@ type ProfileMediaResponse struct {
 	SizeBytes   int64     `json:"sizeBytes"`
 	UploadedAt  time.Time `json:"uploadedAt"`
 	Status      string    `json:"status"`
+}
+
+// ProfileChangeResponse hiện đề nghị đổi thông tin; trường rỗng là không đổi.
+type ProfileChangeResponse struct {
+	ID               string     `json:"id"`
+	FullName         string     `json:"fullName,omitempty"`
+	AddressLine      string     `json:"addressLine,omitempty"`
+	ProvinceCode     string     `json:"provinceCode,omitempty"`
+	IssuedPlace      string     `json:"issuedPlace,omitempty"`
+	PermanentAddress string     `json:"permanentAddress,omitempty"`
+	Status           string     `json:"status"`
+	RejectionReason  string     `json:"rejectionReason,omitempty"`
+	RequestedAt      time.Time  `json:"requestedAt"`
+	ReviewedAt       *time.Time `json:"reviewedAt,omitempty"`
+}
+
+// ProfileChangeReviewItem là một đề nghị kèm thông tin hiện tại để admin so sánh.
+type ProfileChangeReviewItem struct {
+	AccountID string                 `json:"accountId"`
+	Username  string                 `json:"username"`
+	Current   ProfileChangeCurrent   `json:"current"`
+	Change    *ProfileChangeResponse `json:"change"`
+}
+
+type ProfileChangeCurrent struct {
+	FullName         string `json:"fullName"`
+	AddressLine      string `json:"addressLine"`
+	ProvinceCode     string `json:"provinceCode"`
+	IssuedPlace      string `json:"issuedPlace"`
+	PermanentAddress string `json:"permanentAddress"`
+}
+
+func toProfileChangeResponse(c *accountdomain.ProfileChangeRequest) *ProfileChangeResponse {
+	if c == nil {
+		return nil
+	}
+	return &ProfileChangeResponse{ID: c.Id, FullName: c.FullName, AddressLine: c.AddressLine, ProvinceCode: c.ProvinceCode, IssuedPlace: c.IssuedPlace, PermanentAddress: c.PermanentAddress, Status: c.Status, RejectionReason: c.RejectionReason, RequestedAt: c.RequestedAt, ReviewedAt: c.ReviewedAt}
 }
 
 // ProfileDocumentSlot is one document type the backend supports for this account.
@@ -153,6 +191,7 @@ func toProfileResponse(a *accountdomain.UserAccount) AccountResponsePrivate {
 	response.Address = ProfileAddressResponse{Line: profile.Address.Line, ProvinceCode: profile.Address.ProvinceCode}
 	identity := a.Customer.Identity
 	response.Identity = ProfileIdentityResponse{Type: identity.Type, Number: maskIdentity(identity.Number), IssuedDate: identity.IssuedDate, IssuedPlace: identity.IssuedPlace, PermanentAddress: identity.PermanentAddress}
+	response.ProfileChange = toProfileChangeResponse(a.Customer.ProfileChange)
 	if a.Customer.Avatar != nil && a.Customer.Avatar.Status == "ACTIVE" {
 		response.Avatar = toProfileMediaResponse(*a.Customer.Avatar)
 	}

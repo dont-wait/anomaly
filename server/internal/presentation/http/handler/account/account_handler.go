@@ -37,6 +37,7 @@ type Handler struct {
 	profileAudit       audit.Recorder
 	updateProfile      *commands.UpdateCustomerProfileHandler
 	changePassword     *commands.ChangePasswordHandler
+	profileChange      *commands.ProfileChangeHandler
 	emailChange        *commands.EmailChangeHandler
 	pendingEmails      pendingEmailReader
 	passwordRetryAfter time.Duration
@@ -51,6 +52,7 @@ func (h *Handler) WithProfile(repo commands.AccountRepository, recorder audit.Re
 	h.profileAudit = recorder
 	h.updateProfile = commands.NewUpdateCustomerProfileHandler(repo)
 	h.changePassword = commands.NewChangePasswordHandler(repo)
+	h.profileChange = commands.NewProfileChangeHandler(repo)
 	return h
 }
 
@@ -109,8 +111,11 @@ func NewHandler(
 func accountErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, accountdomain.ErrUserAlreadyExists), errors.Is(err, accountdomain.ErrIdempotencyConflict),
-		errors.Is(err, accountdomain.ErrConcurrentUpdate):
+		errors.Is(err, accountdomain.ErrConcurrentUpdate),
+		errors.Is(err, accountdomain.ErrProfileChangeClosed):
 		return http.StatusConflict
+	case errors.Is(err, accountdomain.ErrSelfProfileReview):
+		return http.StatusForbidden
 	case errors.Is(err, accountdomain.ErrTooManyAttempts), errors.Is(err, appotp.ErrTooSoon):
 		return http.StatusTooManyRequests
 	case errors.Is(err, accountdomain.ErrCurrentPassword), errors.Is(err, appotp.ErrInvalid),
@@ -191,13 +196,18 @@ func accountErrorCode(err error) httpx.ErrorCode {
 }
 
 type registerRequest struct {
-	IdempotencyKey string `json:"idempotencyKey"`
-	Username       string `json:"username"`
-	CCCDNumber     string `json:"cccdNumber"`
-	CCCDIssuedDate string `json:"cccdIssuedDate"`
-	DOB            string `json:"dob"`
-	Email          string `json:"email"`
-	Password       string `json:"password"`
+	IdempotencyKey   string `json:"idempotencyKey"`
+	Username         string `json:"username"`
+	CCCDNumber       string `json:"cccdNumber"`
+	CCCDIssuedDate   string `json:"cccdIssuedDate"`
+	DOB              string `json:"dob"`
+	Email            string `json:"email"`
+	Password         string `json:"password"`
+	Phone            string `json:"phone"`
+	AddressLine      string `json:"addressLine"`
+	ProvinceCode     string `json:"provinceCode"`
+	IssuedPlace      string `json:"issuedPlace"`
+	PermanentAddress string `json:"permanentAddress"`
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -223,15 +233,25 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acc, err := h.register.Handle(r.Context(), commands.RegisterAccountCommand{
-		IdempotencyKey: req.IdempotencyKey,
-		Username:       req.Username,
-		CCCDNumber:     req.CCCDNumber,
-		CCCDIssuedDate: issuedDate,
-		DOB:            dob,
-		Email:          req.Email,
-		Password:       req.Password,
-	})
+	cmd := commands.RegisterAccountCommand{
+		IdempotencyKey:   req.IdempotencyKey,
+		Username:         req.Username,
+		CCCDNumber:       req.CCCDNumber,
+		CCCDIssuedDate:   issuedDate,
+		DOB:              dob,
+		Email:            req.Email,
+		Password:         req.Password,
+		Phone:            req.Phone,
+		AddressLine:      req.AddressLine,
+		ProvinceCode:     req.ProvinceCode,
+		IssuedPlace:      req.IssuedPlace,
+		PermanentAddress: req.PermanentAddress,
+	}
+	if err := cmd.ValidateCustomerDetails(); err != nil {
+		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	acc, err := h.register.Handle(r.Context(), cmd)
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return

@@ -49,8 +49,6 @@ func (s *profileRepoStub) Save(context.Context, *accountdomain.UserAccount) erro
 	return nil
 }
 
-func ptr(value string) *string { return &value }
-
 func customerAccount() *accountdomain.UserAccount {
 	account := &accountdomain.UserAccount{Id: "owner", Email: "old@example.com", Customer: &accountdomain.Customer{}}
 	account.Customer.Profile.Email = account.Email
@@ -59,18 +57,14 @@ func customerAccount() *accountdomain.UserAccount {
 	return account
 }
 
-func TestUpdateProfileMergesAddressAndIncrementsVersion(t *testing.T) {
+func TestUpdateProfileChangesPhoneAndIncrementsVersion(t *testing.T) {
 	repo := &profileRepoStub{account: customerAccount()}
-	updated, err := NewUpdateCustomerProfileHandler(repo).Handle(context.Background(), UpdateCustomerProfileCommand{AccountID: "owner", ProvinceCode: ptr("hn")})
+	updated, err := NewUpdateCustomerProfileHandler(repo).Handle(context.Background(), UpdateCustomerProfileCommand{AccountID: "owner", Phone: " 0912345678 "})
 	if err != nil {
 		t.Fatal(err)
 	}
-	address := updated.Customer.Profile.Address
-	if address.Line != "12 Nguyen Trai" || address.ProvinceCode != "HN" {
-		t.Fatalf("address not merged: %#v", address)
-	}
-	if updated.Customer.Profile.Phone != "+84901234567" {
-		t.Fatalf("omitted phone changed: %q", updated.Customer.Profile.Phone)
+	if updated.Customer.Profile.Phone != "0912345678" || updated.Customer.Profile.Address.Line != "12 Nguyen Trai" {
+		t.Fatalf("profile = %#v", updated.Customer.Profile)
 	}
 	// BankRepository.Save persists nothing when Version is unchanged.
 	if updated.Version != 1 || repo.saves != 1 {
@@ -78,20 +72,31 @@ func TestUpdateProfileMergesAddressAndIncrementsVersion(t *testing.T) {
 	}
 }
 
-func TestUpdateProfileRejectsEmptyValuesAndEmptyRequest(t *testing.T) {
-	for name, cmd := range map[string]UpdateCustomerProfileCommand{
-		"no fields":      {AccountID: "owner"},
-		"empty phone":    {AccountID: "owner", Phone: ptr(" ")},
-		"invalid phone":  {AccountID: "owner", Phone: ptr("abc")},
-		"empty line":     {AccountID: "owner", AddressLine: ptr("")},
-		"empty province": {AccountID: "owner", ProvinceCode: ptr("")},
-	} {
+func TestUpdateProfileRejectsInvalidPhone(t *testing.T) {
+	for _, phone := range []string{"", " ", "abc"} {
 		repo := &profileRepoStub{account: customerAccount()}
-		if _, err := NewUpdateCustomerProfileHandler(repo).Handle(context.Background(), cmd); !errors.Is(err, accountdomain.ErrInvalidProfile) {
-			t.Errorf("%s: error = %v", name, err)
+		if _, err := NewUpdateCustomerProfileHandler(repo).Handle(context.Background(), UpdateCustomerProfileCommand{AccountID: "owner", Phone: phone}); !errors.Is(err, accountdomain.ErrInvalidProfile) || repo.saves != 0 {
+			t.Errorf("%q: err = %v, saves = %d", phone, err, repo.saves)
 		}
-		if repo.saves != 0 {
-			t.Errorf("%s: saved invalid profile", name)
+	}
+}
+
+func TestRegistrationRequiresCustomerDetails(t *testing.T) {
+	valid := RegisterAccountCommand{Phone: "0912345678", AddressLine: "12 Nguyen Trai", ProvinceCode: "HCM", IssuedPlace: "Cục CSQLHC", PermanentAddress: "Hà Nội"}
+	if err := valid.ValidateCustomerDetails(); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(*RegisterAccountCommand){
+		"phone":     func(c *RegisterAccountCommand) { c.Phone = "abc" },
+		"address":   func(c *RegisterAccountCommand) { c.AddressLine = " " },
+		"province":  func(c *RegisterAccountCommand) { c.ProvinceCode = "" },
+		"place":     func(c *RegisterAccountCommand) { c.IssuedPlace = "" },
+		"permanent": func(c *RegisterAccountCommand) { c.PermanentAddress = "" },
+	} {
+		cmd := valid
+		mutate(&cmd)
+		if !errors.Is(cmd.ValidateCustomerDetails(), accountdomain.ErrInvalidProfile) {
+			t.Errorf("%s: missing value was accepted", name)
 		}
 	}
 }

@@ -222,7 +222,7 @@ func (m *LoanReadModel) ListByCustomer(
 ) ([]*loan.Application, error) {
 	return m.list(
 		ctx,
-		bson.M{"owner_id": customerID},
+		bson.M{"owner_id": customerID, "status": bson.M{"$ne": loan.ApplicationStatusDeleted}},
 		limit,
 	)
 }
@@ -233,7 +233,7 @@ func (m *LoanReadModel) ListAll(
 ) ([]*loan.Application, error) {
 	return m.list(
 		ctx,
-		bson.M{},
+		bson.M{"status": bson.M{"$ne": loan.ApplicationStatusDeleted}},
 		limit,
 	)
 }
@@ -423,7 +423,7 @@ func (m *LoanReadModel) ListByCustomerPage(
 ) ([]*loan.Application, bool, error) {
 	return m.listPage(
 		ctx,
-		bson.M{"owner_id": customerID},
+		bson.M{"owner_id": customerID, "status": bson.M{"$ne": loan.ApplicationStatusDeleted}},
 		limit,
 		afterTime,
 		afterID,
@@ -438,7 +438,7 @@ func (m *LoanReadModel) ListAllPage(
 ) ([]*loan.Application, bool, error) {
 	return m.listPage(
 		ctx,
-		bson.M{},
+		bson.M{"status": bson.M{"$ne": loan.ApplicationStatusDeleted}},
 		limit,
 		afterTime,
 		afterID,

@@ -129,6 +129,20 @@ func RegisterRoutes(
 	adminOnly := func(handler http.Handler) http.Handler {
 		return middleware.RequireAuth(tokenSvc)(h.RequireCurrentAdmin(handler))
 	}
+	router.Handle("POST /api/auth/me/profile-changes", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.RequestProfileChange)), openapi.Operation{
+		ID: "requestProfileChange", Summary: "Submit profile details for admin approval", Tags: []string{"Profile"},
+		Request: profileChangeRequest{}, Response: httpx.SuccessResponse[AccountResponsePrivate]{},
+		FailureStatuses: []int{400, 401, 404, 409, 500}, Auth: true,
+	})
+	router.Handle("GET /api/admin/profile-changes", adminOnly(http.HandlerFunc(h.ListProfileChanges)), openapi.Operation{
+		ID: "listProfileChanges", Summary: "List profile changes awaiting approval", Tags: []string{"Profile"},
+		Response: httpx.SuccessResponse[[]ProfileChangeReviewItem]{}, FailureStatuses: []int{401, 403, 500}, Auth: true,
+	})
+	router.Handle("POST /api/admin/profile-changes/{accountId}/{requestId}/decision", adminOnly(http.HandlerFunc(h.DecideProfileChange)), openapi.Operation{
+		ID: "decideProfileChange", Summary: "Approve or reject a profile change", Tags: []string{"Profile"},
+		Request: profileChangeDecisionRequest{}, Response: httpx.SuccessResponse[map[string]bool]{},
+		FailureStatuses: []int{400, 401, 403, 404, 409, 500}, Auth: true,
+	})
 	router.Handle("GET /api/accounts", adminOnly(http.HandlerFunc(h.GetAll)), openapi.Operation{
 		ID:              "listAccounts",
 		Summary:         "List all accounts",

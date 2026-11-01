@@ -43,8 +43,23 @@ export function useRegistrationFlow() {
           id: restoredSession.profile.id,
           dob: restoredSession.profile.dob,
           issuedDate: restoredSession.profile.issuedDate,
+          phone: "",
+          addressLine: "",
+          provinceCode: "",
+          issuedPlace: "",
+          permanentAddress: "",
         }
-      : { name: "", id: "", dob: "", issuedDate: "" },
+      : {
+          name: "",
+          id: "",
+          dob: "",
+          issuedDate: "",
+          phone: "",
+          addressLine: "",
+          provinceCode: "",
+          issuedPlace: "",
+          permanentAddress: "",
+        },
   );
   const [otpCode, setOtpCode] = useState("");
   // otpBusy = đang xác thực (khoá ô nhập); otpSending = đang gửi mã (vẫn cho
@@ -356,6 +371,11 @@ export function useRegistrationFlow() {
       cccdIssuedDate: `${profile.issuedDate}T00:00:00Z`,
       email: email.trim(),
       password,
+      phone: profile.phone.replace(/[\s.-]/g, ""),
+      addressLine: profile.addressLine.trim(),
+      provinceCode: profile.provinceCode,
+      issuedPlace: profile.issuedPlace.trim(),
+      permanentAddress: profile.permanentAddress.trim(),
     };
   }
   async function register() {
@@ -424,6 +444,10 @@ export function useRegistrationFlow() {
     if (screen === "profile") {
       if (profile.issuedDate < profile.dob) {
         setError("Ngày cấp CCCD phải từ ngày sinh trở đi.");
+        return;
+      }
+      if (!/^\+?[0-9]{8,16}$/.test(profile.phone.replace(/[\s.-]/g, ""))) {
+        setError("Số điện thoại gồm 8-16 chữ số, có thể bắt đầu bằng +.");
         return;
       }
       go("password");

@@ -7,6 +7,7 @@ import {
 import { AdminShell } from "@/components/layout/AdminShell";
 import { AccountTimelinePage } from "@/features/audit/AccountTimelinePage";
 import { LoanReviewPage } from "@/features/loans/LoanReviewPage";
+import { ProfileChangesPage } from "@/features/profileChanges/ProfileChangesPage";
 import { MonitorPage } from "@/features/monitor/MonitorPage";
 import {
   isProtectedRoute,
@@ -100,6 +101,8 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
         <AccountTimelinePage />
       ) : isLoanReview ? (
         <LoanReviewPage />
+      ) : route === routes.profileChanges ? (
+        <ProfileChangesPage />
       ) : (
         <PlaceholderPage route={route} />
       )}

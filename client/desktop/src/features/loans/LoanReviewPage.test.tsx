@@ -54,6 +54,33 @@ const underReview: LoanApplication = {
   status: "under_review",
 };
 
+const reviewedDocuments = [
+  "IDENTITY_FRONT",
+  "IDENTITY_BACK",
+  "VNEID_PERSONAL",
+  "VNEID_RESIDENCE",
+  "VSSID_PARTICIPATION",
+  "VSSID_DETAIL",
+  "SALARY_STATEMENT_3_MONTHS",
+].map((type, index) => ({
+  documentId: `d${index + 1}`,
+  type,
+  verificationStatus: "verified",
+  uploadedAt: "2026-10-30T00:00:00Z",
+  mimeType: "image/jpeg",
+  sizeBytes: 2048,
+}));
+const declared = {
+  monthlyIncome: 30_000_000,
+  existingMonthlyDebt: 2_000_000,
+  regionCode: "KV02",
+  purpose: "Mua xe",
+};
+const chooseHistory = () =>
+  fireEvent.change(screen.getByLabelText("Lịch sử trả nợ"), {
+    target: { value: "previously_late" },
+  });
+
 describe("LoanReviewPage", () => {
   beforeEach(() => {
     vi.mocked(listLoans).mockReset();
@@ -243,20 +270,13 @@ describe("LoanReviewPage", () => {
 
   it("references the application's documents as evidence sources", async () => {
     vi.mocked(attestLoanEvidence).mockResolvedValue(undefined as never);
-    const documents = ["d1", "d2", "d3"].map((documentId) => ({
-      documentId,
-      type: "IDENTITY_FRONT",
-      verificationStatus: "verified",
-      uploadedAt: "2026-10-30T00:00:00Z",
-      mimeType: "image/jpeg",
-      sizeBytes: 2048,
-    }));
     vi.mocked(listLoans).mockResolvedValue({
-      items: [{ ...underReview, documents }],
+      items: [{ ...underReview, declared, documents: reviewedDocuments }],
       nextCursor: null,
     });
     render(<LoanReviewPage />);
     fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    chooseHistory();
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(
       screen.getByRole("button", { name: "Lưu kết quả đối soát" }),
@@ -266,10 +286,53 @@ describe("LoanReviewPage", () => {
       expect(attestLoanEvidence).toHaveBeenCalledWith(
         "app-1",
         expect.objectContaining({
-          sources: ["loan-document:d1", "loan-document:d2", "loan-document:d3"],
+          monthlySalaries: [30_000_000, 30_000_000, 30_000_000],
+          existingMonthlyDebt: 2_000_000,
+          regionCode: "KV02",
+          sources: reviewedDocuments.map(
+            (doc) => `loan-document:${doc.documentId}`,
+          ),
         }),
       ),
     );
+  });
+
+  it("blocks evidence until all documents are verified and shows the score after assessment", async () => {
+    vi.mocked(listLoans).mockResolvedValue({
+      items: [
+        { ...underReview, declared, documents: [] },
+        {
+          ...underReview,
+          id: "app-2",
+          applicationNo: "APP-002",
+          assessedAt: "2026-11-01T00:00:00Z",
+          assessmentScore: 75,
+          assessmentDecision: "manual_review",
+          assessmentReasons: ["DTI requires manual review"],
+        },
+      ],
+      nextCursor: null,
+    });
+    render(<LoanReviewPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    chooseHistory();
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Lưu kết quả đối soát",
+      }).disabled,
+    ).toBe(true);
+    expect(screen.getByText(/Khách khai/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /APP-002/ }));
+    expect(screen.getByText("Điểm: 75")).toBeTruthy();
+    expect(
+      screen.getByText("Tỷ lệ nợ trên thu nhập cần xem xét thêm"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Chấm điểm" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Lưu kết quả đối soát" }),
+    ).toBeNull();
   });
 
   it("starts review for a submitted application", async () => {
@@ -290,12 +353,13 @@ describe("LoanReviewPage", () => {
   it("requires the verification checkbox before saving evidence", async () => {
     vi.mocked(attestLoanEvidence).mockResolvedValue(undefined);
     vi.mocked(listLoans).mockResolvedValue({
-      items: [underReview],
+      items: [{ ...underReview, declared, documents: reviewedDocuments }],
       nextCursor: null,
     });
 
     render(<LoanReviewPage />);
     fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    chooseHistory();
 
     const evidenceButton = screen.getByRole("button", {
       name: "Lưu kết quả đối soát",
@@ -310,7 +374,7 @@ describe("LoanReviewPage", () => {
       expect(attestLoanEvidence).toHaveBeenCalledWith(
         "app-1",
         expect.objectContaining({
-          regionCode: "KV01",
+          regionCode: "KV02",
           repaymentHistory: "previously_late",
           insuranceVerified: true,
           documentsVerified: true,

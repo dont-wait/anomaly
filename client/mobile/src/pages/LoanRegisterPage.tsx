@@ -286,6 +286,12 @@ const LoanRegisterPage = () => {
       requestedAmount: amount,
       termMonths: tenure,
       disbursementAccountId: sourceAccountId.trim(),
+      declared: {
+        monthlyIncome: income,
+        existingMonthlyDebt: debt,
+        regionCode: region,
+        purpose: purpose.startsWith("Khác") ? details.trim() : purpose,
+      },
     };
     const fingerprint = JSON.stringify(payload);
     const scope = `create-loan:${user?.id ?? "anonymous"}`;

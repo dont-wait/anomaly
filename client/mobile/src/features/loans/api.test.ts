@@ -64,6 +64,12 @@ it("sends idempotency UUID for create and repayment confirm", async () => {
       requestedAmount: 10_000_000,
       termMonths: 12,
       disbursementAccountId: "account-id",
+      declared: {
+        monthlyIncome: 20_000_000,
+        existingMonthlyDebt: 0,
+        regionCode: "KV01",
+        purpose: "Mua xe",
+      },
     },
     "create-uuid",
   );

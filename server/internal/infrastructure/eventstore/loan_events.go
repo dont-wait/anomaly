@@ -19,6 +19,7 @@ const (
 	EventLoanApplicationCreated   = "LoanApplicationCreated"
 	EventLoanDocumentAdded        = "LoanDocumentAdded"
 	EventLoanDocumentReviewed     = "LoanDocumentReviewed"
+	EventLoanApplicationDeleted   = "LoanApplicationDeleted"
 	EventLoanApplicationSubmitted = "LoanApplicationSubmitted"
 	EventLoanReviewStarted        = "LoanReviewStarted"
 	EventLoanApplicationAssessed  = "LoanApplicationAssessed"
@@ -199,6 +200,17 @@ func applyLoanEvent(
 		// Ghi dữ liệu và thời gian gốc từ event.
 		app.Documents = append(app.Documents, p.Document)
 		app.UpdatedAt = p.UpdatedAt
+
+	case EventLoanApplicationDeleted:
+		var p struct {
+			DeletedAt time.Time `json:"deletedAt"`
+		}
+		if err := json.Unmarshal(data, &p); err != nil {
+			return err
+		}
+		if err := app.Delete(p.DeletedAt); err != nil {
+			return fmt.Errorf("invalid loan delete event: %w", err)
+		}
 
 	case EventLoanDocumentReviewed:
 		var p struct {

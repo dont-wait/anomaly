@@ -66,8 +66,7 @@ func TestProfileEventSourcing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	phone, line := "+84901234567", "12 Nguyen Trai"
-	if _, err := commands.NewUpdateCustomerProfileHandler(bank).Handle(ctx, commands.UpdateCustomerProfileCommand{AccountID: id, Phone: &phone, AddressLine: &line}); err != nil {
+	if _, err := commands.NewUpdateCustomerProfileHandler(bank).Handle(ctx, commands.UpdateCustomerProfileCommand{AccountID: id, Phone: "+84901234567"}); err != nil {
 		t.Fatalf("update profile: %v", err)
 	}
 
@@ -83,8 +82,8 @@ func TestProfileEventSourcing(t *testing.T) {
 	}
 
 	// Saving another profile change afterwards must not restore the old credential.
-	province := "HCM"
-	if _, err := commands.NewUpdateCustomerProfileHandler(bank).Handle(ctx, commands.UpdateCustomerProfileCommand{AccountID: id, ProvinceCode: &province}); err != nil {
+	phone := "+84907654321"
+	if _, err := commands.NewUpdateCustomerProfileHandler(bank).Handle(ctx, commands.UpdateCustomerProfileCommand{AccountID: id, Phone: phone}); err != nil {
 		t.Fatalf("update after password change: %v", err)
 	}
 
@@ -100,9 +99,8 @@ func TestProfileEventSourcing(t *testing.T) {
 	if err != nil || version != 1 {
 		t.Fatalf("token version = %d/%v", version, err)
 	}
-	profile := account.Customer.Profile
-	if profile.Phone != phone || profile.Address.Line != line || profile.Address.ProvinceCode != province {
-		t.Fatalf("replayed profile = %#v", profile)
+	if account.Customer.Profile.Phone != phone {
+		t.Fatalf("replayed phone = %q", account.Customer.Profile.Phone)
 	}
 	if !account.IsVerified() {
 		t.Fatal("verification lost after profile updates")

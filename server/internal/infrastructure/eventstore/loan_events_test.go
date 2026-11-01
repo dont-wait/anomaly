@@ -1008,3 +1008,15 @@ func TestReplayLoanDocumentReviewed(t *testing.T) {
 		t.Fatal("expected an error for an unknown document")
 	}
 }
+
+func TestReplayLoanApplicationDeletedOnlyFromDraft(t *testing.T) {
+	app, base := prepareLoanReviewReplay(t)
+	if err := applyLoanEvent(app, EventLoanApplicationDeleted, loanReplayJSON(t, map[string]any{"deletedAt": base})); err == nil {
+		t.Fatal("expected an error when deleting a reviewed application")
+	}
+	draft := &loandomain.Application{Id: "draft", Status: loandomain.ApplicationStatusDraft}
+	mustReplayLoanEvent(t, draft, EventLoanApplicationDeleted, map[string]any{"deletedAt": base})
+	if draft.Status != loandomain.ApplicationStatusDeleted {
+		t.Fatalf("status = %s", draft.Status)
+	}
+}

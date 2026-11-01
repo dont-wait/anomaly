@@ -46,8 +46,8 @@ Do not display internal account/customer IDs, RustFS keys, storage URLs, token v
 
 ### 3.3 Editing profile information
 
-- Editable fields in the first release: phone, email, residential address, and province/region.
-- Full name, date of birth, CCCD number, CCCD issue data, and permanent address are read-only after KYC verification. The UI explains that correction requires a review flow and supporting proof; it must not imply that changing text updates verified identity.
+- Phone, email (through its verification flow), and avatar change directly. Full name, residential address, province, identity issue place, and permanent address change only after an admin approves the request (`POST /api/auth/me/profile-changes`, reviewed at `/api/admin/profile-changes`). Admins cannot review their own request. All of these values are also required at registration.
+- Date of birth, CCCD number, and CCCD issue date cannot be changed by the customer. The UI explains that correction requires a review flow and supporting proof; it must not imply that changing text updates verified identity.
 - Before KYC verification, whether identity fields can be edited is governed by the existing KYC/session flow; this profile feature must not bypass KYC.
 - Validate required values and formats before submission. The server remains authoritative.
 - Save is explicit. Show loading state, field-level validation where possible, and a success/error message. Do not optimistically claim a save before the server confirms it.
@@ -138,21 +138,17 @@ Remove `idCardFrontUrl`, `idCardBackUrl`, and `liveVideoUrl` from `toAccountResp
 
 `PATCH /api/auth/me/profile`
 
-Request fields are partial and limited to:
+The request contains only `phone`:
 
 ```json
 {
-  "phone": "+84901234567",
-  "address": {
-    "line": "12 Nguyen Trai",
-    "provinceCode": "HCM"
-  }
+  "phone": "+84901234567"
 }
 ```
 
 Reject unknown/protected fields (including email, identity, role, account number, balance, and KYC status). Response returns the updated profile representation.
 
-Merge rules apply at every level, including inside `address`: an omitted field keeps its current value. `null` or an empty string is rejected with 400, because these fields cannot be cleared in the first release. A request with no fields is also rejected with 400.
+An empty or invalid phone is rejected with 400.
 
 ### 5.3 Change email
 

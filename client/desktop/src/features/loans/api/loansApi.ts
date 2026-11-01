@@ -75,7 +75,7 @@ function errorMessage(status: number, body: unknown): string {
   return `Yêu cầu thất bại (mã ${status}).`;
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
   init: RequestInit = {},
   timeoutMs = TIMEOUT_MS,

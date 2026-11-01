@@ -30,6 +30,7 @@ import {
 } from "./api/loansApi";
 import {
   assessmentLabels,
+  assessmentReasonLabel,
   documentLabels,
   documentStatusLabels,
   explainLoanError,
@@ -127,7 +128,8 @@ const TABS: Array<{ id: TabId; label: string }> = [
 ];
 // Ảnh hoặc PDF giấy tờ thật luôn lớn hơn nhiều so với ngưỡng này.
 const NEAR_EMPTY_BYTES = 1024;
-const DOCUMENT_COUNT = Object.keys(documentLabels).length;
+const DOCUMENT_TYPES = Object.keys(documentLabels);
+const DOCUMENT_COUNT = DOCUMENT_TYPES.length;
 
 const formatDate = (value?: string) => {
   const date = new Date(value ?? "");
@@ -583,11 +585,11 @@ export function LoanReviewPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [detail, setDetail] = useState<LoanApplication | null>(null);
-  const [income, setIncome] = useState(20_000_000);
+  const [income, setIncome] = useState(0);
   const [region, setRegion] = useState("KV01");
   const [debt, setDebt] = useState(0);
-  const [insurance, setInsurance] = useState(24);
-  const [history, setHistory] = useState("previously_late");
+  const [insurance, setInsurance] = useState(0);
+  const [history, setHistory] = useState("");
   const [verified, setVerified] = useState(false);
   const [reason, setReason] = useState("");
   const [tab, setTab] = useState<TabId>("review");
@@ -635,6 +637,25 @@ export function LoanReviewPage() {
   useEffect(() => {
     void loadListRef.current(false);
   }, []);
+
+  // Điền sẵn số khách khai để đối chiếu; phần chưa khai thì admin phải tự nhập.
+  const selectApplication = (item: LoanApplication) => {
+    setSelectedId(item.id);
+    setDetail(item);
+    setTab("review");
+    setIncome(item.declared?.monthlyIncome ?? 0);
+    setDebt(item.declared?.existingMonthlyDebt ?? 0);
+    setRegion(item.declared?.regionCode ?? "KV01");
+    setInsurance(0);
+    setHistory("");
+    setVerified(false);
+  };
+  const documentsReady = DOCUMENT_TYPES.every((type) =>
+    (detail?.documents ?? []).some(
+      (doc) => doc.type === type && doc.verificationStatus === "verified",
+    ),
+  );
+  const assessed = !!detail?.assessedAt;
 
   const evidence: VerifiedEvidenceInput = {
     monthlySalaries: [income, income, income],
@@ -708,9 +729,7 @@ export function LoanReviewPage() {
                       }`}
                       type="button"
                       onClick={() => {
-                        setSelectedId(item.id);
-                        setDetail(item);
-                        setTab("review");
+                        selectApplication(item);
                       }}
                     >
                       <span className="flex items-center justify-between gap-2">
@@ -820,14 +839,27 @@ export function LoanReviewPage() {
                 application={detail}
                 all={items}
                 onOpen={(item) => {
-                  setSelectedId(item.id);
-                  setDetail(item);
-                  setTab("review");
+                  selectApplication(item);
                 }}
               />
             )}
             {tab === "review" && (
               <>
+                {assessed && (
+                  <div className="grid gap-1 rounded-sm border border-(--admin-border) px-3 py-2">
+                    <p className="text-[13px] font-bold text-(--admin-text)">
+                      Điểm: {detail.assessmentScore ?? 0}
+                    </p>
+                    {(detail.assessmentReasons ?? []).map((item) => (
+                      <p
+                        key={item}
+                        className="text-[11px] text-(--admin-text-muted)"
+                      >
+                        {assessmentReasonLabel(item)}
+                      </p>
+                    ))}
+                  </div>
+                )}
                 <dl className="grid grid-cols-2 gap-2 text-[11px]">
                   <div>
                     <dt className="text-(--admin-text-muted)">
@@ -865,114 +897,156 @@ export function LoanReviewPage() {
 
                 {detail.status === "under_review" && (
                   <div className="grid gap-3">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className={fieldLabel}>
-                        Lương mỗi tháng đã đối chiếu
-                        <input
-                          className={fieldInput}
-                          inputMode="numeric"
-                          value={
-                            income
-                              ? new Intl.NumberFormat("vi-VN").format(income)
-                              : ""
-                          }
-                          onChange={(event) =>
-                            setIncome(
-                              Number(event.target.value.replace(/\D/g, "")),
-                            )
-                          }
-                        />
-                      </label>
-                      <label className={fieldLabel}>
-                        Khu vực
-                        <select
-                          className={fieldInput}
-                          value={region}
-                          onChange={(event) => setRegion(event.target.value)}
-                        >
-                          <option value="KV01">HCM, Hà Nội, Cần Thơ</option>
-                          <option value="KV02">Huế, Đà Nẵng, Hải Phòng</option>
-                          <option value="KV03">Khu vực khác</option>
-                        </select>
-                      </label>
-                      <label className={fieldLabel}>
-                        Khoản trả nợ mỗi tháng
-                        <input
-                          className={fieldInput}
-                          inputMode="numeric"
-                          value={
-                            debt
-                              ? new Intl.NumberFormat("vi-VN").format(debt)
-                              : ""
-                          }
-                          onChange={(event) =>
-                            setDebt(
-                              Number(event.target.value.replace(/\D/g, "")),
-                            )
-                          }
-                        />
-                      </label>
-                      <label className={fieldLabel}>
-                        Số tháng đóng BHXH
-                        <input
-                          className={fieldInput}
-                          type="number"
-                          value={insurance}
-                          onChange={(event) =>
-                            setInsurance(Number(event.target.value))
-                          }
-                        />
-                      </label>
-                      <label className={fieldLabel}>
-                        Lịch sử trả nợ
-                        <select
-                          className={fieldInput}
-                          value={history}
-                          onChange={(event) => setHistory(event.target.value)}
-                        >
-                          <option value="previously_late">Từng trả chậm</option>
-                          <option value="on_time">Luôn trả đúng hạn</option>
-                        </select>
-                      </label>
-                    </div>
+                    {detail.declared && !assessed && (
+                      <p className="rounded-sm border border-(--admin-border) px-3 py-2 text-[11px] text-(--admin-text-muted)">
+                        Khách khai: thu nhập{" "}
+                        {vnd(detail.declared.monthlyIncome)}, trả nợ{" "}
+                        {vnd(detail.declared.existingMonthlyDebt)}/tháng, mục
+                        đích: {detail.declared.purpose}. Đối chiếu với chứng từ
+                        rồi sửa nếu khác.
+                      </p>
+                    )}
+                    {!detail.declared && !assessed && (
+                      <p className="text-[11px] text-(--admin-text-muted)">
+                        Hồ sơ cũ chưa có số khách khai, cần nhập từ chứng từ.
+                      </p>
+                    )}
+                    {!assessed && (
+                      <>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label className={fieldLabel}>
+                            Lương mỗi tháng đã đối chiếu
+                            <input
+                              className={fieldInput}
+                              inputMode="numeric"
+                              value={
+                                income
+                                  ? new Intl.NumberFormat("vi-VN").format(
+                                      income,
+                                    )
+                                  : ""
+                              }
+                              onChange={(event) =>
+                                setIncome(
+                                  Number(event.target.value.replace(/\D/g, "")),
+                                )
+                              }
+                            />
+                          </label>
+                          <label className={fieldLabel}>
+                            Khu vực
+                            <select
+                              className={fieldInput}
+                              value={region}
+                              onChange={(event) =>
+                                setRegion(event.target.value)
+                              }
+                            >
+                              <option value="KV01">HCM, Hà Nội, Cần Thơ</option>
+                              <option value="KV02">
+                                Huế, Đà Nẵng, Hải Phòng
+                              </option>
+                              <option value="KV03">Khu vực khác</option>
+                            </select>
+                          </label>
+                          <label className={fieldLabel}>
+                            Khoản trả nợ mỗi tháng
+                            <input
+                              className={fieldInput}
+                              inputMode="numeric"
+                              value={
+                                debt
+                                  ? new Intl.NumberFormat("vi-VN").format(debt)
+                                  : ""
+                              }
+                              onChange={(event) =>
+                                setDebt(
+                                  Number(event.target.value.replace(/\D/g, "")),
+                                )
+                              }
+                            />
+                          </label>
+                          <label className={fieldLabel}>
+                            Số tháng đóng BHXH
+                            <input
+                              className={fieldInput}
+                              type="number"
+                              value={insurance}
+                              onChange={(event) =>
+                                setInsurance(Number(event.target.value))
+                              }
+                            />
+                          </label>
+                          <label className={fieldLabel}>
+                            Lịch sử trả nợ
+                            <select
+                              className={fieldInput}
+                              value={history}
+                              onChange={(event) =>
+                                setHistory(event.target.value)
+                              }
+                            >
+                              <option value="">Chọn lịch sử trả nợ</option>
+                              <option value="previously_late">
+                                Từng trả chậm
+                              </option>
+                              <option value="on_time">Luôn trả đúng hạn</option>
+                            </select>
+                          </label>
+                        </div>
 
-                    <label className="flex items-start gap-2 text-[11px] leading-4 text-(--admin-text-muted)">
-                      <input
-                        className="mt-0.5"
-                        type="checkbox"
-                        checked={verified}
-                        onChange={(event) => setVerified(event.target.checked)}
-                      />
-                      Tôi đã đối chiếu thu nhập, bảo hiểm, lịch sử trả nợ và
-                      chứng từ của khách.
-                    </label>
+                        <label className="flex items-start gap-2 text-[11px] leading-4 text-(--admin-text-muted)">
+                          <input
+                            className="mt-0.5"
+                            type="checkbox"
+                            checked={verified}
+                            onChange={(event) =>
+                              setVerified(event.target.checked)
+                            }
+                          />
+                          Tôi đã đối chiếu thu nhập, bảo hiểm, lịch sử trả nợ và
+                          chứng từ của khách.
+                        </label>
 
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        disabled={busy || !verified}
-                        onClick={() => {
-                          void run(
-                            () => attestLoanEvidence(detail.id, evidence),
-                            "Đã lưu kết quả đối soát. Tiếp theo: chấm điểm.",
-                          );
-                        }}
-                      >
-                        Lưu kết quả đối soát
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        disabled={busy}
-                        onClick={() => {
-                          void run(
-                            () => assessLoan(detail.id),
-                            "Đã chấm điểm hồ sơ.",
-                          );
-                        }}
-                      >
-                        Chấm điểm
-                      </Button>
-                    </div>
-
+                        {!documentsReady && (
+                          <p className="text-[11px] text-(--admin-warning)">
+                            Cần duyệt đủ {DOCUMENT_COUNT} chứng từ ở tab Chứng
+                            từ trước khi lưu kết quả đối soát.
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            disabled={
+                              busy ||
+                              !verified ||
+                              !documentsReady ||
+                              income <= 0 ||
+                              !history
+                            }
+                            onClick={() => {
+                              void run(
+                                () => attestLoanEvidence(detail.id, evidence),
+                                "Đã lưu kết quả đối soát. Tiếp theo: chấm điểm.",
+                              );
+                            }}
+                          >
+                            Lưu kết quả đối soát
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            disabled={busy}
+                            onClick={() => {
+                              void run(
+                                () => assessLoan(detail.id),
+                                "Đã chấm điểm hồ sơ.",
+                              );
+                            }}
+                          >
+                            Chấm điểm
+                          </Button>
+                        </div>
+                      </>
+                    )}
                     <label className={fieldLabel}>
                       Lý do quyết định thủ công
                       <textarea

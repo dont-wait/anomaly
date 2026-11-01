@@ -106,6 +106,8 @@ Authorization: Bearer {{customer_token}}
 type: IDENTITY_BACK
 file: file,fixtures/loan.pdf; application/pdf
 HTTP 201
+[Captures]
+doc_identity_back: jsonpath "$.documentId"
 
 POST {{base_url}}/api/loans/{{loan_id}}/documents
 Authorization: Bearer {{customer_token}}
@@ -113,6 +115,8 @@ Authorization: Bearer {{customer_token}}
 type: VNEID_PERSONAL
 file: file,fixtures/loan.pdf; application/pdf
 HTTP 201
+[Captures]
+doc_vneid_personal: jsonpath "$.documentId"
 
 POST {{base_url}}/api/loans/{{loan_id}}/documents
 Authorization: Bearer {{customer_token}}
@@ -120,6 +124,8 @@ Authorization: Bearer {{customer_token}}
 type: VNEID_RESIDENCE
 file: file,fixtures/loan.pdf; application/pdf
 HTTP 201
+[Captures]
+doc_vneid_residence: jsonpath "$.documentId"
 
 POST {{base_url}}/api/loans/{{loan_id}}/documents
 Authorization: Bearer {{customer_token}}
@@ -127,6 +133,8 @@ Authorization: Bearer {{customer_token}}
 type: VSSID_PARTICIPATION
 file: file,fixtures/loan.pdf; application/pdf
 HTTP 201
+[Captures]
+doc_vssid_participation: jsonpath "$.documentId"
 
 POST {{base_url}}/api/loans/{{loan_id}}/documents
 Authorization: Bearer {{customer_token}}
@@ -134,6 +142,8 @@ Authorization: Bearer {{customer_token}}
 type: VSSID_DETAIL
 file: file,fixtures/loan.pdf; application/pdf
 HTTP 201
+[Captures]
+doc_vssid_detail: jsonpath "$.documentId"
 
 POST {{base_url}}/api/loans/{{loan_id}}/documents
 Authorization: Bearer {{customer_token}}
@@ -141,6 +151,8 @@ Authorization: Bearer {{customer_token}}
 type: SALARY_STATEMENT_3_MONTHS
 file: file,fixtures/loan.pdf; application/pdf
 HTTP 201
+[Captures]
+doc_salary_statement_3_months: jsonpath "$.documentId"
 
 GET {{base_url}}/api/loans/{{loan_id}}/documents/{{document_id}}
 Authorization: Bearer {{customer_token}}
@@ -167,6 +179,55 @@ HTTP 200
 [Asserts]
 jsonpath "$.status" == "under_review"
 jsonpath "$.reviewStartedBy" == "{{admin_id}}"
+
+POST {{base_url}}/api/loans/{{loan_id}}/documents/{{document_id}}/verification
+Authorization: Bearer {{admin_token}}
+{
+  "decision": "verified"
+}
+HTTP 200
+
+POST {{base_url}}/api/loans/{{loan_id}}/documents/{{doc_identity_back}}/verification
+Authorization: Bearer {{admin_token}}
+{
+  "decision": "verified"
+}
+HTTP 200
+
+POST {{base_url}}/api/loans/{{loan_id}}/documents/{{doc_vneid_personal}}/verification
+Authorization: Bearer {{admin_token}}
+{
+  "decision": "verified"
+}
+HTTP 200
+
+POST {{base_url}}/api/loans/{{loan_id}}/documents/{{doc_vneid_residence}}/verification
+Authorization: Bearer {{admin_token}}
+{
+  "decision": "verified"
+}
+HTTP 200
+
+POST {{base_url}}/api/loans/{{loan_id}}/documents/{{doc_vssid_participation}}/verification
+Authorization: Bearer {{admin_token}}
+{
+  "decision": "verified"
+}
+HTTP 200
+
+POST {{base_url}}/api/loans/{{loan_id}}/documents/{{doc_vssid_detail}}/verification
+Authorization: Bearer {{admin_token}}
+{
+  "decision": "verified"
+}
+HTTP 200
+
+POST {{base_url}}/api/loans/{{loan_id}}/documents/{{doc_salary_statement_3_months}}/verification
+Authorization: Bearer {{admin_token}}
+{
+  "decision": "verified"
+}
+HTTP 200
 
 # Incomplete evidence must leave the loan writable, without an assessment event.
 POST {{base_url}}/api/loans/{{loan_id}}/evidence

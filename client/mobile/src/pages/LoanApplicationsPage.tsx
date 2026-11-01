@@ -2,6 +2,7 @@ import {
   faArrowLeft,
   faChevronRight,
   faFolderOpen,
+  faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -11,6 +12,7 @@ import {
   acceptLoanOffer,
   attachLoanProfileDocuments,
   confirmLoanContract,
+  deleteLoan,
   documentLabels,
   documentTypes,
   downloadLoanDocument,
@@ -36,6 +38,7 @@ import {
 } from "@/features/loans/format";
 import { uploadDocument } from "@/features/auth/api/profileMutations";
 import { ApiError } from "@/shared/lib/http";
+import { Pagination } from "@/shared/ui";
 import {
   LoanDocumentCard,
   LoanDocumentRow,
@@ -56,6 +59,8 @@ const appendUnique = <T,>(
   const seen = new Set(current.map(key));
   return [...current, ...incoming.filter((item) => !seen.has(key(item)))];
 };
+
+const PAGE_SIZE = 10;
 
 const PROFILE_DOCUMENT_TYPES: DocumentType[] = [
   "IDENTITY_FRONT",
@@ -125,6 +130,7 @@ export default function LoanApplicationsPage({
   const { token } = useAuth();
   const [items, setItems] = useState<LoanApplication[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const [listLoading, setListLoading] = useState(!applicationId);
   const [application, setApplication] = useState<LoanApplication | null>(null);
   const [offer, setOffer] = useState<LoanOffer | null>(null);
@@ -231,6 +237,47 @@ export default function LoanApplicationsPage({
     }
   };
 
+  const pageCount = Math.ceil(items.length / PAGE_SIZE);
+  const nextPage = async () => {
+    if (page < pageCount) {
+      setPage(page + 1);
+      return;
+    }
+    if (!token || !cursor) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await listLoans(token, cursor);
+      const merged = appendUnique(items, result.items, (item) => item.id);
+      setItems(merged);
+      setCursor(result.nextCursor);
+      if (merged.length > page * PAGE_SIZE) setPage(page + 1);
+    } catch (e) {
+      setError(explainLoanError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const removeDraft = async (id: string) => {
+    if (!token || !window.confirm("Xóa hồ sơ vay chưa gửi này?")) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await deleteLoan(token, id);
+      const remaining = items.filter((item) => item.id !== id);
+      setItems(remaining);
+      setPage((value) =>
+        Math.min(value, Math.max(Math.ceil(remaining.length / PAGE_SIZE), 1)),
+      );
+      setMessage("Đã xóa hồ sơ.");
+    } catch (e) {
+      setError(explainLoanError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const upload = async (type: DocumentType, file: File | undefined) => {
     if (!file || !token || !applicationId) return;
     if (
@@ -296,71 +343,71 @@ export default function LoanApplicationsPage({
             </div>
           )}
           {items
+            .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
             .map((item) => updatedApplications?.[item.id] ?? item)
             .map((app) => {
               const status = applicationStatusMeta[app.status];
               return (
-                <button
-                  type="button"
+                <div
                   key={app.id}
-                  onClick={() => navigate(loanApplication(app.id))}
-                  className="block w-full rounded-2xl border border-[#e2e7ff] bg-white p-4 text-left shadow-sm active:bg-[#faf8ff]"
+                  className="overflow-hidden rounded-2xl border border-[#e2e7ff] bg-white shadow-sm"
                 >
-                  <span className="flex items-start justify-between gap-3">
-                    <span className="min-w-0">
-                      <span className="block text-lg font-bold text-primary">
+                  <button
+                    type="button"
+                    onClick={() => navigate(loanApplication(app.id))}
+                    className="block w-full p-3.5 text-left active:bg-[#faf8ff]"
+                  >
+                    <span className="flex items-center justify-between gap-3">
+                      <strong className="min-w-0 truncate text-lg font-bold text-primary">
                         {vnd(app.requestedAmount)}
+                      </strong>
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${status?.className ?? "bg-gray-100 text-gray-700"}`}
+                      >
+                        {applicationStatusLabel(app.status)}
                       </span>
-                      <span className="mt-0.5 block text-xs text-on-surface-variant">
-                        Kỳ hạn {app.termMonths} tháng
+                    </span>
+                    <span className="mt-1 flex items-center justify-between gap-3 text-xs text-on-surface-variant">
+                      <span>
+                        {app.termMonths} tháng
+                        {app.createdAt &&
+                          ` · ${new Date(app.createdAt).toLocaleDateString("vi-VN")}`}
                       </span>
+                      <FontAwesomeIcon icon={faChevronRight} />
                     </span>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${status?.className ?? "bg-gray-100 text-gray-700"}`}
-                    >
-                      {applicationStatusLabel(app.status)}
+                    <span className="mt-1 block truncate text-xs text-on-surface-variant/70">
+                      {app.applicationNo || app.id}
                     </span>
-                  </span>
-                  <span className="mt-3 flex items-center justify-between gap-3 border-t border-[#f0f1f9] pt-2.5 text-xs text-on-surface-variant">
-                    <span className="min-w-0 truncate">
-                      <span>{app.applicationNo || app.id}</span>
-                      {app.createdAt &&
-                        ` · ${new Date(app.createdAt).toLocaleDateString("vi-VN")}`}
-                    </span>
-                    <FontAwesomeIcon icon={faChevronRight} />
-                  </span>
+                  </button>
                   {app.status === "draft" && (
-                    <span className="mt-2 block text-xs font-semibold text-secondary">
-                      {app.documents
-                        ? `Đã có ${documentTypes.length - missingDocumentTypes(app).length}/${documentTypes.length} chứng từ · `
-                        : ""}
-                      Tiếp tục hoàn tất
-                    </span>
+                    <div className="flex items-center justify-between gap-2 border-t border-[#f0f1f9] pl-3.5">
+                      <span className="min-w-0 truncate text-xs font-semibold text-secondary">
+                        {app.documents
+                          ? `Đã có ${documentTypes.length - missingDocumentTypes(app).length}/${documentTypes.length} chứng từ`
+                          : "Tiếp tục hoàn tất"}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-label={`Xóa hồ sơ ${app.applicationNo || app.id}`}
+                        onClick={() => void removeDraft(app.id)}
+                        className="flex h-11 w-11 shrink-0 items-center justify-center text-error disabled:opacity-50"
+                      >
+                        <FontAwesomeIcon icon={faTrash} />
+                      </button>
+                    </div>
                   )}
-                </button>
+                </div>
               );
             })}
-          {cursor && (
-            <Action
-              secondary
-              disabled={busy}
-              onClick={() => {
-                if (!token) return;
-                setBusy(true);
-                void listLoans(token, cursor)
-                  .then((page) => {
-                    setItems((old) =>
-                      appendUnique(old, page.items, (item) => item.id),
-                    );
-                    setCursor(page.nextCursor);
-                  })
-                  .catch((e: unknown) => setError(explainLoanError(e)))
-                  .finally(() => setBusy(false));
-              }}
-            >
-              Xem thêm hồ sơ
-            </Action>
-          )}
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            hasMore={!!cursor}
+            disabled={busy}
+            onPrevious={() => setPage((value) => value - 1)}
+            onNext={() => void nextPage()}
+          />
         </>
       )}
       {applicationId && (

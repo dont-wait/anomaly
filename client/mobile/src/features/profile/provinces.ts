@@ -1,0 +1,41 @@
+/** 34 đơn vị hành chính cấp tỉnh của Việt Nam, áp dụng từ 01/07/2025. */
+export const PROVINCES = [
+  { code: "HN", name: "Thành phố Hà Nội" },
+  { code: "HUE", name: "Thành phố Huế" },
+  { code: "HP", name: "Thành phố Hải Phòng" },
+  { code: "DN", name: "Thành phố Đà Nẵng" },
+  { code: "HCM", name: "Thành phố Hồ Chí Minh" },
+  { code: "CT", name: "Thành phố Cần Thơ" },
+  { code: "AG", name: "An Giang" },
+  { code: "BN", name: "Bắc Ninh" },
+  { code: "CM", name: "Cà Mau" },
+  { code: "CB", name: "Cao Bằng" },
+  { code: "DL", name: "Đắk Lắk" },
+  { code: "DB", name: "Điện Biên" },
+  { code: "DNA", name: "Đồng Nai" },
+  { code: "DT", name: "Đồng Tháp" },
+  { code: "GL", name: "Gia Lai" },
+  { code: "HT", name: "Hà Tĩnh" },
+  { code: "HY", name: "Hưng Yên" },
+  { code: "KH", name: "Khánh Hòa" },
+  { code: "LC", name: "Lai Châu" },
+  { code: "LD", name: "Lâm Đồng" },
+  { code: "LS", name: "Lạng Sơn" },
+  { code: "LCA", name: "Lào Cai" },
+  { code: "NA", name: "Nghệ An" },
+  { code: "NB", name: "Ninh Bình" },
+  { code: "PT", name: "Phú Thọ" },
+  { code: "QNG", name: "Quảng Ngãi" },
+  { code: "QNI", name: "Quảng Ninh" },
+  { code: "QT", name: "Quảng Trị" },
+  { code: "SL", name: "Sơn La" },
+  { code: "TN", name: "Tây Ninh" },
+  { code: "TNG", name: "Thái Nguyên" },
+  { code: "TH", name: "Thanh Hóa" },
+  { code: "TQ", name: "Tuyên Quang" },
+  { code: "VL", name: "Vĩnh Long" },
+] as const;
+
+/** Mã cũ không còn trong danh sách thì hiện nguyên giá trị đã lưu. */
+export const provinceName = (code?: string) =>
+  PROVINCES.find((item) => item.code === code)?.name ?? code ?? "";

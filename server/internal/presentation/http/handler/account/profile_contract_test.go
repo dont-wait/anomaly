@@ -2,7 +2,6 @@ package account
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,35 +11,14 @@ import (
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
 
-func decodeUpdate(t *testing.T, body string) error {
-	t.Helper()
-	var raw rawProfileUpdate
-	if err := json.Unmarshal([]byte(body), &raw); err != nil {
-		t.Fatal(err)
-	}
-	_, err := decodeProfileUpdate("owner", raw)
-	return err
-}
-
-func TestDecodeProfileUpdateRejectsNull(t *testing.T) {
-	for _, body := range []string{`{"phone":null}`, `{"address":null}`, `{"address":{"line":null}}`, `{"address":{"email":"x"}}`, `{"phone":1}`} {
-		if err := decodeUpdate(t, body); !errors.Is(err, accountdomain.ErrInvalidProfile) {
-			t.Errorf("%s: error = %v", body, err)
+func TestProfileUpdateRejectsEverythingExceptPhone(t *testing.T) {
+	for _, body := range []string{`{"fullName":"x"}`, `{"address":{"line":"x"}}`, `{"issuedPlace":"x"}`, `{"permanentAddress":"x"}`, `{"identityNumber":"1"}`, `{"email":"a@b.c"}`} {
+		decoder := json.NewDecoder(strings.NewReader(body))
+		decoder.DisallowUnknownFields()
+		var request profileUpdateRequest
+		if err := decoder.Decode(&request); err == nil {
+			t.Errorf("%s was accepted", body)
 		}
-	}
-}
-
-func TestDecodeProfileUpdateKeepsOmittedFieldsNil(t *testing.T) {
-	var raw rawProfileUpdate
-	if err := json.Unmarshal([]byte(`{"address":{"provinceCode":"HN"}}`), &raw); err != nil {
-		t.Fatal(err)
-	}
-	cmd, err := decodeProfileUpdate("owner", raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cmd.Phone != nil || cmd.AddressLine != nil || cmd.ProvinceCode == nil || *cmd.ProvinceCode != "HN" {
-		t.Fatalf("command = %#v", cmd)
 	}
 }
 

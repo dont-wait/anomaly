@@ -15,6 +15,7 @@ export interface AuthUser {
   address?: { line?: string; provinceCode?: string };
   avatar?: ProfileMedia;
   pendingEmail?: string | null;
+  profileChange?: ProfileChange;
   identity?: {
     type?: string;
     number?: string;
@@ -22,6 +23,21 @@ export interface AuthUser {
     issuedPlace?: string;
     permanentAddress?: string;
   };
+}
+
+export interface ProfileChangeInput {
+  fullName?: string;
+  addressLine?: string;
+  provinceCode?: string;
+  issuedPlace?: string;
+  permanentAddress?: string;
+}
+
+export interface ProfileChange extends ProfileChangeInput {
+  id: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  rejectionReason?: string;
+  requestedAt: string;
 }
 
 export interface ProfileMedia {

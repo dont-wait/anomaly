@@ -20,6 +20,7 @@ var loanEventSummaries = map[string]string{
 	"LoanApplicationCreated":   "Hồ sơ vay được tạo",
 	"LoanDocumentAdded":        "Hồ sơ vay được bổ sung chứng từ",
 	"LoanDocumentReviewed":     "Chứng từ vay được duyệt",
+	"LoanApplicationDeleted":   "Hồ sơ vay chưa gửi bị xóa",
 	"LoanApplicationSubmitted": "Hồ sơ vay được gửi",
 	"LoanReviewStarted":        "Bắt đầu thẩm định khoản vay",
 	"LoanApplicationAssessed":  "Khoản vay được thẩm định",

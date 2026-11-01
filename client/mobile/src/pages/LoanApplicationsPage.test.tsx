@@ -5,6 +5,7 @@ import LoanApplicationsPage from "./LoanApplicationsPage";
 import {
   attachLoanProfileDocuments,
   confirmLoanContract,
+  deleteLoan,
   documentTypes,
   downloadLoanDocument,
   getLoan,
@@ -30,6 +31,7 @@ vi.mock("@/features/loans/api", async (importOriginal) => {
   return {
     ...actual,
     attachLoanProfileDocuments: vi.fn(),
+    deleteLoan: vi.fn(),
     listLoans: vi.fn(),
     getLoan: vi.fn(),
     getLoanOffer: vi.fn(),
@@ -104,14 +106,14 @@ describe("LoanApplicationsPage", () => {
     render(<LoanApplicationsPage />);
 
     expect(await screen.findByText("APP-001")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Xem thêm hồ sơ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Trang sau" }));
 
     expect(await screen.findByText("APP-002")).toBeTruthy();
     await waitFor(() =>
       expect(listLoans).toHaveBeenNthCalledWith(2, "token", "cursor-1"),
     );
     expect(screen.getAllByText("APP-001")).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: "Xem thêm hồ sơ" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Phân trang" })).toBeNull();
   });
 
   it("shows friendly status, amount and an empty state", async () => {
@@ -324,6 +326,54 @@ describe("LoanApplicationsPage", () => {
       expect(attachLoanProfileDocuments).toHaveBeenCalledTimes(2),
     );
     expect(uploadLoanDocument).not.toHaveBeenCalled();
+  });
+
+  it("deletes only unsent applications after confirmation", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(deleteLoan).mockResolvedValue(undefined);
+    vi.mocked(listLoans).mockResolvedValue({
+      items: [
+        {
+          ...baseApplication,
+          id: "draft",
+          applicationNo: "APP-D",
+          status: "draft",
+        },
+        baseApplication,
+      ],
+      nextCursor: null,
+    });
+    render(<LoanApplicationsPage />);
+    await screen.findByText("APP-D");
+
+    expect(
+      screen.queryByRole("button", { name: "Xóa hồ sơ APP-001" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa hồ sơ APP-D" }));
+
+    await waitFor(() => expect(screen.queryByText("APP-D")).toBeNull());
+    expect(deleteLoan).toHaveBeenCalledWith("token", "draft");
+    expect(screen.getByText("APP-001")).toBeTruthy();
+  });
+
+  it("pages through applications ten at a time", async () => {
+    vi.mocked(listLoans).mockResolvedValue({
+      items: Array.from({ length: 12 }, (_, index) => ({
+        ...baseApplication,
+        id: `a${index}`,
+        applicationNo: `NO-${index}`,
+      })),
+      nextCursor: null,
+    });
+    render(<LoanApplicationsPage />);
+    await screen.findByText("NO-0");
+    expect(screen.queryByText("NO-10")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Trang sau" }));
+
+    expect(screen.getByText("NO-10")).toBeTruthy();
+    expect(screen.queryByText("NO-0")).toBeNull();
+    expect(screen.getByText("Trang 2/2")).toBeTruthy();
   });
 
   it("treats a missing offer as an empty state", async () => {

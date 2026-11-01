@@ -8,12 +8,11 @@ import (
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
 
-// UpdateCustomerProfileCommand is a partial update: a nil field keeps its current value.
+// UpdateCustomerProfileCommand: sau khi đăng ký, khách chỉ tự đổi được số điện
+// thoại ở đây. Email có luồng xác minh riêng, ảnh có API riêng.
 type UpdateCustomerProfileCommand struct {
-	AccountID    string
-	Phone        *string
-	AddressLine  *string
-	ProvinceCode *string
+	AccountID string
+	Phone     string
 }
 
 type UpdateCustomerProfileHandler struct{ repo AccountRepository }
@@ -23,7 +22,8 @@ func NewUpdateCustomerProfileHandler(repo AccountRepository) *UpdateCustomerProf
 }
 
 func (h *UpdateCustomerProfileHandler) Handle(ctx context.Context, cmd UpdateCustomerProfileCommand) (*accountdomain.UserAccount, error) {
-	if cmd.Phone == nil && cmd.AddressLine == nil && cmd.ProvinceCode == nil {
+	phone := strings.TrimSpace(cmd.Phone)
+	if !validPhone(phone) {
 		return nil, accountdomain.ErrInvalidProfile
 	}
 	account, err := h.repo.FindByID(ctx, cmd.AccountID)
@@ -33,27 +33,7 @@ func (h *UpdateCustomerProfileHandler) Handle(ctx context.Context, cmd UpdateCus
 	if account == nil || account.Customer == nil {
 		return nil, accountdomain.ErrAccountNotFound
 	}
-	if cmd.Phone != nil {
-		phone := strings.TrimSpace(*cmd.Phone)
-		if !validPhone(phone) {
-			return nil, accountdomain.ErrInvalidProfile
-		}
-		account.Customer.Profile.Phone = phone
-	}
-	if cmd.AddressLine != nil {
-		line := strings.TrimSpace(*cmd.AddressLine)
-		if line == "" || len(line) > 200 {
-			return nil, accountdomain.ErrInvalidProfile
-		}
-		account.Customer.Profile.Address.Line = line
-	}
-	if cmd.ProvinceCode != nil {
-		province := strings.ToUpper(strings.TrimSpace(*cmd.ProvinceCode))
-		if province == "" || len(province) > 16 {
-			return nil, accountdomain.ErrInvalidProfile
-		}
-		account.Customer.Profile.Address.ProvinceCode = province
-	}
+	account.Customer.Profile.Phone = phone
 	touchAccount(account)
 	if err := h.repo.Save(ctx, account); err != nil {
 		return nil, err

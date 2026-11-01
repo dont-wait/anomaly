@@ -245,6 +245,12 @@ it("quotes on reaching review and creates the same payload as before", async () 
         requestedAmount: 50_000_000,
         termMonths: 12,
         disbursementAccountId: "user-1",
+        declared: {
+          monthlyIncome: 20_000_000,
+          existingMonthlyDebt: 0,
+          regionCode: "KV03",
+          purpose: "Tiêu dùng cá nhân",
+        },
       },
       expect.any(String),
     ),

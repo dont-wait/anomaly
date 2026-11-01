@@ -28,6 +28,60 @@ const (
 	maxDocumentRejectionReason = 500
 )
 
+// DeclaredFinancials là thông tin khách tự khai khi tạo hồ sơ. Admin dùng để đối
+// chiếu; chỉ dữ liệu trong evidence đã xác minh mới được dùng để chấm điểm.
+type DeclaredFinancials struct {
+	MonthlyIncome       int64  `json:"monthlyIncome"`
+	ExistingMonthlyDebt int64  `json:"existingMonthlyDebt"`
+	RegionCode          string `json:"regionCode"`
+	Purpose             string `json:"purpose"`
+}
+
+// Validate kiểm tra giá trị khách khai.
+func (d DeclaredFinancials) Validate() error {
+	if d.MonthlyIncome <= 0 || d.ExistingMonthlyDebt < 0 {
+		return fmt.Errorf("invalid declared financials")
+	}
+	switch d.RegionCode {
+	case "KV01", "KV02", "KV03":
+	default:
+		return fmt.Errorf("invalid declared region")
+	}
+	if strings.TrimSpace(d.Purpose) == "" || len([]rune(d.Purpose)) > 500 {
+		return fmt.Errorf("invalid declared purpose")
+	}
+	return nil
+}
+
+var requiredDocumentTypes = []string{
+	"IDENTITY_FRONT",
+	"IDENTITY_BACK",
+	"VNEID_PERSONAL",
+	"VNEID_RESIDENCE",
+	"VSSID_PARTICIPATION",
+	"VSSID_DETAIL",
+	"SALARY_STATEMENT_3_MONTHS",
+}
+
+// AllDocumentsVerified cho biết admin đã duyệt đủ mọi loại chứng từ bắt buộc.
+func (a *Application) AllDocumentsVerified() bool {
+	if a == nil {
+		return false
+	}
+	verified := make(map[string]bool, len(a.Documents))
+	for _, document := range a.Documents {
+		if document.VerificationStatus == DocumentVerified {
+			verified[document.Type] = true
+		}
+	}
+	for _, documentType := range requiredDocumentTypes {
+		if !verified[documentType] {
+			return false
+		}
+	}
+	return true
+}
+
 // ApplicationStatus là trạng thái của hồ sơ vay.
 type ApplicationStatus string
 
@@ -38,6 +92,8 @@ const (
 	ApplicationStatusApproved    ApplicationStatus = "approved"
 	ApplicationStatusRejected    ApplicationStatus = "rejected"
 	ApplicationStatusDisbursed   ApplicationStatus = "disbursed"
+	// ApplicationStatusDeleted: khách đã xóa hồ sơ chưa gửi. Event vẫn được giữ.
+	ApplicationStatusDeleted ApplicationStatus = "deleted"
 )
 
 // Application đại diện cho một hồ sơ đăng ký vay vốn cá nhân.
@@ -50,6 +106,7 @@ type Application struct {
 	DisbursementAccountId  string                  `json:"disbursementAccountId"`
 	RequestedAmount        int64                   `json:"requestedAmount"`
 	TermMonths             int                     `json:"termMonths"`
+	Declared               *DeclaredFinancials     `json:"declared,omitempty"`
 	Documents              []ApplicationDocument   `json:"documents"`
 	Status                 ApplicationStatus       `json:"status"`
 	CreatedAt              time.Time               `json:"createdAt"`
@@ -277,6 +334,22 @@ func (a *Application) ReviewDocument(
 		return nil
 	}
 	return fmt.Errorf("loan document not found")
+}
+
+// Delete xóa hồ sơ chưa gửi. Hồ sơ đã gửi phải đi theo luồng thẩm định.
+func (a *Application) Delete(deletedAt time.Time) error {
+	if a == nil {
+		return fmt.Errorf("loan application is nil")
+	}
+	if a.Status != ApplicationStatusDraft {
+		return ErrInvalidApplicationStatus
+	}
+	if deletedAt.IsZero() {
+		return fmt.Errorf("delete timestamp is required")
+	}
+	a.Status = ApplicationStatusDeleted
+	a.UpdatedAt = deletedAt
+	return nil
 }
 
 func (a *Application) StartReview() error {

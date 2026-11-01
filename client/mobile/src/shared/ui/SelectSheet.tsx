@@ -18,7 +18,18 @@ interface SelectSheetProps {
   onChange: (value: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** Hiện ô tìm kiếm, không phân biệt dấu và hoa thường. */
+  searchable?: boolean;
 }
+
+// "đ" không tách được bằng NFD nên phải đổi riêng.
+const normalizeSearch = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase()
+    .trim();
 
 /** Mobile friendly select rendered as a labeled trigger and a selectable bottom sheet. */
 export function SelectSheet({
@@ -29,9 +40,21 @@ export function SelectSheet({
   onChange,
   disabled = false,
   placeholder = "Chọn một mục",
+  searchable = false,
 }: SelectSheetProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const selected = options.find((option) => option.value === value);
+  const keyword = normalizeSearch(query);
+  const visible = keyword
+    ? options.filter((option) =>
+        normalizeSearch(option.label).includes(keyword),
+      )
+    : options;
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+  };
 
   return (
     <>
@@ -59,9 +82,27 @@ export function SelectSheet({
           className="h-5 w-5 shrink-0 text-[#6b38d4]"
         />
       </button>
-      <BottomSheet open={open} title={label} onClose={() => setOpen(false)}>
+      <BottomSheet open={open} title={label} onClose={close}>
         <div className="flex flex-col gap-2">
-          {options.map((option) => {
+          {searchable && (
+            <input
+              type="search"
+              aria-label={`Tìm ${label}`}
+              placeholder="Nhập để tìm..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="min-h-12 w-full rounded-2xl border border-[#e2e7ff] bg-white px-4 text-sm text-[#00236f] outline-none focus:border-[#6b38d4]"
+            />
+          )}
+          {visible.length === 0 && (
+            <p
+              role="status"
+              className="py-4 text-center text-sm text-[#646b80]"
+            >
+              Không tìm thấy kết quả.
+            </p>
+          )}
+          {visible.map((option) => {
             const active = option.value === value;
             return (
               <button
@@ -71,7 +112,7 @@ export function SelectSheet({
                 aria-pressed={active}
                 onClick={() => {
                   onChange(option.value);
-                  setOpen(false);
+                  close();
                 }}
                 className={`flex min-h-14 items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-colors disabled:opacity-50 ${
                   active

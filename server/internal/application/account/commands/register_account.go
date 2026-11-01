@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -23,13 +24,42 @@ var idempotencyKeyRegex = regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-
 var cccdRegex = regexp.MustCompile(`^\d{12}$`)
 
 type RegisterAccountCommand struct {
-	IdempotencyKey string
-	Username       string
-	CCCDNumber     string
-	CCCDIssuedDate time.Time
-	DOB            time.Time
-	Email          string
-	Password       string
+	IdempotencyKey   string
+	Username         string
+	CCCDNumber       string
+	CCCDIssuedDate   time.Time
+	DOB              time.Time
+	Email            string
+	Password         string
+	Phone            string
+	AddressLine      string
+	ProvinceCode     string
+	IssuedPlace      string
+	PermanentAddress string
+}
+
+// ValidateCustomerDetails kiểm tra thông tin bắt buộc của tài khoản đăng ký qua
+// API. Các thông tin này chỉ khai một lần, sau đó khách không tự sửa được. Tách
+// riêng khỏi Handle vì seeder và công cụ nội bộ có thể tạo tài khoản thiếu dữ liệu.
+func (cmd RegisterAccountCommand) ValidateCustomerDetails() error {
+	if !validPhone(strings.TrimSpace(cmd.Phone)) {
+		return accountdomain.ErrInvalidProfile
+	}
+	for _, field := range []struct {
+		value string
+		limit int
+	}{
+		{cmd.AddressLine, 200},
+		{cmd.ProvinceCode, 16},
+		{cmd.IssuedPlace, 200},
+		{cmd.PermanentAddress, 200},
+	} {
+		value := strings.TrimSpace(field.value)
+		if value == "" || utf8.RuneCountInString(value) > field.limit {
+			return accountdomain.ErrInvalidProfile
+		}
+	}
+	return nil
 }
 
 type RegisterAccountCommandHandler struct {
@@ -138,11 +168,18 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 				FullName:    cmd.Username,
 				DateOfBirth: &cmd.DOB,
 				Email:       cmd.Email,
+				Phone:       strings.TrimSpace(cmd.Phone),
+				Address: accountdomain.Address{
+					Line:         strings.TrimSpace(cmd.AddressLine),
+					ProvinceCode: strings.ToUpper(strings.TrimSpace(cmd.ProvinceCode)),
+				},
 			},
 			Identity: accountdomain.CustomerIdentity{
-				Type:       "cccd",
-				Number:     cmd.CCCDNumber,
-				IssuedDate: &cmd.CCCDIssuedDate,
+				Type:             "cccd",
+				Number:           cmd.CCCDNumber,
+				IssuedDate:       &cmd.CCCDIssuedDate,
+				IssuedPlace:      strings.TrimSpace(cmd.IssuedPlace),
+				PermanentAddress: strings.TrimSpace(cmd.PermanentAddress),
 			},
 			KYCStatus: accountdomain.KYCStatusNotStarted,
 			CreditProfile: accountdomain.CreditProfile{

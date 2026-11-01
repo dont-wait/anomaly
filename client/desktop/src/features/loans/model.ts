@@ -38,6 +38,14 @@ export interface LoanApplication {
   documents: LoanDocument[];
   assessmentDecision?: string;
   assessmentScore?: number;
+  assessmentReasons?: string[];
+  assessedAt?: string | null;
+  declared?: {
+    monthlyIncome: number;
+    existingMonthlyDebt: number;
+    regionCode: string;
+    purpose: string;
+  };
   annualRateBps?: number;
   createdAt: string;
   offer?: LoanOffer;
