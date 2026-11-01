@@ -1,5 +1,5 @@
 import { AUTH_STATUS } from "@/features/auth/authStatus";
-import { useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useAuth } from "@/features/auth/useAuth";
 import { LoginPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
@@ -11,6 +11,7 @@ import LoanRegisterPage from "@/pages/LoanRegisterPage";
 import SavingsPage from "@/features/savings/SavingsPage";
 import LoanApplicationsPage from "@/pages/LoanApplicationsPage";
 import LoanContractsPage from "@/pages/LoanContractsPage";
+import type { LoanApplication } from "@/features/loans/api";
 import {
   isProtectedRoute,
   parseTransactionId,
@@ -24,6 +25,30 @@ function subscribe(onChange: () => void) {
   return () => window.removeEventListener("hashchange", onChange);
 }
 
+// The list stays mounted while a detail overlay is open so its pagination and
+// scroll survive; changes seen in the detail are applied to the list on top.
+function LoanApplicationsRoute({ applicationId }: { applicationId?: string }) {
+  const [updates, setUpdates] = useState<Record<string, LoanApplication>>({});
+  const onApplicationChange = useCallback((application: LoanApplication) => {
+    setUpdates((current) => ({ ...current, [application.id]: application }));
+  }, []);
+
+  return (
+    <>
+      <div inert={Boolean(applicationId)}>
+        <LoanApplicationsPage updatedApplications={updates} />
+      </div>
+      {applicationId && (
+        <LoanApplicationsPage
+          key={applicationId}
+          applicationId={applicationId}
+          onApplicationChange={onApplicationChange}
+        />
+      )}
+    </>
+  );
+}
+
 // Hash routes work in both Vite and the packaged Tauri WebView.
 export function AppRouter() {
   const { status } = useAuth();
@@ -33,12 +58,31 @@ export function AppRouter() {
     () => routes.login,
   );
   const isProtected = isProtectedRoute(hash);
+  // A fresh launch has no fragment and renders the login page.
+  const isLoginRoute = hash === routes.login || hash === "";
 
   useEffect(() => {
     if (isProtected && status === AUTH_STATUS.UNAUTHENTICATED) {
       window.location.hash = routes.login;
     }
   }, [isProtected, status]);
+
+  useEffect(() => {
+    if (isLoginRoute && status === AUTH_STATUS.AUTHENTICATED) {
+      window.location.hash = routes.dashboard;
+    }
+  }, [isLoginRoute, status]);
+
+  if (
+    isLoginRoute &&
+    (status === AUTH_STATUS.IDLE || status === AUTH_STATUS.RESTORING)
+  ) {
+    return (
+      <div className="p-6 text-sm text-gray-500" role="status">
+        Đang khôi phục phiên đăng nhập...
+      </div>
+    );
+  }
 
   if (isProtected && status !== AUTH_STATUS.AUTHENTICATED) {
     return (
@@ -54,8 +98,7 @@ export function AppRouter() {
   }
 
   const applicationId = parseLoanApplicationId(hash);
-  if (applicationId)
-    return <LoanApplicationsPage applicationId={applicationId} />;
+  if (applicationId) return <LoanApplicationsRoute applicationId={applicationId} />;
   const loanId = parseLoanContractId(hash);
   if (loanId) return <LoanContractsPage loanId={loanId} />;
 
@@ -71,7 +114,7 @@ export function AppRouter() {
     case routes.savings:
       return <SavingsPage />;
     case routes.loanApplications:
-      return <LoanApplicationsPage />;
+      return <LoanApplicationsRoute />;
     case routes.loanContracts:
       return <LoanContractsPage />;
     case routes.register:

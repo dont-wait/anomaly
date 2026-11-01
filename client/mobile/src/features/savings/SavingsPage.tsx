@@ -3,6 +3,7 @@ import { navigate, routes } from "@/app/routes";
 import { ArrowLeftIcon, ChevronRightIcon, SavingsIcon } from "@/shared/icons";
 import { BottomNav } from "@/shared/layout/BottomNav";
 import { Logo } from "@/shared/layout/Logo";
+import { SelectSheet } from "@/shared/ui";
 import { DEMO_ACCOUNT_BALANCE, DEMO_SOURCE_ACCOUNT, demoSavings } from "./mocks/savings";
 import { SAVINGS_TERMS, estimateSavings, formatDate, formatVnd, parseAmount } from "./utils/format";
 import type { SavingsContract, SavingsDraft, SavingsStatus } from "./model";
@@ -169,10 +170,10 @@ export default function SavingsPage() {
           <div className="savings-amount-chips">{[1_000_000, 5_000_000, 10_000_000].map((value) => <button type="button" key={value} onClick={() => { setAmountText(String(value)); setFormError(null); }}>{formatVnd(value)}</button>)}</div>
         </Section>
         <div className="savings-section-title"><h2>Chọn kỳ hạn</h2><span>Lãi suất cố định</span></div>
-        <Section><label htmlFor="savings-term" className="savings-muted">Kỳ hạn gửi</label>
-          <select id="savings-term" value={termMonths} onChange={(e) => setTermMonths(Number(e.target.value))}>
-            {SAVINGS_TERMS.map(({ months, rate }) => <option key={months} value={months}>{months} tháng — {rate}%/năm</option>)}
-          </select></Section>
+        <Section><label className="savings-muted">Kỳ hạn gửi</label>
+          <SelectSheet id="savings-term" label="Kỳ hạn gửi" value={String(termMonths)} onChange={(value) => setTermMonths(Number(value))}
+            options={SAVINGS_TERMS.map(({ months, rate }) => ({ value: String(months), label: `${months} tháng`, description: `Lãi suất ${rate}%/năm` }))} />
+        </Section>
         <Section className="savings-summary"><h3>Ước tính lợi nhuận</h3>
           <Line label="Tiền gốc" value={Number.isFinite(amount) ? formatVnd(amount) : "—"} />
           <Line label="Lãi suất năm" value={`${SAVINGS_TERMS.find((t) => t.months === termMonths)?.rate}%`} />
