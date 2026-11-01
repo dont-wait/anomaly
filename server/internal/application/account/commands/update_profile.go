@@ -2,18 +2,18 @@ package commands
 
 import (
 	"context"
-	"net/mail"
 	"strings"
 	"time"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
 
+// UpdateCustomerProfileCommand is a partial update: a nil field keeps its current value.
 type UpdateCustomerProfileCommand struct {
-	AccountID string
-	Phone     *string
-	Email     *string
-	Address   *accountdomain.Address
+	AccountID    string
+	Phone        *string
+	AddressLine  *string
+	ProvinceCode *string
 }
 
 type UpdateCustomerProfileHandler struct{ repo AccountRepository }
@@ -23,6 +23,9 @@ func NewUpdateCustomerProfileHandler(repo AccountRepository) *UpdateCustomerProf
 }
 
 func (h *UpdateCustomerProfileHandler) Handle(ctx context.Context, cmd UpdateCustomerProfileCommand) (*accountdomain.UserAccount, error) {
+	if cmd.Phone == nil && cmd.AddressLine == nil && cmd.ProvinceCode == nil {
+		return nil, accountdomain.ErrInvalidProfile
+	}
 	account, err := h.repo.FindByID(ctx, cmd.AccountID)
 	if err != nil {
 		return nil, err
@@ -32,45 +35,40 @@ func (h *UpdateCustomerProfileHandler) Handle(ctx context.Context, cmd UpdateCus
 	}
 	if cmd.Phone != nil {
 		phone := strings.TrimSpace(*cmd.Phone)
-		if phone != "" && !validPhone(phone) {
+		if !validPhone(phone) {
 			return nil, accountdomain.ErrInvalidProfile
 		}
 		account.Customer.Profile.Phone = phone
 	}
-	if cmd.Email != nil {
-		parsed, parseErr := mail.ParseAddress(strings.TrimSpace(*cmd.Email))
-		if parseErr != nil || parsed.Address != strings.TrimSpace(*cmd.Email) {
-			return nil, accountdomain.ErrInvalidEmail
-		}
-		if existing, findErr := h.repo.FindByEmail(ctx, parsed.Address); findErr != nil {
-			return nil, findErr
-		} else if existing != nil && existing.Id != account.Id {
-			return nil, accountdomain.ErrUserAlreadyExists
-		}
-		account.Email = parsed.Address
-		account.Customer.Profile.Email = parsed.Address
-	}
-	if cmd.Address != nil {
-		address := accountdomain.Address{
-			Line:         strings.TrimSpace(cmd.Address.Line),
-			ProvinceCode: strings.ToUpper(strings.TrimSpace(cmd.Address.ProvinceCode)),
-		}
-		if len(address.Line) > 200 || len(address.ProvinceCode) > 16 {
+	if cmd.AddressLine != nil {
+		line := strings.TrimSpace(*cmd.AddressLine)
+		if line == "" || len(line) > 200 {
 			return nil, accountdomain.ErrInvalidProfile
 		}
-		account.Customer.Profile.Address = address
+		account.Customer.Profile.Address.Line = line
 	}
-	if cmd.Phone == nil && cmd.Email == nil && cmd.Address == nil {
-		return nil, accountdomain.ErrInvalidProfile
+	if cmd.ProvinceCode != nil {
+		province := strings.ToUpper(strings.TrimSpace(*cmd.ProvinceCode))
+		if province == "" || len(province) > 16 {
+			return nil, accountdomain.ErrInvalidProfile
+		}
+		account.Customer.Profile.Address.ProvinceCode = province
 	}
-	now := time.Now().UTC()
-	account.Version++
-	account.UpdatedAt = now
-	account.Customer.UpdatedAt = now
+	touchAccount(account)
 	if err := h.repo.Save(ctx, account); err != nil {
 		return nil, err
 	}
 	return account, nil
+}
+
+// touchAccount must precede Save: BankRepository.Save writes nothing when Version is unchanged.
+func touchAccount(account *accountdomain.UserAccount) {
+	now := time.Now().UTC()
+	account.Version++
+	account.UpdatedAt = now
+	if account.Customer != nil {
+		account.Customer.UpdatedAt = now
+	}
 }
 
 func validPhone(value string) bool {

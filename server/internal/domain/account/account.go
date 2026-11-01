@@ -172,6 +172,7 @@ type UserAccount struct {
 	Username     string
 	Email        string
 	PasswordHash string
+	TokenVersion int64
 	Type         AccountType
 	Role         AccountRole
 	Currency     Currency

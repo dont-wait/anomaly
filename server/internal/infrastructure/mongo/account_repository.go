@@ -3,7 +3,6 @@ package mongo
 import (
 	"context"
 	"errors"
-	"time"
 
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -100,24 +99,6 @@ func (r *AccountRepository) DeleteByID(ctx context.Context, id string) error {
 	}
 	_, err = r.col.DeleteOne(ctx, bson.M{"_id": recordID})
 	return err
-}
-
-func (r *AccountRepository) UpdatePasswordHash(ctx context.Context, id, passwordHash string) error {
-	recordID, err := accountRecordID(id)
-	if err != nil {
-		return err
-	}
-	result, err := r.col.UpdateOne(ctx, bson.M{"_id": recordID}, bson.M{"$set": bson.M{"password_hash": passwordHash, "updated_at": time.Now().UTC()}})
-	if err != nil {
-		if IsDuplicateKeyError(err) {
-			return accountdomain.ErrUserAlreadyExists
-		}
-		return err
-	}
-	if result.MatchedCount == 0 {
-		return accountdomain.ErrAccountNotFound
-	}
-	return nil
 }
 
 func (r *AccountRepository) FindByID(ctx context.Context, id string) (*accountdomain.UserAccount, error) {

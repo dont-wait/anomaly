@@ -58,7 +58,17 @@ func RegisterRoutes(
 	router.Handle("PUT /api/auth/me/password", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.ChangePassword)), openapi.Operation{
 		ID: "changeCurrentPassword", Summary: "Change the current account password", Tags: []string{"Profile"},
 		Request: changePasswordRequest{}, Response: httpx.SuccessResponse[map[string]bool]{},
-		FailureStatuses: []int{400, 401, 404, 500}, Auth: true,
+		FailureStatuses: []int{400, 401, 404, 409, 429, 500, 503}, Auth: true,
+	})
+	router.Handle("POST /api/auth/me/email-change", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.StartEmailChange)), openapi.Operation{
+		ID: "startEmailChange", Summary: "Send verification codes to the current and new email", Tags: []string{"Profile"},
+		Request: emailChangeStartRequest{}, Response: httpx.SuccessResponse[map[string]bool]{},
+		FailureStatuses: []int{400, 401, 404, 409, 429, 500, 503}, Auth: true,
+	})
+	router.Handle("POST /api/auth/me/email-change/confirm", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.ConfirmEmailChange)), openapi.Operation{
+		ID: "confirmEmailChange", Summary: "Activate the new email with both verification codes", Tags: []string{"Profile"},
+		Request: emailChangeConfirmRequest{}, Response: httpx.SuccessResponse[map[string]bool]{},
+		FailureStatuses: []int{400, 401, 404, 409, 500, 503}, Auth: true,
 	})
 	router.Handle("POST /api/auth/me/avatar", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.UploadProfileAvatar)), openapi.Operation{
 		ID: "uploadCurrentAvatar", Summary: "Upload or replace the current account avatar", Tags: []string{"Profile"},
@@ -71,8 +81,8 @@ func RegisterRoutes(
 		SuccessStatus: http.StatusCreated, FailureStatuses: []int{400, 401, 403, 413, 415, 500, 503}, Auth: true,
 	})
 	router.Handle("GET /api/auth/me/documents", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.ListProfileDocuments)), openapi.Operation{
-		ID: "listCurrentProfileDocuments", Summary: "List current account profile documents", Tags: []string{"Profile"},
-		Response: httpx.SuccessResponse[[]ProfileMediaResponse]{}, FailureStatuses: []int{401, 404, 500}, Auth: true,
+		ID: "listCurrentProfileDocuments", Summary: "List supported document slots for the current account", Tags: []string{"Profile"},
+		Response: httpx.SuccessResponse[ProfileDocumentsResponse]{}, FailureStatuses: []int{401, 404, 500}, Auth: true,
 	})
 	router.Handle("GET /api/auth/me/media/{mediaId}", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.DownloadProfileMedia)), openapi.Operation{
 		ID: "downloadCurrentProfileMedia", Summary: "Download current account profile media", Tags: []string{"Profile"},

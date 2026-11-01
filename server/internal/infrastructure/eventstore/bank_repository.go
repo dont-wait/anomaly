@@ -1,6 +1,7 @@
 package eventstore
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -413,25 +414,69 @@ func (r *BankRepository) Save(ctx context.Context, a *accountdomain.UserAccount)
 		// a concurrent transfer, so use the current canonical balance in its snapshot.
 		a.Balance.Current = s.Balances[financialID(a.Id).Hex()]
 		if current.Version == a.Version {
-			if current.Customer.VerifiedKYCSessionId != a.Customer.VerifiedKYCSessionId {
-				return nil, nil, mongorepo.ErrTransactionConflict
+			// Same version and same content is an idempotent retry. Different content
+			// means another writer took this version: reporting success would lose the change.
+			same, err := sameAccountSnapshot(current, a)
+			if err != nil {
+				return nil, nil, err
+			}
+			if !same {
+				return nil, nil, accountConflict()
 			}
 			return nil, nil, nil
 		}
 		if a.Version != current.Version+1 {
-			return nil, nil, mongorepo.ErrTransactionConflict
+			return nil, nil, accountConflict()
 		}
-		if current.PasswordHash != a.PasswordHash {
-			return nil, nil, fmt.Errorf("password hash changes must use the credential repository")
+		eventType := journal.ProfileUpdated
+		if len(current.KYCSessions) != len(a.KYCSessions) || current.Customer.VerifiedKYCSessionId != a.Customer.VerifiedKYCSessionId {
+			eventType = journal.AccountUpdated
 		}
-		if current.Customer != nil && a.Customer != nil {
-			if current.Customer.Identity != a.Customer.Identity || current.Customer.Profile.FullName != a.Customer.Profile.FullName || current.Customer.Profile.DateOfBirth != a.Customer.Profile.DateOfBirth || current.Customer.Profile.Email != a.Customer.Profile.Email {
-				return nil, nil, fmt.Errorf("verified customer identity fields cannot be changed through profile update")
-			}
-		}
-		return &journal.Record{ID: journal.EventID(a.Id, fmt.Sprintf("profile:%d", a.Version)), Type: journal.ProfileUpdated, At: a.UpdatedAt, Account: a}, nil, nil
+		return &journal.Record{ID: journal.EventID(a.Id, fmt.Sprintf("profile:%d", a.Version)), Type: eventType, At: a.UpdatedAt, Account: a}, nil, nil
 	})
 	return err
+}
+
+// sameAccountSnapshot ignores the balance, owned by money events, and write timestamps.
+func sameAccountSnapshot(left, right *accountdomain.UserAccount) (bool, error) {
+	l, err := comparableAccount(left)
+	if err != nil {
+		return false, err
+	}
+	r, err := comparableAccount(right)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(l, r), nil
+}
+
+func comparableAccount(a *accountdomain.UserAccount) ([]byte, error) {
+	account := *a
+	account.Balance = accountdomain.Balance{}
+	account.UpdatedAt = time.Time{}
+	if a.Customer != nil {
+		customer := *a.Customer
+		customer.UpdatedAt = time.Time{}
+		account.Customer = &customer
+	}
+	return json.Marshal(account)
+}
+
+func accountConflict() error {
+	return fmt.Errorf("%w: %w", mongorepo.ErrTransactionConflict, accountdomain.ErrConcurrentUpdate)
+}
+
+// TokenVersion returns the account's current token version. An unknown account
+// has version zero so the existing not-found handling still applies downstream.
+func (r *BankRepository) TokenVersion(ctx context.Context, id string) (int64, error) {
+	s, err := r.load(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if a := s.Accounts[id]; a != nil {
+		return a.TokenVersion, nil
+	}
+	return 0, nil
 }
 
 func (r *BankRepository) FindByID(ctx context.Context, id string) (*accountdomain.UserAccount, error) {

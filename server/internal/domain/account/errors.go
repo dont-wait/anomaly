@@ -20,4 +20,7 @@ var (
 	ErrInvalidAmount          = errors.New("invalid amount")
 	ErrInsufficientFunds      = errors.New("insufficient funds")
 	ErrInvalidProfile         = errors.New("invalid profile data")
+	ErrCurrentPassword        = errors.New("current password is incorrect")
+	ErrTooManyAttempts        = errors.New("too many attempts")
+	ErrConcurrentUpdate       = errors.New("account was modified concurrently")
 )

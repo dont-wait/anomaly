@@ -12,6 +12,7 @@ import (
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
+	appotp "github.com/dont-wait/anomaly/internal/application/otp"
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	"github.com/dont-wait/anomaly/internal/domain/audit"
 	kycinfra "github.com/dont-wait/anomaly/internal/infrastructure/kyc"
@@ -36,15 +37,26 @@ type Handler struct {
 	profileAudit    audit.Recorder
 	updateProfile   *commands.UpdateCustomerProfileHandler
 	changePassword  *commands.ChangePasswordHandler
+	emailChange     *commands.EmailChangeHandler
+	pendingEmails   pendingEmailReader
 }
 
-func (h *Handler) WithProfile(repo commands.AccountRepository, recorder audit.Recorder, passwordRepo ...commands.PasswordRepository) *Handler {
+type pendingEmailReader interface {
+	Get(ctx context.Context, accountID string) (string, error)
+}
+
+func (h *Handler) WithProfile(repo commands.AccountRepository, recorder audit.Recorder) *Handler {
 	h.profileRepo = repo
 	h.profileAudit = recorder
 	h.updateProfile = commands.NewUpdateCustomerProfileHandler(repo)
-	if len(passwordRepo) > 0 && passwordRepo[0] != nil {
-		h.changePassword = commands.NewChangePasswordHandler(passwordRepo[0])
-	}
+	h.changePassword = commands.NewChangePasswordHandler(repo)
+	return h
+}
+
+func (h *Handler) WithProfileSecurity(limiter commands.PasswordAttemptLimiter, emailChange *commands.EmailChangeHandler, pending pendingEmailReader) *Handler {
+	h.changePassword.WithLimiter(limiter)
+	h.emailChange = emailChange
+	h.pendingEmails = pending
 	return h
 }
 
@@ -94,8 +106,14 @@ func NewHandler(
 
 func accountErrorStatus(err error) int {
 	switch {
-	case errors.Is(err, accountdomain.ErrUserAlreadyExists), errors.Is(err, accountdomain.ErrIdempotencyConflict):
+	case errors.Is(err, accountdomain.ErrUserAlreadyExists), errors.Is(err, accountdomain.ErrIdempotencyConflict),
+		errors.Is(err, accountdomain.ErrConcurrentUpdate):
 		return http.StatusConflict
+	case errors.Is(err, accountdomain.ErrTooManyAttempts), errors.Is(err, appotp.ErrTooSoon):
+		return http.StatusTooManyRequests
+	case errors.Is(err, accountdomain.ErrCurrentPassword), errors.Is(err, appotp.ErrInvalid),
+		errors.Is(err, appotp.ErrExpired), errors.Is(err, appotp.ErrExceeded):
+		return http.StatusBadRequest
 	case errors.Is(err, accountdomain.ErrRegistrationPending):
 		return http.StatusServiceUnavailable
 	case errors.Is(err, accountdomain.ErrInvalidCredentials):
@@ -121,6 +139,16 @@ func accountErrorStatus(err error) int {
 
 func accountErrorCode(err error) httpx.ErrorCode {
 	switch {
+	case errors.Is(err, accountdomain.ErrConcurrentUpdate):
+		return httpx.ErrorCodeConflict
+	case errors.Is(err, accountdomain.ErrTooManyAttempts), errors.Is(err, appotp.ErrTooSoon):
+		return httpx.ErrorCodeTooManyRequests
+	case errors.Is(err, accountdomain.ErrCurrentPassword):
+		return httpx.ErrorCodeInvalidCredentials
+	case errors.Is(err, appotp.ErrInvalid), errors.Is(err, appotp.ErrExceeded):
+		return httpx.ErrorCodeOTPInvalid
+	case errors.Is(err, appotp.ErrExpired):
+		return httpx.ErrorCodeOTPExpired
 	case errors.Is(err, accountdomain.ErrUserAlreadyExists):
 		return httpx.ErrorCodeUserAlreadyExists
 	case errors.Is(err, accountdomain.ErrIdempotencyConflict):
@@ -294,7 +322,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.WriteSuccess(w, http.StatusOK, "Account retrieved successfully", toProfileResponse(acc))
+	httpx.WriteSuccess(w, http.StatusOK, "Account retrieved successfully", h.profileResponse(r.Context(), acc))
 }
 
 func (h *Handler) authorizeAccountRead(w http.ResponseWriter, r *http.Request, acc *accountdomain.UserAccount) bool {
