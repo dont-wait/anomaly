@@ -2,7 +2,6 @@ package mongo
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -37,14 +36,26 @@ func (r *SavingsTermsRepository) Current(ctx context.Context) (savingsdomain.Ter
 		Introduction string                       `bson:"introduction"`
 		Sections     []savingsdomain.TermsSection `bson:"sections"`
 	}
-	err := r.collection.FindOne(ctx, bson.M{
-		"product_code": "savings_standard",
-		"status":       "ACTIVE",
-	}).Decode(&row)
-	if errors.Is(err, mongodrv.ErrNoDocuments) {
+	cursor, err := r.collection.Find(ctx, bson.M{
+		"product_code": "savings_standard", "status": "ACTIVE",
+	})
+	if err != nil {
+		return savingsdomain.TermsSnapshot{}, fmt.Errorf("query savings terms: %w", err)
+	}
+	defer cursor.Close(ctx)
+	if !cursor.Next(ctx) {
+		if cursor.Err() != nil {
+			return savingsdomain.TermsSnapshot{}, cursor.Err()
+		}
 		return savingsdomain.TermsSnapshot{}, savingsdomain.ErrTermsUnavailable
 	}
-	if err != nil {
+	if err := cursor.Decode(&row); err != nil {
+		return savingsdomain.TermsSnapshot{}, fmt.Errorf("decode savings terms: %w", err)
+	}
+	if cursor.Next(ctx) {
+		return savingsdomain.TermsSnapshot{}, fmt.Errorf("multiple ACTIVE savings terms for savings_standard: %w", savingsdomain.ErrTermsUnavailable)
+	}
+	if err := cursor.Err(); err != nil {
 		return savingsdomain.TermsSnapshot{}, fmt.Errorf("read active savings terms: %w", err)
 	}
 	if row.ProductCode != "savings_standard" || row.Status != "ACTIVE" {

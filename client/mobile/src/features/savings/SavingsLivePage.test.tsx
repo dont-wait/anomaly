@@ -53,6 +53,7 @@ const quote = {
 
 beforeEach(() => {
   sessionStorage.clear();
+  localStorage.clear();
   vi.clearAllMocks();
   vi.mocked(getInfo).mockResolvedValue(user);
   vi.mocked(listSavingsPackages).mockResolvedValue({ items: [{
@@ -92,9 +93,8 @@ async function startOpening() {
   mount();
   await screen.findByText("#TK-REAL-1");
   fireEvent.click(screen.getByRole("button", { name: /Gửi tiết kiệm mới/ }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Kỳ hạn gửi" }), { target: { value: "6" } });
   fireEvent.click(screen.getByRole("button", { name: /Tiếp tục/ }));
-  fireEvent.click(screen.getByRole("radio", { name: /^6 tháng/ }));
-  fireEvent.click(screen.getByRole("radio", { name: /^6 tháng/ }));
   await screen.findByRole("heading", { name: "Xác nhận gửi tiết kiệm" });
   expect(screen.getByRole("checkbox")).toHaveProperty("disabled", true);
   fireEvent.click(screen.getByRole("button", { name: /Xem phiếu đăng ký & điều khoản/ }));
@@ -111,22 +111,48 @@ it("loads real contracts and never displays Stitch mock contracts on authenticat
   expect(listSavingsContracts).toHaveBeenCalledWith("jwt", undefined, expect.anything());
 });
 
+it("restores the original one-screen amount, term and projected-interest layout", async () => {
+  mount();
+  await screen.findByText("#TK-REAL-1");
+  fireEvent.click(screen.getByRole("button", { name: /Gửi tiết kiệm mới/ }));
+
+  expect(screen.getByRole("heading", { name: "Tiết kiệm có kỳ hạn" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Số tiền gửi" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Chọn kỳ hạn" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Ước tính lợi nhuận" })).toBeTruthy();
+  expect(screen.getByLabelText("Nhập số tiền (VND)")).toHaveProperty("value", "10000000");
+  expect(screen.getByText("Số dư thực tế")).toBeTruthy();
+  const term = screen.getByRole("combobox", { name: "Kỳ hạn gửi" });
+  expect(term).toBeTruthy();
+  // The default term (12 months) is not in this API fixture: force a valid selection.
+  expect(screen.getByRole("button", { name: /Tiếp tục/ })).toHaveProperty("disabled", true);
+
+  fireEvent.change(term, { target: { value: "6" } });
+  expect(screen.getByText("240.000 VND")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /Tiếp tục/ }));
+  expect(await screen.findByRole("heading", { name: "Xác nhận gửi tiết kiệm" })).toBeTruthy();
+  expect(createSavingsQuote).toHaveBeenCalledWith("jwt", {
+    packageId: "savings_standard", sourceAccountId: "account-1",
+    amount: 10_000_000, termMonths: 6,
+  });
+});
+
 it("opens a real savings contract with the backend quote, JWT and stable key", async () => {
   await startOpening();
   expect(await screen.findByText("Gửi tiết kiệm thành công!")).toBeTruthy();
   expect(openSavingsContract).toHaveBeenCalledWith("jwt", {
-    quoteId: "quote-1", sourceAccountId: "account-1", confirm: true,
+    quoteId: "quote-1", sourceAccountId: "account-1", acceptedTermsVersion: "savings-standard-v1", confirm: true,
   }, "58fd795e-b070-46c3-8f9e-9487063b8b27");
-  expect(sessionStorage.getItem("anomaly:savings:pending:account-1")).toBeNull();
+  expect(localStorage.getItem("anomaly:savings:pending:account-1")).toBeNull();
 });
 
 it("retains the original command and key after ambiguous 503, retries without double opening", async () => {
   vi.mocked(openSavingsContract)
     .mockRejectedValueOnce(new ApiError(503, "unknown", { code: "SAVINGS_OPENING_UNAVAILABLE" }));
   await startOpening();
-  expect(await screen.findByText(/Có giao dịch chưa xác nhận kết quả/)).toBeTruthy();
-  expect(sessionStorage.getItem("anomaly:savings:pending:account-1")).toContain("quote-1");
-  fireEvent.click(screen.getByRole("button", { name: /Kiểm tra \/ Thử lại cùng khóa/ }));
+  expect(await screen.findByText(/Yêu cầu giao dịch gần nhất đang được xác minh/)).toBeTruthy();
+  expect(localStorage.getItem("anomaly:savings:pending:account-1")).toContain("quote-1");
+  fireEvent.click(screen.getByRole("button", { name: "Kiểm tra lại yêu cầu" }));
   await waitFor(() => expect(openSavingsContract).toHaveBeenCalledTimes(2));
   expect(vi.mocked(openSavingsContract).mock.calls[0]).toEqual(vi.mocked(openSavingsContract).mock.calls[1]);
   expect(await screen.findByText("Gửi tiết kiệm thành công!")).toBeTruthy();
@@ -163,9 +189,8 @@ it("prevents opening unless the customer reviews product terms and consents", as
   mount();
   await screen.findByText("#TK-REAL-1");
   fireEvent.click(screen.getByRole("button", { name: /Gửi tiết kiệm mới/ }));
+  fireEvent.change(screen.getByRole("combobox", { name: "Kỳ hạn gửi" }), { target: { value: "6" } });
   fireEvent.click(screen.getByRole("button", { name: /Tiếp tục/ }));
-  fireEvent.click(screen.getByRole("radio", { name: /^6 tháng/ }));
-  fireEvent.click(screen.getByRole("radio", { name: /^6 tháng/ }));
   await screen.findByRole("heading", { name: "Xác nhận gửi tiết kiệm" });
   expect(screen.getByRole("checkbox")).toHaveProperty("disabled", true);
   expect(screen.getByRole("button", { name: /Xác nhận gửi/ })).toHaveProperty("disabled", true);
@@ -188,4 +213,13 @@ it("reads the savings ledger through the authenticated history endpoint", async 
   fireEvent.click(screen.getByRole("button", { name: "Xem lịch sử giao dịch" }));
   expect(await screen.findByText("Trích tiền mở sổ")).toBeTruthy();
   expect(getSavingsHistory).toHaveBeenCalledWith("jwt", "sav-1");
+});
+
+it("does not submit a deposit if saving the pending command fails", async () => {
+  const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("quota full"); });
+  try {
+    await startOpening();
+    expect(openSavingsContract).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Không thể lưu an toàn yêu cầu giao dịch/)).toBeTruthy();
+  } finally { spy.mockRestore(); }
 });

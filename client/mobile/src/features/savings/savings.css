@@ -659,3 +659,43 @@
 .savings-history-row > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .savings-history-row small { font-size: 11px; color: #69718b; overflow-wrap: anywhere; }
 .savings-history-row > strong { white-space: nowrap; color: #00236f; }
+
+/* The authenticated opening form uses the original Stitch S02 one-screen layout.
+   These selectors do not alter the mock preview or the other Savings screens. */
+.savings-open-content {
+  gap: 15px;
+  padding-bottom: 30px;
+}
+.savings-open-content .savings-banner {
+  min-height: 126px;
+}
+.savings-open-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.savings-open-field-label {
+  color: #646b80;
+  font-size: 12px;
+  display: block;
+}
+.savings-open-content .savings-section-title h2 {
+  color: #131b2e;
+}
+.savings-open-content .savings-panel select {
+  display: block;
+  cursor: pointer;
+}
+.savings-open-content .savings-summary {
+  border: 1px solid #fff;
+}
+.savings-open-content .savings-summary h3 {
+  margin-bottom: 12px;
+}
+.savings-open-estimate-note {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #646b80;
+}

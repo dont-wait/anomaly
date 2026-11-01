@@ -1,18 +1,12 @@
 [
   {
-    "update": "savings_terms",
-    "updates": [
+    "delete": "savings_terms",
+    "deletes": [
       {
         "q": {
-          "_id": "savings-standard-v1",
-          "status": "ACTIVE"
+          "_id": "savings-standard-v1"
         },
-        "u": {
-          "$set": {
-            "status": "INACTIVE"
-          }
-        },
-        "multi": false
+        "limit": 1
       }
     ]
   },

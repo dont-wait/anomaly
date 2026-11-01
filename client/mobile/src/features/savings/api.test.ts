@@ -38,11 +38,11 @@ describe("live Savings API contract", () => {
     vi.stubGlobal("fetch", fetchMock);
     const key = "e6b63de1-52eb-49fd-aa33-8fef301cf866";
     await createSavingsQuote("jwt", { packageId: "savings_standard", sourceAccountId: "a1", amount: 1_000_000, termMonths: 3 });
-    await openSavingsContract("jwt", { quoteId: "q1", sourceAccountId: "a1", confirm: true }, key);
+    await openSavingsContract("jwt", { quoteId: "q1", sourceAccountId: "a1", acceptedTermsVersion: "terms-v1", confirm: true }, key);
     await createSavingsWithdrawalQuote("jwt", "sav-1");
     await withdrawSavings("jwt", "sav-1", "q2", key);
     await getSavingsReceipt("jwt", "sav-1");
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ quoteId: "q1", sourceAccountId: "a1", confirm: true });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ quoteId: "q1", sourceAccountId: "a1", acceptedTermsVersion: "terms-v1", confirm: true });
     expect((fetchMock.mock.calls[1][1]?.headers as Record<string,string>)["Idempotency-Key"]).toBe(key);
     expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({ withdrawalType: "full" });
     expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({ quoteId: "q2", confirm: true });
@@ -54,7 +54,8 @@ describe("live Savings API contract", () => {
     expect(mayBeCommitted(new ApiError(503, "outcome unknown"))).toBe(true);
     expect(mayBeCommitted(new ApiError(0, "offline"))).toBe(true);
     expect(mayBeCommitted(new ApiError(410, "expired"))).toBe(false);
-    expect(describeSavingsError(new ApiError(503, "unavailable", { code: "SAVINGS_WRITES_DISABLED" }))).toContain("SAVINGS_WRITES_DISABLED");
+    expect(mayBeCommitted(new ApiError(503, "disabled", { code: "SAVINGS_WRITES_DISABLED" }))).toBe(false);
+    expect(describeSavingsError(new ApiError(503, "unavailable", { code: "SAVINGS_WRITES_DISABLED" }))).toContain("Không có giao dịch mới được thực hiện");
   });
 });
 

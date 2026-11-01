@@ -139,7 +139,7 @@ export const createSavingsQuote = (
   token: string, input: { packageId: string; sourceAccountId: string; amount: number; termMonths: number },
 ) => post<SavingsQuote>(`${root}/quotes`, token, input);
 export const openSavingsContract = (
-  token: string, input: { quoteId: string; sourceAccountId: string; confirm: true }, key: string,
+  token: string, input: { quoteId: string; sourceAccountId: string; acceptedTermsVersion: string; confirm: true }, key: string,
 ) => post<SavingsOpenResult>(`${root}/contracts`, token, input, key);
 export const createSavingsWithdrawalQuote = (token: string, savingsId: string) =>
   post<SavingsWithdrawalQuote>(`${idPath(savingsId)}/withdrawal-quotes`, token, { withdrawalType: "full" });
@@ -151,7 +151,8 @@ export const getSavingsReceipt = (token: string, savingsId: string) =>
 
 export function describeSavingsError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.hasCode("SAVINGS_WRITES_DISABLED")) return "Backend chưa bật ghi Tiết kiệm (SAVINGS_WRITES_DISABLED). Không có giao dịch mới.";
+    if (error.hasCode("SAVINGS_WRITES_DISABLED")) return "Tạm thời chưa thể mở hoặc tất toán sổ. Không có giao dịch mới được thực hiện.";
+    if (error.hasCode("SAVINGS_TERMS_CHANGED")) return "Điều kiện gửi tiết kiệm đã được cập nhật. Vui lòng xem lại nội dung và tạo báo giá mới.";
     if (error.hasCode("QUOTE_EXPIRED") || error.hasCode("QUOTE_NOT_FOUND")) return "Báo giá đã hết hạn hoặc không tồn tại. Vui lòng tạo báo giá mới nếu chưa gửi yêu cầu ghi tiền.";
     if (error.hasCode("SAVINGS_NOT_MATURED")) return "Sổ chưa đến ngày đáo hạn, không thể rút trước hạn.";
     if (error.hasCode("INSUFFICIENT_FUNDS")) return "Số dư tài khoản không đủ để mở sổ.";
@@ -167,5 +168,5 @@ export function describeSavingsError(error: unknown): string {
 
 /** A failed financial command may already have committed: never rotate its key automatically. */
 export function mayBeCommitted(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 0 || error.status >= 500);
+  return error instanceof ApiError && (error.status === 0 || (error.status >= 500 && !error.hasCode("SAVINGS_WRITES_DISABLED")));
 }

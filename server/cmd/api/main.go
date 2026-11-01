@@ -302,6 +302,7 @@ func main() {
 	savingsRead := mongo.NewSavingsRead(mongoClient, config.MongoConfig.MongoDBName)
 	savingsHandler := composition.NewSavingsHandler(savingsCatalog, bank, rdb, savingsRead)
 	savingsHandler.Terms = mongo.NewSavingsTermsRepository(mongoClient, config.MongoConfig.MongoDBName)
+	savingsHandler.Commands.Terms = savingsHandler.Terms
 	if err := savingsRead.EnsureIndexes(ctx); err != nil {
 		logger.Error().Err(err).Msg("savings read indexes unavailable; savings read API disabled")
 		savingsHandler.Read = nil

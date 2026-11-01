@@ -158,6 +158,9 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := composition.NewSavingsHandler(catalog, bank, rdb, read)
+	// Disposable E2E fixture explicitly provides a published terms version.
+	h.Terms = e2eSavingsTerms{}
+	h.Commands.Terms = h.Terms
 	mux := http.NewServeMux()
 	savingshttp.RegisterRoutes(openapi.NewRegistry(mux, false), h, tokens)
 	srv := httptest.NewServer(mux)
@@ -174,7 +177,7 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 	assertBankBalance(t, ctx, bank, ownerID, initial) // Quote must never debit.
 
 	openKey := uuid.NewString()
-	openRequest := savingscommands.OpenInput{QuoteID: quote.QuoteID, SourceAccountID: ownerID, Confirm: true}
+	openRequest := savingscommands.OpenInput{QuoteID: quote.QuoteID, SourceAccountID: ownerID, AcceptedTermsVersion: "e2e-terms-v1", Confirm: true}
 	openPath := "/api/savings/contracts"
 	openHeaders := map[string]string{"Idempotency-Key": openKey}
 	api.json(t, "POST", openPath, foreignToken, openRequest, openHeaders, http.StatusBadRequest)
@@ -417,4 +420,10 @@ func assertSavingsE2EError(t *testing.T, body []byte, wantCode string) {
 	if response.Code != wantCode || response.Error == "" {
 		t.Fatalf("UC-11 error code=%q message=%q, want code=%q", response.Code, response.Error, wantCode)
 	}
+}
+
+type e2eSavingsTerms struct{}
+
+func (e2eSavingsTerms) Current(context.Context) (savings.TermsSnapshot, error) {
+	return savings.TermsSnapshot{Version: "e2e-terms-v1", Title: "Savings terms", Introduction: "E2E test product terms", Sections: []savings.TermsSection{{Title: "Deposit", Body: "Full maturity settlement"}}}, nil
 }

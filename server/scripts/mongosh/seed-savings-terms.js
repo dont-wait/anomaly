@@ -4,9 +4,20 @@
 (() => {
 const savingsDB = db.getSiblingDB("anomaly");
 const savingsTerms = savingsDB.getCollection("savings_terms");
+// Report duplicates with concrete product codes before attempting a unique index.
+const duplicates = savingsTerms.aggregate([
+  { $match: { status: "ACTIVE", product_code: { $exists: true } } },
+  { $group: { _id: "$product_code", count: { $sum: 1 }, ids: { $push: "$_id" } } },
+  { $match: { count: { $gt: 1 } } }
+]).toArray();
+if (duplicates.length) {
+  printjson({ error: "Resolve duplicate ACTIVE savings terms before indexing", duplicates });
+  throw new Error("Duplicate active savings product terms; no data has been modified");
+}
 savingsTerms.createIndex(
   { product_code: 1, status: 1 },
-  { name: "uniq_active_savings_terms", unique: true, partialFilterExpression: { status: "ACTIVE" } }
+  { name: "uniq_active_savings_terms", unique: true,
+    partialFilterExpression: { status: "ACTIVE", product_code: { $exists: true } } }
 );
 const savingsSeed = {
   "_id": "savings-standard-v1",

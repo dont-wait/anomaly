@@ -15,6 +15,8 @@ import (
 
 var (
 	ErrConfirmationRequired         = errors.New("confirmation required")
+	ErrTermsChanged                 = errors.New("savings terms have changed or are not accepted")
+	ErrTermsUnavailable             = errors.New("active savings terms unavailable")
 	ErrInvalidKey                   = errors.New("idempotency key must be a UUID v4")
 	ErrInvalidWithdrawalQuote       = errors.New("invalid withdrawal quote")
 	ErrUnsupportedWithdrawalType    = errors.New("unsupported withdrawal type")
@@ -73,7 +75,12 @@ type WithdrawalQuoteStore interface {
 	GetWithdrawal(context.Context, string) (WithdrawalQuote, bool, error)
 }
 
+type TermsReader interface {
+	Current(context.Context) (savings.TermsSnapshot, error)
+}
+
 type Service struct {
+	Terms            TermsReader
 	Quotes           *savingsqueries.Service
 	Bank             Bank
 	WithdrawalQuotes WithdrawalQuoteStore
@@ -96,9 +103,10 @@ func validateKey(key string) error {
 }
 
 type OpenInput struct {
-	QuoteID         string `json:"quoteId"`
-	SourceAccountID string `json:"sourceAccountId"`
-	Confirm         bool   `json:"confirm"`
+	QuoteID              string `json:"quoteId"`
+	SourceAccountID      string `json:"sourceAccountId"`
+	Confirm              bool   `json:"confirm"`
+	AcceptedTermsVersion string `json:"acceptedTermsVersion"`
 }
 
 type OpenResponse struct {
@@ -140,6 +148,18 @@ func (s *Service) Open(ctx context.Context, actor, key string, in OpenInput) (Op
 			return OpenResponse{}, ErrIdempotencyConflict
 		}
 		return opened(old), nil
+	}
+	// Check consent only on NEW openings. Same-key replay always returns the already
+	// committed result even if the currently published terms later change.
+	if s.Terms == nil {
+		return OpenResponse{}, ErrTermsUnavailable
+	}
+	currentTerms, termsErr := s.Terms.Current(ctx)
+	if termsErr != nil || currentTerms.Validate() != nil {
+		return OpenResponse{}, ErrTermsUnavailable
+	}
+	if strings.TrimSpace(in.AcceptedTermsVersion) == "" || in.AcceptedTermsVersion != currentTerms.Version {
+		return OpenResponse{}, ErrTermsChanged
 	}
 	q, err := s.Quotes.LoadValidQuote(ctx, actor, in.QuoteID)
 	if err != nil {

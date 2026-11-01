@@ -10,7 +10,10 @@
         "name": "uniq_active_savings_terms",
         "unique": true,
         "partialFilterExpression": {
-          "status": "ACTIVE"
+          "status": "ACTIVE",
+          "product_code": {
+            "$exists": true
+          }
         }
       }
     ]

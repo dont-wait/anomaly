@@ -1,6 +1,7 @@
 # Savings UI disclosure (UC-10) — integration note
 
-The existing Savings opening command is unchanged: `POST /api/savings/contracts`
+The monetary Savings opening implementation is unchanged, but the request contract
+now includes `acceptedTermsVersion`: `POST /api/savings/contracts`
 requires a valid JWT, `confirm: true`, a still-valid quote and a UUID-v4
 `Idempotency-Key`. The financial event, ledger and projection shapes are **not**
 modified by this UI enhancement.
@@ -30,7 +31,11 @@ must continue to come from the server quote/open responses.
 
 ## Important scope boundary
 
-The existing `confirm` and recorded `SavingsOpened` event establish that a
+The required `acceptedTermsVersion` is checked against the active terms before
+creating a **new** opening. This version is not yet stored as an immutable
+signed consent artifact in the banking event, so it is not a replacement for a
+legally reviewed contract-signing process. The existing `confirm` and recorded
+`SavingsOpened` event establish that a
 user submitted and completed an opening command. **This patch does not store
 an immutable, versioned legal consent artifact** in EventStoreDB, does not add
 an OTP, and does not generate a PDF. If the group requires legally auditable
@@ -55,3 +60,8 @@ After starting the local test stack and authenticating as a customer, use the
 real Savings tab (not `#/preview/savings`) to review the new dialog, confirm an
 opening **only on isolated demo data**, and inspect contract history. Check
 Swagger `GET /api/savings/terms` with and without JWT (200 and 401).
+
+
+**An toàn chấp thuận điều khoản:** Khi mở sổ, client gửi `acceptedTermsVersion` từ bản điều khoản khách đã xem. Service kiểm tra với phiên bản ACTIVE tại thời điểm xác nhận cho các lệnh mở mới; retry cùng khóa của hợp đồng đã tồn tại không bị chặn chỉ vì điều khoản mới vừa được phát hành. Khi thiếu/chênh lệch phiên bản, API từ chối mở mới.
+
+**Giao dịch chưa xác định:** Lệnh ghi phải được lưu thành công trong localStorage trước khi gửi. Nếu không lưu được, không gửi giao dịch. Nếu kết quả chưa chắc chắn, không xoá khóa và chỉ retry đúng request cũ.

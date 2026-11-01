@@ -1,13 +1,13 @@
 import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { AuthContext } from "@/features/auth/authContext";
+import { ApiError } from "@/shared/lib/http";
 import { getInfo, type AuthUser } from "@/features/auth/api/profile";
 import { ProfileSidebar } from "@/shared/layout/ProfileSidebar";
 import { navigate, routes } from "@/app/routes";
 import { ArrowLeftIcon, ChevronRightIcon, SavingsIcon } from "@/shared/icons";
 import { BottomNav } from "@/shared/layout/BottomNav";
 import { Logo } from "@/shared/layout/Logo";
-import { MoneyInput } from "@/features/loans/components/MoneyInput";
-import { ChoiceList, Pagination, StepForm } from "@/shared/ui";
+import { Pagination } from "@/shared/ui";
 import {
   createSavingsQuote, createSavingsWithdrawalQuote, describeSavingsError,
   getSavingsContract, getSavingsHistory, getSavingsReceipt, getSavingsTerms, listSavingsContracts, listSavingsPackages,
@@ -18,7 +18,6 @@ import {
 } from "./api";
 import { clearPending, loadPending, savePending, type PendingSavingsCommand } from "./pending";
 import {
-  estimateSavings,
   formatDate,
   formatVnd,
   parseAmount,
@@ -211,14 +210,22 @@ export default function SavingsLivePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const commandInFlight = useRef(false);
+  const activeContext = useRef({ token, actor, selectedId: "" });
+  const commandsGeneration = useRef(0);
+  const latestWrite = useRef<{ id: string; status: SavingsStatus } | null>(null);
+  const [summaryStale, setSummaryStale] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [pending, setPending] = useState<PendingSavingsCommand | null>(() => actor ? loadPending(actor) : null);
+  const [pending, setPending] = useState<PendingSavingsCommand | null>(() => {
+    try { return actor ? loadPending(actor) : null; } catch { return null; }
+  });
+  const [storageBlocked, setStorageBlocked] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [savingsPage, setSavingsPage] = useState(1);
   const [selectedId, setSelectedId] = useState("");
+  useEffect(() => { activeContext.current = { token, actor, selectedId }; }, [token, actor, selectedId]);
   const [amountText, setAmountText] = useState("10000000");
   const [termMonths, setTermMonths] = useState(12);
-  const [openStep, setOpenStep] = useState<"amount" | "term">("amount");
   const [accepted, setAccepted] = useState(false);
   const [draft, setDraft] = useState<SavingsDraft | null>(null);
   const [openQuote, setOpenQuote] = useState<SavingsQuote | null>(null);
@@ -230,41 +237,76 @@ export default function SavingsLivePage() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [withdrawQuote, setWithdrawQuote] = useState<SavingsWithdrawalQuote | null>(null);
   const [receipt, setReceipt] = useState<SavingsReceipt | null>(null);
+  const [lastWithdrawal, setLastWithdrawal] = useState<SavingsWithdrawResult | null>(null);
   const [withdrawAccepted, setWithdrawAccepted] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const refreshContracts = useCallback(async (replace = true, cursor?: string) => {
-    if (!token) return;
+    if (!token || !actor) return;
+    const generation = commandsGeneration.current;
     const page = await listSavingsContracts(token, cursor);
-    setContracts((current) => replace ? (page.items ?? []).map(mapSavingsRecord) : [
-      ...current, ...(page.items ?? []).filter((item) => !current.some((c) => c.id === item.savingsId)).map(mapSavingsRecord),
-    ]);
-    setNextCursor(page.nextCursor);
+    if (activeContext.current.token !== token || activeContext.current.actor !== actor) return;
+    const stale = commandsGeneration.current !== generation;
+    setContracts((current) => {
+      const incoming = (page.items ?? []).map(mapSavingsRecord);
+      if (replace) {
+        // Never erase a more recent successful write while the read model catches up.
+        if (stale) {
+          return [...current, ...incoming.filter((c) => !current.some((v) => v.id === c.id))];
+        }
+        return incoming;
+      }
+      return [...current, ...incoming.filter((c) => !current.some((v) => v.id === c.id))];
+    });
+    if (commandsGeneration.current === generation) setNextCursor(page.nextCursor);
+    if (replace && !page.nextCursor && latestWrite.current &&
+      (page.items ?? []).some((item) => item.savingsId === latestWrite.current?.id && item.status === latestWrite.current.status)) {
+      setSummaryStale(false);
+    }
     if (replace) setSavingsPage(1);
-  }, [token]);
+  }, [token, actor]);
 
   useEffect(() => {
     if (!token || !actor) return;
     const controller = new AbortController();
-    Promise.all([
-      getInfo(token, { signal: controller.signal }),
-      listSavingsPackages(token, controller.signal),
-      listSavingsContracts(token, undefined, controller.signal),
-    ]).then(([profile, catalog, page]) => {
+    const generation = commandsGeneration.current;
+    // Independently display successful sections even if one API fails.
+    void Promise.allSettled([
+      getInfo(token, { signal: controller.signal }).then((profile) => {
+        if (!controller.signal.aborted) setAccount(profile);
+      }),
+      listSavingsPackages(token, controller.signal).then((catalog) => {
+        if (!controller.signal.aborted) setPackages(catalog.items ?? []);
+      }),
+      listSavingsContracts(token, undefined, controller.signal).then((page) => {
+        if (controller.signal.aborted) return;
+        const latest = commandsGeneration.current === generation;
+        setContracts((current) => {
+          const incoming = (page.items ?? []).map(mapSavingsRecord);
+          return latest ? incoming :
+            [...current, ...incoming.filter((c) => !current.some((v) => v.id === c.id))];
+        });
+        if (commandsGeneration.current === generation) setNextCursor(page.nextCursor);
+      }),
+    ]).then((results) => {
       if (controller.signal.aborted) return;
-      setAccount(profile);
-      setPackages(catalog.items ?? []);
-      setContracts((page.items ?? []).map(mapSavingsRecord));
-      setNextCursor(page.nextCursor);
-      setPending(loadPending(actor));
-      setErrorMessage(null);
-    }).catch((error: unknown) => {
-      if (!controller.signal.aborted) setErrorMessage(describeSavingsError(error));
-    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      const failed = results.find((result) => result.status === "rejected");
+      setErrorMessage(failed?.status === "rejected" ? describeSavingsError(failed.reason) : null);
+      setLoading(false);
+    });
+    void Promise.resolve().then(() => {
+      if (controller.signal.aborted) return;
+      try { setPending(loadPending(actor)); setStorageBlocked(false); }
+      catch {
+        setStorageBlocked(true);
+        setErrorMessage("Không thể kiểm tra yêu cầu giao dịch trước đó. Tạm khóa giao dịch để tránh trùng tiền.");
+      }
+    });
     return () => controller.abort();
   }, [token, actor]);
 
   const selected = contracts.find((c) => c.id === selectedId) ?? null;
+  const summaryIncomplete = Boolean(nextCursor) || summaryStale;
   const principalTotal = contracts.filter((c) => c.status !== "settled")
     .reduce((sum, c) => sum + c.principal, 0);
   const projectedInterest = contracts.filter((c) => c.status !== "settled")
@@ -275,12 +317,19 @@ export default function SavingsLivePage() {
   const amount = parseAmount(amountText);
   const savingsPackage = packages.find((item) => item.packageId === "savings_standard");
   const terms = savingsPackage?.termOptions ?? [];
+  const chosenTerm = terms.find((option) => option.termMonths === termMonths);
+  // This is a visual estimate only. The final amount comes from the server quote.
+  const estimatedInterest = chosenTerm && Number.isSafeInteger(amount) && amount > 0
+    ? Math.round(amount * Number(chosenTerm.annualInterestRate) * termMonths / 1_200)
+    : null;
   const minDeposit = savingsPackage?.minimumDeposit ?? 1_000_000;
   const balance = account?.amount ?? 0;
   const sourceAccountId = account?.id ?? "";
   const sourceLabel = paymentAccountLabel(sourceAccountId, sourceAccountId, account?.accountNo);
   const canOpen = Boolean(savingsPackage && sourceAccountId) && Number.isSafeInteger(amount) &&
-    amount >= minDeposit && amount <= balance && !busy && !pending;
+    amount >= minDeposit && amount <= balance &&
+    terms.some((option) => option.termMonths === termMonths) &&
+    !busy && !pending && !storageBlocked;
 
   const showContract = async (id: string) => {
     if (!token || busy) return;
@@ -288,9 +337,11 @@ export default function SavingsLivePage() {
     setErrorMessage(null);
     try {
       const detail = await getSavingsContract(token, id);
+      if (activeContext.current.token !== token || activeContext.current.actor !== actor) return;
       setContracts((current) => current.map((item) => item.id === id ? mapSavingsRecord(detail) : item));
       setSelectedId(id);
       setReceipt(null);
+      setHistoryLoading(false);
       setHistory(null);
       setHistoryError(null);
       setScreen("detail");
@@ -298,7 +349,7 @@ export default function SavingsLivePage() {
     finally { setBusy(false); }
   };
   const startOpen = () => {
-    if (pending) { setErrorMessage("Còn yêu cầu chuyển tiền chưa xác định. Hãy dùng nút thử lại yêu cầu cũ trước khi mở sổ khác."); return; }
+    if (pending || storageBlocked) { setErrorMessage("Không thể tạo yêu cầu mới khi còn yêu cầu giao dịch chưa xác định hoặc lưu trữ không khả dụng."); return; }
     setAccepted(false);
     setProductTerms(null);
     setTermsVisible(false);
@@ -306,11 +357,10 @@ export default function SavingsLivePage() {
     setFormError(null);
     setErrorMessage(null);
     setOpenQuote(null);
-    setOpenStep("amount");
     setScreen("open");
   };
   const previewOpen = async (months: number) => {
-    if (!token || !savingsPackage || !sourceAccountId || busy || pending) return;
+    if (!token || !savingsPackage || !sourceAccountId || !canOpen) return;
     setBusy(true);
     setFormError(null);
     try {
@@ -338,18 +388,32 @@ export default function SavingsLivePage() {
     finally { setBusy(false); }
   };
 
-  const keepPending = (operation: PendingSavingsCommand) => {
-    setPending(operation);
-    savePending(actor, operation);
+  const keepPending = (operation: PendingSavingsCommand): boolean => {
+    try {
+      savePending(actor, operation);
+      setPending(operation);
+      return true;
+    } catch {
+      setStorageBlocked(true);
+      setErrorMessage("Không thể lưu an toàn yêu cầu giao dịch. Không thực hiện chuyển tiền.");
+      return false;
+    }
   };
   const clearConfirmed = () => {
-    clearPending(actor);
-    setPending(null);
-    setErrorMessage(null);
+    try {
+      clearPending(actor);
+      setPending(null);
+      setErrorMessage(null);
+    } catch {
+      // Success is authoritative, but a stale pending key must not enable another write.
+      setStorageBlocked(true);
+      setErrorMessage("Giao dịch đã hoàn thành. Bộ nhớ thiết bị chưa thể đồng bộ; không tạo yêu cầu mới.");
+    }
   };
   const applyOpened = (result: SavingsOpenResult) => {
     const rate = Number(result.annualInterestRate);
-    const estimated = estimateSavings(result.principal, result.termMonths, result.openedAt).interest;
+    const days = (Date.parse(result.maturityAt) - Date.parse(result.openedAt)) / 86_400_000;
+    const estimated = Math.round(result.principal * rate * days / 36_500);
     const item: SavingsContract = {
       id: result.savingsId, number: result.savingsNo,
       principal: result.principal, termMonths: result.termMonths,
@@ -357,42 +421,50 @@ export default function SavingsLivePage() {
       sourceAccount: result.sourceAccountId, status: result.status,
       interest: estimated,
     };
+    commandsGeneration.current += 1;
+    latestWrite.current = { id: result.savingsId, status: result.status };
+    setSummaryStale(true);
+    setNextCursor(null); // Old cursors are invalid after a bank write.
     setContracts((current) => [item, ...current.filter((c) => c.id !== item.id)]);
     setSelectedId(item.id);
     clearConfirmed();
     setScreen("open-success");
-    void getInfo(token).then(setAccount).catch(() => {});
+    void getInfo(token).then((profile) => {
+      if (activeContext.current.token === token && activeContext.current.actor === actor) setAccount(profile);
+    }).catch(() => {});
   };
   const applyWithdrawn = (result: SavingsWithdrawResult) => {
-    setContracts((current) => {
-      const existing = current.find((item) => item.id === result.savingsId);
-      const updated = current.map((item) => item.id === result.savingsId ? {
-        ...item, status: "settled" as const, interest: result.interestAmount,
-        settledAt: result.settledAt,
-      } : item);
-      // A recovered command may complete before the Mongo list catches up.
-      return existing ? updated : [{
-        id: result.savingsId, number: result.savingsNo, principal: result.principal,
-        termMonths: 0, annualRate: 0, openedAt: result.settledAt,
-        maturityAt: result.settledAt, status: "settled", sourceAccount: result.destinationAccountId,
-        interest: result.interestAmount, settledAt: result.settledAt,
-      }, ...updated];
-    });
+    commandsGeneration.current += 1;
+    latestWrite.current = { id: result.savingsId, status: "settled" };
+    setSummaryStale(true);
+    setNextCursor(null);
+    setLastWithdrawal(result);
+    setContracts((current) => current.map((item) => item.id === result.savingsId ? {
+      ...item, status: "settled" as const, interest: result.interestAmount,
+      settledAt: result.settledAt,
+    } : item));
     setSelectedId(result.savingsId);
     clearConfirmed();
     setScreen("withdraw-success");
-    void getInfo(token).then(setAccount).catch(() => {});
+    void getInfo(token).then((profile) => {
+      if (activeContext.current.token === token && activeContext.current.actor === actor) setAccount(profile);
+    }).catch(() => {});
   };
   const runOperation = async (operation: PendingSavingsCommand) => {
     if (commandInFlight.current || !token) return;
     commandInFlight.current = true;
     setBusy(true);
     setErrorMessage(null);
-    keepPending(operation);
+    if (!keepPending(operation)) {
+      setBusy(false);
+      commandInFlight.current = false;
+      return;
+    }
     try {
       if (operation.kind === "open") {
         const result = await openSavingsContract(token, {
-          quoteId: operation.quoteId, sourceAccountId: operation.sourceAccountId, confirm: true,
+          quoteId: operation.quoteId, sourceAccountId: operation.sourceAccountId,
+          acceptedTermsVersion: operation.acceptedTermsVersion, confirm: true,
         }, operation.key);
         applyOpened(result);
       } else {
@@ -401,15 +473,25 @@ export default function SavingsLivePage() {
       }
     } catch (error) {
       setErrorMessage(describeSavingsError(error));
+      if (error instanceof ApiError && error.hasCode("SAVINGS_TERMS_CHANGED")) {
+        setProductTerms(null);
+        setTermsReviewed(false);
+        setAccepted(false);
+        setOpenQuote(null);
+        setScreen("open");
+      }
       if (!mayBeCommitted(error)) {
-        clearPending(actor);
-        setPending(null);
+        try {
+          clearPending(actor);
+          setPending(null);
+        } catch { setStorageBlocked(true); }
       }
     } finally { setBusy(false); commandInFlight.current = false; }
   };
   const confirmOpen = () => {
-    if (!termsReviewed || !productTerms || !accepted || !openQuote || !sourceAccountId || pending) return;
-    void runOperation({ kind: "open", key: crypto.randomUUID(), quoteId: openQuote.quoteId, sourceAccountId });
+    if (!termsReviewed || !productTerms || !accepted || !openQuote || !sourceAccountId || pending || storageBlocked) return;
+    void runOperation({ kind: "open", key: crypto.randomUUID(), quoteId: openQuote.quoteId,
+      sourceAccountId, acceptedTermsVersion: productTerms.version });
   };
   const beginWithdraw = async () => {
     if (!selected || selected.status !== "matured" || pending || busy || !token) return;
@@ -425,26 +507,34 @@ export default function SavingsLivePage() {
     finally { setBusy(false); }
   };
   const confirmWithdraw = () => {
-    if (!withdrawAccepted || !selected || selected.status !== "matured" || !withdrawQuote || pending) return;
+    if (!withdrawAccepted || !selected || selected.status !== "matured" || !withdrawQuote || pending || storageBlocked) return;
     void runOperation({ kind: "withdraw", key: crypto.randomUUID(), quoteId: withdrawQuote.quoteId, savingsId: selected.id });
   };
   const loadHistory = async () => {
     if (!selected || !token || historyLoading) return;
+    const requestedId = selected.id;
+    const requestedActor = actor;
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const response = await getSavingsHistory(token, selected.id);
-      setHistory(response.items ?? []);
+      const response = await getSavingsHistory(token, requestedId);
+      if (activeContext.current.token === token && activeContext.current.actor === requestedActor &&
+        activeContext.current.selectedId === requestedId) setHistory(response.items ?? []);
     } catch (error) {
-      setHistoryError(describeSavingsError(error));
-    } finally { setHistoryLoading(false); }
+      if (activeContext.current.selectedId === requestedId) setHistoryError(describeSavingsError(error));
+    } finally { if (activeContext.current.selectedId === requestedId) setHistoryLoading(false); }
   };
   const showReceipt = async () => {
-    if (!selected || !token || busy) return;
+    const id = lastWithdrawal?.savingsId ?? selected?.id;
+    if (!id || !token || busy) return;
     setBusy(true);
     setErrorMessage(null);
     try {
-      const data = await getSavingsReceipt(token, selected.id);
+      const [data, detail] = await Promise.all([
+        getSavingsReceipt(token, id), getSavingsContract(token, id),
+      ]);
+      setContracts((current) => [mapSavingsRecord(detail), ...current.filter((item) => item.id !== id)]);
+      setSelectedId(id);
       setReceipt(data);
       setScreen("detail");
     } catch (error) { setErrorMessage(describeSavingsError(error)); }
@@ -455,6 +545,7 @@ export default function SavingsLivePage() {
       {(errorMessage || !auth || !token) && <div className="savings-live-banner" role="alert">{errorMessage || "Vui lòng đăng nhập để xem sổ tiết kiệm thật."}</div>}
       {busy && <div className="savings-live-banner" role="status">Đang xử lý yêu cầu với ngân hàng…</div>}
       {pending && <div className="savings-live-banner" role="status">Yêu cầu giao dịch gần nhất đang được xác minh. Vui lòng không tạo giao dịch mới. <button type="button" disabled={busy} onClick={() => void runOperation(pending)}>Kiểm tra lại yêu cầu</button></div>}
+      {storageBlocked && <div className="savings-live-banner" role="alert">Lưu trữ giao dịch không khả dụng. Không thể thực hiện giao dịch mới trên thiết bị này.</div>}
       {loading && <div className="savings-live-banner" role="status">Đang tải thông tin tiết kiệm…</div>}
       {screen === "list" ? (
         <>
@@ -472,17 +563,18 @@ export default function SavingsLivePage() {
                 <span className="savings-hero-pill">◈ Chuẩn VND</span>
               </div>
               <strong className="savings-hero-amount">
-                {formatVnd(principalTotal)}
+                {summaryIncomplete ? "—" : formatVnd(principalTotal)}
               </strong>
               <p>
-                {count("active") + count("matured")} sổ tiết kiệm chưa tất toán
+                {summaryIncomplete ? "Danh sách cần đồng bộ để tổng hợp đầy đủ" :
+                  `${count("active") + count("matured") + count("locked")} sổ tiết kiệm chưa tất toán`}
               </p>
               <div className="savings-hero-metrics">
                 <span>
-                  Đang gửi <b>{count("active")} sổ</b>
+                  Đang gửi <b>{summaryIncomplete ? "—" : `${count("active")} sổ`}</b>
                 </span>
                 <span>
-                  Lãi ước tính (tham khảo) <b>+{formatVnd(projectedInterest)}</b>
+                  Lãi ước tính (tham khảo) <b>{summaryIncomplete ? "—" : `+${formatVnd(projectedInterest)}`}</b>
                 </span>
               </div>
             </section>
@@ -490,10 +582,10 @@ export default function SavingsLivePage() {
             <Button secondary disabled={busy || loading} onClick={() => { setBusy(true); void refreshContracts().catch((error: unknown) => setErrorMessage(describeSavingsError(error))).finally(() => setBusy(false)); }}>Làm mới danh sách sổ</Button>
             <div className="savings-section-title">
               <h2>Sổ tiết kiệm của bạn</h2>
-              <span>{contracts.length} hợp đồng {nextCursor ? "(chưa tải hết)" : ""}</span>
+              <span>{contracts.length} hợp đồng {nextCursor ? "(đã tải, còn trang sau)" : ""}</span>
             </div>
             <div className="savings-filters" aria-label="Lọc sổ tiết kiệm">
-              {(["all", "active", "matured", "settled"] as const).map((key) => (
+              {(["all", "active", "matured", "locked", "settled"] as const).map((key) => (
                 <button
                   key={key}
                   type="button"
@@ -599,94 +691,102 @@ export default function SavingsLivePage() {
       ) : null}
 
       {screen === "open" && (
-        <StepForm
-          title="Mở sổ tiết kiệm"
-          stepId={openStep}
-          stepNumber={openStep === "amount" ? 1 : 2}
-          stepCount={3}
-          heading={
-            openStep === "amount"
-              ? "Bạn muốn gửi bao nhiêu?"
-              : "Bạn muốn gửi trong bao lâu?"
-          }
-          hint={
-            openStep === "amount"
-              ? `Tối thiểu ${formatVnd(minDeposit)}`
-              : "Lãi suất cố định trong suốt kỳ hạn."
-          }
-          canContinue={canOpen}
-          onBack={() => {
-            if (openStep === "term") setOpenStep("amount");
-            else setScreen("list");
-          }}
-          onNext={() => {
-            if (openStep === "amount") setOpenStep("term");
-            else previewOpen(termMonths);
-          }}
-        >
-          {openStep === "amount" && (
-            <>
-              <MoneyInput
-                label="Số tiền gửi"
-                size="lg"
-                value={Number.isFinite(amount) ? amount : 0}
-                suggestMin={minDeposit}
-                suggestMax={balance}
-                error={
-                  amount > balance
-                    ? "Số tiền vượt số dư khả dụng."
-                    : undefined
-                }
-                onChange={(value) => {
-                  setAmountText(String(value));
-                  setFormError(null);
-                }}
-              />
-              <div className="savings-amount-chips">
-                {[1_000_000, 5_000_000, 10_000_000].map((value) => (
-                  <button
-                    type="button"
-                    key={value}
-                    onClick={() => {
-                      setAmountText(String(value));
-                      setFormError(null);
-                    }}
-                  >
-                    {value / 1_000_000} Triệu
-                  </button>
-                ))}
+        <>
+          <Head title="Mở sổ tiết kiệm" onBack={() => setScreen("list")} />
+          <main className="savings-content savings-open-content">
+            <section className="savings-banner" aria-label="Sản phẩm tiết kiệm">
+              <span className="savings-overline">TÍCH LŨY</span>
+              <h2>Tiết kiệm có kỳ hạn</h2>
+              <p>Lãi suất cố định, an tâm với kế hoạch tương lai.</p>
+            </section>
+
+            <div className="savings-open-group">
+              <div className="savings-section-title">
+                <h2>Tài khoản trích tiền</h2>
+                <span>Khả dụng</span>
               </div>
               <Section>
-                <Line
-                  label="Tài khoản trích tiền"
-                  value={sourceLabel}
-                />
-                <Line
-                  label="Số dư thực tế"
-                  value={formatVnd(balance)}
-                />
+                <Line label="Tài khoản thanh toán" value={sourceLabel} />
+                <Line label="Số dư thực tế" value={formatVnd(balance)} />
               </Section>
-            </>
-          )}
-          {openStep === "term" && (
-            <ChoiceList
-              label="Kỳ hạn gửi"
-              value={String(termMonths)}
-              options={terms.map(({ termMonths: months, annualInterestRate }) => ({
-                value: String(months),
-                label: `${months} tháng`,
-                description: `Lãi suất ${annualInterestRate}%/năm`,
-              }))}
-              onChoose={(value) => setTermMonths(Number(value))}
-              onConfirm={() => previewOpen(termMonths)}
-            />
-          )}
-          {formError && (
-            <p role="alert" className="savings-error">
-              {formError}
-            </p>
-          )}
-        </StepForm>
+            </div>
+
+            <div className="savings-open-group">
+              <div className="savings-section-title">
+                <h2>Số tiền gửi</h2>
+                <span>Từ {formatVnd(minDeposit)}</span>
+              </div>
+              <Section>
+                <label className="savings-open-field-label" htmlFor="savings-live-amount">
+                  Nhập số tiền (VND)
+                </label>
+                <input
+                  id="savings-live-amount"
+                  className="savings-amount-input"
+                  type="text"
+                  inputMode="numeric"
+                  value={amountText}
+                  onChange={(event) => {
+                    setAmountText(event.target.value.replace(/\D/g, ""));
+                    setFormError(null);
+                  }}
+                />
+                <div className="savings-amount-chips">
+                  {[1_000_000, 5_000_000, 10_000_000].map((value) => (
+                    <button
+                      type="button"
+                      key={value}
+                      onClick={() => {
+                        setAmountText(String(value));
+                        setFormError(null);
+                      }}
+                    >
+                      {formatVnd(value)}
+                    </button>
+                  ))}
+                </div>
+                {amount > balance && <p role="alert" className="savings-error">Số tiền vượt số dư khả dụng.</p>}
+              </Section>
+            </div>
+
+            <div className="savings-open-group">
+              <div className="savings-section-title">
+                <h2>Chọn kỳ hạn</h2>
+                <span>Lãi suất cố định</span>
+              </div>
+              <Section>
+                <label className="savings-open-field-label" htmlFor="savings-live-term">Kỳ hạn gửi</label>
+                <select
+                  id="savings-live-term"
+                  value={chosenTerm ? String(termMonths) : ""}
+                  onChange={(event) => {
+                    setTermMonths(Number(event.target.value));
+                    setFormError(null);
+                  }}
+                >
+                  {!chosenTerm && <option value="" disabled>Chọn kỳ hạn</option>}
+                  {terms.map((option) => (
+                    <option key={option.termMonths} value={option.termMonths}>
+                      {option.termMonths} tháng – {option.annualInterestRate}%/năm
+                    </option>
+                  ))}
+                </select>
+                {terms.length === 0 && <p role="status" className="savings-hint">Chưa có kỳ hạn gửi khả dụng.</p>}
+              </Section>
+            </div>
+
+            <Section className="savings-summary">
+              <h3>Ước tính lợi nhuận</h3>
+              <Line label="Tiền gốc" value={Number.isSafeInteger(amount) && amount > 0 ? formatVnd(amount) : "—"} />
+              <Line label="Lãi suất năm" value={chosenTerm ? `${chosenTerm.annualInterestRate}%` : "—"} />
+              <Line label="Tiền lãi dự kiến" value={estimatedInterest === null ? "—" : formatVnd(estimatedInterest)} />
+              <p className="savings-open-estimate-note">Số tiền tham khảo. Lãi thực tế được xác định tại bước xác nhận.</p>
+            </Section>
+
+            {formError && <p role="alert" className="savings-error">{formError}</p>}
+            <Button disabled={!canOpen} onClick={() => void previewOpen(termMonths)}>Tiếp tục →</Button>
+          </main>
+        </>
       )}
 
       {screen === "open-preview" && draft && (
@@ -984,9 +1084,7 @@ export default function SavingsLivePage() {
           </>
         )}
 
-      {screen === "withdraw-success" &&
-        selected &&
-        selected.status === "settled" && (
+      {screen === "withdraw-success" && lastWithdrawal && (
           <>
             <Head
               title="Kết quả rút tiết kiệm"
@@ -1003,28 +1101,28 @@ export default function SavingsLivePage() {
               <section className="savings-amount-hero">
                 <span>Tổng tiền tất toán</span>
                 <strong>
-                  {formatVnd(selected.principal + selected.interest)}
+                  {formatVnd(lastWithdrawal.totalPayout)}
                 </strong>
               </section>
               <Section>
                 <h3>Thông tin tất toán</h3>
-                <Line label="Mã sổ" value={selected.number} />
+                <Line label="Mã sổ" value={lastWithdrawal.savingsNo} />
                 <Line label="Trạng thái" value={<Badge status="settled" />} />
-                <Line label="Tổng gốc" value={formatVnd(selected.principal)} />
+                <Line label="Tổng gốc" value={formatVnd(lastWithdrawal.principal)} />
                 <Line
                   label="Tiền lãi"
-                  value={`+${formatVnd(selected.interest)}`}
+                  value={`+${formatVnd(lastWithdrawal.interestAmount)}`}
                 />
                 <Line
                   label="Tổng tiền nhận"
                   strong
-                  value={formatVnd(selected.principal + selected.interest)}
+                  value={formatVnd(lastWithdrawal.totalPayout)}
                 />
-                <Line label="Tài khoản nhận" value={paymentAccountLabel(selected.sourceAccount, sourceAccountId, account?.accountNo)} />
+                <Line label="Tài khoản nhận" value={paymentAccountLabel(lastWithdrawal.destinationAccountId, sourceAccountId, account?.accountNo)} />
                 <Line
                   label="Thời điểm"
                   value={formatDate(
-                    selected.settledAt ?? new Date().toISOString(),
+                    lastWithdrawal.settledAt,
                   )}
                 />
               </Section>

@@ -10,8 +10,10 @@ import (
 )
 
 // The API response shape is unchanged; content and version now come from DB.
-type TermsSnapshot = savingsdomain.TermsSnapshot
-type TermsSection = savingsdomain.TermsSection
+type (
+	TermsSnapshot = savingsdomain.TermsSnapshot
+	TermsSection  = savingsdomain.TermsSection
+)
 
 type TermsProvider interface {
 	Current(context.Context) (savingsdomain.TermsSnapshot, error)

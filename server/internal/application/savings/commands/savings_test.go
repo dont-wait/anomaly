@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	savingsqueries "github.com/dont-wait/anomaly/internal/application/savings/queries"
+	"github.com/dont-wait/anomaly/internal/domain/savings"
+	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	"github.com/google/uuid"
 )
 
@@ -37,5 +40,32 @@ func TestSavingsCommandsRequireConfirmationAndUUIDv4(t *testing.T) {
 	}
 	if _, err := s.WithdrawalPreview(context.Background(), "actor", "contract", "partial"); !errors.Is(err, ErrUnsupportedWithdrawalType) {
 		t.Fatalf("partial withdrawal: %v", err)
+	}
+}
+
+type consentTestBank struct{ Bank }
+
+func (consentTestBank) FindSavingsOpening(context.Context, string, string) (journal.SavingsMovement, bool, error) {
+	return journal.SavingsMovement{}, false, nil
+}
+
+type consentTestTerms struct{}
+
+func (consentTestTerms) Current(context.Context) (savings.TermsSnapshot, error) {
+	return savings.TermsSnapshot{
+		Version: "terms-v2", Title: "Terms", Introduction: "Savings",
+		Sections: []savings.TermsSection{{Title: "Period", Body: "Maturity"}},
+	}, nil
+}
+
+func TestOpenRejectsStaleAndMissingTermsBeforeFundsMove(t *testing.T) {
+	svc := &Service{Bank: consentTestBank{}, Quotes: &savingsqueries.Service{}, Terms: consentTestTerms{}}
+	for _, version := range []string{"", "terms-v1"} {
+		_, err := svc.Open(context.Background(), "actor", "9c9a9ad3-bab1-4385-8ce9-b9c694ecdf4d", OpenInput{
+			QuoteID: "q", SourceAccountID: "a", Confirm: true, AcceptedTermsVersion: version,
+		})
+		if !errors.Is(err, ErrTermsChanged) {
+			t.Fatalf("version %q: got %v", version, err)
+		}
 	}
 }
