@@ -41,6 +41,15 @@ func (r *loginRepositoryFake) FindAll(context.Context) ([]*accountdomain.UserAcc
 	return []*accountdomain.UserAccount{r.account}, r.err
 }
 
+type credentialRepositoryFake struct {
+	account *accountdomain.UserAccount
+	err     error
+}
+
+func (r *credentialRepositoryFake) FindByCCCDNumber(context.Context, string) (*accountdomain.UserAccount, error) {
+	return r.account, r.err
+}
+
 type loginTokenFake struct{}
 
 func (loginTokenFake) Issue(string, string, string, bool) (string, time.Time, error) {
@@ -95,6 +104,22 @@ func TestLoginRecordsSuccess(t *testing.T) {
 	}
 	if len(recorder.events) != 1 || recorder.events[0].Type != audit.LoginSucceeded || recorder.events[0].AccountID != "account-id" {
 		t.Fatalf("audit events = %#v, want LoginSucceeded for account-id", recorder.events)
+	}
+}
+
+func TestLoginUsesLatestCredentialHashFromCredentialRepository(t *testing.T) {
+	bankAccount := newLoginAccount(t, true)
+	newHash, err := bcrypt.GenerateFromPassword([]byte("new-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credentials := &credentialRepositoryFake{account: &accountdomain.UserAccount{Id: bankAccount.Id, PasswordHash: string(newHash)}}
+	handler := NewLoginQueryHandler(&loginRepositoryFake{account: bankAccount}, loginTokenFake{}).WithCredentials(credentials)
+	if _, err := handler.Handle(context.Background(), LoginQuery{CCCDNumber: "cccd", Password: "new-password"}); err != nil {
+		t.Fatalf("login with latest password: %v", err)
+	}
+	if _, err := handler.Handle(context.Background(), LoginQuery{CCCDNumber: "cccd", Password: "password"}); !errors.Is(err, accountdomain.ErrInvalidCredentials) {
+		t.Fatalf("old password error = %v", err)
 	}
 }
 

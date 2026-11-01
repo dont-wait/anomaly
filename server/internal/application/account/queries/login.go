@@ -29,9 +29,15 @@ type KYCSessionResult struct {
 }
 
 type LoginQueryHandler struct {
-	readRepo AccountQueryRepository
-	tokens   TokenService
-	audit    audit.Recorder
+	readRepo    AccountQueryRepository
+	credentials CredentialRepository
+	tokens      TokenService
+	audit       audit.Recorder
+}
+
+func (h *LoginQueryHandler) WithCredentials(repo CredentialRepository) *LoginQueryHandler {
+	h.credentials = repo
+	return h
 }
 
 func NewLoginQueryHandler(readRepo AccountQueryRepository, tokens TokenService) *LoginQueryHandler {
@@ -44,7 +50,7 @@ func (h *LoginQueryHandler) WithAudit(recorder audit.Recorder) *LoginQueryHandle
 }
 
 func (h *LoginQueryHandler) Handle(ctx context.Context, q LoginQuery) (*LoginResult, error) {
-	acc, err := validateCredentials(ctx, h.readRepo, q.CCCDNumber, q.Password)
+	acc, err := validateCredentials(ctx, h.readRepo, h.credentials, q.CCCDNumber, q.Password)
 	if err != nil {
 		if errors.Is(err, accountdomain.ErrInvalidCredentials) {
 			if auditErr := h.recordLogin(ctx, audit.LoginFailed, "invalid_credentials", ""); auditErr != nil {
@@ -87,7 +93,7 @@ func (h *LoginQueryHandler) recordLogin(ctx context.Context, eventType, reasonCo
 }
 
 func (h *LoginQueryHandler) StartKYCSession(ctx context.Context, q LoginQuery) (*KYCSessionResult, error) {
-	acc, err := validateCredentials(ctx, h.readRepo, q.CCCDNumber, q.Password)
+	acc, err := validateCredentials(ctx, h.readRepo, h.credentials, q.CCCDNumber, q.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +107,7 @@ func (h *LoginQueryHandler) StartKYCSession(ctx context.Context, q LoginQuery) (
 	return &KYCSessionResult{User: acc, KYCToken: token, KYCExpiresAt: expiresAt}, nil
 }
 
-func validateCredentials(ctx context.Context, repo AccountQueryRepository, cccdNumber, password string) (*accountdomain.UserAccount, error) {
+func validateCredentials(ctx context.Context, repo AccountQueryRepository, credentials CredentialRepository, cccdNumber, password string) (*accountdomain.UserAccount, error) {
 	acc, err := repo.FindByCCCDNumber(ctx, cccdNumber)
 	if err != nil {
 		return nil, err
@@ -109,7 +115,18 @@ func validateCredentials(ctx context.Context, repo AccountQueryRepository, cccdN
 	if acc == nil {
 		return nil, accountdomain.ErrInvalidCredentials
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(acc.PasswordHash), []byte(password)); err != nil {
+	passwordHash := acc.PasswordHash
+	if credentials != nil {
+		credentialAccount, err := credentials.FindByCCCDNumber(ctx, cccdNumber)
+		if err != nil {
+			return nil, err
+		}
+		if credentialAccount == nil || credentialAccount.Id != acc.Id {
+			return nil, accountdomain.ErrInvalidCredentials
+		}
+		passwordHash = credentialAccount.PasswordHash
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)); err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 			return nil, accountdomain.ErrInvalidCredentials
 		}

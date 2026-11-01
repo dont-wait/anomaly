@@ -483,7 +483,7 @@ func bankingTimelineItem(recorded timelineRecorded, accountID, financialID strin
 			return timelineItemDTO{}, false, nil
 		}
 		item.Category, item.Summary = "account", "Tài khoản được tạo"
-	case journal.AccountUpdated:
+	case journal.AccountUpdated, journal.ProfileUpdated:
 		if record.Account == nil || record.Account.Id != accountID {
 			return timelineItemDTO{}, false, nil
 		}

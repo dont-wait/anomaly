@@ -176,7 +176,7 @@ func (s *bankState) apply(record journal.Record) error {
 		accountdomain.NormalizeKYCSessionIdentifiers(record.Account)
 		s.Accounts[record.Account.Id] = record.Account
 		s.Balances[financialID(record.Account.Id).Hex()] = record.Account.Balance.Current
-	case journal.AccountUpdated:
+	case journal.AccountUpdated, journal.ProfileUpdated:
 		if s.Accounts[record.Account.Id] == nil {
 			return accountdomain.ErrAccountNotFound
 		}
@@ -421,7 +421,15 @@ func (r *BankRepository) Save(ctx context.Context, a *accountdomain.UserAccount)
 		if a.Version != current.Version+1 {
 			return nil, nil, mongorepo.ErrTransactionConflict
 		}
-		return &journal.Record{ID: journal.EventID(a.Id, fmt.Sprintf("profile:%d", a.Version)), Type: journal.AccountUpdated, At: a.UpdatedAt, Account: a}, nil, nil
+		if current.PasswordHash != a.PasswordHash {
+			return nil, nil, fmt.Errorf("password hash changes must use the credential repository")
+		}
+		if current.Customer != nil && a.Customer != nil {
+			if current.Customer.Identity != a.Customer.Identity || current.Customer.Profile.FullName != a.Customer.Profile.FullName || current.Customer.Profile.DateOfBirth != a.Customer.Profile.DateOfBirth || current.Customer.Profile.Email != a.Customer.Profile.Email {
+				return nil, nil, fmt.Errorf("verified customer identity fields cannot be changed through profile update")
+			}
+		}
+		return &journal.Record{ID: journal.EventID(a.Id, fmt.Sprintf("profile:%d", a.Version)), Type: journal.ProfileUpdated, At: a.UpdatedAt, Account: a}, nil, nil
 	})
 	return err
 }

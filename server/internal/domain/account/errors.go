@@ -19,4 +19,5 @@ var (
 	ErrAccountNotFound        = errors.New("account not found")
 	ErrInvalidAmount          = errors.New("invalid amount")
 	ErrInsufficientFunds      = errors.New("insufficient funds")
+	ErrInvalidProfile         = errors.New("invalid profile data")
 )

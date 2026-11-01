@@ -1,6 +1,8 @@
 package account
 
 import (
+	"path"
+	"strings"
 	"time"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
@@ -23,18 +25,48 @@ type AccountResponsePublic struct {
 // POST /api/kyc/complete, AuthResponse). Chứa đầy đủ field kể
 // cả identity URLs — chỉ user sở hữu tài khoản mới được xem KYC của mình.
 type AccountResponsePrivate struct {
-	Id             string `json:"id"`
-	AccountNo      string `json:"accountNo"`
-	Username       string `json:"username"`
-	FullName       string `json:"fullName"`
-	Email          string `json:"email"`
-	Currency       string `json:"currency"`
-	Role           string `json:"role"`
-	IdCardFrontUrl string `json:"idCardFrontUrl"`
-	IdCardBackUrl  string `json:"idCardBackUrl"`
-	LiveVideoUrl   string `json:"liveVideoUrl"`
-	IsVerify       bool   `json:"isVerify"`
-	Amount         int64  `json:"amount"`
+	Id             string                  `json:"id"`
+	AccountNo      string                  `json:"accountNo"`
+	Username       string                  `json:"username"`
+	FullName       string                  `json:"fullName"`
+	Email          string                  `json:"email"`
+	Currency       string                  `json:"currency"`
+	Role           string                  `json:"role"`
+	IdCardFrontUrl string                  `json:"idCardFrontUrl"`
+	IdCardBackUrl  string                  `json:"idCardBackUrl"`
+	LiveVideoUrl   string                  `json:"liveVideoUrl"`
+	IsVerify       bool                    `json:"isVerify"`
+	Amount         int64                   `json:"amount"`
+	Phone          string                  `json:"phone,omitempty"`
+	DateOfBirth    *time.Time              `json:"dateOfBirth,omitempty"`
+	Address        ProfileAddressResponse  `json:"address,omitempty"`
+	Identity       ProfileIdentityResponse `json:"identity,omitempty"`
+	Avatar         *ProfileMediaResponse   `json:"avatar,omitempty"`
+	Documents      []ProfileMediaResponse  `json:"documents,omitempty"`
+}
+
+type ProfileAddressResponse struct {
+	Line         string `json:"line,omitempty"`
+	ProvinceCode string `json:"provinceCode,omitempty"`
+}
+
+type ProfileIdentityResponse struct {
+	Type             string     `json:"type,omitempty"`
+	Number           string     `json:"number,omitempty"`
+	IssuedDate       *time.Time `json:"issuedDate,omitempty"`
+	IssuedPlace      string     `json:"issuedPlace,omitempty"`
+	PermanentAddress string     `json:"permanentAddress,omitempty"`
+}
+
+type ProfileMediaResponse struct {
+	MediaID     string    `json:"mediaId"`
+	MediaURL    string    `json:"mediaUrl"`
+	Type        string    `json:"type"`
+	FileName    string    `json:"fileName"`
+	ContentType string    `json:"contentType"`
+	SizeBytes   int64     `json:"sizeBytes"`
+	UploadedAt  time.Time `json:"uploadedAt"`
+	Status      string    `json:"status"`
 }
 
 // AuthResponse trả về cho client ngay sau login — dùng private DTO vì user
@@ -100,11 +132,62 @@ func toAccountResponsePrivate(a *accountdomain.UserAccount) AccountResponsePriva
 		response.FullName = a.Customer.Profile.FullName
 	}
 	if session := a.VerifiedKYCSession(); session != nil {
-		response.IdCardFrontUrl = session.Media.IdentityFront.StorageKey
-		response.IdCardBackUrl = session.Media.IdentityBack.StorageKey
-		response.LiveVideoUrl = session.Media.LivenessVideo.StorageKey
+		response.IdCardFrontUrl = "/api/auth/me/media/kyc-identity-front"
+		response.IdCardBackUrl = "/api/auth/me/media/kyc-identity-back"
+		response.LiveVideoUrl = "/api/auth/me/media/kyc-liveness-video"
 	}
 	return response
+}
+
+func toProfileResponse(a *accountdomain.UserAccount) AccountResponsePrivate {
+	response := toAccountResponsePrivate(a)
+	response.IdCardFrontUrl = ""
+	response.IdCardBackUrl = ""
+	response.LiveVideoUrl = ""
+	response.Documents = make([]ProfileMediaResponse, 0)
+	if a.Customer == nil {
+		return response
+	}
+	profile := a.Customer.Profile
+	response.Phone = profile.Phone
+	response.DateOfBirth = profile.DateOfBirth
+	response.Address = ProfileAddressResponse{Line: profile.Address.Line, ProvinceCode: profile.Address.ProvinceCode}
+	identity := a.Customer.Identity
+	response.Identity = ProfileIdentityResponse{Type: identity.Type, Number: maskIdentity(identity.Number), IssuedDate: identity.IssuedDate, IssuedPlace: identity.IssuedPlace, PermanentAddress: identity.PermanentAddress}
+	if a.Customer.Avatar != nil && a.Customer.Avatar.Status == "ACTIVE" {
+		response.Avatar = toProfileMediaResponse(*a.Customer.Avatar)
+	}
+	for _, document := range a.Customer.Documents {
+		if document.Status == "ACTIVE" {
+			response.Documents = append(response.Documents, *toProfileMediaResponse(document))
+		}
+	}
+	if session := a.VerifiedKYCSession(); session != nil {
+		response.IdCardFrontUrl = "/api/auth/me/media/kyc-identity-front"
+		response.IdCardBackUrl = "/api/auth/me/media/kyc-identity-back"
+		response.LiveVideoUrl = "/api/auth/me/media/kyc-liveness-video"
+		response.Documents = append(response.Documents,
+			kycMediaResponse("kyc-identity-front", "IDENTITY_FRONT", session.Media.IdentityFront, session.CreatedAt),
+			kycMediaResponse("kyc-identity-back", "IDENTITY_BACK", session.Media.IdentityBack, session.CreatedAt),
+			kycMediaResponse("kyc-liveness-video", "LIVENESS_VIDEO", session.Media.LivenessVideo.MediaObject, session.CreatedAt),
+		)
+	}
+	return response
+}
+
+func maskIdentity(value string) string {
+	if len(value) <= 4 {
+		return value
+	}
+	return strings.Repeat("•", len(value)-4) + value[len(value)-4:]
+}
+
+func toProfileMediaResponse(media accountdomain.ProfileMedia) *ProfileMediaResponse {
+	return &ProfileMediaResponse{MediaID: media.ID, MediaURL: "/api/auth/me/media/" + media.ID, Type: media.Type, FileName: media.FileName, ContentType: media.ContentType, SizeBytes: media.SizeBytes, UploadedAt: media.UploadedAt, Status: media.Status}
+}
+
+func kycMediaResponse(id, kind string, media accountdomain.MediaObject, uploadedAt time.Time) ProfileMediaResponse {
+	return ProfileMediaResponse{MediaID: id, MediaURL: "/api/auth/me/media/" + id, Type: kind, FileName: path.Base(media.StorageKey), ContentType: media.MIMEType, SizeBytes: media.SizeBytes, UploadedAt: uploadedAt, Status: "VERIFIED"}
 }
 
 func toAuthResponse(user *accountdomain.UserAccount, token string, expiresAt time.Time) AuthResponse {

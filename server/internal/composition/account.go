@@ -22,19 +22,22 @@ type AccountRepository interface {
 }
 
 func NewAccountHandler(repo AccountRepository, tokenSvc *auth.TokenService, logger zerolog.Logger, recorders ...audit.Recorder) *handleraccount.Handler {
-	return newAccountHandler(repo, tokenSvc, nil, nil, logger, recorders...)
+	return newAccountHandler(repo, nil, tokenSvc, nil, nil, logger, recorders...)
 }
 
-func NewAccountHandlerWithKYC(repo AccountRepository, tokenSvc *auth.TokenService, kycClient *kyc.Client, mediaRepo *rustfs.MediaRepository, logger zerolog.Logger, recorders ...audit.Recorder) *handleraccount.Handler {
-	return newAccountHandler(repo, tokenSvc, kycClient, mediaRepo, logger, recorders...)
+func NewAccountHandlerWithKYC(repo AccountRepository, credentials queries.CredentialRepository, tokenSvc *auth.TokenService, kycClient *kyc.Client, mediaRepo *rustfs.MediaRepository, logger zerolog.Logger, recorders ...audit.Recorder) *handleraccount.Handler {
+	return newAccountHandler(repo, credentials, tokenSvc, kycClient, mediaRepo, logger, recorders...)
 }
 
-func newAccountHandler(repo AccountRepository, tokenSvc *auth.TokenService, kycClient *kyc.Client, mediaRepo *rustfs.MediaRepository, logger zerolog.Logger, recorders ...audit.Recorder) *handleraccount.Handler {
+func newAccountHandler(repo AccountRepository, credentials queries.CredentialRepository, tokenSvc *auth.TokenService, kycClient *kyc.Client, mediaRepo *rustfs.MediaRepository, logger zerolog.Logger, recorders ...audit.Recorder) *handleraccount.Handler {
 	login := queries.NewLoginQueryHandler(repo, tokenSvc)
+	if credentials != nil {
+		login.WithCredentials(credentials)
+	}
 	if len(recorders) > 0 {
 		login.WithAudit(recorders[0])
 	}
-	return handleraccount.NewHandler(
+	handler := handleraccount.NewHandler(
 		logger,
 		commands.NewRegisterAccountCommandHandler(repo, repo),
 		commands.NewVerifyAccountCommandHandler(repo),
@@ -46,4 +49,13 @@ func newAccountHandler(repo AccountRepository, tokenSvc *auth.TokenService, kycC
 		kycClient,
 		mediaRepo,
 	)
+	var recorder audit.Recorder
+	if len(recorders) > 0 {
+		recorder = recorders[0]
+	}
+	passwordRepository, _ := credentials.(commands.PasswordRepository)
+	if passwordRepository == nil {
+		return handler.WithProfile(repo, recorder)
+	}
+	return handler.WithProfile(repo, recorder, passwordRepository)
 }

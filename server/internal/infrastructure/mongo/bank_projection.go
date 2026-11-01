@@ -61,7 +61,7 @@ func (p *BankProjection) Apply(ctx context.Context, record journal.Record, revis
 		}
 		sequence := int64(revision + 1)
 		switch record.Type {
-		case journal.AccountCreated, journal.AccountUpdated:
+		case journal.AccountCreated, journal.AccountUpdated, journal.ProfileUpdated:
 			if err := p.profile(sc, record.Account); err != nil {
 				return nil, err
 			}

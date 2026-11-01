@@ -48,6 +48,17 @@ type CustomerProfile struct {
 	Address     Address
 }
 
+type ProfileMedia struct {
+	ID          string
+	Type        string
+	FileName    string
+	ContentType string
+	StorageKey  string
+	SizeBytes   int64
+	UploadedAt  time.Time
+	Status      string
+}
+
 type CustomerIdentity struct {
 	Type             string
 	Number           string
@@ -66,6 +77,8 @@ type Customer struct {
 	Id                   string
 	CustomerCode         string
 	Profile              CustomerProfile
+	Avatar               *ProfileMedia
+	Documents            []ProfileMedia
 	Identity             CustomerIdentity
 	VerifiedKYCSessionId string
 	KYCStatus            KYCStatus

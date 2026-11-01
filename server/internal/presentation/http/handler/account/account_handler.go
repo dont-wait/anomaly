@@ -13,6 +13,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+	"github.com/dont-wait/anomaly/internal/domain/audit"
 	kycinfra "github.com/dont-wait/anomaly/internal/infrastructure/kyc"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
@@ -31,6 +32,20 @@ type Handler struct {
 	media           MediaStore
 	realtime        *kycinfra.RealtimeStore
 	realtimeOrigins map[string]bool
+	profileRepo     commands.AccountRepository
+	profileAudit    audit.Recorder
+	updateProfile   *commands.UpdateCustomerProfileHandler
+	changePassword  *commands.ChangePasswordHandler
+}
+
+func (h *Handler) WithProfile(repo commands.AccountRepository, recorder audit.Recorder, passwordRepo ...commands.PasswordRepository) *Handler {
+	h.profileRepo = repo
+	h.profileAudit = recorder
+	h.updateProfile = commands.NewUpdateCustomerProfileHandler(repo)
+	if len(passwordRepo) > 0 && passwordRepo[0] != nil {
+		h.changePassword = commands.NewChangePasswordHandler(passwordRepo[0])
+	}
+	return h
 }
 
 func (h *Handler) WithRealtime(store *kycinfra.RealtimeStore, origins []string) *Handler {
@@ -91,6 +106,7 @@ func accountErrorStatus(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, accountdomain.ErrInvalidIdempotencyKey), errors.Is(err, accountdomain.ErrInvalidEmail),
 		errors.Is(err, accountdomain.ErrWeakPassword),
+		errors.Is(err, accountdomain.ErrInvalidProfile),
 		errors.Is(err, accountdomain.ErrInvalidUsername),
 		errors.Is(err, accountdomain.ErrInvalidCCCD),
 		errors.Is(err, accountdomain.ErrInvalidDate),
@@ -125,6 +141,8 @@ func accountErrorCode(err error) httpx.ErrorCode {
 		return httpx.ErrorCodeInvalidEmail
 	case errors.Is(err, accountdomain.ErrWeakPassword):
 		return httpx.ErrorCodeWeakPassword
+	case errors.Is(err, accountdomain.ErrInvalidProfile):
+		return httpx.ErrorCodeForStatus(http.StatusBadRequest)
 	case errors.Is(err, accountdomain.ErrInvalidUsername):
 		return httpx.ErrorCodeInvalidUsername
 	case errors.Is(err, accountdomain.ErrInvalidCCCD):
@@ -276,7 +294,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.WriteSuccess(w, http.StatusOK, "Account retrieved successfully", toAccountResponsePrivate(acc))
+	httpx.WriteSuccess(w, http.StatusOK, "Account retrieved successfully", toProfileResponse(acc))
 }
 
 func (h *Handler) authorizeAccountRead(w http.ResponseWriter, r *http.Request, acc *accountdomain.UserAccount) bool {

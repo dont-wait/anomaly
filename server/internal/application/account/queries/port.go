@@ -16,6 +16,12 @@ type AccountQueryRepository interface {
 	FindAll(ctx context.Context) ([]*account.UserAccount, error)
 }
 
+// CredentialRepository supplies the latest password hash from the credential
+// store while the account query repository remains the banking read model.
+type CredentialRepository interface {
+	FindByCCCDNumber(ctx context.Context, cccd string) (*account.UserAccount, error)
+}
+
 // TokenService là port cho việc issue/parse JWT. Implementation cụ thể
 // (HS256 với golang-jwt/v5) nằm ở infrastructure/auth.
 type TokenService interface {
