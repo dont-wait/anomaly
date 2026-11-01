@@ -122,14 +122,29 @@ export const AuthProvider = ({
     [refreshProfile],
   );
 
+  // Áp dụng kết quả đã được server xác nhận, trừ khi phiên đã đổi trong lúc chờ:
+  // đăng xuất giữa chừng không được đưa dữ liệu hồ sơ trở lại state.
+  const applyConfirmed = useCallback(
+    (
+      requestToken: string,
+      update: (user: AuthUser | null) => AuthUser | null,
+    ) => {
+      if (tokenStore.getToken() !== requestToken) return false;
+      profileGenerationRef.current += 1;
+      if (mountedRef.current) setUser(update);
+      return true;
+    },
+    [tokenStore],
+  );
+
   const updateProfile = useCallback(
     async (input: ProfileUpdateInput) => {
-      const updated = await updateCurrentProfile(requireToken(), input);
-      profileGenerationRef.current += 1;
-      if (mountedRef.current) setUser(updated);
+      const requestToken = requireToken();
+      const updated = await updateCurrentProfile(requestToken, input);
+      if (!applyConfirmed(requestToken, () => updated)) return updated;
       return (await refreshAfterMutation()) ?? updated;
     },
-    [refreshAfterMutation, requireToken],
+    [applyConfirmed, refreshAfterMutation, requireToken],
   );
 
   const changePassword = useCallback(
@@ -143,18 +158,41 @@ export const AuthProvider = ({
 
   const startEmailChange = useCallback(
     async (newEmail: string) => {
-      await requestEmailChange(requireToken(), newEmail);
+      const requestToken = requireToken();
+      await requestEmailChange(requestToken, newEmail);
+      // OTP đã gửi: màn nhập mã phải hiện ngay cả khi tải lại hồ sơ thất bại.
+      if (
+        !applyConfirmed(requestToken, (current) =>
+          current ? { ...current, pendingEmail: newEmail } : current,
+        )
+      ) {
+        return null;
+      }
       return refreshAfterMutation();
     },
-    [refreshAfterMutation, requireToken],
+    [applyConfirmed, refreshAfterMutation, requireToken],
   );
 
   const confirmEmailChange = useCallback(
     async (input: { currentEmailOtp: string; newEmailOtp: string }) => {
-      await verifyEmailChange(requireToken(), input);
+      const requestToken = requireToken();
+      await verifyEmailChange(requestToken, input);
+      if (
+        !applyConfirmed(requestToken, (current) =>
+          current
+            ? {
+                ...current,
+                email: current.pendingEmail ?? current.email,
+                pendingEmail: null,
+              }
+            : current,
+        )
+      ) {
+        return null;
+      }
       return refreshAfterMutation();
     },
-    [refreshAfterMutation, requireToken],
+    [applyConfirmed, refreshAfterMutation, requireToken],
   );
 
   const uploadProfileAvatar = useCallback(

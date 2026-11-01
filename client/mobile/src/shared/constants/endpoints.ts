@@ -11,8 +11,6 @@ export const API_ENDPOINTS = {
     PROFILE_AVATAR: "/api/auth/me/avatar",
     PROFILE_MEDIA: (id: string) =>
       `/api/auth/me/media/${encodeURIComponent(id)}`,
-    PROFILE_DOCUMENT: (id: string) =>
-      `/api/auth/me/documents/${encodeURIComponent(id)}`,
     OTP_REQUEST: "/api/auth/otp/request",
     OTP_VERIFY: "/api/auth/otp/verify",
   },
