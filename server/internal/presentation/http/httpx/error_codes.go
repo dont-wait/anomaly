@@ -15,6 +15,7 @@ const (
 	ErrorCodeGone               ErrorCode = "GONE"
 	ErrorCodeServiceUnavailable ErrorCode = "SERVICE_UNAVAILABLE"
 	ErrorCodeInternal           ErrorCode = "INTERNAL_ERROR"
+	ErrorCodeTooManyRequests    ErrorCode = "TOO_MANY_REQUESTS"
 
 	ErrorCodeInvalidIdempotencyKey  ErrorCode = "INVALID_IDEMPOTENCY_KEY"
 	ErrorCodeIdempotencyConflict    ErrorCode = "IDEMPOTENCY_CONFLICT"

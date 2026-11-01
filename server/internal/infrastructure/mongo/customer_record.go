@@ -22,6 +22,17 @@ type customerProfileRecord struct {
 	Address     addressRecord `bson:"address"`
 }
 
+type profileMediaRecord struct {
+	ID          string    `bson:"id"`
+	Type        string    `bson:"type"`
+	FileName    string    `bson:"file_name"`
+	ContentType string    `bson:"content_type"`
+	StorageKey  string    `bson:"storage_key"`
+	SizeBytes   int64     `bson:"size_bytes"`
+	UploadedAt  time.Time `bson:"uploaded_at"`
+	Status      string    `bson:"status"`
+}
+
 type customerIdentityRecord struct {
 	Type             *string    `bson:"type"`
 	Number           *string    `bson:"number"`
@@ -40,6 +51,8 @@ type customerRecord struct {
 	Id                   bson.ObjectID          `bson:"_id"`
 	CustomerCode         string                 `bson:"customer_code"`
 	Profile              customerProfileRecord  `bson:"profile"`
+	Avatar               *profileMediaRecord    `bson:"avatar,omitempty"`
+	Documents            []profileMediaRecord   `bson:"documents,omitempty"`
 	Identity             customerIdentityRecord `bson:"identity"`
 	VerifiedKYCSessionId *bson.ObjectID         `bson:"verified_kyc_session_id"`
 	KYCStatus            string                 `bson:"kyc_status"`
@@ -64,6 +77,15 @@ func toCustomerRecord(customer *accountdomain.Customer) (customerRecord, error) 
 		verifiedSessionID = &id
 	}
 
+	var avatar *profileMediaRecord
+	if customer.Avatar != nil {
+		converted := toProfileMediaRecord(*customer.Avatar)
+		avatar = &converted
+	}
+	documents := make([]profileMediaRecord, 0, len(customer.Documents))
+	for _, document := range customer.Documents {
+		documents = append(documents, toProfileMediaRecord(document))
+	}
 	return customerRecord{
 		Id:           id,
 		CustomerCode: customer.CustomerCode,
@@ -77,6 +99,8 @@ func toCustomerRecord(customer *accountdomain.Customer) (customerRecord, error) 
 				ProvinceCode: customer.Profile.Address.ProvinceCode,
 			},
 		},
+		Avatar:    avatar,
+		Documents: documents,
 		Identity: customerIdentityRecord{
 			Type:             optionalString(customer.Identity.Type),
 			Number:           optionalString(customer.Identity.Number),
@@ -105,6 +129,15 @@ func optionalString(value string) *string {
 }
 
 func fromCustomerRecord(record customerRecord) *accountdomain.Customer {
+	var avatar *accountdomain.ProfileMedia
+	if record.Avatar != nil {
+		converted := fromProfileMediaRecord(*record.Avatar)
+		avatar = &converted
+	}
+	documents := make([]accountdomain.ProfileMedia, 0, len(record.Documents))
+	for _, document := range record.Documents {
+		documents = append(documents, fromProfileMediaRecord(document))
+	}
 	return &accountdomain.Customer{
 		Id:           record.Id.Hex(),
 		CustomerCode: record.CustomerCode,
@@ -118,6 +151,8 @@ func fromCustomerRecord(record customerRecord) *accountdomain.Customer {
 				ProvinceCode: record.Profile.Address.ProvinceCode,
 			},
 		},
+		Avatar:    avatar,
+		Documents: documents,
 		Identity: accountdomain.CustomerIdentity{
 			Type:             stringValue(record.Identity.Type),
 			Number:           stringValue(record.Identity.Number),
@@ -136,6 +171,14 @@ func fromCustomerRecord(record customerRecord) *accountdomain.Customer {
 		CreatedAt: record.CreatedAt,
 		UpdatedAt: record.UpdatedAt,
 	}
+}
+
+func toProfileMediaRecord(media accountdomain.ProfileMedia) profileMediaRecord {
+	return profileMediaRecord{ID: media.ID, Type: media.Type, FileName: media.FileName, ContentType: media.ContentType, StorageKey: media.StorageKey, SizeBytes: media.SizeBytes, UploadedAt: media.UploadedAt, Status: media.Status}
+}
+
+func fromProfileMediaRecord(media profileMediaRecord) accountdomain.ProfileMedia {
+	return accountdomain.ProfileMedia{ID: media.ID, Type: media.Type, FileName: media.FileName, ContentType: media.ContentType, StorageKey: media.StorageKey, SizeBytes: media.SizeBytes, UploadedAt: media.UploadedAt, Status: media.Status}
 }
 
 func stringValue(value *string) string {

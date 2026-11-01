@@ -50,6 +50,54 @@ func RegisterRoutes(
 			FailureStatuses: []int{http.StatusUnauthorized, http.StatusNotFound},
 			Auth:            true,
 		})
+	router.Handle("PATCH /api/auth/me/profile", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.UpdateProfile)), openapi.Operation{
+		ID: "updateCurrentProfile", Summary: "Update editable fields in the current customer profile", Tags: []string{"Profile"},
+		Request: profileUpdateRequest{}, Response: httpx.SuccessResponse[AccountResponsePrivate]{},
+		FailureStatuses: []int{400, 401, 404, 409, 500}, Auth: true,
+	})
+	router.Handle("PUT /api/auth/me/password", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.ChangePassword)), openapi.Operation{
+		ID: "changeCurrentPassword", Summary: "Change the current account password", Tags: []string{"Profile"},
+		Request: changePasswordRequest{}, Response: httpx.SuccessResponse[map[string]bool]{},
+		FailureStatuses: []int{400, 401, 404, 409, 429, 500, 503}, Auth: true,
+	})
+	router.Handle("POST /api/auth/me/email-change", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.StartEmailChange)), openapi.Operation{
+		ID: "startEmailChange", Summary: "Send verification codes to the current and new email", Tags: []string{"Profile"},
+		Request: emailChangeStartRequest{}, Response: httpx.SuccessResponse[map[string]bool]{},
+		FailureStatuses: []int{400, 401, 404, 409, 429, 500, 503}, Auth: true,
+	})
+	router.Handle("POST /api/auth/me/email-change/confirm", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.ConfirmEmailChange)), openapi.Operation{
+		ID: "confirmEmailChange", Summary: "Activate the new email with both verification codes", Tags: []string{"Profile"},
+		Request: emailChangeConfirmRequest{}, Response: httpx.SuccessResponse[map[string]bool]{},
+		FailureStatuses: []int{400, 401, 404, 409, 500, 503}, Auth: true,
+	})
+	router.Handle("POST /api/auth/me/avatar", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.UploadProfileAvatar)), openapi.Operation{
+		ID: "uploadCurrentAvatar", Summary: "Upload or replace the current account avatar", Tags: []string{"Profile"},
+		Request: profileAvatarUploadRequest{}, RequestContentType: "multipart/form-data", Response: httpx.SuccessResponse[ProfileMediaResponse]{},
+		SuccessStatus: http.StatusCreated, FailureStatuses: []int{400, 401, 413, 415, 500, 503}, Auth: true,
+	})
+	router.Handle("POST /api/auth/me/documents", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.UploadProfileDocument)), openapi.Operation{
+		ID: "uploadCurrentProfileDocument", Summary: "Upload or replace optional income/address evidence", Tags: []string{"Profile"},
+		Request: profileDocumentUploadRequest{}, RequestContentType: "multipart/form-data", Response: httpx.SuccessResponse[ProfileMediaResponse]{},
+		SuccessStatus: http.StatusCreated, FailureStatuses: []int{400, 401, 403, 413, 415, 500, 503}, Auth: true,
+	})
+	router.Handle("GET /api/auth/me/documents", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.ListProfileDocuments)), openapi.Operation{
+		ID: "listCurrentProfileDocuments", Summary: "List supported document slots for the current account", Tags: []string{"Profile"},
+		Response: httpx.SuccessResponse[ProfileDocumentsResponse]{}, FailureStatuses: []int{401, 404, 500}, Auth: true,
+	})
+	router.Handle("GET /api/auth/me/media/{mediaId}", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.DownloadProfileMedia)), openapi.Operation{
+		ID: "downloadCurrentProfileMedia", Summary: "Download current account profile media", Tags: []string{"Profile"},
+		Parameters: []openapi.Parameter{{Name: "mediaId", In: "path", Required: true, Type: "string"}},
+		Response:   openapi.Binary{}, ResponseContentType: "application/octet-stream", FailureStatuses: []int{401, 404, 500, 503}, Auth: true,
+	})
+	router.Handle("DELETE /api/auth/me/documents/{mediaId}", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.DeleteProfileDocument)), openapi.Operation{
+		ID: "deleteCurrentProfileDocument", Summary: "Delete a replaceable profile document", Tags: []string{"Profile"},
+		Parameters: []openapi.Parameter{{Name: "mediaId", In: "path", Required: true, Type: "string"}},
+		Response:   httpx.SuccessResponse[map[string]bool]{}, FailureStatuses: []int{401, 403, 404, 500, 503}, Auth: true,
+	})
+	router.Handle("DELETE /api/auth/me/avatar", middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.DeleteProfileAvatar)), openapi.Operation{
+		ID: "deleteCurrentAvatar", Summary: "Remove the current account avatar", Tags: []string{"Profile"},
+		Response: httpx.SuccessResponse[map[string]bool]{}, FailureStatuses: []int{401, 404, 500, 503}, Auth: true,
+	})
 	router.Handle("POST /api/kyc/complete",
 		middleware.RequireKYCAuth(tokenSvc)(http.HandlerFunc(h.CompleteKYC)), openapi.Operation{
 			ID:                 "completeKYC",
@@ -107,6 +155,15 @@ func RegisterRoutes(
 			FailureStatuses: []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
 			Auth:            true,
 		})
+}
+
+type profileAvatarUploadRequest struct {
+	File string `json:"file" form:"file" format:"binary"`
+}
+
+type profileDocumentUploadRequest struct {
+	Type string `json:"type" form:"type" enum:"INCOME_PROOF,ADDRESS_PROOF"`
+	File string `json:"file" form:"file" format:"binary"`
 }
 
 type completeKYCRequest struct {

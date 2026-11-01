@@ -15,6 +15,7 @@ const (
 	BankStream               = "banking"
 	AccountCreated           = "BankAccountCreated"
 	AccountUpdated           = "BankAccountUpdated"
+	ProfileUpdated           = "BankProfileUpdated"
 	BalanceSeeded            = "BankBalanceSeeded"
 	BankImported             = "BankImported"
 	LoanDisbursementCredited = "LoanDisbursementCredited"
@@ -130,7 +131,7 @@ func DecodeRecord(data []byte, eventID, eventType string) (Record, error) {
 		return r, nil
 	}
 	switch r.Type {
-	case AccountCreated, AccountUpdated:
+	case AccountCreated, AccountUpdated, ProfileUpdated:
 		if r.Account == nil || r.Account.Customer == nil {
 			return r, fmt.Errorf("missing account aggregate")
 		}

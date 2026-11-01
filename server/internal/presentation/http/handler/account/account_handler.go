@@ -12,25 +12,54 @@ import (
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
+	appotp "github.com/dont-wait/anomaly/internal/application/otp"
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
+	"github.com/dont-wait/anomaly/internal/domain/audit"
 	kycinfra "github.com/dont-wait/anomaly/internal/infrastructure/kyc"
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 )
 
 type Handler struct {
-	logger          zerolog.Logger
-	register        *commands.RegisterAccountCommandHandler
-	verify          *commands.VerifyAccountCommandHandler
-	login           *queries.LoginQueryHandler
-	getByID         *queries.GetAccountByIDQueryHandler
-	getByEmail      *queries.GetAccountByEmailQueryHandler
-	getAll          *queries.GetAllAccountsQueryHandler
-	tokens          queries.TokenService
-	kyc             KYCVerifier
-	media           MediaStore
-	realtime        *kycinfra.RealtimeStore
-	realtimeOrigins map[string]bool
+	logger             zerolog.Logger
+	register           *commands.RegisterAccountCommandHandler
+	verify             *commands.VerifyAccountCommandHandler
+	login              *queries.LoginQueryHandler
+	getByID            *queries.GetAccountByIDQueryHandler
+	getByEmail         *queries.GetAccountByEmailQueryHandler
+	getAll             *queries.GetAllAccountsQueryHandler
+	tokens             queries.TokenService
+	kyc                KYCVerifier
+	media              MediaStore
+	realtime           *kycinfra.RealtimeStore
+	realtimeOrigins    map[string]bool
+	profileRepo        commands.AccountRepository
+	profileAudit       audit.Recorder
+	updateProfile      *commands.UpdateCustomerProfileHandler
+	changePassword     *commands.ChangePasswordHandler
+	emailChange        *commands.EmailChangeHandler
+	pendingEmails      pendingEmailReader
+	passwordRetryAfter time.Duration
+}
+
+type pendingEmailReader interface {
+	Get(ctx context.Context, accountID string) (string, error)
+}
+
+func (h *Handler) WithProfile(repo commands.AccountRepository, recorder audit.Recorder) *Handler {
+	h.profileRepo = repo
+	h.profileAudit = recorder
+	h.updateProfile = commands.NewUpdateCustomerProfileHandler(repo)
+	h.changePassword = commands.NewChangePasswordHandler(repo)
+	return h
+}
+
+func (h *Handler) WithProfileSecurity(limiter commands.PasswordAttemptLimiter, emailChange *commands.EmailChangeHandler, pending pendingEmailReader, passwordWindow time.Duration, logger zerolog.Logger) *Handler {
+	h.changePassword.WithLimiter(limiter, logger)
+	h.passwordRetryAfter = passwordWindow
+	h.emailChange = emailChange
+	h.pendingEmails = pending
+	return h
 }
 
 func (h *Handler) WithRealtime(store *kycinfra.RealtimeStore, origins []string) *Handler {
@@ -79,8 +108,14 @@ func NewHandler(
 
 func accountErrorStatus(err error) int {
 	switch {
-	case errors.Is(err, accountdomain.ErrUserAlreadyExists), errors.Is(err, accountdomain.ErrIdempotencyConflict):
+	case errors.Is(err, accountdomain.ErrUserAlreadyExists), errors.Is(err, accountdomain.ErrIdempotencyConflict),
+		errors.Is(err, accountdomain.ErrConcurrentUpdate):
 		return http.StatusConflict
+	case errors.Is(err, accountdomain.ErrTooManyAttempts), errors.Is(err, appotp.ErrTooSoon):
+		return http.StatusTooManyRequests
+	case errors.Is(err, accountdomain.ErrCurrentPassword), errors.Is(err, appotp.ErrInvalid),
+		errors.Is(err, appotp.ErrExpired), errors.Is(err, appotp.ErrExceeded):
+		return http.StatusBadRequest
 	case errors.Is(err, accountdomain.ErrRegistrationPending):
 		return http.StatusServiceUnavailable
 	case errors.Is(err, accountdomain.ErrInvalidCredentials):
@@ -91,6 +126,7 @@ func accountErrorStatus(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, accountdomain.ErrInvalidIdempotencyKey), errors.Is(err, accountdomain.ErrInvalidEmail),
 		errors.Is(err, accountdomain.ErrWeakPassword),
+		errors.Is(err, accountdomain.ErrInvalidProfile),
 		errors.Is(err, accountdomain.ErrInvalidUsername),
 		errors.Is(err, accountdomain.ErrInvalidCCCD),
 		errors.Is(err, accountdomain.ErrInvalidDate),
@@ -105,6 +141,16 @@ func accountErrorStatus(err error) int {
 
 func accountErrorCode(err error) httpx.ErrorCode {
 	switch {
+	case errors.Is(err, accountdomain.ErrConcurrentUpdate):
+		return httpx.ErrorCodeConflict
+	case errors.Is(err, accountdomain.ErrTooManyAttempts), errors.Is(err, appotp.ErrTooSoon):
+		return httpx.ErrorCodeTooManyRequests
+	case errors.Is(err, accountdomain.ErrCurrentPassword):
+		return httpx.ErrorCodeInvalidCredentials
+	case errors.Is(err, appotp.ErrInvalid), errors.Is(err, appotp.ErrExceeded):
+		return httpx.ErrorCodeOTPInvalid
+	case errors.Is(err, appotp.ErrExpired):
+		return httpx.ErrorCodeOTPExpired
 	case errors.Is(err, accountdomain.ErrUserAlreadyExists):
 		return httpx.ErrorCodeUserAlreadyExists
 	case errors.Is(err, accountdomain.ErrIdempotencyConflict):
@@ -125,6 +171,8 @@ func accountErrorCode(err error) httpx.ErrorCode {
 		return httpx.ErrorCodeInvalidEmail
 	case errors.Is(err, accountdomain.ErrWeakPassword):
 		return httpx.ErrorCodeWeakPassword
+	case errors.Is(err, accountdomain.ErrInvalidProfile):
+		return httpx.ErrorCodeForStatus(http.StatusBadRequest)
 	case errors.Is(err, accountdomain.ErrInvalidUsername):
 		return httpx.ErrorCodeInvalidUsername
 	case errors.Is(err, accountdomain.ErrInvalidCCCD):
@@ -276,7 +324,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.WriteSuccess(w, http.StatusOK, "Account retrieved successfully", toAccountResponsePrivate(acc))
+	httpx.WriteSuccess(w, http.StatusOK, "Account retrieved successfully", h.profileResponse(r.Context(), acc))
 }
 
 func (h *Handler) authorizeAccountRead(w http.ResponseWriter, r *http.Request, acc *accountdomain.UserAccount) bool {
