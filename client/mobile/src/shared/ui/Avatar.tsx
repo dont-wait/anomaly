@@ -1,4 +1,5 @@
-import { UserIcon } from "@/shared/icons";
+import { faUser } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 interface AvatarProps {
   name?: string;
@@ -34,7 +35,9 @@ export const Avatar = ({
       className={`flex items-center justify-center rounded-full bg-secondary/20 text-primary font-semibold ${className}`}
       style={{ width: size, height: size, fontSize: size * 0.4 }}
     >
-      {initials ?? <UserIcon width={size * 0.5} height={size * 0.5} />}
+      {initials ?? (
+        <FontAwesomeIcon icon={faUser} style={{ fontSize: size * 0.5 }} />
+      )}
     </div>
   );
 };

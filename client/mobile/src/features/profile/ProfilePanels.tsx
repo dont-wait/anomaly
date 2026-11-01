@@ -1,5 +1,10 @@
 import { useState, type ChangeEvent, type ReactNode } from "react";
-import { faCamera, faFolderOpen } from "@fortawesome/free-solid-svg-icons";
+import {
+  faArrowLeft,
+  faCamera,
+  faFolderOpen,
+  faLock,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAuth } from "@/features/auth/useAuth";
 import { fetchProfileMedia } from "@/features/auth/api/profileMutations";
@@ -16,6 +21,7 @@ import {
   PHONE_PATTERN,
   documentLabel,
   formatDate,
+  maskTail,
   toProfileError,
   validateUpload,
 } from "./profileHelpers";
@@ -92,7 +98,8 @@ function PanelShell({
         disabled={busy}
         onClick={onBack}
       >
-        ← Hồ sơ của tôi
+        <FontAwesomeIcon icon={faArrowLeft} className="mr-1.5" />
+        Hồ sơ của tôi
       </button>
       <h3>{title}</h3>
       {children}
@@ -117,6 +124,7 @@ function ProfileInput({
   type = "text",
   autoComplete,
   inputMode,
+  onBlur,
   error,
 }: {
   label: string;
@@ -125,6 +133,7 @@ function ProfileInput({
   type?: string;
   autoComplete?: string;
   inputMode?: "numeric" | "tel" | "email";
+  onBlur?: () => void;
   error?: string;
 }) {
   return (
@@ -137,6 +146,7 @@ function ProfileInput({
         inputMode={inputMode}
         value={value}
         aria-invalid={Boolean(error)}
+        onBlur={onBlur}
         onChange={(event) => onChange(event.target.value)}
       />
       {error && <span className="profile-field-error">{error}</span>}
@@ -147,15 +157,18 @@ function ProfileInput({
 export function EditProfilePanel({
   onBack,
   onChangeEmail,
-}: PanelProps & { onChangeEmail: () => void }) {
+  onSaved,
+}: PanelProps & { onChangeEmail: () => void; onSaved: () => void }) {
   const { user, updateProfile, refreshProfile } = useAuth();
-  const { busy, message, error, run, setError } = useProfileAction();
+  const { busy, error, run, setError } = useProfileAction();
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [line, setLine] = useState(user?.address?.line ?? "");
   const [province, setProvince] = useState(user?.address?.provinceCode ?? "");
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [serverFields, setServerFields] = useState<Record<string, string>>({});
 
-  const nextPhone = phone.trim();
+  // Khách thường gõ "0901 234 567", nên bỏ khoảng trắng và dấu ngăn trước khi kiểm tra.
+  const nextPhone = phone.replace(/[\s.-]/g, "");
   const nextLine = line.trim();
   const nextProvince = province.trim();
 
@@ -169,50 +182,35 @@ export function EditProfilePanel({
     input.address = { ...input.address, provinceCode: nextProvince };
   }
 
-  const fieldErrors = {
-    phone:
-      input.phone !== undefined && !PHONE_PATTERN.test(nextPhone)
-        ? "Số điện thoại gồm 8-16 chữ số, có thể bắt đầu bằng +."
-        : serverFields.phone,
-    line:
-      input.address?.line === ""
-        ? "Không thể để trống địa chỉ."
-        : serverFields["address.line"],
-    province:
-      input.address?.provinceCode === ""
-        ? "Không thể để trống tỉnh/thành."
-        : serverFields["address.provinceCode"],
-  };
+  const phoneInvalid =
+    input.phone !== undefined && !PHONE_PATTERN.test(nextPhone);
+  const lineEmpty = input.address?.line === "";
+  const provinceEmpty = input.address?.provinceCode === "";
   const hasChanges = input.phone !== undefined || input.address !== undefined;
-  const invalid =
-    (input.phone !== undefined && !PHONE_PATTERN.test(nextPhone)) ||
-    input.address?.line === "" ||
-    input.address?.provinceCode === "";
 
   const save = async () => {
     setServerFields({});
     let conflict = false;
-    await run(
-      async () => {
-        try {
-          await updateProfile(input);
-        } catch (cause) {
-          if (cause instanceof ApiError) {
-            setServerFields(
-              Object.fromEntries(
-                cause.errors.flatMap((item) =>
-                  item.field ? [[item.field, item.detail]] : [],
-                ),
+    const saved = await run(async () => {
+      try {
+        await updateProfile(input);
+      } catch (cause) {
+        if (cause instanceof ApiError) {
+          setServerFields(
+            Object.fromEntries(
+              cause.errors.flatMap((item) =>
+                item.field ? [[item.field, item.detail]] : [],
               ),
-            );
-            conflict = cause.status === 409;
-          }
-          throw cause;
+            ),
+          );
+          conflict = cause.status === 409;
         }
-      },
-      { success: "Đã cập nhật thông tin." },
-    );
-    if (conflict) {
+        throw cause;
+      }
+    });
+    if (saved) {
+      onSaved();
+    } else if (conflict) {
       // Tải lại hồ sơ mới nhất nhưng giữ nguyên nội dung khách đang nhập.
       await refreshProfile().catch(() => null);
       setError(
@@ -226,52 +224,109 @@ export function EditProfilePanel({
       title="Cập nhật thông tin"
       onBack={onBack}
       busy={busy}
-      message={message}
       error={error}
     >
+      <h4 className="profile-form-group">Liên hệ</h4>
       <ProfileInput
         label="Số điện thoại"
         type="tel"
         inputMode="tel"
+        autoComplete="tel"
         value={phone}
         onChange={setPhone}
-        error={fieldErrors.phone}
+        onBlur={() => setPhoneTouched(true)}
+        error={
+          phoneTouched && phoneInvalid
+            ? "Số điện thoại gồm 8-16 chữ số, có thể bắt đầu bằng +."
+            : serverFields.phone
+        }
       />
+      <div className="profile-readonly">
+        <div>
+          <span>Email</span>
+          <strong>{user?.email}</strong>
+          {user?.pendingEmail && (
+            <small>Đang chờ xác minh: {user.pendingEmail}</small>
+          )}
+        </div>
+        <button type="button" disabled={busy} onClick={onChangeEmail}>
+          Đổi email
+        </button>
+      </div>
+
+      <h4 className="profile-form-group">Địa chỉ liên hệ</h4>
       <ProfileInput
-        label="Địa chỉ"
+        label="Số nhà, đường"
+        autoComplete="street-address"
         value={line}
         onChange={setLine}
-        error={fieldErrors.line}
+        error={
+          lineEmpty
+            ? "Không thể để trống địa chỉ."
+            : serverFields["address.line"]
+        }
       />
       <ProfileInput
         label="Tỉnh/thành"
+        autoComplete="address-level1"
         value={province}
         onChange={setProvince}
-        error={fieldErrors.province}
+        error={
+          provinceEmpty
+            ? "Không thể để trống tỉnh/thành."
+            : serverFields["address.provinceCode"]
+        }
       />
-      <button
-        type="button"
-        className="profile-link"
-        disabled={busy}
-        onClick={onChangeEmail}
-      >
-        Đổi email
-      </button>
+
       {user?.isVerify && (
-        <p className="profile-note">
-          Họ tên, ngày sinh và thông tin CCCD đã xác minh không thể sửa tại đây.
-          Việc hiệu chỉnh cần quy trình xem xét kèm chứng từ.
-        </p>
+        <>
+          <h4 className="profile-form-group">Đã xác minh</h4>
+          <ReadOnlyRow label="Họ và tên" value={user.fullName} />
+          <ReadOnlyRow label="Ngày sinh" value={formatDate(user.dateOfBirth)} />
+          <ReadOnlyRow
+            label="Số CCCD"
+            value={maskTail(user.identity?.number)}
+          />
+          <p className="profile-caption">
+            Muốn sửa các thông tin này cần gửi yêu cầu hiệu chỉnh kèm chứng từ.
+          </p>
+        </>
       )}
-      <button
-        type="button"
-        className="profile-action"
-        disabled={busy || !hasChanges || invalid}
-        onClick={() => void save()}
-      >
-        {busy ? "Đang lưu..." : "Lưu thay đổi"}
-      </button>
+
+      <div className="profile-form-actions">
+        <button
+          type="button"
+          className="profile-action profile-action-secondary"
+          disabled={busy}
+          onClick={onBack}
+        >
+          Hủy
+        </button>
+        <button
+          type="button"
+          className="profile-action"
+          disabled={
+            busy || !hasChanges || phoneInvalid || lineEmpty || provinceEmpty
+          }
+          onClick={() => void save()}
+        >
+          {busy ? "Đang lưu..." : "Lưu thay đổi"}
+        </button>
+      </div>
     </PanelShell>
+  );
+}
+
+function ReadOnlyRow({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <div className="profile-readonly">
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      <FontAwesomeIcon icon={faLock} aria-label="Không thể sửa" />
+    </div>
   );
 }
 

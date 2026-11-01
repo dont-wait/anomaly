@@ -132,6 +132,29 @@ describe("ProfileSidebar", () => {
     });
   });
 
+  it("accepts a spaced phone number and sends it normalized", async () => {
+    const value = auth();
+    renderSidebar(value);
+    fireEvent.click(screen.getByText("Cập nhật thông tin"));
+    type("Số điện thoại", "0912 345 678");
+    fireEvent.click(screen.getByText("Lưu thay đổi"));
+
+    await screen.findByText("Đã cập nhật thông tin.");
+    expect(value.updateProfile).toHaveBeenCalledWith({ phone: "0912345678" });
+    expect(screen.queryByText("Lưu thay đổi")).toBeNull();
+  });
+
+  it("disables saving until something changes and masks verified identity", () => {
+    renderSidebar(auth());
+    fireEvent.click(screen.getByText("Cập nhật thông tin"));
+
+    expect(screen.getByText<HTMLButtonElement>("Lưu thay đổi").disabled).toBe(
+      true,
+    );
+    expect(screen.getByText("•••• 1234")).toBeTruthy();
+    expect(screen.queryByLabelText("Họ và tên")).toBeNull();
+  });
+
   it("reloads on conflict and keeps the customer's input", async () => {
     const value = auth({
       updateProfile: vi.fn(async () => {
@@ -193,7 +216,7 @@ describe("ProfileSidebar", () => {
 
   it("offers separate camera and file sources", () => {
     renderSidebar(auth());
-    fireEvent.click(screen.getByText("Đổi ảnh đại diện"));
+    fireEvent.click(screen.getByRole("button", { name: "Đổi ảnh đại diện" }));
 
     const camera = screen.getByLabelText<HTMLInputElement>("Mở camera");
     const picker = screen.getByLabelText<HTMLInputElement>("Chọn tệp");
@@ -205,7 +228,7 @@ describe("ProfileSidebar", () => {
   it("rejects an oversized avatar before upload", () => {
     const value = auth();
     renderSidebar(value);
-    fireEvent.click(screen.getByText("Đổi ảnh đại diện"));
+    fireEvent.click(screen.getByRole("button", { name: "Đổi ảnh đại diện" }));
     const big = new File([new Uint8Array(5 * 1024 * 1024 + 1)], "a.png", {
       type: "image/png",
     });

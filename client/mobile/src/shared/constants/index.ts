@@ -7,6 +7,14 @@ if (!import.meta.env.VITE_API_ENDPOINT && import.meta.env.PROD) {
 export const API_BASE_URL =
   import.meta.env.VITE_API_ENDPOINT || "http://localhost:8080";
 
+// Bản production gửi token, mật khẩu và giấy tờ: không cho phép API không mã hóa.
+if (
+  import.meta.env.PROD &&
+  !API_BASE_URL.toLowerCase().startsWith("https://")
+) {
+  throw new Error("VITE_API_ENDPOINT must use HTTPS for production builds");
+}
+
 export const APP_NAME = "Anomaly";
 
 export const TRANSACTION_LIMITS = {

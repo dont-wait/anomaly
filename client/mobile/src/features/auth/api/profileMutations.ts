@@ -94,20 +94,32 @@ export async function fetchProfileMedia(
   mediaId: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<Blob> {
-  let response: Response;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const timeout = setTimeout(abort, UPLOAD_TIMEOUT_MS);
+  if (options.signal?.aborted) abort();
+  options.signal?.addEventListener("abort", abort, { once: true });
   try {
-    response = await fetch(joinUrl(API_ENDPOINTS.AUTH.PROFILE_MEDIA(mediaId)), {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: options.signal,
-    });
-  } catch {
+    const response = await fetch(
+      joinUrl(API_ENDPOINTS.AUTH.PROFILE_MEDIA(mediaId)),
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      },
+    );
+    if (!response.ok) {
+      const body: unknown = await response.json().catch(() => undefined);
+      throw toApiError(response.status, body);
+    }
+    // Timeout vẫn có hiệu lực trong lúc nhận phần thân của tệp.
+    return await response.blob();
+  } catch (cause) {
+    if (cause instanceof ApiError) throw cause;
     throw new ApiError(0, NETWORK_ERROR);
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", abort);
   }
-  if (!response.ok) {
-    const body: unknown = await response.json().catch(() => undefined);
-    throw toApiError(response.status, body);
-  }
-  return response.blob();
 }
 
 // Dùng XHR vì fetch không báo được tiến độ upload.

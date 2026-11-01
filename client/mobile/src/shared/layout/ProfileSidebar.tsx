@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { faRightFromBracket, faXmark } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCamera,
+  faRightFromBracket,
+  faXmark,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { Avatar } from "@/shared/ui";
 import { useAuth } from "@/features/auth/useAuth";
@@ -46,10 +50,16 @@ export const ProfileSidebar = ({
   const [section, setSection] = useState<ProfileSection>("overview");
   const documents = useProfileDocuments(open, token);
   const avatarUrl = useProfileImage(token, user?.avatar?.mediaId);
+  const [notice, setNotice] = useState("");
   const backToOverview = () => setSection("overview");
+  const openSection = (next: ProfileSection) => {
+    setNotice("");
+    setSection(next);
+  };
 
   // Các panel bị unmount nên mật khẩu, OTP và tệp đã chọn không còn trong bộ nhớ.
   const closeProfile = useCallback(() => {
+    setNotice("");
     setSection("overview");
     onClose();
   }, [onClose]);
@@ -95,7 +105,18 @@ export const ProfileSidebar = ({
       >
         <div className="profile-sidebar-header">
           <div className="flex items-center gap-3">
-            <Avatar name={user?.fullName || name} src={avatarUrl} size={52} />
+            <button
+              type="button"
+              className="profile-avatar-button"
+              aria-label="Đổi ảnh đại diện"
+              aria-current={section === "avatar" ? "page" : undefined}
+              onClick={() => openSection("avatar")}
+            >
+              <Avatar name={user?.fullName || name} src={avatarUrl} size={52} />
+              <span className="profile-avatar-badge" aria-hidden="true">
+                <FontAwesomeIcon icon={faCamera} />
+              </span>
+            </button>
             <div>
               <p className="profile-overline">HỒ SƠ CÁ NHÂN</p>
               <h2
@@ -120,6 +141,11 @@ export const ProfileSidebar = ({
         <div className="profile-sidebar-content">
           {section === "overview" && (
             <>
+              {notice && (
+                <p className="profile-message" role="status">
+                  {notice}
+                </p>
+              )}
               <section className="profile-card profile-account-card">
                 <span className="profile-chip">
                   {user?.isVerify ? "Đã xác minh" : "Chưa xác minh"}
@@ -133,7 +159,7 @@ export const ProfileSidebar = ({
               <section className="profile-card">
                 <div className="profile-card-heading">
                   <h3>Thông tin cá nhân</h3>
-                  <button type="button" onClick={() => setSection("edit")}>
+                  <button type="button" onClick={() => openSection("edit")}>
                     Cập nhật thông tin
                   </button>
                 </div>
@@ -185,7 +211,10 @@ export const ProfileSidebar = ({
               <section className="profile-card">
                 <div className="profile-card-heading">
                   <h3>Giấy tờ đã lưu</h3>
-                  <button type="button" onClick={() => setSection("documents")}>
+                  <button
+                    type="button"
+                    onClick={() => openSection("documents")}
+                  >
                     Quản lý
                   </button>
                 </div>
@@ -213,15 +242,8 @@ export const ProfileSidebar = ({
               </section>
               <button
                 type="button"
-                className="profile-action"
-                onClick={() => setSection("avatar")}
-              >
-                Đổi ảnh đại diện
-              </button>
-              <button
-                type="button"
                 className="profile-action profile-action-secondary"
-                onClick={() => setSection("password")}
+                onClick={() => openSection("password")}
               >
                 Đổi mật khẩu
               </button>
@@ -230,7 +252,11 @@ export const ProfileSidebar = ({
           {section === "edit" && (
             <EditProfilePanel
               onBack={backToOverview}
-              onChangeEmail={() => setSection("email")}
+              onChangeEmail={() => openSection("email")}
+              onSaved={() => {
+                setNotice("Đã cập nhật thông tin.");
+                backToOverview();
+              }}
             />
           )}
           {section === "email" && <ChangeEmailPanel onBack={backToOverview} />}

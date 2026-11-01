@@ -239,6 +239,89 @@
   color: #93000a;
   background: #ffdad6;
 }
+.profile-avatar-button {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.profile-avatar-button:focus-visible {
+  outline: 2px solid #6b38d4;
+  outline-offset: 2px;
+}
+.profile-avatar-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 2px solid white;
+  border-radius: 50%;
+  color: white;
+  background: #00236f;
+  font-size: 9px;
+}
+.profile-form-group {
+  margin-top: 4px;
+  color: #6b38d4;
+  font-size: 11px;
+  font-weight: 750;
+}
+.profile-form .profile-field {
+  font-size: 12px;
+}
+.profile-form .profile-input {
+  font-size: 14px;
+}
+.profile-readonly {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 13px;
+  padding: 10px 12px;
+  background: #f4f4fb;
+  font-size: 12px;
+}
+.profile-readonly > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+.profile-readonly span {
+  color: #646b80;
+  font-size: 11px;
+}
+.profile-readonly strong {
+  color: #252f50;
+  font-weight: 600;
+}
+.profile-readonly small {
+  color: #4b2696;
+  font-size: 11px;
+}
+.profile-readonly button {
+  flex-shrink: 0;
+  color: #6b38d4;
+  font-size: 12px;
+  font-weight: 750;
+}
+.profile-readonly svg {
+  flex-shrink: 0;
+  color: #8d93a8;
+}
+.profile-form-actions {
+  position: sticky;
+  bottom: -20px;
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px;
+  padding: 10px 0;
+  background: white;
+}
 .profile-source-picker {
   display: flex;
   flex-direction: column;
