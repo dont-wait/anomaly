@@ -235,8 +235,10 @@ const DashboardPage = () => {
       </BottomSheet>
 
       <BottomNav
+        active={profileSidebarOpen ? "profile" : "home"}
         onChange={(id) => {
           if (id === "savings") navigate(routes.savings);
+          if (id === "profile") setProfileSidebarOpen(true);
         }}
         onQrScan={() => console.log("TODO: mở màn hình quét QR")}
       />

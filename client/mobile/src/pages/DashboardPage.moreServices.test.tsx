@@ -52,4 +52,22 @@ describe("Dashboard more services", () => {
 
     expect(window.location.hash).toBe(routes.loanApplications);
   });
+
+  it("opens the profile from the Cá nhân tab", () => {
+    render(
+      <AuthContext.Provider value={value}>
+        <DashboardPage />
+      </AuthContext.Provider>,
+    );
+    const dialog = screen.getByRole("dialog", { hidden: true });
+    expect(dialog.closest("[aria-hidden]")?.getAttribute("aria-hidden")).toBe(
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cá nhân" }));
+
+    expect(dialog.closest("[aria-hidden]")?.getAttribute("aria-hidden")).toBe(
+      "false",
+    );
+  });
 });

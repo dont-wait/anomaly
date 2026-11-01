@@ -277,7 +277,7 @@ export default function LoanApplicationsPage({
       {error && <Notice message={error} error />}
       {message && <Notice message={message} />}
       {!applicationId && (
-        <Panel title="Hồ sơ đã tạo">
+        <>
           {listLoading && (
             <p
               role="status"
@@ -361,7 +361,7 @@ export default function LoanApplicationsPage({
               Xem thêm hồ sơ
             </Action>
           )}
-        </Panel>
+        </>
       )}
       {applicationId && (
         <>

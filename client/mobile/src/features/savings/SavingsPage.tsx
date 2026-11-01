@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useCallback, useContext, useState, type ReactNode } from "react";
+import { AuthContext } from "@/features/auth/authContext";
+import { ProfileSidebar } from "@/shared/layout/ProfileSidebar";
 import { navigate, routes } from "@/app/routes";
 import { ArrowLeftIcon, ChevronRightIcon, SavingsIcon } from "@/shared/icons";
 import { BottomNav } from "@/shared/layout/BottomNav";
@@ -63,6 +65,10 @@ function SuccessMark() {
 }
 
 export default function SavingsPage() {
+  // Bản xem trước giao diện chạy không có AuthProvider nên auth có thể không tồn tại.
+  const auth = useContext(AuthContext);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const closeProfile = useCallback(() => setProfileOpen(false), []);
   const [screen, setScreen] = useState<Screen>("list");
   const [contracts, setContracts] = useState<SavingsContract[]>(() => demoSavings.map((c) => ({ ...c })));
   const [filter, setFilter] = useState<Filter>("all");
@@ -153,7 +159,12 @@ export default function SavingsPage() {
           </button>)}
         </div>
       </main>
-      <BottomNav active="savings" onChange={(id) => { if (id === "home") navigate(routes.dashboard); }} />
+      <BottomNav active={profileOpen ? "profile" : "savings"} onChange={(id) => {
+        if (id === "home") navigate(routes.dashboard);
+        if (id === "profile" && auth) setProfileOpen(true);
+      }} />
+      {auth && <ProfileSidebar open={profileOpen} name={auth.user?.fullName || auth.user?.username || ""} token={auth.token}
+        onClose={closeProfile} onLogout={() => { closeProfile(); auth.logout(); }} />}
     </> : null}
 
     {screen === "open" && (
