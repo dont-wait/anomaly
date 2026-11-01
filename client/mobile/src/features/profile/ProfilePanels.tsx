@@ -676,6 +676,7 @@ export function DocumentsPanel({
   const [uploadType, setUploadType] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [percent, setPercent] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const [imagePreview, setImagePreview] = useState<Blob | null>(null);
   const localPreview = useFilePreview(
     file?.type.startsWith("image/") ? file : null,
@@ -709,6 +710,7 @@ export function DocumentsPanel({
   const upload = async () => {
     if (!file || !uploadType) return;
     setPercent(0);
+    setUploading(true);
     const saved = await run(
       async () => {
         await uploadProfileDocument(uploadType, file, setPercent);
@@ -716,6 +718,7 @@ export function DocumentsPanel({
       },
       { success: "Đã tải chứng từ lên hồ sơ." },
     );
+    setUploading(false);
     if (saved) {
       setFile(null);
       setUploadType(null);
@@ -831,7 +834,7 @@ export function DocumentsPanel({
           {file && !localPreview && (
             <p className="profile-caption">{file.name}</p>
           )}
-          {busy && <UploadProgressBar percent={percent} />}
+          {uploading && <UploadProgressBar percent={percent} />}
           {file && (
             <button
               type="button"
@@ -839,7 +842,7 @@ export function DocumentsPanel({
               disabled={busy}
               onClick={() => void upload()}
             >
-              {busy
+              {uploading
                 ? "Đang tải chứng từ..."
                 : error
                   ? "Thử lại"

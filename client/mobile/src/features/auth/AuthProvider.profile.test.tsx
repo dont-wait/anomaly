@@ -72,6 +72,58 @@ describe("AuthProvider profile state", () => {
     expect(screen.getByText("newer")).toBeTruthy();
   });
 
+  it("does not restore the profile when logout happens during a save", async () => {
+    let resolveSave!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) =>
+        init?.method === "PATCH"
+          ? new Promise((resolve) => (resolveSave = resolve))
+          : Promise.resolve(envelope(200, profile("initial"))),
+      ),
+    );
+    const { auth, tokenStore } = setup();
+    await screen.findByText("initial");
+
+    let save!: Promise<unknown>;
+    act(() => {
+      save = auth().updateProfile({ phone: "0912345678" });
+    });
+    await waitFor(() => expect(resolveSave).toBeTypeOf("function"));
+    act(() => {
+      tokenStore.getToken.mockReturnValue(null);
+      auth().logout();
+    });
+    await act(async () => {
+      resolveSave(envelope(200, profile("saved")));
+      await save;
+    });
+
+    expect(screen.getByText("none")).toBeTruthy();
+  });
+
+  it("shows the pending email even when the refresh after sending OTPs fails", async () => {
+    let refreshFails = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.method === "POST") return envelope(200, { pending: true });
+        if (refreshFails) throw new Error("offline");
+        return envelope(200, profile("initial"));
+      }),
+    );
+    const { auth } = setup();
+    await screen.findByText("initial");
+    refreshFails = true;
+
+    await act(async () => {
+      await auth().startEmailChange("new@example.com");
+    });
+
+    expect(auth().user?.pendingEmail).toBe("new@example.com");
+    expect(auth().user?.email).toBe("a@example.com");
+  });
+
   it("clears the token after a successful password change", async () => {
     vi.stubGlobal(
       "fetch",

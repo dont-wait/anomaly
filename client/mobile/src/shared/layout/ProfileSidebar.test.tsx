@@ -225,6 +225,35 @@ describe("ProfileSidebar", () => {
     expect(picker.hasAttribute("capture")).toBe(false);
   });
 
+  it("does not show upload progress while downloading a document", async () => {
+    const value = auth();
+    let finishMedia!: () => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url.includes("/media/")
+          ? new Promise((_, reject) => {
+              finishMedia = () => reject(new Error("offline"));
+            })
+          : Promise.resolve({
+              ok: true,
+              status: 200,
+              text: async () =>
+                JSON.stringify({ status: 200, message: "ok", data: { slots } }),
+            }),
+      ),
+    );
+    renderSidebar(value);
+    fireEvent.click(screen.getByText("Quản lý"));
+    fireEvent.click(await screen.findByText("Tải lên"));
+    fireEvent.click(screen.getByText("Tải xuống"));
+
+    await waitFor(() => expect(finishMedia).toBeTypeOf("function"));
+    expect(screen.queryByText(/Đang tải lên/)).toBeNull();
+    finishMedia();
+    await screen.findByRole("alert");
+  });
+
   it("rejects an oversized avatar before upload", () => {
     const value = auth();
     renderSidebar(value);
