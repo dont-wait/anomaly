@@ -1,10 +1,19 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { LoanReviewPage } from "./LoanReviewPage";
 import {
   attestLoanEvidence,
   decideLoan,
   disburseLoan,
   getLoan,
+  downloadLoanDocument,
+  getLoanCustomer,
+  reviewLoanDocument,
   listLoans,
   startLoanReview,
 } from "./api/loansApi";
@@ -16,6 +25,9 @@ vi.mock("./api/loansApi", async (importOriginal) => {
     ...actual,
     listLoans: vi.fn(),
     getLoan: vi.fn(),
+    getLoanCustomer: vi.fn(),
+    reviewLoanDocument: vi.fn(),
+    downloadLoanDocument: vi.fn(),
     startLoanReview: vi.fn(),
     attestLoanEvidence: vi.fn(),
     assessLoan: vi.fn(),
@@ -51,6 +63,7 @@ describe("LoanReviewPage", () => {
     vi.mocked(decideLoan).mockReset();
     vi.mocked(disburseLoan).mockReset();
     vi.mocked(getLoan).mockResolvedValue(underReview);
+    vi.mocked(listLoans).mockResolvedValue({ items: [], nextCursor: null });
   });
 
   afterEach(() => {
@@ -73,9 +86,6 @@ describe("LoanReviewPage", () => {
       });
 
     render(<LoanReviewPage />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Tải danh sách hồ sơ" }),
-    );
 
     expect(await screen.findByText("APP-001")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Xem thêm hồ sơ" }));
@@ -88,15 +98,147 @@ describe("LoanReviewPage", () => {
     expect(screen.queryByRole("button", { name: "Xem thêm hồ sơ" })).toBeNull();
   });
 
-  it("opens a trimmed application id", async () => {
-    render(<LoanReviewPage />);
-    fireEvent.change(screen.getByLabelText("Application ID"), {
-      target: { value: " app-1 " },
+  it("shows document status and customer details in tabs without server ids", async () => {
+    vi.mocked(listLoans).mockResolvedValue({
+      items: [
+        {
+          ...underReview,
+          customerId: "acc-1",
+          documents: [
+            {
+              documentId: "d1",
+              type: "IDENTITY_FRONT",
+              verificationStatus: "pending",
+              uploadedAt: "2026-10-30T00:00:00Z",
+              mimeType: "image/jpeg",
+              sizeBytes: 1,
+            },
+          ],
+        },
+      ],
+      nextCursor: null,
     });
-    fireEvent.click(screen.getByRole("button", { name: "Mở hồ sơ" }));
+    vi.mocked(getLoanCustomer).mockResolvedValue({
+      id: "acc-1",
+      accountNo: "1234567890",
+      username: "Khách A",
+      email: "a@example.com",
+      isVerify: true,
+      amount: 0,
+    });
+    render(<LoanReviewPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    expect(screen.queryByText("app-1")).toBeNull();
 
-    expect(await screen.findByText(underReview.applicationNo)).toBeTruthy();
-    expect(getLoan).toHaveBeenCalledWith("app-1");
+    fireEvent.click(screen.getByRole("tab", { name: /Chứng từ/ }));
+    expect(screen.getByText("Chờ xác minh")).toBeTruthy();
+    expect(screen.getAllByText("Khách chưa gửi")).toHaveLength(6);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Khách hàng" }));
+    expect(await screen.findByText("Khách A")).toBeTruthy();
+    expect(screen.getByText("•••• 7890")).toBeTruthy();
+    expect(getLoanCustomer).toHaveBeenCalledWith("acc-1");
+  });
+
+  describe("document review", () => {
+    const pendingDoc = {
+      documentId: "d1",
+      type: "IDENTITY_FRONT",
+      verificationStatus: "pending",
+      uploadedAt: "2026-10-30T00:00:00Z",
+      mimeType: "image/jpeg",
+      sizeBytes: 1,
+    };
+    const openDocuments = async (status: LoanApplication["status"]) => {
+      vi.mocked(listLoans).mockResolvedValue({
+        items: [{ ...underReview, status, documents: [pendingDoc] }],
+        nextCursor: null,
+      });
+      render(<LoanReviewPage />);
+      fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+      fireEvent.click(screen.getByRole("tab", { name: /Chứng từ/ }));
+    };
+
+    it("approves a document and shows the server result", async () => {
+      vi.mocked(reviewLoanDocument).mockResolvedValue({
+        ...underReview,
+        documents: [{ ...pendingDoc, verificationStatus: "verified" }],
+      });
+      await openDocuments("under_review");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Duyệt CCCD mặt trước" }),
+      );
+
+      expect(await screen.findByText("Đã xác minh")).toBeTruthy();
+      expect(reviewLoanDocument).toHaveBeenCalledWith(
+        "app-1",
+        "d1",
+        "verified",
+        "",
+      );
+    });
+
+    it("requires a reason before rejecting", async () => {
+      vi.mocked(reviewLoanDocument).mockResolvedValue(underReview);
+      await openDocuments("under_review");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Từ chối CCCD mặt trước" }),
+      );
+      const confirm = screen.getByRole<HTMLButtonElement>("button", {
+        name: "Xác nhận từ chối",
+      });
+      expect(confirm.disabled).toBe(true);
+      fireEvent.change(screen.getByLabelText(/Lý do từ chối/), {
+        target: { value: "Ảnh mờ" },
+      });
+      fireEvent.click(confirm);
+
+      await waitFor(() =>
+        expect(reviewLoanDocument).toHaveBeenCalledWith(
+          "app-1",
+          "d1",
+          "rejected",
+          "Ảnh mờ",
+        ),
+      );
+    });
+
+    it("keeps review actions visible but disabled unless under review", async () => {
+      await openDocuments("submitted");
+      const approve = screen.getByRole<HTMLButtonElement>("button", {
+        name: "Duyệt CCCD mặt trước",
+      });
+      expect(approve.disabled).toBe(true);
+      expect(
+        screen.getByText(/Chỉ duyệt được khi hồ sơ đang thẩm định/),
+      ).toBeTruthy();
+    });
+
+    it("previews an image in a dialog and closes with Escape", async () => {
+      URL.createObjectURL = vi.fn(() => "blob:preview");
+      URL.revokeObjectURL = vi.fn();
+      vi.mocked(downloadLoanDocument).mockResolvedValue(new Blob(["x"]));
+      await openDocuments("submitted");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Xem CCCD mặt trước" }),
+      );
+
+      const dialog = await screen.findByRole("dialog", {
+        name: "Xem CCCD mặt trước",
+      });
+      expect(within(dialog).getByRole("alert").textContent).toContain(
+        "gần như không có nội dung",
+      );
+      const image = await within(dialog).findByRole("img");
+      expect(image.getAttribute("src")).toBe("blob:preview");
+
+      fireEvent.keyDown(window, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:preview");
+    });
   });
 
   it("starts review for a submitted application", async () => {
@@ -107,11 +249,8 @@ describe("LoanReviewPage", () => {
     });
 
     render(<LoanReviewPage />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Tải danh sách hồ sơ" }),
-    );
     fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu thẩm định" }));
 
     await waitFor(() => expect(startLoanReview).toHaveBeenCalledWith("app-1"));
     expect(await screen.findByText("Đã bắt đầu thẩm định.")).toBeTruthy();
@@ -125,13 +264,10 @@ describe("LoanReviewPage", () => {
     });
 
     render(<LoanReviewPage />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Tải danh sách hồ sơ" }),
-    );
     fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
 
     const evidenceButton = screen.getByRole("button", {
-      name: "Ghi Evidence đã kiểm tra",
+      name: "Lưu kết quả đối soát",
     }) as HTMLButtonElement;
     expect(evidenceButton.disabled).toBe(true);
 
@@ -151,7 +287,7 @@ describe("LoanReviewPage", () => {
       ),
     );
     expect(
-      await screen.findByText("Đã lưu Evidence. Tiếp theo: chấm điểm."),
+      await screen.findByText("Đã lưu kết quả đối soát. Tiếp theo: chấm điểm."),
     ).toBeTruthy();
   });
 
@@ -166,17 +302,17 @@ describe("LoanReviewPage", () => {
     });
 
     render(<LoanReviewPage />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Tải danh sách hồ sơ" }),
-    );
     fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    fireEvent.change(screen.getByLabelText("Lý do quyết định thủ công"), {
+      target: { value: "Đã đối chiếu đủ chứng từ" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Phê duyệt thủ công" }));
 
     await waitFor(() =>
       expect(decideLoan).toHaveBeenCalledWith(
         "app-1",
         "approved",
-        "Đã xác minh hồ sơ test và phê duyệt thủ công",
+        "Đã đối chiếu đủ chứng từ",
       ),
     );
   });
@@ -216,9 +352,6 @@ describe("LoanReviewPage", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(<LoanReviewPage />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Tải danh sách hồ sơ" }),
-    );
     fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
     fireEvent.click(screen.getByRole("button", { name: "Giải ngân" }));
 
@@ -229,9 +362,6 @@ describe("LoanReviewPage", () => {
     vi.mocked(listLoans).mockRejectedValue(new Error("Không tải được hồ sơ."));
 
     render(<LoanReviewPage />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Tải danh sách hồ sơ" }),
-    );
 
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Không tải được hồ sơ.",

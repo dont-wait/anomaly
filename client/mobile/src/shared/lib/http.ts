@@ -202,7 +202,7 @@ export async function requestApi<T>(
     typeof response.message !== "string" ||
     !Object.prototype.hasOwnProperty.call(response, "data")
   ) {
-    throw new ApiError(0, "Phản hồi API không hợp lệ.", response);
+    throw new ApiError(0, "Phản hồi từ máy chủ không hợp lệ.", response);
   }
   return response.data;
 }

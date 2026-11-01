@@ -3,6 +3,7 @@ import {
   readAdminSession,
 } from "@/features/auth/api/adminSession";
 import type {
+  LoanCustomer,
   LoanApplication,
   LoanOffer,
   LoanPage,
@@ -121,6 +122,39 @@ async function request<T>(
   }
 }
 
+export async function getLoanCustomer(id: string): Promise<LoanCustomer> {
+  const body = await request<{ data: LoanCustomer }>(
+    `/api/accounts/${encodeURIComponent(id)}`,
+  );
+  return body.data;
+}
+
+export async function downloadLoanDocument(
+  applicationId: string,
+  documentId: string,
+): Promise<Blob> {
+  const session = readAdminSession();
+  if (!session) {
+    throw new LoansApiError("Phiên đăng nhập admin đã hết hạn.", 401);
+  }
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL.replace(/\/+$/, "")}${PATH(applicationId)}/documents/${encodeURIComponent(documentId)}`,
+      { headers: { Authorization: `Bearer ${session.accessToken}` } },
+    );
+  } catch {
+    throw new LoansApiError(
+      "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.",
+      0,
+    );
+  }
+  if (!response.ok) {
+    throw new LoansApiError("Không tải được chứng từ.", response.status);
+  }
+  return response.blob();
+}
+
 export function listLoans(cursor?: string): Promise<LoanPage<LoanApplication>> {
   const query = new URLSearchParams({ limit: "20", all: "true" });
   if (cursor) query.set("cursor", cursor);
@@ -129,6 +163,18 @@ export function listLoans(cursor?: string): Promise<LoanPage<LoanApplication>> {
 
 export function getLoan(id: string): Promise<LoanApplication> {
   return request<LoanApplication>(PATH(id));
+}
+
+export function reviewLoanDocument(
+  applicationId: string,
+  documentId: string,
+  decision: "verified" | "rejected",
+  reason = "",
+): Promise<LoanApplication> {
+  return request<LoanApplication>(
+    `${PATH(applicationId)}/documents/${encodeURIComponent(documentId)}/verification`,
+    { method: "POST", body: JSON.stringify({ decision, reason }) },
+  );
 }
 
 export function startLoanReview(id: string): Promise<LoanApplication> {

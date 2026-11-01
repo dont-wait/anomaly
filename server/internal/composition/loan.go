@@ -48,6 +48,7 @@ func NewLoanHandler(
 		Submit: commands.NewSubmitLoanApplicationCommandHandler(
 			repo,
 		),
+		DocumentReview: &commands.ReviewLoanDocumentCommandHandler{Repo: repo, Authorizer: access},
 		Review: commands.NewStartLoanReviewCommandHandler(
 			repo,
 			access,

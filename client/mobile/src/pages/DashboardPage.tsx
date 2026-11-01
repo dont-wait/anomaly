@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
+import {
+  faChevronRight,
+  faHandHoldingDollar,
+} from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { toast } from "@/shared/notifications/toast";
 import { toLoginError } from "@/features/auth/api/auth";
 import { AUTH_STATUS } from "@/features/auth/authStatus";
+import { BottomSheet } from "@/shared/ui";
 import { AppHeader } from "@/shared/layout/AppHeader";
 import { BottomNav } from "@/shared/layout/BottomNav";
 import { ProfileSidebar } from "@/shared/layout/ProfileSidebar";
@@ -188,26 +194,9 @@ const DashboardPage = () => {
           onSelect={(action) => {
             if (action.icon === "transfer") navigate(routes.transfer);
             if (action.icon === "savings") navigate(routes.savings);
-            if (action.id === "qa_more") setMoreServicesOpen((open) => !open);
+            if (action.id === "qa_more") setMoreServicesOpen(true);
           }}
         />
-        {moreServicesOpen && (
-          <div
-            aria-label="Dịch vụ khác"
-            className="rounded-2xl bg-white p-3 shadow-sm"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setMoreServicesOpen(false);
-                navigate(routes.loanApplications);
-              }}
-              className="w-full rounded-xl border border-gray-100 px-4 py-3 text-left text-sm font-semibold text-primary"
-            >
-              Vay vốn
-            </button>
-          </div>
-        )}
         <PromoBanner promo={promo} />
         <TransactionList
           transactions={transactions}
@@ -218,8 +207,37 @@ const DashboardPage = () => {
         />
       </main>
 
+      <BottomSheet
+        open={moreServicesOpen}
+        title="Dịch vụ khác"
+        onClose={() => setMoreServicesOpen(false)}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setMoreServicesOpen(false);
+            navigate(routes.loanApplications);
+          }}
+          className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-[#e2e7ff] bg-white px-4 py-3 text-left hover:bg-[#faf8ff]"
+        >
+          <FontAwesomeIcon
+            icon={faHandHoldingDollar}
+            className="w-5 text-[#6b38d4]"
+          />
+          <span className="flex-1 text-sm font-semibold text-[#00236f]">
+            Vay vốn
+          </span>
+          <FontAwesomeIcon
+            icon={faChevronRight}
+            className="text-xs text-[#646b80]"
+          />
+        </button>
+      </BottomSheet>
+
       <BottomNav
-        onChange={(id) => { if (id === "savings") navigate(routes.savings); }}
+        onChange={(id) => {
+          if (id === "savings") navigate(routes.savings);
+        }}
         onQrScan={() => console.log("TODO: mở màn hình quét QR")}
       />
 

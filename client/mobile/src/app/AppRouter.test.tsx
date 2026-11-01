@@ -226,7 +226,7 @@ describe("loan application detail overlay", () => {
     expect(listLoans).toHaveBeenCalledTimes(2);
     expect(screen.getByText("APP-1")).toBeTruthy();
     expect(screen.getByText("APP-2").closest("button")!.textContent).toContain(
-      "submitted",
+      "Chờ duyệt",
     );
   });
 

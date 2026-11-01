@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { CheckIcon, ChevronDownIcon } from "@/shared/icons";
+import { faCheck, faChevronDown } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { BottomSheet } from "./BottomSheet";
 
 export interface SelectSheetOption {
@@ -53,7 +54,10 @@ export function SelectSheet({
             </span>
           )}
         </span>
-        <ChevronDownIcon className="h-5 w-5 shrink-0 text-[#6b38d4]" />
+        <FontAwesomeIcon
+          icon={faChevronDown}
+          className="h-5 w-5 shrink-0 text-[#6b38d4]"
+        />
       </button>
       <BottomSheet open={open} title={label} onClose={() => setOpen(false)}>
         <div className="flex flex-col gap-2">
@@ -85,7 +89,12 @@ export function SelectSheet({
                     </span>
                   )}
                 </span>
-                {active && <CheckIcon className="h-5 w-5 shrink-0 text-[#6b38d4]" />}
+                {active && (
+                  <FontAwesomeIcon
+                    icon={faCheck}
+                    className="h-5 w-5 shrink-0 text-[#6b38d4]"
+                  />
+                )}
               </button>
             );
           })}

@@ -61,31 +61,31 @@ afterEach(cleanup);
 it("lets the user select the advertised 200M maximum", () => {
   renderPage();
 
-  expect(screen.getByLabelText("Số tiền đề nghị vay").textContent).toBe(
-    "50.000.000",
-  );
+  expect(
+    screen.getByLabelText<HTMLInputElement>("Số tiền đề nghị vay").value,
+  ).toBe("50.000.000");
 
   fireEvent.click(screen.getByRole("radio", { name: "200 Tr" }));
 
-  expect(screen.getByLabelText("Số tiền đề nghị vay").textContent).toBe(
-    "200.000.000",
-  );
+  expect(
+    screen.getByLabelText<HTMLInputElement>("Số tiền đề nghị vay").value,
+  ).toBe("200.000.000");
 });
 
 it("restores a saved draft after remounting", () => {
   const first = renderPage();
 
   fireEvent.click(screen.getByRole("radio", { name: "100 Tr" }));
-  fireEvent.click(screen.getByRole("button", { name: "Lưu bản nháp" }));
+  fireEvent.click(screen.getByRole("button", { name: "Lưu tạm trên máy" }));
 
-  expect(screen.getByText(/Đã lưu bản nháp/)).toBeTruthy();
+  expect(screen.getByText(/Đã lưu tạm/)).toBeTruthy();
   first.unmount();
 
   renderPage();
 
-  expect(screen.getByLabelText("Số tiền đề nghị vay").textContent).toBe(
-    "100.000.000",
-  );
+  expect(
+    screen.getByLabelText<HTMLInputElement>("Số tiền đề nghị vay").value,
+  ).toBe("100.000.000");
 });
 
 it("requires a detail when the custom purpose is selected", () => {
@@ -95,7 +95,7 @@ it("requires a detail when the custom purpose is selected", () => {
   fireEvent.click(
     screen.getByRole("option", { name: "Khác (Cung cấp chi tiết)" }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Lưu bản nháp" }));
+  fireEvent.click(screen.getByRole("button", { name: "Lưu tạm trên máy" }));
 
   expect(screen.getByRole("alert").textContent).toContain(
     "Vui lòng nhập mục đích vay cụ thể",
@@ -107,7 +107,35 @@ it("requires a detail when the custom purpose is selected", () => {
       target: { value: "Vay mua thiết bị văn phòng" },
     },
   );
-  fireEvent.click(screen.getByRole("button", { name: "Lưu bản nháp" }));
+  fireEvent.click(screen.getByRole("button", { name: "Lưu tạm trên máy" }));
 
-  expect(screen.getByText(/Đã lưu bản nháp/)).toBeTruthy();
+  expect(screen.getByText(/Đã lưu tạm/)).toBeTruthy();
+});
+
+it("formats typed amounts and keeps only digits", () => {
+  renderPage();
+  const input = screen.getByLabelText<HTMLInputElement>("Số tiền đề nghị vay");
+
+  fireEvent.change(input, { target: { value: "75000000abc" } });
+
+  expect(input.value).toBe("75.000.000");
+  expect(input.getAttribute("inputmode")).toBe("numeric");
+  expect(screen.getByText(/75 triệu đồng/)).toBeTruthy();
+
+  fireEvent.change(input, { target: { value: "" } });
+  expect(input.value).toBe("");
+});
+
+it("suggests amounts while typing and hides them after picking one", () => {
+  renderPage();
+  const input = screen.getByLabelText<HTMLInputElement>("Số tiền đề nghị vay");
+  expect(
+    screen.queryByRole("group", { name: /Gợi ý số tiền đề nghị vay/ }),
+  ).toBeNull();
+
+  fireEvent.change(input, { target: { value: "3" } });
+  fireEvent.click(screen.getByRole("button", { name: "300.000" }));
+
+  expect(input.value).toBe("300.000");
+  expect(screen.queryByRole("button", { name: "3.000" })).toBeNull();
 });

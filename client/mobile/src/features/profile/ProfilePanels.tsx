@@ -1,10 +1,5 @@
-import { useState, type ChangeEvent, type ReactNode } from "react";
-import {
-  faArrowLeft,
-  faCamera,
-  faFolderOpen,
-  faLock,
-} from "@fortawesome/free-solid-svg-icons";
+import { useState, type ReactNode } from "react";
+import { faArrowLeft, faLock } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAuth } from "@/features/auth/useAuth";
 import { fetchProfileMedia } from "@/features/auth/api/profileMutations";
@@ -12,6 +7,7 @@ import type { ProfileMedia } from "@/features/auth/api/profile";
 import type { ProfileUpdateInput } from "@/features/auth/api/profileMutations";
 import { passwordRules } from "@/features/registration/model";
 import { ApiError } from "@/shared/lib/http";
+import { FileSourcePicker } from "@/shared/ui";
 import {
   AVATAR_MAX_BYTES,
   AVATAR_TYPES,
@@ -508,64 +504,6 @@ export function ChangePasswordPanel({ onBack }: PanelProps) {
         {busy ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
       </button>
     </PanelShell>
-  );
-}
-
-function FileSourcePicker({
-  label,
-  accept,
-  camera,
-  disabled,
-  onSelect,
-}: {
-  label: string;
-  accept: string[];
-  camera: "user" | "environment";
-  disabled: boolean;
-  onSelect: (file: File) => void;
-}) {
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    // Cho phép chọn lại đúng tệp đó sau khi hủy hoặc gặp lỗi.
-    event.target.value = "";
-    if (file) onSelect(file);
-  };
-
-  return (
-    <div className="profile-source-picker">
-      <p className="profile-source-label">{label}</p>
-      <div className="profile-source-actions">
-        <label
-          className={`profile-source-button${disabled ? " is-disabled" : ""}`}
-        >
-          <FontAwesomeIcon icon={faCamera} />
-          Mở camera
-          <input
-            className="sr-only"
-            type="file"
-            accept="image/*"
-            // WebView Android của Tauri chỉ mở camera khi accept đúng là image/*;
-            // định dạng thực tế được validateUpload kiểm tra sau khi chụp.
-            capture={camera}
-            disabled={disabled}
-            onChange={handleChange}
-          />
-        </label>
-        <label
-          className={`profile-source-button${disabled ? " is-disabled" : ""}`}
-        >
-          <FontAwesomeIcon icon={faFolderOpen} />
-          Chọn tệp
-          <input
-            className="sr-only"
-            type="file"
-            accept={accept.join(",")}
-            disabled={disabled}
-            onChange={handleChange}
-          />
-        </label>
-      </div>
-    </div>
   );
 }
 

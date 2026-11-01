@@ -121,17 +121,18 @@ type loanQuoteResponse struct {
 }
 
 type Handler struct {
-	Log           *zerolog.Logger
-	Create        *commands.CreateLoanApplicationCommandHandler
-	Add           *commands.AddLoanDocumentCommandHandler
-	Submit        *commands.SubmitLoanApplicationCommandHandler
-	Review        *commands.StartLoanReviewCommandHandler
-	Assess        *commands.AssessLoanApplicationCommandHandler
-	Decide        *commands.ManualLoanDecisionCommandHandler
-	Disburse      *commands.DisburseLoanCommandHandler
-	Offer         *commands.LoanOfferCommandHandler
-	ContractOTP   ContractOTPService
-	ContractEmail ContractEmailReader
+	Log            *zerolog.Logger
+	Create         *commands.CreateLoanApplicationCommandHandler
+	Add            *commands.AddLoanDocumentCommandHandler
+	Submit         *commands.SubmitLoanApplicationCommandHandler
+	Review         *commands.StartLoanReviewCommandHandler
+	DocumentReview *commands.ReviewLoanDocumentCommandHandler
+	Assess         *commands.AssessLoanApplicationCommandHandler
+	Decide         *commands.ManualLoanDecisionCommandHandler
+	Disburse       *commands.DisburseLoanCommandHandler
+	Offer          *commands.LoanOfferCommandHandler
+	ContractOTP    ContractOTPService
+	ContractEmail  ContractEmailReader
 
 	Repayment     *RepaymentHTTP
 	Contracts     *loanqueries.LoanContractQueryService
@@ -379,6 +380,11 @@ func RegisterRoutes(
 		"POST /api/loans/{applicationId}/submit",
 		h.submit,
 		"submitPersonalLoan",
+	)
+	auth(
+		"POST /api/loans/{applicationId}/documents/{documentId}/verification",
+		h.reviewDocument,
+		"reviewPersonalLoanDocument",
 	)
 	auth(
 		"POST /api/loans/{applicationId}/review",
@@ -939,10 +945,15 @@ func (h *Handler) download(
 	}
 	defer func() { _ = res.Body.Close() }()
 
-	w.Header().Set(
-		"Content-Type",
-		"application/octet-stream",
-	)
+	// Loại file đã xác minh khi upload, để admin xem trước được. Loại khác giữ
+	// octet-stream; nosniff chặn trình duyệt tự đoán.
+	contentType := "application/octet-stream"
+	switch document.MIMEType {
+	case "application/pdf", "image/jpeg", "image/png":
+		contentType = document.MIMEType
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set(
 		"X-Content-Type-Options",
 		"nosniff",
@@ -984,6 +995,47 @@ func (h *Handler) submit(
 		return
 	}
 
+	httpx.WriteJSON(w, 200, result)
+}
+
+// POST /api/loans/{applicationId}/documents/{documentId}/verification
+func (h *Handler) reviewDocument(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if err := h.admin(r); err != nil {
+		serviceError(w, err)
+		return
+	}
+	a, err := h.application(r, false)
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+	var req struct {
+		Decision string `json:"decision"`
+		Reason   string `json:"reason"`
+	}
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		fail(w, 400, "invalid document review JSON")
+		return
+	}
+	actor, _, _ := claims(r)
+	result, err := h.DocumentReview.Handle(r.Context(), commands.ReviewLoanDocumentCommand{
+		ApplicationID: a.Id,
+		DocumentID:    r.PathValue("documentId"),
+		Decision:      req.Decision,
+		Reason:        req.Reason,
+		ActorID:       actor,
+	})
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidApplicationStatus) {
+			fail(w, 409, "loan application is not under review")
+			return
+		}
+		serviceError(w, err)
+		return
+	}
 	httpx.WriteJSON(w, 200, result)
 }
 

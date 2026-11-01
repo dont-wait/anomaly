@@ -13,16 +13,6 @@
   font-family: "Be Vietnam Pro", system-ui, sans-serif;
   font-size: 14px;
 }
-.savings-demo-banner {
-  padding: 7px 12px;
-  background: #efe8ff;
-  color: #4b2696;
-  text-align: center;
-  line-height: 1.4;
-  font-weight: 600;
-  font-size: 10px;
-  letter-spacing: 0.01em;
-}
 .savings-topbar {
   display: flex;
   align-items: center;

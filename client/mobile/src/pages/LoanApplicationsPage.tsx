@@ -1,3 +1,9 @@
+import {
+  faArrowLeft,
+  faChevronRight,
+  faFolderOpen,
+} from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useState } from "react";
 import { navigate, routes, loanApplication } from "@/app/routes";
 import { useAuth } from "@/features/auth/useAuth";
@@ -19,8 +25,19 @@ import {
   type LoanApplication,
   type LoanOffer,
 } from "@/features/loans/api";
-import { explainLoanError, percentBps, vnd } from "@/features/loans/format";
+import {
+  applicationStatusLabel,
+  applicationStatusMeta,
+  statusLabel,
+  explainLoanError,
+  percentBps,
+  vnd,
+} from "@/features/loans/format";
 import { ApiError } from "@/shared/lib/http";
+import {
+  LoanDocumentCard,
+  LoanDocumentRow,
+} from "@/features/loans/components/LoanDocumentCard";
 import {
   Action,
   LoanLayout,
@@ -38,6 +55,14 @@ const appendUnique = <T,>(
   return [...current, ...incoming.filter((item) => !seen.has(key(item)))];
 };
 
+const missingDocumentTypes = (application: LoanApplication) =>
+  documentTypes.filter(
+    (type) =>
+      !(application.documents ?? []).some(
+        (doc) => doc.type === type && doc.verificationStatus !== "rejected",
+      ),
+  );
+
 export default function LoanApplicationsPage({
   applicationId,
   updatedApplications,
@@ -50,6 +75,7 @@ export default function LoanApplicationsPage({
   const { token } = useAuth();
   const [items, setItems] = useState<LoanApplication[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [listLoading, setListLoading] = useState(!applicationId);
   const [application, setApplication] = useState<LoanApplication | null>(null);
   const [offer, setOffer] = useState<LoanOffer | null>(null);
   const [appQuote, setAppQuote] = useState<{
@@ -61,6 +87,7 @@ export default function LoanApplicationsPage({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploadingType, setUploadingType] = useState<DocumentType | null>(null);
 
   const refresh = useCallback(async () => {
     if (!token) return;
@@ -108,6 +135,9 @@ export default function LoanApplicationsPage({
         })
         .catch((e: unknown) => {
           if (active) setError(explainLoanError(e));
+        })
+        .finally(() => {
+          if (active) setListLoading(false);
         });
     return () => {
       active = false;
@@ -160,6 +190,7 @@ export default function LoanApplicationsPage({
       setError(explainLoanError(e));
     }
   };
+  const missingDocuments = application ? missingDocumentTypes(application) : [];
   return (
     <LoanLayout
       title={applicationId ? "Chi tiết hồ sơ vay" : "Danh sách hồ sơ vay"}
@@ -169,28 +200,68 @@ export default function LoanApplicationsPage({
       {message && <Notice message={message} />}
       {!applicationId && (
         <Panel title="Hồ sơ đã tạo">
-          <Action onClick={() => navigate(routes.loanRegister)}>
-            + Tạo hồ sơ vay
-          </Action>
-          {items.length === 0 && (
-            <p className="text-sm text-center">
-              Chưa có hồ sơ
+          {listLoading && (
+            <p
+              role="status"
+              className="py-6 text-center text-sm text-on-surface-variant"
+            >
+              Đang tải hồ sơ...
             </p>
           )}
-          {items.map((item) => updatedApplications?.[item.id] ?? item).map((app) => (
-            <button
-              type="button"
-              key={app.id}
-              onClick={() => navigate(loanApplication(app.id))}
-              className="block w-full rounded-xl border p-3 text-left text-sm"
-            >
-              <strong>{app.applicationNo || app.id}</strong>
-              <span className="float-right text-secondary">{app.status}</span>
-              <span className="mt-1 block">
-                {vnd(app.requestedAmount)} · {app.termMonths} tháng
-              </span>
-            </button>
-          ))}
+          {!listLoading && !error && items.length === 0 && (
+            <div className="py-8 text-center text-on-surface-variant">
+              <FontAwesomeIcon icon={faFolderOpen} className="text-2xl" />
+              <p className="mt-2 text-sm">Chưa có hồ sơ</p>
+              <p className="mt-1 text-xs">
+                Bấm "Tạo mới hồ sơ vay" ở trên để bắt đầu.
+              </p>
+            </div>
+          )}
+          {items
+            .map((item) => updatedApplications?.[item.id] ?? item)
+            .map((app) => {
+              const status = applicationStatusMeta[app.status];
+              return (
+                <button
+                  type="button"
+                  key={app.id}
+                  onClick={() => navigate(loanApplication(app.id))}
+                  className="block w-full rounded-2xl border border-[#e2e7ff] bg-white p-4 text-left shadow-sm active:bg-[#faf8ff]"
+                >
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block text-lg font-bold text-primary">
+                        {vnd(app.requestedAmount)}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-on-surface-variant">
+                        Kỳ hạn {app.termMonths} tháng
+                      </span>
+                    </span>
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${status?.className ?? "bg-gray-100 text-gray-700"}`}
+                    >
+                      {applicationStatusLabel(app.status)}
+                    </span>
+                  </span>
+                  <span className="mt-3 flex items-center justify-between gap-3 border-t border-[#f0f1f9] pt-2.5 text-xs text-on-surface-variant">
+                    <span className="min-w-0 truncate">
+                      <span>{app.applicationNo || app.id}</span>
+                      {app.createdAt &&
+                        ` · ${new Date(app.createdAt).toLocaleDateString("vi-VN")}`}
+                    </span>
+                    <FontAwesomeIcon icon={faChevronRight} />
+                  </span>
+                  {app.status === "draft" && (
+                    <span className="mt-2 block text-xs font-semibold text-secondary">
+                      {app.documents
+                        ? `Đã có ${documentTypes.length - missingDocumentTypes(app).length}/${documentTypes.length} chứng từ · `
+                        : ""}
+                      Tiếp tục hoàn tất
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           {cursor && (
             <Action
               secondary
@@ -217,7 +288,8 @@ export default function LoanApplicationsPage({
       {applicationId && (
         <>
           <Action secondary onClick={() => navigate(routes.loanApplications)}>
-            ← Danh sách hồ sơ
+            <FontAwesomeIcon icon={faArrowLeft} className="mr-1.5" />
+            Danh sách hồ sơ
           </Action>
           {!application && <p className="text-sm">Đang tải hồ sơ...</p>}
           {application && (
@@ -233,7 +305,8 @@ export default function LoanApplicationsPage({
                   Kỳ hạn: {application.termMonths} tháng
                 </p>
                 <p className="text-sm">
-                  Trạng thái: <strong>{application.status}</strong>
+                  Trạng thái:{" "}
+                  <strong>{applicationStatusLabel(application.status)}</strong>
                 </p>
                 <p className="text-xs text-on-surface-variant">
                   Sau khi nộp, admin phải thẩm định và ra quyết định. App không
@@ -251,44 +324,58 @@ export default function LoanApplicationsPage({
                 </Action>
               </Panel>
               {application.status === "draft" && (
-                <Panel title="Tải đủ 7 chứng từ">
+                <Panel title="Hoàn tất hồ sơ">
+                  <p className="text-sm">
+                    Hồ sơ chưa được gửi. Tải đủ chứng từ rồi gửi để ngân hàng
+                    thẩm định.
+                  </p>
+                  <label className="block text-xs font-semibold text-primary">
+                    Đã có {documentTypes.length - missingDocuments.length}/
+                    {documentTypes.length} chứng từ
+                    <progress
+                      className="mt-1.5 block h-2 w-full accent-[#6b38d4]"
+                      max={documentTypes.length}
+                      value={documentTypes.length - missingDocuments.length}
+                    />
+                  </label>
+                  <p className="text-xs text-on-surface-variant">
+                    Chụp trực tiếp hoặc chọn tệp PDF, JPEG, PNG, tối đa 10 MiB
+                    mỗi tệp.
+                  </p>
                   {documentTypes.map((type) => {
-                    const doc = application.documents?.find(
+                    const documents = application.documents ?? [];
+                    const doc = documents.find(
                       (d) =>
                         d.type === type && d.verificationStatus !== "rejected",
                     );
                     return (
-                      <label
+                      <LoanDocumentCard
                         key={type}
-                        className="block rounded-xl border p-3 text-xs"
-                      >
-                        <span className="font-semibold">
-                          {documentLabels[type]}{" "}
-                          {doc ? `✓ ${doc.verificationStatus}` : "(chưa có)"}
-                        </span>
-                        <input
-                          type="file"
-                          accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                          disabled={busy || !!doc}
-                          onChange={(e) =>
-                            void upload(type, e.target.files?.[0])
-                          }
-                          className="mt-2 block w-full text-xs"
-                        />
-                      </label>
+                        type={type}
+                        document={doc}
+                        rejected={documents.some((d) => d.type === type)}
+                        disabled={busy}
+                        uploading={uploadingType === type}
+                        onSelect={(file) => {
+                          setUploadingType(type);
+                          void upload(type, file).finally(() =>
+                            setUploadingType(null),
+                          );
+                        }}
+                        onDownload={(id) => void download(id)}
+                      />
                     );
                   })}
+                  {missingDocuments.length > 0 && (
+                    <p className="text-xs text-on-surface-variant">
+                      Còn thiếu:{" "}
+                      {missingDocuments
+                        .map((type) => documentLabels[type])
+                        .join(", ")}
+                    </p>
+                  )}
                   <Action
-                    disabled={
-                      busy ||
-                      !documentTypes.every((type) =>
-                        (application.documents ?? []).some(
-                          (d) =>
-                            d.type === type &&
-                            d.verificationStatus !== "rejected",
-                        ),
-                      )
-                    }
+                    disabled={busy || missingDocuments.length > 0}
                     onClick={() => {
                       if (token)
                         void run(
@@ -301,23 +388,20 @@ export default function LoanApplicationsPage({
                   </Action>
                 </Panel>
               )}
-              {(application.documents?.length ?? 0) > 0 && (
-                <Panel title="Chứng từ đã gửi">
-                  {application.documents?.map((doc) => (
-                    <button
-                      type="button"
-                      key={doc.documentId}
-                      onClick={() => void download(doc.documentId)}
-                      className="block w-full rounded-xl border p-2 text-left text-xs"
-                    >
-                      {documentLabels[doc.type] ?? doc.type} ·{" "}
-                      {doc.verificationStatus} · Tải xuống
-                    </button>
-                  ))}
-                </Panel>
-              )}
+              {application.status !== "draft" &&
+                (application.documents?.length ?? 0) > 0 && (
+                  <Panel title="Chứng từ đã gửi">
+                    {application.documents?.map((doc) => (
+                      <LoanDocumentRow
+                        key={doc.documentId}
+                        document={doc}
+                        onDownload={(id) => void download(id)}
+                      />
+                    ))}
+                  </Panel>
+                )}
               {application.status === "under_review" && (
-                <Panel title="Kết quả tính theo Evidence">
+                <Panel title="Kết quả sau thẩm định">
                   <Action
                     secondary
                     disabled={busy}
@@ -352,16 +436,17 @@ export default function LoanApplicationsPage({
                       void run(
                         async () =>
                           setOffer(await getLoanOffer(token, applicationId)),
-                        "Đã tải Offer.",
+                        "Đã tải đề nghị vay.",
                       );
                     }}
                   >
-                    Xem Offer đã phát hành
+                    Xem đề nghị vay
                   </Action>
                   {offer && (
                     <>
                       <p className="text-sm">
-                        Offer: <strong>{offer.status}</strong> ·{" "}
+                        Đề nghị vay:{" "}
+                        <strong>{statusLabel(offer.status)}</strong> ·{" "}
                         {vnd(offer.amount)} · {offer.termMonths} tháng
                       </p>
                       <p className="text-sm">
@@ -382,11 +467,11 @@ export default function LoanApplicationsPage({
                                         applicationId,
                                       ),
                                     ),
-                                  "Đã chấp nhận Offer. Hãy xác nhận OTP.",
+                                  "Đã chấp nhận đề nghị. Hãy xác nhận bằng mã OTP.",
                                 );
                             }}
                           >
-                            Chấp nhận Offer
+                            Chấp nhận đề nghị
                           </Action>
                           <Action
                             secondary
@@ -395,7 +480,7 @@ export default function LoanApplicationsPage({
                               if (
                                 token &&
                                 window.confirm(
-                                  "Từ chối Offer sẽ kết thúc đề nghị này. Tiếp tục?",
+                                  "Từ chối sẽ kết thúc đề nghị này. Tiếp tục?",
                                 )
                               )
                                 void run(
@@ -406,11 +491,11 @@ export default function LoanApplicationsPage({
                                         applicationId,
                                       ),
                                     ),
-                                  "Đã từ chối Offer.",
+                                  "Đã từ chối đề nghị.",
                                 );
                             }}
                           >
-                            Từ chối Offer
+                            Từ chối đề nghị
                           </Action>
                         </>
                       )}
@@ -445,7 +530,7 @@ export default function LoanApplicationsPage({
                                 setAcceptedTerms(e.target.checked)
                               }
                             />{" "}
-                            Tôi đã đọc và đồng ý các điều khoản Offer.
+                            Tôi đã đọc và đồng ý các điều khoản của đề nghị vay.
                           </label>
                           <Action
                             disabled={busy || !acceptedTerms || !otp.trim()}
@@ -471,7 +556,7 @@ export default function LoanApplicationsPage({
                         <Notice message="Hợp đồng đã xác nhận. Chờ nhân viên giải ngân." />
                       )}
                       {offer.status === "rejected" && (
-                        <Notice message="Bạn đã từ chối Offer. Hãy tạo hồ sơ mới nếu cần." />
+                        <Notice message="Bạn đã từ chối đề nghị. Hãy tạo hồ sơ mới nếu cần." />
                       )}
                     </>
                   )}

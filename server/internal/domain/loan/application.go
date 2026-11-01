@@ -15,7 +15,18 @@ type ApplicationDocument struct {
 	SHA256             string    `json:"sha256"`
 	VerificationStatus string    `json:"verificationStatus"`
 	UploadedAt         time.Time `json:"uploadedAt"`
+	// Kết quả duyệt từng chứng từ. Bỏ trống với chứng từ chưa được duyệt.
+	RejectionReason string     `json:"rejectionReason,omitempty"`
+	ReviewedAt      *time.Time `json:"reviewedAt,omitempty"`
+	ReviewedBy      string     `json:"reviewedBy,omitempty"`
 }
+
+const (
+	DocumentVerified = "verified"
+	DocumentRejected = "rejected"
+
+	maxDocumentRejectionReason = 500
+)
 
 // ApplicationStatus là trạng thái của hồ sơ vay.
 type ApplicationStatus string
@@ -223,6 +234,49 @@ func (a *Application) Submit() error {
 	a.UpdatedAt = now
 
 	return nil
+}
+
+// ReviewDocument ghi kết quả duyệt một chứng từ. Chỉ thực hiện được khi hồ sơ
+// đang thẩm định, và có thể đổi kết quả cho đến khi hồ sơ rời trạng thái đó.
+func (a *Application) ReviewDocument(
+	documentID, decision, reason, reviewerID string,
+	reviewedAt time.Time,
+) error {
+	if a == nil {
+		return fmt.Errorf("loan application is nil")
+	}
+	if a.Status != ApplicationStatusUnderReview {
+		return ErrInvalidApplicationStatus
+	}
+	reason = strings.TrimSpace(reason)
+	switch decision {
+	case DocumentVerified:
+		reason = ""
+	case DocumentRejected:
+		if reason == "" || len([]rune(reason)) > maxDocumentRejectionReason {
+			return fmt.Errorf("invalid document rejection reason")
+		}
+	default:
+		return fmt.Errorf("invalid document decision")
+	}
+	if reviewerID == "" || reviewedAt.IsZero() {
+		return fmt.Errorf("document reviewer and time are required")
+	}
+	// Sao chép để các bản sao nông của hồ sơ không thấy thay đổi.
+	documents := append([]ApplicationDocument(nil), a.Documents...)
+	for index := range documents {
+		if documents[index].DocumentId != documentID {
+			continue
+		}
+		documents[index].VerificationStatus = decision
+		documents[index].RejectionReason = reason
+		documents[index].ReviewedAt = &reviewedAt
+		documents[index].ReviewedBy = reviewerID
+		a.Documents = documents
+		a.UpdatedAt = reviewedAt
+		return nil
+	}
+	return fmt.Errorf("loan document not found")
 }
 
 func (a *Application) StartReview() error {

@@ -261,10 +261,7 @@ export async function downloadLoanDocument(
       },
     );
     if (!response.ok)
-      throw new ApiError(
-        response.status,
-        `Không tải được chứng từ (HTTP ${response.status}).`,
-      );
+      throw new ApiError(response.status, "Không tải được chứng từ.");
     return await response.blob();
   } catch (error) {
     if (error instanceof ApiError) throw error;

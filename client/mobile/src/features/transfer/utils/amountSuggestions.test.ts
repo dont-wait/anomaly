@@ -21,3 +21,9 @@ it("never suggests more than the available balance", () => {
 it("suggests nothing before the user types an amount", () => {
   expect(suggestAmounts(0, 100_000_000)).toEqual([]);
 });
+
+it("respects a custom minimum", () => {
+  expect(suggestAmounts(3, 500_000_000, 10_000_000)).toEqual([
+    30_000_000, 300_000_000,
+  ]);
+});

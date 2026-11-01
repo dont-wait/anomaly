@@ -1,3 +1,5 @@
+import { faArrowLeft } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useState } from "react";
 import { navigate, routes, loanContract } from "@/app/routes";
 import { useAuth } from "@/features/auth/useAuth";
@@ -16,7 +18,7 @@ import {
   type RepaymentSchedule,
   type RepaymentResult,
 } from "@/features/loans/api";
-import { explainLoanError, vnd } from "@/features/loans/format";
+import { explainLoanError, statusLabel, vnd } from "@/features/loans/format";
 import {
   clearIdempotencyKey,
   getOrCreateIdempotencyKey,
@@ -50,7 +52,7 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
     null,
   );
   const [paymentDetail, setPaymentDetail] = useState<LoanPayment | null>(null);
-  const [sourceAccountId, setSourceAccountId] = useState(user?.id ?? "");
+  const sourceAccountId = user?.id ?? "";
   const [quote, setQuote] = useState<RepaymentQuote | null>(null);
   const [repaymentResult, setRepaymentResult] =
     useState<RepaymentResult | null>(null);
@@ -195,7 +197,9 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
               className="block w-full rounded-xl border p-3 text-left text-sm"
             >
               <strong>{item.loanNo}</strong>
-              <span className="float-right text-secondary">{item.status}</span>
+              <span className="float-right text-secondary">
+                {statusLabel(item.status)}
+              </span>
               <span className="mt-1 block">
                 Dư nợ {vnd(item.outstandingPrincipal)} · {item.paidInstallments}
                 /{item.totalInstallments} kỳ
@@ -234,7 +238,8 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
       {loanId && (
         <>
           <Action secondary onClick={() => navigate(routes.loanContracts)}>
-            ← Danh sách hợp đồng
+            <FontAwesomeIcon icon={faArrowLeft} className="mr-1.5" />
+            Danh sách hợp đồng
           </Action>
           {!contract && <Notice message="Đang tải dữ liệu hợp đồng..." />}
           {contract && (
@@ -249,7 +254,9 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
               <p className="text-sm">
                 Lãi suất đã ký: {contract.annualInterestRate}%/năm
               </p>
-              <p className="text-sm">Trạng thái: {contract.status}</p>
+              <p className="text-sm">
+                Trạng thái: {statusLabel(contract.status)}
+              </p>
               <p className="text-sm">
                 Kỳ đã trả: {contract.paidInstallments}/
                 {contract.totalInstallments}
@@ -283,7 +290,7 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
                     <strong>
                       Kỳ {item.installmentNo} · {item.dueDate}
                     </strong>
-                    <span>{item.status}</span>
+                    <span>{statusLabel(item.status)}</span>
                   </div>
                   <p className="mt-1">
                     Gốc {vnd(item.principalDue)} · Lãi {vnd(item.interestDue)}
@@ -317,19 +324,12 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
               <Panel title="Thanh toán kỳ tới hạn">
                 <p className="text-xs">
                   Chỉ cho phép trả đủ một kỳ đúng ngày đến hạn (theo giờ Việt
-                  Nam). Không thể trả sớm/trễ trên API hiện tại.
+                  Nam). Hiện chưa hỗ trợ trả sớm hoặc trả trễ.
                 </p>
-                <label className="block text-xs">
-                  ID tài khoản nguồn
-                  <input
-                    value={sourceAccountId}
-                    onChange={(e) => {
-                      setSourceAccountId(e.target.value);
-                      setQuote(null);
-                    }}
-                    className="mt-1 w-full rounded-xl border p-3 text-sm"
-                  />
-                </label>
+                <p className="text-xs">
+                  Trừ tiền từ tài khoản thanh toán{" "}
+                  <strong>•••• {user?.accountNo?.slice(-4) ?? "----"}</strong>
+                </p>
                 <Action
                   disabled={busy || !sourceAccountId.trim()}
                   onClick={() => void getQuote()}
@@ -376,8 +376,8 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
                 }}
                 className="block w-full rounded-xl border p-3 text-left text-xs"
               >
-                Kỳ {p.installmentNo} · {vnd(p.amount)} · {p.status} · Xem biên
-                nhận
+                Kỳ {p.installmentNo} · {vnd(p.amount)} · {statusLabel(p.status)}{" "}
+                · Xem biên nhận
               </button>
             ))}
             {nextPaymentCursor && (

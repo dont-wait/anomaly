@@ -19,6 +19,7 @@ const loanTimelineCollection = "loan_account_timeline"
 var loanEventSummaries = map[string]string{
 	"LoanApplicationCreated":   "Hồ sơ vay được tạo",
 	"LoanDocumentAdded":        "Hồ sơ vay được bổ sung chứng từ",
+	"LoanDocumentReviewed":     "Chứng từ vay được duyệt",
 	"LoanApplicationSubmitted": "Hồ sơ vay được gửi",
 	"LoanReviewStarted":        "Bắt đầu thẩm định khoản vay",
 	"LoanApplicationAssessed":  "Khoản vay được thẩm định",

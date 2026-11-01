@@ -990,3 +990,21 @@ func TestApplyLoanEvent_ReplayPreparedDisbursement(t *testing.T) {
 		t.Fatal("remaining balance must be zero after final installment")
 	}
 }
+
+func TestReplayLoanDocumentReviewed(t *testing.T) {
+	app, base := prepareLoanReviewReplay(t)
+	documentID := app.Documents[0].DocumentId
+	mustReplayLoanEvent(t, app, EventLoanDocumentReviewed, map[string]any{
+		"documentId": documentID, "decision": "rejected", "reason": "Ảnh mờ",
+		"reviewerId": "admin", "reviewedAt": base.Add(time.Hour),
+	})
+	document := app.Documents[0]
+	if document.VerificationStatus != "rejected" || document.RejectionReason != "Ảnh mờ" || document.ReviewedBy != "admin" {
+		t.Fatalf("document = %#v", document)
+	}
+	if err := applyLoanEvent(app, EventLoanDocumentReviewed, loanReplayJSON(t, map[string]any{
+		"documentId": "missing", "decision": "verified", "reviewerId": "admin", "reviewedAt": base,
+	})); err == nil {
+		t.Fatal("expected an error for an unknown document")
+	}
+}

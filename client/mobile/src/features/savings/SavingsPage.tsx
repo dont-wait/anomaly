@@ -18,7 +18,6 @@ const labels: Record<SavingsStatus, string> = {
   settled: "Đã tất toán",
 };
 
-const DEMO_LABEL = "Bản xem trước giao diện · Dữ liệu mô phỏng · Không giao dịch thật";
 
 function Button({ children, onClick, secondary = false, disabled = false }: {
   children: ReactNode;
@@ -120,7 +119,6 @@ export default function SavingsPage() {
   };
 
   return <div className="savings-shell">
-    <div className="savings-demo-banner" role="status">{DEMO_LABEL}</div>
     {screen === "list" ? <>
       <Head title="Tiết kiệm của tôi" subtitle="Tích lũy hôm nay, vững vàng tương lai" onBack={() => navigate(routes.dashboard)} />
       <main className="savings-content">
@@ -133,7 +131,7 @@ export default function SavingsPage() {
             <span>Tổng lãi khi đáo hạn <b>+{formatVnd(projectedInterest)}</b></span>
           </div>
         </section>
-        <Button onClick={startOpen}>⊕ &nbsp; Gửi tiết kiệm mới</Button>
+        <Button onClick={startOpen}>&nbsp; Gửi tiết kiệm mới</Button>
         <div className="savings-section-title"><h2>Sổ tiết kiệm của bạn</h2><span>{contracts.length} hợp đồng</span></div>
         <div className="savings-filters" aria-label="Lọc sổ tiết kiệm">
           {(["all", "active", "matured", "settled"] as const).map((key) => <button key={key} type="button" aria-pressed={filter === key}

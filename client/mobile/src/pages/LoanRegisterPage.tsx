@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowLeftIcon,
-  ChevronDownIcon,
-  CheckIcon,
-  ShieldIcon,
-  UserIcon,
-} from "@/shared/icons";
+  faArrowLeft,
+  faCheck,
+  faChevronDown,
+  faShieldHalved,
+  faStar,
+  faWallet,
+  faUser,
+} from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { Logo } from "@/shared/layout/Logo";
 import { navigate, routes, loanApplication } from "@/app/routes";
 import { useAuth } from "@/features/auth/useAuth";
@@ -17,7 +20,13 @@ import {
   type LoanPackage,
   type LoanQuote,
 } from "@/features/loans/api";
-import { explainLoanError, percentBps, vnd } from "@/features/loans/format";
+import {
+  dtiStatusMeta,
+  explainLoanError,
+  percentBps,
+  vnd,
+} from "@/features/loans/format";
+import { MoneyInput } from "@/features/loans/components/MoneyInput";
 import {
   clearIdempotencyKey,
   getOrCreateIdempotencyKey,
@@ -128,6 +137,21 @@ const LoanRegisterPage = () => {
     amount >= selectedPackage.minAmount &&
     amount <= selectedPackage.maxAmount &&
     selectedPackage.termMonths.includes(tenure);
+  const amountError =
+    selectedPackage && amount > 0
+      ? amount < selectedPackage.minAmount
+        ? `Tối thiểu ${vnd(selectedPackage.minAmount)}`
+        : amount > selectedPackage.maxAmount
+          ? `Tối đa ${vnd(selectedPackage.maxAmount)}`
+          : undefined
+      : undefined;
+  const invalidateQuote = () => {
+    setQuote(null);
+    quotedFingerprint.current = null;
+  };
+  const dti = quote
+    ? dtiStatusMeta[quote.affordability?.dtiStatus ?? ""]
+    : null;
   const updateDraft = (patch: Partial<LoanDraft>) => {
     setQuote(null);
     quotedFingerprint.current = null;
@@ -143,13 +167,13 @@ const LoanRegisterPage = () => {
     if (purpose.startsWith("Khác") && !details.trim()) {
       setSaveMessage({
         tone: "error",
-        text: "Vui lòng nhập mục đích vay cụ thể trước khi lưu bản nháp.",
+        text: "Vui lòng nhập mục đích vay cụ thể trước khi lưu tạm.",
       });
       return;
     }
     setSaveMessage({
       tone: "success",
-      text: "Đã lưu bản nháp trên thiết bị này. Hồ sơ chưa được gửi lên hệ thống.",
+      text: "Đã lưu tạm trên máy này. Hồ sơ chưa được gửi cho ngân hàng.",
     });
   };
 
@@ -197,14 +221,14 @@ const LoanRegisterPage = () => {
     ) {
       setSaveMessage({
         tone: "error",
-        text: "Bạn cần xem báo giá API mới nhất trước khi tạo hồ sơ.",
+        text: "Vui lòng xem báo giá mới nhất trước khi tạo hồ sơ.",
       });
       return;
     }
     if (!sourceAccountId.trim()) {
       setSaveMessage({
         tone: "error",
-        text: "Vui lòng xác nhận ID tài khoản nhận giải ngân.",
+        text: "Không xác định được tài khoản nhận giải ngân.",
       });
       return;
     }
@@ -243,10 +267,10 @@ const LoanRegisterPage = () => {
           <button
             type="button"
             aria-label="Quay lại"
-            onClick={() => navigate(routes.dashboard)}
+            onClick={() => navigate(routes.loanApplications)}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-primary active:bg-surface-container"
           >
-            <ArrowLeftIcon />
+            <FontAwesomeIcon icon={faArrowLeft} />
           </button>
           <Logo className="!h-8" />
           <div className="min-w-0 border-l border-outline-variant pl-2">
@@ -259,7 +283,7 @@ const LoanRegisterPage = () => {
           </div>
         </div>
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white">
-          <UserIcon className="h-4 w-4" />
+          <FontAwesomeIcon icon={faUser} className="h-4 w-4" />
         </div>
       </header>
 
@@ -280,22 +304,22 @@ const LoanRegisterPage = () => {
             <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-primary to-secondary" />
           </div>
           <p className="mt-2 text-xs text-on-surface-variant">
-            Hồ sơ sẽ tự động lưu dưới dạng <strong>Bản nháp</strong> trên thiết
-            bị này.
+            Thông tin bạn nhập được tự động lưu tạm trên máy này.
           </p>
         </section>
 
         <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-container via-primary to-secondary p-5 text-white shadow-md">
           <div className="absolute -bottom-10 -right-5 h-32 w-32 rounded-full bg-secondary-container/30 blur-2xl" />
           <p className="relative inline-flex rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider">
-            ✦ Gói vay đặc quyền
+            <FontAwesomeIcon icon={faStar} className="mr-1.5" />
+            Gói vay đặc quyền
           </p>
           <h2 className="relative mt-3 text-xl font-bold">
             Vay vốn cá nhân theo lương
           </h2>
           <p className="relative mt-2 text-xs text-white/80">
-            Lãi suất và khoản trả góp do ngân hàng tính qua API. Kết quả chính
-            thức phụ thuộc vào thẩm định và Offer.
+            Lãi suất và khoản trả góp chỉ là dự kiến. Kết quả chính thức phụ
+            thuộc vào thẩm định hồ sơ.
           </p>
         </section>
 
@@ -314,11 +338,14 @@ const LoanRegisterPage = () => {
               quotedFingerprint.current = null;
             }}
             placeholder="Chưa có gói vay khả dụng"
-            options={packages.map((p) => ({ value: p.packageCode, label: p.name }))}
+            options={packages.map((p) => ({
+              value: p.packageCode,
+              label: p.name,
+            }))}
           />
           {!loadingPackages && packages.length === 0 && (
             <p role="alert" className="text-xs text-error">
-              Chưa có gói vay ACTIVE trên backend. Không thể tạo hồ sơ.
+              Hiện chưa có gói vay khả dụng. Vui lòng quay lại sau.
             </p>
           )}
         </section>
@@ -333,30 +360,15 @@ const LoanRegisterPage = () => {
                 : "Theo gói vay"}
             </span>
           </div>
-          <div className="flex items-center rounded-2xl bg-surface-container-low px-4 py-2">
-            <output
-              aria-label="Số tiền đề nghị vay"
-              className="flex-1 text-3xl font-bold tracking-tight text-primary"
-            >
-              {formatMoney(amount)}
-            </output>
-            <span className="text-xl font-bold text-secondary">đ</span>
-          </div>
-          <label className="block text-xs font-semibold text-primary">
-            Hoặc nhập số tiền theo hạn mức gói vay
-            <input
-              type="number"
-              min={1}
-              step={1000000}
-              value={amount === 0 ? "" : amount}
-              onChange={(e) =>
-                updateDraft({
-                  amount: e.target.value === "" ? 0 : Number(e.target.value),
-                })
-              }
-              className="mt-2 w-full rounded-xl border border-outline-variant p-3 text-sm"
-            />
-          </label>
+          <MoneyInput
+            label="Số tiền đề nghị vay"
+            size="lg"
+            value={amount}
+            onChange={(value) => updateDraft({ amount: value })}
+            error={amountError}
+            suggestMin={selectedPackage?.minAmount}
+            suggestMax={selectedPackage?.maxAmount}
+          />
           <div
             className="grid grid-cols-4 gap-2"
             aria-label="Gợi ý số tiền"
@@ -444,7 +456,8 @@ const LoanRegisterPage = () => {
             className="flex w-full items-center justify-between rounded-2xl bg-surface-container-low px-4 py-3 text-left text-sm font-semibold text-primary"
           >
             <span className="truncate">{purpose}</span>
-            <ChevronDownIcon
+            <FontAwesomeIcon
+              icon={faChevronDown}
               className={`h-5 w-5 text-secondary transition-transform ${purposeOpen ? "rotate-180" : ""}`}
             />
           </button>
@@ -468,7 +481,10 @@ const LoanRegisterPage = () => {
                 >
                   <span>{item}</span>
                   {purpose === item && (
-                    <CheckIcon className="h-4 w-4 text-secondary" />
+                    <FontAwesomeIcon
+                      icon={faCheck}
+                      className="h-4 w-4 text-secondary"
+                    />
                   )}
                 </button>
               ))}
@@ -506,7 +522,7 @@ const LoanRegisterPage = () => {
           <div className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-surface-container-low to-surface-container p-3">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary-container text-secondary">
-                ▰
+                <FontAwesomeIcon icon={faWallet} />
               </div>
               <div>
                 <p className="text-sm font-bold text-primary">
@@ -532,75 +548,116 @@ const LoanRegisterPage = () => {
           </div>
         </section>
 
-        <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-bold text-primary">
-            Thông tin báo giá dự kiến
-          </h2>
-          <label className="block text-xs">
-            Thu nhập tháng (VND)
-            <input
-              type="number"
-              min={1}
-              value={income}
-              onChange={(e) => {
-                setIncome(Number(e.target.value));
-                setQuote(null);
-                quotedFingerprint.current = null;
-              }}
-              className="mt-1 w-full rounded-xl border p-3 text-sm"
-            />
-          </label>
-          <div className="block text-xs">
-            Khu vực
+        <section className="space-y-4 rounded-2xl bg-white p-4 shadow-sm">
+          <div>
+            <h2 className="text-sm font-bold text-primary">
+              Thông tin báo giá dự kiến
+            </h2>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Thông tin tự khai chỉ để tính thử, chưa phải kết quả thẩm định.
+            </p>
+          </div>
+          <MoneyInput
+            label="Thu nhập mỗi tháng"
+            value={income}
+            onChange={(value) => {
+              setIncome(value);
+              invalidateQuote();
+            }}
+          />
+          <MoneyInput
+            label="Khoản trả nợ hiện tại mỗi tháng"
+            value={debt}
+            hint="Để trống nếu không có"
+            onChange={(value) => {
+              setDebt(value);
+              invalidateQuote();
+            }}
+          />
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-primary">Khu vực</p>
             <SelectSheet
               label="Khu vực"
               value={region}
               onChange={(value) => {
                 setRegion(value as typeof region);
-                setQuote(null);
-                quotedFingerprint.current = null;
+                invalidateQuote();
               }}
               options={[
-                { value: "KV01", label: "KV01 - HCM / Hà Nội / Cần Thơ" },
-                { value: "KV02", label: "KV02 - Huế / Đà Nẵng / Hải Phòng" },
-                { value: "KV03", label: "KV03 - Khu vực khác" },
+                {
+                  value: "KV01",
+                  label: "HCM, Hà Nội, Cần Thơ",
+                  description: "KV01",
+                },
+                {
+                  value: "KV02",
+                  label: "Huế, Đà Nẵng, Hải Phòng",
+                  description: "KV02",
+                },
+                { value: "KV03", label: "Khu vực khác", description: "KV03" },
               ]}
             />
           </div>
-          <label className="block text-xs">
-            Nợ phải trả hàng tháng hiện tại (VND)
-            <input
-              type="number"
-              min={0}
-              value={debt}
-              onChange={(e) => {
-                setDebt(Number(e.target.value));
-                setQuote(null);
-                quotedFingerprint.current = null;
-              }}
-              className="mt-1 w-full rounded-xl border p-3 text-sm"
-            />
-          </label>
-          <p className="text-xs text-on-surface-variant">
-            Thông tin tự khai chỉ dùng để tính thử. Lãi suất chính thức lấy từ
-            Evidence đã xác minh và Offer.
-          </p>
           <button
             type="button"
             onClick={() => void handleQuote()}
-            disabled={!withinPackage || busy}
+            disabled={!withinPackage || income <= 0 || busy}
             className="w-full rounded-full bg-primary p-3 text-sm font-bold text-white disabled:opacity-40"
           >
-            {busy ? "Đang xử lý..." : "Tính lãi và lịch trả qua API"}
+            {busy ? "Đang tính..." : "Xem báo giá dự kiến"}
           </button>
           {quote && (
-            <p role="status" className="text-xs">
-              Lãi suất dự kiến:{" "}
-              <strong>{percentBps(quote.annualRateBps)}</strong> · Tổng lãi:{" "}
-              {vnd(quote.totalInterest)} · DTI:{" "}
-              {quote.affordability?.dtiStatus ?? "Chưa rõ"}. Không phải Offer
-              chính thức.
-            </p>
+            <div
+              role="status"
+              className="space-y-3 rounded-2xl bg-surface-container-low p-4"
+            >
+              <div>
+                <p className="text-xs text-on-surface-variant">
+                  Trả mỗi tháng khoảng
+                </p>
+                <p className="text-2xl font-bold text-primary">
+                  {vnd(quote.estimatedMonthlyPayment)}
+                </p>
+              </div>
+              <dl className="space-y-2 text-xs">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-on-surface-variant">Lãi suất dự kiến</dt>
+                  <dd className="font-semibold text-primary">
+                    {percentBps(quote.annualRateBps)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-on-surface-variant">Tổng lãi</dt>
+                  <dd className="font-semibold text-primary">
+                    {vnd(quote.totalInterest)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-on-surface-variant">Tổng phải trả</dt>
+                  <dd className="font-semibold text-primary">
+                    {vnd(quote.totalRepayment)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-on-surface-variant">Khả năng trả nợ</dt>
+                  <dd
+                    className={`rounded-full px-2.5 py-0.5 font-semibold ${dti?.className ?? "bg-gray-100 text-gray-700"}`}
+                  >
+                    {dti?.label ?? "Chưa rõ"}
+                  </dd>
+                </div>
+              </dl>
+              {quote.affordability?.withinIncomeLimit === false && (
+                <p className="text-xs text-error">
+                  Số tiền vượt hạn mức theo thu nhập (
+                  {vnd(quote.affordability.incomeLimit)}).
+                </p>
+              )}
+              <p className="text-[11px] text-on-surface-variant">
+                Không phải đề nghị chính thức. Lãi suất chính thức do ngân hàng
+                xác định sau thẩm định.
+              </p>
+            </div>
           )}
         </section>
         {quote && (
@@ -671,7 +728,10 @@ const LoanRegisterPage = () => {
             </strong>
           </div>
           <p className="text-[10px] text-outline">
-            <ShieldIcon className="mr-1 inline h-3.5 w-3.5 text-secondary" />
+            <FontAwesomeIcon
+              icon={faShieldHalved}
+              className="mr-1 inline h-3.5 w-3.5 text-secondary"
+            />
             Khoản thanh toán thực tế sẽ được xác định sau khi thẩm định hồ sơ.
           </p>
         </section>
@@ -693,7 +753,7 @@ const LoanRegisterPage = () => {
           onClick={handleSaveDraft}
           className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-secondary text-base font-bold text-white shadow-lg shadow-secondary/30 transition-transform active:scale-[0.98]"
         >
-          Lưu bản nháp
+          Lưu tạm trên máy
         </button>
         <button
           type="button"
@@ -701,7 +761,7 @@ const LoanRegisterPage = () => {
           onClick={() => void handleCreate()}
           className="flex h-14 w-full items-center justify-center rounded-full bg-primary text-base font-bold text-white disabled:opacity-40"
         >
-          Tạo hồ sơ vay trên hệ thống
+          Tiếp tục tải chứng từ
         </button>
         <button
           type="button"
@@ -711,8 +771,11 @@ const LoanRegisterPage = () => {
           Xem hồ sơ đã tạo
         </button>
         <p className="flex items-center justify-center gap-1 text-center text-[10px] text-on-surface-variant">
-          <ShieldIcon className="h-3.5 w-3.5 text-secondary" /> Thông tin được
-          bảo mật theo chuẩn PCI DSS
+          <FontAwesomeIcon
+            icon={faShieldHalved}
+            className="h-3.5 w-3.5 text-secondary"
+          />{" "}
+          Thông tin được bảo mật theo chuẩn PCI DSS
         </p>
       </main>
     </div>
