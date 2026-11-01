@@ -45,6 +45,10 @@
   animation: loan-slide-in 220ms ease-out;
 }
 
+.loan-surface-overlay:focus {
+  outline: none;
+}
+
 .loan-header {
   position: sticky;
   z-index: 1;

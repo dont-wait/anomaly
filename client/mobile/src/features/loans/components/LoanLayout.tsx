@@ -1,6 +1,9 @@
-import type { ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { navigate, routes } from "@/app/routes";
 import "./loan-layout.css";
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function LoanLayout({
   title,
@@ -11,10 +14,49 @@ export function LoanLayout({
   children: ReactNode;
   overlay?: boolean;
 }) {
+  const titleId = useId();
+  const surface = useRef<HTMLElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+
+  // Runs before the browser drops focus from the list that was just made inert.
+  useLayoutEffect(() => {
+    const node = surface.current;
+    if (!overlay || !node || node.contains(document.activeElement)) return;
+    returnFocus.current = document.activeElement as HTMLElement | null;
+    node.focus();
+  }, [overlay]);
+
+  // A passive cleanup runs after the commit, once the list is no longer inert.
+  useEffect(() => {
+    if (!overlay) return;
+    return () => returnFocus.current?.focus();
+  }, [overlay]);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      navigate(routes.loanApplications);
+      return;
+    }
+    if (event.key !== "Tab" || !surface.current) return;
+    const items = [...surface.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || active === surface.current)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <div className={overlay ? "loan-overlay" : "loan-shell"}>
-      {overlay && <button type="button" aria-label="Đóng chi tiết hồ sơ vay" onClick={() => navigate(routes.loanApplications)} className="loan-backdrop" />}
-      <section role={overlay ? "dialog" : undefined} aria-modal={overlay ? true : undefined} className={overlay ? "loan-surface loan-surface-overlay" : "loan-surface"}>
+      {overlay && <button type="button" tabIndex={-1} aria-label="Đóng chi tiết hồ sơ vay" onClick={() => navigate(routes.loanApplications)} className="loan-backdrop" />}
+      <section ref={surface} role={overlay ? "dialog" : undefined} aria-modal={overlay ? true : undefined} aria-labelledby={overlay ? titleId : undefined} tabIndex={overlay ? -1 : undefined} onKeyDown={overlay ? onKeyDown : undefined} className={overlay ? "loan-surface loan-surface-overlay" : "loan-surface"}>
       <header className="loan-header">
         <button
           type="button"
@@ -23,7 +65,7 @@ export function LoanLayout({
         >
           ← Trang chủ
         </button>
-        <h1>{title}</h1>
+        <h1 id={titleId}>{title}</h1>
       </header>
       <nav className="loan-nav">
         <button

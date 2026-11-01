@@ -40,8 +40,12 @@ const appendUnique = <T,>(
 
 export default function LoanApplicationsPage({
   applicationId,
+  updatedApplications,
+  onApplicationChange,
 }: {
   applicationId?: string;
+  updatedApplications?: Record<string, LoanApplication>;
+  onApplicationChange?: (application: LoanApplication) => void;
 }) {
   const { token } = useAuth();
   const [items, setItems] = useState<LoanApplication[]>([]);
@@ -68,6 +72,7 @@ export default function LoanApplicationsPage({
     }
     const detail = await getLoan(token, applicationId);
     setApplication(detail);
+    onApplicationChange?.(detail);
     if (detail.status === "approved") {
       try {
         setOffer(await getLoanOffer(token, applicationId));
@@ -81,7 +86,7 @@ export default function LoanApplicationsPage({
     } else {
       setOffer(detail.offer ?? null);
     }
-  }, [applicationId, token]);
+  }, [applicationId, onApplicationChange, token]);
 
   useEffect(() => {
     let active = true;
@@ -93,6 +98,7 @@ export default function LoanApplicationsPage({
           if (applicationId) {
             const detail = result as LoanApplication;
             setApplication(detail);
+            onApplicationChange?.(detail);
             setOffer(detail.offer ?? null);
           } else {
             const page = result as Awaited<ReturnType<typeof listLoans>>;
@@ -106,7 +112,7 @@ export default function LoanApplicationsPage({
     return () => {
       active = false;
     };
-  }, [applicationId, token]);
+  }, [applicationId, onApplicationChange, token]);
 
   const run = async (fn: () => Promise<unknown>, success: string) => {
     setBusy(true);
@@ -171,7 +177,7 @@ export default function LoanApplicationsPage({
               Chưa có hồ sơ
             </p>
           )}
-          {items.map((app) => (
+          {items.map((item) => updatedApplications?.[item.id] ?? item).map((app) => (
             <button
               type="button"
               key={app.id}

@@ -18,6 +18,8 @@ const labels: Record<SavingsStatus, string> = {
   settled: "Đã tất toán",
 };
 
+const DEMO_LABEL = "Bản xem trước giao diện · Dữ liệu mô phỏng · Không giao dịch thật";
+
 function Button({ children, onClick, secondary = false, disabled = false }: {
   children: ReactNode;
   onClick: () => void;
@@ -118,6 +120,7 @@ export default function SavingsPage() {
   };
 
   return <div className="savings-shell">
+    <div className="savings-demo-banner" role="status">{DEMO_LABEL}</div>
     {screen === "list" ? <>
       <Head title="Tiết kiệm của tôi" subtitle="Tích lũy hôm nay, vững vàng tương lai" onBack={() => navigate(routes.dashboard)} />
       <main className="savings-content">
