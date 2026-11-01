@@ -211,74 +211,87 @@ func (n *notifierStub) NotifyEmailChanged(_ context.Context, previous, _ string)
 
 type emailFixture struct {
 	repo     *profileRepoStub
-	current  *otpStub
 	next     *otpStub
+	limiter  *limiterStub
 	pending  *pendingStub
 	notifier *notifierStub
 	handler  *EmailChangeHandler
 }
 
-func newEmailFixture() *emailFixture {
-	f := &emailFixture{repo: &profileRepoStub{account: customerAccount()}, current: &otpStub{code: "111111"}, next: &otpStub{code: "222222"}, pending: &pendingStub{}, notifier: &notifierStub{}}
-	f.handler = NewEmailChangeHandler(f.repo, f.current, f.next, f.pending, f.notifier, time.Minute, zerolog.Nop())
+func newEmailFixture(t *testing.T) *emailFixture {
+	t.Helper()
+	f := &emailFixture{repo: &profileRepoStub{account: passwordAccount(t)}, next: &otpStub{code: "222222"}, limiter: &limiterStub{}, pending: &pendingStub{}, notifier: &notifierStub{}}
+	f.handler = NewEmailChangeHandler(f.repo, f.next, f.limiter, f.pending, f.notifier, time.Minute, zerolog.Nop())
 	return f
 }
 
-func TestEmailChangeStartKeepsActiveEmail(t *testing.T) {
-	f := newEmailFixture()
-	if err := f.handler.Start(context.Background(), "owner", "new@example.com"); err != nil {
+func (f *emailFixture) start(email, password string) error {
+	return f.handler.Start(context.Background(), "owner", email, password, "1.2.3.4")
+}
+
+func TestEmailChangeStartKeepsActiveEmailAndSendsOnlyToNewAddress(t *testing.T) {
+	f := newEmailFixture(t)
+	if err := f.start("new@example.com", "old-password"); err != nil {
 		t.Fatal(err)
 	}
 	if f.repo.account.Email != "old@example.com" || f.repo.saves != 0 {
 		t.Fatalf("email activated before verification: %q", f.repo.account.Email)
 	}
-	if f.current.sentTo != "old@example.com" || f.next.sentTo != "new@example.com" || f.pending.email != "new@example.com" {
-		t.Fatalf("current = %q, next = %q, pending = %q", f.current.sentTo, f.next.sentTo, f.pending.email)
+	if f.next.sentTo != "new@example.com" || f.pending.email != "new@example.com" || f.limiter.resets != 1 {
+		t.Fatalf("sent = %q, pending = %q, resets = %d", f.next.sentTo, f.pending.email, f.limiter.resets)
+	}
+}
+
+func TestEmailChangeStartRequiresCurrentPassword(t *testing.T) {
+	f := newEmailFixture(t)
+	if err := f.start("new@example.com", "wrong"); !errors.Is(err, accountdomain.ErrCurrentPassword) {
+		t.Fatalf("error = %v", err)
+	}
+	if f.next.sentTo != "" || f.pending.email != "" || f.limiter.failures != 1 {
+		t.Fatalf("sent = %q, pending = %q, failures = %d", f.next.sentTo, f.pending.email, f.limiter.failures)
+	}
+
+	f.limiter.blocked = true
+	if err := f.start("new@example.com", "old-password"); !errors.Is(err, accountdomain.ErrTooManyAttempts) {
+		t.Fatalf("throttled error = %v", err)
+	}
+	if f.next.sentTo != "" {
+		t.Fatal("OTP sent while throttled")
 	}
 }
 
 func TestEmailChangeStartRejectsDuplicateAndSameEmail(t *testing.T) {
-	f := newEmailFixture()
+	f := newEmailFixture(t)
 	f.repo.other = &accountdomain.UserAccount{Id: "other", Email: "used@example.com"}
-	if err := f.handler.Start(context.Background(), "owner", "used@example.com"); !errors.Is(err, accountdomain.ErrUserAlreadyExists) {
+	if err := f.start("used@example.com", "wrong"); !errors.Is(err, accountdomain.ErrCurrentPassword) {
+		t.Fatalf("availability exposed before the password check: %v", err)
+	}
+	if err := f.start("used@example.com", "old-password"); !errors.Is(err, accountdomain.ErrUserAlreadyExists) {
 		t.Fatalf("duplicate error = %v", err)
 	}
-	if err := f.handler.Start(context.Background(), "owner", "old@example.com"); !errors.Is(err, accountdomain.ErrInvalidEmail) {
+	if err := f.start("old@example.com", "old-password"); !errors.Is(err, accountdomain.ErrInvalidEmail) {
 		t.Fatalf("same email error = %v", err)
 	}
-	if f.current.sentTo != "" {
+	if f.next.sentTo != "" {
 		t.Fatal("OTP sent for a rejected address")
 	}
 }
 
-func TestEmailChangeRollsBackWhenSecondOTPFails(t *testing.T) {
-	f := newEmailFixture()
-	f.next.issueErr = appotp.ErrTooSoon
-	if err := f.handler.Start(context.Background(), "owner", "new@example.com"); !errors.Is(err, appotp.ErrTooSoon) {
+func TestEmailChangeConfirmRejectsWrongCode(t *testing.T) {
+	f := newEmailFixture(t)
+	f.pending.email = "new@example.com"
+	if err := f.handler.Confirm(context.Background(), "owner", "000000"); !errors.Is(err, appotp.ErrInvalid) {
 		t.Fatalf("error = %v", err)
 	}
-	if f.current.consumed != 1 || f.pending.email != "" {
-		t.Fatalf("consumed = %d, pending = %q", f.current.consumed, f.pending.email)
-	}
-}
-
-func TestEmailChangeConfirmRequiresBothCodes(t *testing.T) {
-	f := newEmailFixture()
-	f.pending.email = "new@example.com"
-	for _, codes := range [][2]string{{"000000", "222222"}, {"111111", "000000"}} {
-		if err := f.handler.Confirm(context.Background(), "owner", codes[0], codes[1]); !errors.Is(err, appotp.ErrInvalid) {
-			t.Fatalf("codes %v error = %v", codes, err)
-		}
-	}
 	if f.repo.account.Email != "old@example.com" || f.repo.saves != 0 {
-		t.Fatal("email changed without both codes")
+		t.Fatal("email changed with a wrong code")
 	}
 }
 
 func TestEmailChangeConfirmUpdatesBothCopiesAndNotifies(t *testing.T) {
-	f := newEmailFixture()
+	f := newEmailFixture(t)
 	f.pending.email = "new@example.com"
-	if err := f.handler.Confirm(context.Background(), "owner", "111111", "222222"); err != nil {
+	if err := f.handler.Confirm(context.Background(), "owner", "222222"); err != nil {
 		t.Fatal(err)
 	}
 	account := f.repo.account
@@ -290,9 +303,21 @@ func TestEmailChangeConfirmUpdatesBothCopiesAndNotifies(t *testing.T) {
 	}
 }
 
+func TestEmailChangeConfirmSucceedsWhenCleanupFails(t *testing.T) {
+	f := newEmailFixture(t)
+	f.pending.email = "new@example.com"
+	f.pending.deleteErr = errors.New("redis down")
+	if err := f.handler.Confirm(context.Background(), "owner", "222222"); err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if f.repo.account.Email != "new@example.com" {
+		t.Fatalf("email = %q", f.repo.account.Email)
+	}
+}
+
 func TestEmailChangeConfirmWithoutPendingExpires(t *testing.T) {
-	f := newEmailFixture()
-	if err := f.handler.Confirm(context.Background(), "owner", "111111", "222222"); !errors.Is(err, appotp.ErrExpired) {
+	f := newEmailFixture(t)
+	if err := f.handler.Confirm(context.Background(), "owner", "222222"); !errors.Is(err, appotp.ErrExpired) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -303,17 +328,5 @@ func TestChangePasswordSucceedsWhenResetFails(t *testing.T) {
 	err := NewChangePasswordHandler(repo).WithLimiter(limiter, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "new-password"})
 	if err != nil || repo.saves != 1 {
 		t.Fatalf("error = %v, saves = %d", err, repo.saves)
-	}
-}
-
-func TestEmailChangeConfirmSucceedsWhenCleanupFails(t *testing.T) {
-	f := newEmailFixture()
-	f.pending.email = "new@example.com"
-	f.pending.deleteErr = errors.New("redis down")
-	if err := f.handler.Confirm(context.Background(), "owner", "111111", "222222"); err != nil {
-		t.Fatalf("error = %v", err)
-	}
-	if f.repo.account.Email != "new@example.com" {
-		t.Fatalf("email = %q", f.repo.account.Email)
 	}
 }

@@ -330,7 +330,7 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
   const { user, startEmailChange, confirmEmailChange } = useAuth();
   const { busy, message, error, run, setMessage } = useProfileAction();
   const [newEmail, setNewEmail] = useState("");
-  const [currentEmailOtp, setCurrentEmailOtp] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newEmailOtp, setNewEmailOtp] = useState("");
   const [restarting, setRestarting] = useState(false);
 
@@ -338,27 +338,27 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
   const showOtpStep = Boolean(user?.pendingEmail) && !restarting;
 
   const start = async () => {
-    const started = await run(() => startEmailChange(nextEmail), {
-      success: "Đã gửi mã xác minh đến cả email hiện tại và email mới.",
-      badRequest: "Email mới chưa hợp lệ.",
-    });
+    const started = await run(
+      () => startEmailChange({ newEmail: nextEmail, currentPassword }),
+      {
+        success: "Đã gửi mã xác minh đến email mới.",
+        badRequest: "Mật khẩu hiện tại không đúng hoặc email chưa hợp lệ.",
+        logoutOnUnauthorized: false,
+      },
+    );
+    setCurrentPassword("");
     if (started) {
       setRestarting(false);
       setNewEmail("");
-      setCurrentEmailOtp("");
       setNewEmailOtp("");
     }
   };
 
   const confirm = async () => {
-    const confirmed = await run(
-      () => confirmEmailChange({ currentEmailOtp, newEmailOtp }),
-      {
-        success: "Đã đổi email.",
-        badRequest: "Mã xác minh không đúng hoặc đã hết hạn.",
-      },
-    );
-    setCurrentEmailOtp("");
+    const confirmed = await run(() => confirmEmailChange({ newEmailOtp }), {
+      success: "Đã đổi email.",
+      badRequest: "Mã xác minh không đúng hoặc đã hết hạn.",
+    });
     setNewEmailOtp("");
     if (!confirmed) setMessage("");
   };
@@ -373,20 +373,13 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
     >
       <p className="profile-note">
         Email hiện tại ({user?.email}) vẫn được dùng cho đăng nhập, thông báo và
-        mã OTP cho đến khi bạn xác minh xong cả hai địa chỉ.
+        mã OTP cho đến khi bạn xác minh xong email mới.
       </p>
       {showOtpStep ? (
         <>
           <p className="profile-caption">
             Email mới đang chờ: {user?.pendingEmail}
           </p>
-          <ProfileInput
-            label="Mã gửi đến email hiện tại"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={currentEmailOtp}
-            onChange={setCurrentEmailOtp}
-          />
           <ProfileInput
             label="Mã gửi đến email mới"
             inputMode="numeric"
@@ -397,11 +390,7 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
           <button
             type="button"
             className="profile-action"
-            disabled={
-              busy ||
-              !OTP_PATTERN.test(currentEmailOtp) ||
-              !OTP_PATTERN.test(newEmailOtp)
-            }
+            disabled={busy || !OTP_PATTERN.test(newEmailOtp)}
             onClick={() => void confirm()}
           >
             {busy ? "Đang xác minh..." : "Xác minh email"}
@@ -425,11 +414,19 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
             value={newEmail}
             onChange={setNewEmail}
           />
+          <ProfileInput
+            label="Mật khẩu hiện tại"
+            type="password"
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={setCurrentPassword}
+          />
           <button
             type="button"
             className="profile-action"
             disabled={
               busy ||
+              !currentPassword ||
               !EMAIL_PATTERN.test(nextEmail) ||
               nextEmail === user?.email
             }

@@ -16,9 +16,9 @@ import (
 // EmailChangeTTL keeps the pending address alive exactly as long as its OTPs.
 const EmailChangeTTL = transferOTPTTL
 
-// NewEmailChangeOTPStore keeps separate challenges for the current and new address.
-func NewEmailChangeOTPStore(rdb *redis.Client, sender TransferMailSender, side string) *TransferOTPStore {
-	return &TransferOTPStore{rdb: rdb, mail: sender, prefix: "email-change-" + side, purpose: appotp.OTPEmailChange}
+// NewEmailChangeOTPStore sends the challenge that proves control of the new address.
+func NewEmailChangeOTPStore(rdb *redis.Client, sender TransferMailSender) *TransferOTPStore {
+	return &TransferOTPStore{rdb: rdb, mail: sender, prefix: "email-change", purpose: appotp.OTPEmailChange}
 }
 
 type PendingEmailStore struct{ rdb *redis.Client }

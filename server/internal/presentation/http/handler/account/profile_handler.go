@@ -64,12 +64,12 @@ type rawProfileAddress struct {
 }
 
 type emailChangeStartRequest struct {
-	NewEmail string `json:"newEmail"`
+	NewEmail        string `json:"newEmail"`
+	CurrentPassword string `json:"currentPassword"`
 }
 
 type emailChangeConfirmRequest struct {
-	CurrentEmailOtp string `json:"currentEmailOtp"`
-	NewEmailOtp     string `json:"newEmailOtp"`
+	NewEmailOtp string `json:"newEmailOtp"`
 }
 
 // optionalString returns nil for an omitted field and rejects null or non-strings.
@@ -199,7 +199,14 @@ func (h *Handler) StartEmailChange(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
 		return
 	}
-	if err := h.emailChange.Start(r.Context(), claims.UserID, req.NewEmail); err != nil {
+	if err := h.emailChange.Start(r.Context(), claims.UserID, req.NewEmail, req.CurrentPassword, passwordAttemptSource(r)); err != nil {
+		switch {
+		case errors.Is(err, accountdomain.ErrCurrentPassword):
+			h.recordProfileAudit(r, claims.UserID, "EmailChangePasswordFailed")
+		case errors.Is(err, accountdomain.ErrTooManyAttempts):
+			h.recordProfileAudit(r, claims.UserID, "EmailChangeThrottled")
+			w.Header().Set("Retry-After", strconv.Itoa(int(h.passwordRetryAfter.Seconds())))
+		}
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return
 	}
@@ -224,7 +231,7 @@ func (h *Handler) ConfirmEmailChange(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
 		return
 	}
-	if err := h.emailChange.Confirm(r.Context(), claims.UserID, req.CurrentEmailOtp, req.NewEmailOtp); err != nil {
+	if err := h.emailChange.Confirm(r.Context(), claims.UserID, req.NewEmailOtp); err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return
 	}

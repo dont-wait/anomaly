@@ -174,23 +174,47 @@ describe("ProfileSidebar", () => {
     expect(screen.queryByText("Đã cập nhật thông tin.")).toBeNull();
   });
 
-  it("requires both OTPs to confirm a pending email", async () => {
+  it("confirms a pending email with only the new address OTP", async () => {
     const value = auth({ user: { ...user, pendingEmail: "new@example.com" } });
     renderSidebar(value);
     fireEvent.click(screen.getByText("Cập nhật thông tin"));
     fireEvent.click(screen.getByText("Đổi email"));
 
+    expect(screen.queryByLabelText("Mã gửi đến email hiện tại")).toBeNull();
     const submit = screen.getByText<HTMLButtonElement>("Xác minh email");
-    type("Mã gửi đến email hiện tại", "111111");
     expect(submit.disabled).toBe(true);
     type("Mã gửi đến email mới", "222222");
     fireEvent.click(submit);
 
     await waitFor(() =>
       expect(value.confirmEmailChange).toHaveBeenCalledWith({
-        currentEmailOtp: "111111",
         newEmailOtp: "222222",
       }),
+    );
+  });
+
+  it("requires the current password to start an email change and clears it", async () => {
+    const value = auth();
+    renderSidebar(value);
+    fireEvent.click(screen.getByText("Cập nhật thông tin"));
+    fireEvent.click(screen.getByText("Đổi email"));
+
+    const submit = screen.getByText<HTMLButtonElement>("Gửi mã xác minh");
+    type("Email mới", "new@example.com");
+    expect(submit.disabled).toBe(true);
+    type("Mật khẩu hiện tại", "Current1!");
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(value.startEmailChange).toHaveBeenCalledWith({
+        newEmail: "new@example.com",
+        currentPassword: "Current1!",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText<HTMLInputElement>("Mật khẩu hiện tại").value,
+      ).toBe(""),
     );
   });
 

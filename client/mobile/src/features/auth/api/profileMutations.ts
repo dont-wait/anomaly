@@ -32,17 +32,20 @@ export function changeCurrentPassword(
   });
 }
 
-export function startEmailChange(token: string, newEmail: string) {
+export function startEmailChange(
+  token: string,
+  input: { newEmail: string; currentPassword: string },
+) {
   return requestApi<unknown>(API_ENDPOINTS.AUTH.EMAIL_CHANGE, {
     method: "POST",
-    body: { newEmail },
+    body: input,
     token,
   });
 }
 
 export function confirmEmailChange(
   token: string,
-  input: { currentEmailOtp: string; newEmailOtp: string },
+  input: { newEmailOtp: string },
 ) {
   return requestApi<unknown>(API_ENDPOINTS.AUTH.EMAIL_CHANGE_CONFIRM, {
     method: "POST",

@@ -156,9 +156,9 @@ Merge rules apply at every level, including inside `address`: an omitted field k
 
 ### 5.3 Change email
 
-`POST /api/auth/me/email-change` with `{ "newEmail": "..." }` starts the change and sends one OTP to the current email and one to the new email. The account's `Email` does not change.
+`POST /api/auth/me/email-change` with `{ "newEmail": "...", "currentPassword": "..." }` starts the change and sends one OTP to the new email. The account's `Email` does not change. A wrong password returns 400 and counts toward the password throttle in section 5.4.
 
-`POST /api/auth/me/email-change/confirm` with `{ "currentEmailOtp": "...", "newEmailOtp": "..." }` completes it. Both codes are required: verifying only the new address would let someone holding a stolen token move the account to an inbox they control.
+`POST /api/auth/me/email-change/confirm` with `{ "newEmailOtp": "..." }` completes it. The password is required because the OTP alone only proves control of the new inbox: someone holding a stolen token could otherwise move the account to an inbox they control.
 
 - Until confirmation, login, notifications, and sensitive OTPs, including loan-contract OTP, keep using the current email.
 - The new email must be unique when the change starts and again at confirmation; otherwise return 409.
@@ -232,7 +232,7 @@ Use consistent error envelopes and distinguish at least: invalid input or wrong 
 - Keep form state local to the screen; do not persist passwords or document bytes in localStorage/sessionStorage.
 - Use the API client and token handling already present, extending `HttpMethod` and `requestApi` to send `PATCH` and `PUT` with bodies. Refresh profile state after successful mutations.
 - Make `AuthProvider.refreshProfile` ignore a response when a newer request has started, using a request generation or cancellation, so an older read cannot replace a newer profile.
-- Add the email-change screen with both OTP inputs and the pending state. On 409 from a profile save, reload the profile and keep the customer's input for review.
+- Add the email-change screen with the current password, the new-address OTP input and the pending state. On 409 from a profile save, reload the profile and keep the customer's input for review.
 - After a successful password change, clear the token and return to login.
 - Add loading, empty, upload progress, retry, validation, and success/error states.
 - Do not include unrelated loan/savings changes in this PR.
@@ -271,7 +271,7 @@ Use consistent error envelopes and distinguish at least: invalid input or wrong 
 - Passwords are verified and rehashed using the existing password mechanism. Plaintext passwords never appear in response, log, audit, or event payloads; the bcrypt hash appears only in protected account events.
 - After a password change, every token issued earlier gets 401, and replaying the account stream restores the new credential.
 - Repeated wrong current passwords get 429, even when a later guess is correct.
-- Loan-contract OTP keeps going to the current email until both email-change OTPs are confirmed; afterwards both email copies match.
+- Loan-contract OTP keeps going to the current email until the new-address OTP is confirmed; afterwards both email copies match.
 - Customer-facing responses contain no storage keys, including register, login, and KYC responses.
 - Tests confirm that a profile save is present after reload, and that a stale `Version` returns 409 without overwriting newer data.
 - Retrying an upload leaves one active document per type.
@@ -295,4 +295,4 @@ Runtime acceptance must separately verify the mobile UI and the running API/Rust
 3. Should customers be able to delete an avatar or document, or only replace them?
 4. Is avatar cropping required for launch, or is centered square/round display of the uploaded image sufficient?
 
-Decided in this draft: email changes require OTPs to both the current and the new address (section 5.3), and a password change invalidates all existing tokens (section 5.4).
+Decided in this draft: email changes require the current password and an OTP to the new address (section 5.3), and a password change invalidates all existing tokens (section 5.4).

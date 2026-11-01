@@ -61,9 +61,10 @@ func newAccountHandler(repo AccountRepository, tokenSvc *auth.TokenService, kycC
 func AttachProfileSecurity(h *handleraccount.Handler, repo commands.AccountRepository, rdb *redis.Client, smtp *domain.SMTPConfig, cfg *domain.AuthConfig, logger zerolog.Logger) {
 	sender := newTransferMailSender(smtp, logger)
 	pending := otp.NewPendingEmailStore(rdb)
+	limiter := otp.NewPasswordAttemptLimiter(rdb, cfg.PasswordAttemptLimit, cfg.PasswordSourceAttemptLimit, cfg.PasswordAttemptWindow)
 	h.WithProfileSecurity(
-		otp.NewPasswordAttemptLimiter(rdb, cfg.PasswordAttemptLimit, cfg.PasswordSourceAttemptLimit, cfg.PasswordAttemptWindow),
-		commands.NewEmailChangeHandler(repo, otp.NewEmailChangeOTPStore(rdb, sender, "current"), otp.NewEmailChangeOTPStore(rdb, sender, "new"), pending, otp.NewEmailChangeNotifier(sender, logger), otp.EmailChangeTTL, logger),
+		limiter,
+		commands.NewEmailChangeHandler(repo, otp.NewEmailChangeOTPStore(rdb, sender), limiter, pending, otp.NewEmailChangeNotifier(sender, logger), otp.EmailChangeTTL, logger),
 		pending,
 		cfg.PasswordAttemptWindow,
 		logger,

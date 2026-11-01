@@ -157,13 +157,13 @@ export const AuthProvider = ({
   );
 
   const startEmailChange = useCallback(
-    async (newEmail: string) => {
+    async (input: { newEmail: string; currentPassword: string }) => {
       const requestToken = requireToken();
-      await requestEmailChange(requestToken, newEmail);
+      await requestEmailChange(requestToken, input);
       // OTP đã gửi: màn nhập mã phải hiện ngay cả khi tải lại hồ sơ thất bại.
       if (
         !applyConfirmed(requestToken, (current) =>
-          current ? { ...current, pendingEmail: newEmail } : current,
+          current ? { ...current, pendingEmail: input.newEmail } : current,
         )
       ) {
         return null;
@@ -174,7 +174,7 @@ export const AuthProvider = ({
   );
 
   const confirmEmailChange = useCallback(
-    async (input: { currentEmailOtp: string; newEmailOtp: string }) => {
+    async (input: { newEmailOtp: string }) => {
       const requestToken = requireToken();
       await verifyEmailChange(requestToken, input);
       if (
