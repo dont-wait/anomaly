@@ -1,0 +1,23 @@
+[
+  {
+    "update": "savings_terms",
+    "updates": [
+      {
+        "q": {
+          "_id": "savings-standard-v1",
+          "status": "ACTIVE"
+        },
+        "u": {
+          "$set": {
+            "status": "INACTIVE"
+          }
+        },
+        "multi": false
+      }
+    ]
+  },
+  {
+    "dropIndexes": "savings_terms",
+    "index": "uniq_active_savings_terms"
+  }
+]

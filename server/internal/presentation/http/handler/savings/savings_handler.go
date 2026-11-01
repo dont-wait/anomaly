@@ -19,6 +19,7 @@ type Handler struct {
 	Service  *savingsqueries.Service
 	Commands *savingscommands.Service
 	Read     *savingsqueries.SavingsReadService
+	Terms    TermsProvider
 }
 
 type apiError struct {
@@ -103,6 +104,11 @@ func RegisterRoutes(router *openapi.Registry, h *Handler, tokens accountqueries.
 		}
 		router.Handle(pattern, middleware.RequireAuth(tokens)(fn), op)
 	}
+	auth("GET /api/savings/terms", h.terms, openapi.Operation{
+		ID: "getSavingsTerms", Summary: "Read current savings product conditions before opening",
+		Description: "Returns the current product conditions. The quote determines the concrete amount, interest rate, and maturity for each opening.",
+		Response:    TermsSnapshot{}, FailureStatuses: []int{401, 503},
+	})
 	auth("GET /api/savings/packages", h.packages, openapi.Operation{
 		ID: "listSavingsPackages", Summary: "List approved VND savings terms and interest rates",
 		Response: struct {
