@@ -646,7 +646,10 @@ export function LoanReviewPage() {
     historyVerified: verified,
     financialDataVerified: verified,
     documentsVerified: verified,
-    sources: ["admin-console-manual-evidence"],
+    // Backend yêu cầu ít nhất 3 nguồn: dẫn chiếu tới các chứng từ admin đã đối chiếu.
+    sources: (detail?.documents ?? []).map(
+      (doc) => `loan-document:${doc.documentId}`,
+    ),
   };
 
   return (

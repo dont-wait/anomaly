@@ -136,6 +136,11 @@
               export LD_LIBRARY_PATH="${linuxLibraryPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
               export GSETTINGS_SCHEMA_DIR="${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}/glib-2.0/schemas''${GSETTINGS_SCHEMA_DIR:+:$GSETTINGS_SCHEMA_DIR}"
               export RUST_SRC_PATH="${rustToolchain}/lib/rustlib/src/rust/library"
+              # WebKitGTK must use the Mesa pinned by this flake: the host driver can
+              # mismatch and abort with EGL_BAD_PARAMETER, leaving a black window.
+              export __EGL_VENDOR_LIBRARY_FILENAMES="${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json"
+              export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
+              export GBM_BACKENDS_PATH="${pkgs.mesa}/lib/gbm"
             '';
           };
 

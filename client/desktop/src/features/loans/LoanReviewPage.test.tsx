@@ -241,6 +241,37 @@ describe("LoanReviewPage", () => {
     });
   });
 
+  it("references the application's documents as evidence sources", async () => {
+    vi.mocked(attestLoanEvidence).mockResolvedValue(undefined as never);
+    const documents = ["d1", "d2", "d3"].map((documentId) => ({
+      documentId,
+      type: "IDENTITY_FRONT",
+      verificationStatus: "verified",
+      uploadedAt: "2026-10-30T00:00:00Z",
+      mimeType: "image/jpeg",
+      sizeBytes: 2048,
+    }));
+    vi.mocked(listLoans).mockResolvedValue({
+      items: [{ ...underReview, documents }],
+      nextCursor: null,
+    });
+    render(<LoanReviewPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Lưu kết quả đối soát" }),
+    );
+
+    await waitFor(() =>
+      expect(attestLoanEvidence).toHaveBeenCalledWith(
+        "app-1",
+        expect.objectContaining({
+          sources: ["loan-document:d1", "loan-document:d2", "loan-document:d3"],
+        }),
+      ),
+    );
+  });
+
   it("starts review for a submitted application", async () => {
     vi.mocked(startLoanReview).mockResolvedValue(underReview);
     vi.mocked(listLoans).mockResolvedValue({

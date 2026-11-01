@@ -14,11 +14,11 @@ help:
 	  '  emulator-webcams Liệt kê webcam laptop emulator nhận được' \
 	  '  emulator         Mở pixel_33 với camera trước dùng webcam0 ở terminal 1' \
 	  '  android          Chạy Android (ưu tiên USB; ANDROID_DEVICE=SERIAL để chọn máy)' \
-	  '  desktop          Chạy client Linux desktop' \
+	  '  desktop          Chạy app admin trên Linux desktop (port 1422)' \
 	  '' \
 	  'Đổi camera trước: make emulator CAMERA_FRONT=webcam1 (hoặc emulated nếu không có webcam).' \
 	  'Các lệnh tự vào Nix shell. Cài dependencies trước khi chạy client.' \
-	  'Dừng client cũ bằng Ctrl+C trước khi đổi Android/desktop (chung port 1420).'
+	  'Port cố định: Android 1420, desktop 1422. Dừng yarn dev:desktop trước khi chạy make desktop.'
 
 emulator-create:
 	nix develop .\#android --command avdmanager create avd --name pixel_33 --package 'system-images;android-33;google_apis;x86_64'
@@ -36,4 +36,4 @@ android:
 	nix develop .\#android --command bash android-dev.sh "$(ANDROID_DEVICE)"
 
 desktop:
-	nix develop .\#default --command bash -c 'set -e; mkdir -p "$$HOME/.local/bin"; corepack enable --install-directory "$$HOME/.local/bin"; export PATH="$$HOME/.local/bin:$$PATH"; exec yarn workspace anomaly-mobile tauri dev'
+	nix develop .\#default --command bash -c 'set -e; mkdir -p "$$HOME/.local/bin"; corepack enable --install-directory "$$HOME/.local/bin"; export PATH="$$PWD/node_modules/.bin:$$HOME/.local/bin:$$PATH"; exec yarn workspace anomaly-desktop tauri dev'
