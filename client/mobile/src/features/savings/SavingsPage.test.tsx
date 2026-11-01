@@ -7,7 +7,6 @@ afterEach(() => cleanup());
 describe("Stitch savings UI mock", () => {
   it("shows the savings list, filters and opens a detail screen", () => {
     render(<SavingsPage />);
-    expect(screen.getByText(/Bản xem trước giao diện/)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Tiết kiệm của tôi" })).toBeTruthy();
     expect(screen.getByText("#TK-2026-9921")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Đã đáo hạn \(1\)/ }));

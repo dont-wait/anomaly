@@ -8,13 +8,20 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AuthContext,
   type AuthContextValue,
 } from "@/features/auth/authContext";
 import { AppRouter } from "./AppRouter";
-import { routes } from "./routes";
+import { loanApplication, routes } from "./routes";
+import { getLoan, listLoans, type LoanApplication } from "@/features/loans/api";
+
+vi.mock("@/features/loans/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/loans/api")>()),
+  listLoans: vi.fn(),
+  getLoan: vi.fn(),
+}));
 
 const auth: AuthContextValue = {
   status: AUTH_STATUS.UNAUTHENTICATED,
@@ -48,7 +55,12 @@ function renderRouter() {
     </AuthContext.Provider>,
   );
 }
-beforeEach(() => window.history.replaceState(null, "", "/"));
+beforeEach(() => {
+  auth.status = AUTH_STATUS.UNAUTHENTICATED;
+  auth.user = null;
+  auth.token = null;
+  window.history.replaceState(null, "", "/");
+});
 afterEach(() => {
   cleanup();
   toast.dismiss();
@@ -147,4 +159,99 @@ it("keeps client validation in the form without calling login", () => {
   expect(screen.getByRole("alert").closest("form")).not.toBeNull();
   expect(auth.login).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "Đóng thông báo" })).toBeNull();
+});
+
+it("shows restoration instead of the login form on a launch without a fragment", () => {
+  auth.status = AUTH_STATUS.RESTORING;
+  renderRouter();
+  expect(screen.getByRole("status").textContent).toContain("khôi phục");
+  expect(screen.queryByLabelText("Số Căn cước Công dân")).toBeNull();
+});
+
+it("redirects a restored session to the dashboard on a launch without a fragment", async () => {
+  auth.status = AUTH_STATUS.AUTHENTICATED;
+  renderRouter();
+  await waitFor(() => expect(window.location.hash).toBe(routes.dashboard));
+});
+
+describe("loan application detail overlay", () => {
+  const application = (id: string, status = "draft"): LoanApplication => ({
+    id,
+    applicationNo: `APP-${id}`,
+    loanPackageId: "pkg-1",
+    disbursementAccountId: "acc-1",
+    requestedAmount: 50_000_000,
+    termMonths: 12,
+    status: status as LoanApplication["status"],
+    documents: [],
+    createdAt: "2026-10-30T00:00:00Z",
+  });
+
+  beforeEach(() => {
+    auth.status = AUTH_STATUS.AUTHENTICATED;
+    auth.token = "token";
+    vi.mocked(getLoan).mockReset();
+    vi.mocked(listLoans)
+      .mockReset()
+      .mockResolvedValueOnce({ items: [application("1")], nextCursor: "next" })
+      .mockResolvedValueOnce({ items: [application("2")], nextCursor: null });
+    window.history.replaceState(null, "", routes.loanApplications);
+  });
+
+  const openSecondPageDetail = async () => {
+    renderRouter();
+    fireEvent.click(await screen.findByRole("button", { name: "Xem thêm hồ sơ" }));
+    const row = (await screen.findByText("APP-2")).closest("button")!;
+    row.focus();
+    fireEvent.click(row);
+    return { row, dialog: await screen.findByRole("dialog", { name: "Chi tiết hồ sơ vay" }) };
+  };
+
+  it("keeps the loaded list and applies detail changes when closed", async () => {
+    vi.mocked(getLoan).mockResolvedValue(application("2", "submitted"));
+    await openSecondPageDetail();
+    await screen.findByText("Thông tin hồ sơ");
+
+    window.location.hash = routes.loanApplications;
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    expect(listLoans).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("APP-1")).toBeTruthy();
+    expect(screen.getByText("APP-2").closest("button")!.textContent).toContain("submitted");
+  });
+
+  it("isolates the list behind the dialog and returns focus on Escape", async () => {
+    vi.mocked(getLoan).mockResolvedValue(application("2"));
+    const { row, dialog } = await openSecondPageDetail();
+
+    expect(row.closest("[inert]")).not.toBeNull();
+    expect(document.activeElement).toBe(dialog);
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(row.closest("[inert]")).toBeNull();
+    expect(document.activeElement).toBe(row);
+  });
+
+  it("keeps Tab inside the dialog", async () => {
+    vi.mocked(getLoan).mockResolvedValue(application("2"));
+    const { dialog } = await openSecondPageDetail();
+    await screen.findByText("Thông tin hồ sơ");
+    const buttons = [...dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])")];
+    const last = buttons[buttons.length - 1];
+
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(document.activeElement).toBe(buttons[0]);
+  });
+
+  it("loads a directly opened detail above its list", async () => {
+    vi.mocked(listLoans).mockReset().mockResolvedValue({ items: [application("1")], nextCursor: null });
+    vi.mocked(getLoan).mockResolvedValue(application("1"));
+    window.history.replaceState(null, "", loanApplication("1"));
+    renderRouter();
+    await screen.findByRole("dialog", { name: "Chi tiết hồ sơ vay" });
+    await waitFor(() => expect(listLoans).toHaveBeenCalledTimes(1));
+  });
 });

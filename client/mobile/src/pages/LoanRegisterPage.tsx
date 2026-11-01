@@ -22,6 +22,7 @@ import {
   clearIdempotencyKey,
   getOrCreateIdempotencyKey,
 } from "@/features/loans/idempotency";
+import { SelectSheet } from "@/shared/ui";
 
 const AMOUNTS = [30_000_000, 50_000_000, 100_000_000, 200_000_000] as const;
 const TENURES = [6, 12, 24, 36] as const;
@@ -72,7 +73,7 @@ const LoanRegisterPage = () => {
   const [income, setIncome] = useState(20_000_000);
   const [region, setRegion] = useState<"KV01" | "KV02" | "KV03">("KV01");
   const [debt, setDebt] = useState(0);
-  const [sourceAccountId, setSourceAccountId] = useState(user?.id ?? "");
+  const sourceAccountId = user?.id ?? "";
   const [quote, setQuote] = useState<LoanQuote | null>(null);
   const [busy, setBusy] = useState(false);
   const quotedFingerprint = useRef<string | null>(null);
@@ -299,30 +300,22 @@ const LoanRegisterPage = () => {
         </section>
 
         <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-          <label
-            className="block text-sm font-bold text-primary"
-            htmlFor="loan-package"
-          >
+          <div className="block text-sm font-bold text-primary">
             Gói vay hiện có
-          </label>
-          <select
+          </div>
+          <SelectSheet
             id="loan-package"
+            label="Gói vay hiện có"
             disabled={loadingPackages || busy}
             value={packageCode}
-            onChange={(e) => {
-              setPackageCode(e.target.value);
+            onChange={(value) => {
+              setPackageCode(value);
               setQuote(null);
               quotedFingerprint.current = null;
             }}
-            className="w-full rounded-xl border border-outline-variant p-3 text-sm"
-          >
-            {!packageCode && <option value="">Chưa có gói vay khả dụng</option>}
-            {packages.map((p) => (
-              <option key={p.packageCode} value={p.packageCode}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            placeholder="Chưa có gói vay khả dụng"
+            options={packages.map((p) => ({ value: p.packageCode, label: p.name }))}
+          />
           {!loadingPackages && packages.length === 0 && (
             <p role="alert" className="text-xs text-error">
               Chưa có gói vay ACTIVE trên backend. Không thể tạo hồ sơ.
@@ -537,20 +530,6 @@ const LoanRegisterPage = () => {
               <span className="h-2 w-2 rounded-full bg-white" />
             </span>
           </div>
-          <label className="block text-xs">
-            ID tài khoản giải ngân (xác minh theo tài khoản đã đăng nhập)
-            <input
-              value={sourceAccountId}
-              onChange={(e) => {
-                setSourceAccountId(e.target.value);
-              }}
-              className="mt-1 w-full rounded-xl border p-3 text-xs"
-            />
-          </label>
-          <p className="text-[10px] text-on-surface-variant">
-            Backend xác thực quyền sở hữu tài khoản. Không dùng số tài khoản
-            hiển thị làm account ID.
-          </p>
         </section>
 
         <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
@@ -571,22 +550,23 @@ const LoanRegisterPage = () => {
               className="mt-1 w-full rounded-xl border p-3 text-sm"
             />
           </label>
-          <label className="block text-xs">
+          <div className="block text-xs">
             Khu vực
-            <select
+            <SelectSheet
+              label="Khu vực"
               value={region}
-              onChange={(e) => {
-                setRegion(e.target.value as typeof region);
+              onChange={(value) => {
+                setRegion(value as typeof region);
                 setQuote(null);
                 quotedFingerprint.current = null;
               }}
-              className="mt-1 w-full rounded-xl border p-3 text-sm"
-            >
-              <option value="KV01">KV01 - HCM / Hà Nội / Cần Thơ</option>
-              <option value="KV02">KV02 - Huế / Đà Nẵng / Hải Phòng</option>
-              <option value="KV03">KV03 - Khu vực khác</option>
-            </select>
-          </label>
+              options={[
+                { value: "KV01", label: "KV01 - HCM / Hà Nội / Cần Thơ" },
+                { value: "KV02", label: "KV02 - Huế / Đà Nẵng / Hải Phòng" },
+                { value: "KV03", label: "KV03 - Khu vực khác" },
+              ]}
+            />
+          </div>
           <label className="block text-xs">
             Nợ phải trả hàng tháng hiện tại (VND)
             <input
@@ -691,8 +671,8 @@ const LoanRegisterPage = () => {
             </strong>
           </div>
           <p className="text-[10px] text-outline">
-            🔒 Khoản thanh toán thực tế sẽ được xác định sau khi thẩm định hồ
-            sơ.
+            <ShieldIcon className="mr-1 inline h-3.5 w-3.5 text-secondary" />
+            Khoản thanh toán thực tế sẽ được xác định sau khi thẩm định hồ sơ.
           </p>
         </section>
 
