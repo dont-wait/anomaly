@@ -75,6 +75,7 @@ Endpoint chính:
 - RustFS console: `http://localhost:9001`
 - MongoDB: `localhost:27017`
 - Kafka UI: `http://localhost:8082`
+- RedisInsight: `http://localhost:5540`
 - EventStoreDB UI/API: `http://localhost:2113`
 - RustFS API: `http://localhost:9000`
 - RustFS Console: `http://localhost:9001`
