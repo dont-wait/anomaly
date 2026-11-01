@@ -1,13 +1,41 @@
-import { useEffect, useRef } from "react";
-import { faRightFromBracket, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  faCamera,
+  faRightFromBracket,
+  faXmark,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { Avatar } from "@/shared/ui";
+import { useAuth } from "@/features/auth/useAuth";
+import {
+  AvatarPanel,
+  ChangeEmailPanel,
+  ChangePasswordPanel,
+  DocumentsPanel,
+  EditProfilePanel,
+} from "@/features/profile/ProfilePanels";
+import {
+  documentLabel,
+  formatDate,
+  maskTail,
+} from "@/features/profile/profileHelpers";
+import {
+  useProfileDocuments,
+  useProfileImage,
+} from "@/features/profile/useProfileData";
+import "./profile-sidebar.css";
+
+type ProfileSection =
+  "overview" | "edit" | "email" | "password" | "avatar" | "documents";
+
+const NOT_SET = "Chưa cập nhật";
 
 interface ProfileSidebarProps {
   open: boolean;
   name: string;
   onClose: () => void;
   onLogout: () => void;
+  token: string | null;
 }
 
 export const ProfileSidebar = ({
@@ -15,24 +43,43 @@ export const ProfileSidebar = ({
   name,
   onClose,
   onLogout,
+  token,
 }: ProfileSidebarProps) => {
+  const { user } = useAuth();
   const panelRef = useRef<HTMLElement>(null);
+  const [section, setSection] = useState<ProfileSection>("overview");
+  const documents = useProfileDocuments(open, token);
+  const avatarUrl = useProfileImage(token, user?.avatar?.mediaId);
+  const [notice, setNotice] = useState("");
+  const backToOverview = () => setSection("overview");
+  const openSection = (next: ProfileSection) => {
+    setNotice("");
+    setSection(next);
+  };
+
+  // Các panel bị unmount nên mật khẩu, OTP và tệp đã chọn không còn trong bộ nhớ.
+  const closeProfile = useCallback(() => {
+    setNotice("");
+    setSection("overview");
+    onClose();
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
 
     panelRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") closeProfile();
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open]);
+  }, [closeProfile, open]);
 
   return (
     <div
       aria-hidden={!open}
+      inert={!open}
       className={`fixed inset-0 z-50 flex justify-end ${
         open ? "pointer-events-auto" : "pointer-events-none"
       }`}
@@ -41,7 +88,7 @@ export const ProfileSidebar = ({
         type="button"
         aria-label="Đóng hồ sơ"
         tabIndex={open ? 0 : -1}
-        onClick={onClose}
+        onClick={closeProfile}
         className={`absolute inset-0 bg-black/40 transition-opacity duration-300 motion-reduce:transition-none ${
           open ? "opacity-100" : "opacity-0"
         }`}
@@ -56,16 +103,25 @@ export const ProfileSidebar = ({
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        <div className="flex items-start justify-between border-b border-gray-100 px-5 py-5">
+        <div className="profile-sidebar-header">
           <div className="flex items-center gap-3">
-            <Avatar name={name} size={48} />
+            <button
+              type="button"
+              className="profile-avatar-button"
+              aria-label="Đổi ảnh đại diện"
+              aria-current={section === "avatar" ? "page" : undefined}
+              onClick={() => openSection("avatar")}
+            >
+              <Avatar name={user?.fullName || name} src={avatarUrl} size={52} />
+              <span className="profile-avatar-badge" aria-hidden="true">
+                <FontAwesomeIcon icon={faCamera} />
+              </span>
+            </button>
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Tài khoản
-              </p>
+              <p className="profile-overline">HỒ SƠ CÁ NHÂN</p>
               <h2
                 id="profile-sidebar-title"
-                className="mt-1 text-base font-bold text-gray-900"
+                className="mt-1 text-base font-bold text-[#00236f]"
               >
                 {name}
               </h2>
@@ -74,17 +130,146 @@ export const ProfileSidebar = ({
           <button
             type="button"
             tabIndex={open ? 0 : -1}
-            onClick={onClose}
+            onClick={closeProfile}
             aria-label="Đóng hồ sơ"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+            className="profile-close"
           >
             <FontAwesomeIcon icon={faXmark} className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="flex-1" />
+        <div className="profile-sidebar-content">
+          {section === "overview" && (
+            <>
+              {notice && (
+                <p className="profile-message" role="status">
+                  {notice}
+                </p>
+              )}
+              <section className="profile-card profile-account-card">
+                <span className="profile-chip">
+                  {user?.isVerify ? "Đã xác minh" : "Chưa xác minh"}
+                </span>
+                <p className="profile-overline mt-3">TÀI KHOẢN THANH TOÁN</p>
+                <strong className="profile-account-number">
+                  {maskTail(user?.accountNo) || "•••• ----"}
+                </strong>
+                <p className="profile-caption">{user?.email}</p>
+              </section>
+              <section className="profile-card">
+                <div className="profile-card-heading">
+                  <h3>Thông tin cá nhân</h3>
+                  <button type="button" onClick={() => openSection("edit")}>
+                    Cập nhật thông tin
+                  </button>
+                </div>
+                <ProfileRow label="Họ và tên" value={user?.fullName || name} />
+                <ProfileRow
+                  label="Ngày sinh"
+                  value={formatDate(user?.dateOfBirth) || NOT_SET}
+                />
+                <ProfileRow label="Điện thoại" value={user?.phone || NOT_SET} />
+                <ProfileRow label="Email" value={user?.email || NOT_SET} />
+                {user?.pendingEmail && (
+                  <ProfileRow
+                    label="Email mới · chờ xác minh"
+                    value={user.pendingEmail}
+                  />
+                )}
+                <ProfileRow
+                  label="Địa chỉ"
+                  value={
+                    [user?.address?.line, user?.address?.provinceCode]
+                      .filter(Boolean)
+                      .join(", ") || NOT_SET
+                  }
+                />
+              </section>
+              {user?.identity && (
+                <section className="profile-card">
+                  <div className="profile-card-heading">
+                    <h3>Thông tin định danh</h3>
+                  </div>
+                  <ProfileRow
+                    label="Số CCCD"
+                    value={maskTail(user.identity.number) || NOT_SET}
+                  />
+                  <ProfileRow
+                    label="Ngày cấp"
+                    value={formatDate(user.identity.issuedDate) || NOT_SET}
+                  />
+                  <ProfileRow
+                    label="Nơi cấp"
+                    value={user.identity.issuedPlace || NOT_SET}
+                  />
+                  <ProfileRow
+                    label="Địa chỉ thường trú"
+                    value={user.identity.permanentAddress || NOT_SET}
+                  />
+                </section>
+              )}
+              <section className="profile-card">
+                <div className="profile-card-heading">
+                  <h3>Giấy tờ đã lưu</h3>
+                  <button
+                    type="button"
+                    onClick={() => openSection("documents")}
+                  >
+                    Quản lý
+                  </button>
+                </div>
+                {documents.loading && documents.slots.length === 0 && (
+                  <p className="profile-caption">Đang tải chứng từ...</p>
+                )}
+                {documents.error && (
+                  <p className="profile-caption" role="alert">
+                    {documents.error}
+                  </p>
+                )}
+                {documents.slots.map((slot) => (
+                  <ProfileRow
+                    key={slot.type}
+                    label={documentLabel(slot.type)}
+                    value={
+                      slot.document
+                        ? `Đã lưu · ${formatDate(slot.document.uploadedAt)}`
+                        : slot.required
+                          ? "Bắt buộc · chưa có"
+                          : "Chưa có"
+                    }
+                  />
+                ))}
+              </section>
+              <button
+                type="button"
+                className="profile-action profile-action-secondary"
+                onClick={() => openSection("password")}
+              >
+                Đổi mật khẩu
+              </button>
+            </>
+          )}
+          {section === "edit" && (
+            <EditProfilePanel
+              onBack={backToOverview}
+              onChangeEmail={() => openSection("email")}
+              onSaved={() => {
+                setNotice("Đã cập nhật thông tin.");
+                backToOverview();
+              }}
+            />
+          )}
+          {section === "email" && <ChangeEmailPanel onBack={backToOverview} />}
+          {section === "password" && (
+            <ChangePasswordPanel onBack={backToOverview} />
+          )}
+          {section === "avatar" && <AvatarPanel onBack={backToOverview} />}
+          {section === "documents" && (
+            <DocumentsPanel onBack={backToOverview} documents={documents} />
+          )}
+        </div>
 
-        <div className="border-t border-gray-100 p-5">
+        <div className="profile-sidebar-footer">
           <button
             type="button"
             tabIndex={open ? 0 : -1}
@@ -99,3 +284,12 @@ export const ProfileSidebar = ({
     </div>
   );
 };
+
+function ProfileRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="profile-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}

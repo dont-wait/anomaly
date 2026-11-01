@@ -12,9 +12,6 @@ const user = {
   username: "Nguyen A",
   email: "a@example.com",
   currency: "VND",
-  idCardFrontUrl: "",
-  idCardBackUrl: "",
-  liveVideoUrl: "",
   isVerify: false,
   amount: 0,
 };
@@ -41,7 +38,7 @@ it("stores only resumable KYC and non-secret account metadata", () => {
 
   const raw = sessionStorage.getItem(KYC_RESUME_STORAGE_KEY)!;
   expect(raw).toContain("kyc-token");
-   expect(raw.toLowerCase()).not.toContain("password");
+  expect(raw.toLowerCase()).not.toContain("password");
   expect(restoreKycResumeSession().session?.user.id).toBe("account-1");
 });
 

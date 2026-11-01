@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -13,14 +14,36 @@ import (
 var ErrInvalidToken = errors.New("invalid token")
 
 const (
-	accessTokenPurpose = "access"
-	kycTokenPurpose    = "kyc"
-	kycTokenExpiry     = 15 * time.Minute
+	accessTokenPurpose  = "access"
+	kycTokenPurpose     = "kyc"
+	kycTokenExpiry      = 15 * time.Minute
+	tokenVersionTimeout = 3 * time.Second
 )
 
+// TokenVersionLookup returns the version every access token of an account must carry.
+type TokenVersionLookup interface {
+	TokenVersion(ctx context.Context, accountID string) (int64, error)
+}
+
 type TokenService struct {
-	secret []byte
-	expiry time.Duration
+	secret   []byte
+	expiry   time.Duration
+	versions TokenVersionLookup
+}
+
+// WithVersionLookup enables invalidating access tokens after a password change.
+func (s *TokenService) WithVersionLookup(lookup TokenVersionLookup) *TokenService {
+	s.versions = lookup
+	return s
+}
+
+func (s *TokenService) currentVersion(accountID string) (int64, error) {
+	if s.versions == nil {
+		return 0, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), tokenVersionTimeout)
+	defer cancel()
+	return s.versions.TokenVersion(ctx, accountID)
 }
 
 func NewTokenService(secret string, expiry time.Duration) *TokenService {
@@ -31,8 +54,13 @@ func NewTokenService(secret string, expiry time.Duration) *TokenService {
 }
 
 func (s *TokenService) Issue(userID, username, role string, isVerify bool) (string, time.Time, error) {
+	version, err := s.currentVersion(userID)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("read token version: %w", err)
+	}
 	expiresAt := time.Now().Add(s.expiry)
 	claims := jwt.MapClaims{
+		"tv":       version,
 		"sub":      userID,
 		"username": username,
 		"role":     role,
@@ -122,6 +150,16 @@ func (s *TokenService) parse(tokenString, expectedPurpose string) (*domainauth.C
 	}
 	isVerify, ok := claimsMap["isVerify"].(bool)
 	if !ok {
+		return nil, ErrInvalidToken
+	}
+
+	// Tokens issued before this claim existed count as version zero.
+	var tokenVersion int64
+	if value, ok := claimsMap["tv"].(float64); ok {
+		tokenVersion = int64(value)
+	}
+	currentVersion, err := s.currentVersion(sub)
+	if err != nil || currentVersion != tokenVersion {
 		return nil, ErrInvalidToken
 	}
 

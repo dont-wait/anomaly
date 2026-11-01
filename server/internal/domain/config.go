@@ -311,6 +311,10 @@ func (l *Loader) LoadEnvBool(key string, fallback bool) bool {
 type AuthConfig struct {
 	JWTSecret string
 	JWTExpiry time.Duration
+	// Failed current-password attempts allowed per account and per source within the window.
+	PasswordAttemptLimit       int
+	PasswordSourceAttemptLimit int
+	PasswordAttemptWindow      time.Duration
 }
 
 const minJWTSecretLength = 32
@@ -326,8 +330,11 @@ func (l *Loader) LoadAuthConfig() *AuthConfig {
 			Msg("JWT_SECRET must be at least 32 characters to resist brute-force attacks")
 	}
 	return &AuthConfig{
-		JWTSecret: secret,
-		JWTExpiry: l.LoadEnvDuration("JWT_EXPIRY", 24*time.Hour),
+		JWTSecret:                  secret,
+		JWTExpiry:                  l.LoadEnvDuration("JWT_EXPIRY", 24*time.Hour),
+		PasswordAttemptLimit:       l.LoadEnvPort("PASSWORD_ATTEMPT_LIMIT", 5),
+		PasswordSourceAttemptLimit: l.LoadEnvPort("PASSWORD_SOURCE_ATTEMPT_LIMIT", 30),
+		PasswordAttemptWindow:      l.LoadEnvDuration("PASSWORD_ATTEMPT_WINDOW", 15*time.Minute),
 	}
 }
 

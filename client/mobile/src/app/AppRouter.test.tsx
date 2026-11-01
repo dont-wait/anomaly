@@ -36,9 +36,6 @@ const auth: AuthContextValue = {
       username: "Test User",
       email: "test@example.com",
       currency: "VND",
-      idCardFrontUrl: "",
-      idCardBackUrl: "",
-      liveVideoUrl: "",
       isVerify: false,
       amount: 0,
     };
@@ -46,6 +43,12 @@ const auth: AuthContextValue = {
   }),
   logout: vi.fn(),
   refreshProfile: vi.fn(),
+  updateProfile: vi.fn(),
+  changePassword: vi.fn(),
+  uploadProfileAvatar: vi.fn(),
+  uploadProfileDocument: vi.fn(),
+  startEmailChange: vi.fn(),
+  confirmEmailChange: vi.fn(),
 };
 function renderRouter() {
   return render(
@@ -200,11 +203,16 @@ describe("loan application detail overlay", () => {
 
   const openSecondPageDetail = async () => {
     renderRouter();
-    fireEvent.click(await screen.findByRole("button", { name: "Xem thêm hồ sơ" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Xem thêm hồ sơ" }),
+    );
     const row = (await screen.findByText("APP-2")).closest("button")!;
     row.focus();
     fireEvent.click(row);
-    return { row, dialog: await screen.findByRole("dialog", { name: "Chi tiết hồ sơ vay" }) };
+    return {
+      row,
+      dialog: await screen.findByRole("dialog", { name: "Chi tiết hồ sơ vay" }),
+    };
   };
 
   it("keeps the loaded list and applies detail changes when closed", async () => {
@@ -217,7 +225,9 @@ describe("loan application detail overlay", () => {
 
     expect(listLoans).toHaveBeenCalledTimes(2);
     expect(screen.getByText("APP-1")).toBeTruthy();
-    expect(screen.getByText("APP-2").closest("button")!.textContent).toContain("submitted");
+    expect(screen.getByText("APP-2").closest("button")!.textContent).toContain(
+      "submitted",
+    );
   });
 
   it("isolates the list behind the dialog and returns focus on Escape", async () => {
@@ -237,7 +247,11 @@ describe("loan application detail overlay", () => {
     vi.mocked(getLoan).mockResolvedValue(application("2"));
     const { dialog } = await openSecondPageDetail();
     await screen.findByText("Thông tin hồ sơ");
-    const buttons = [...dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])")];
+    const buttons = [
+      ...dialog.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled])",
+      ),
+    ];
     const last = buttons[buttons.length - 1];
 
     fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
@@ -247,7 +261,9 @@ describe("loan application detail overlay", () => {
   });
 
   it("loads a directly opened detail above its list", async () => {
-    vi.mocked(listLoans).mockReset().mockResolvedValue({ items: [application("1")], nextCursor: null });
+    vi.mocked(listLoans)
+      .mockReset()
+      .mockResolvedValue({ items: [application("1")], nextCursor: null });
     vi.mocked(getLoan).mockResolvedValue(application("1"));
     window.history.replaceState(null, "", loanApplication("1"));
     renderRouter();

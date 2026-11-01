@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "@/shared/constants";
 
-export type HttpMethod = "DELETE" | "GET" | "POST";
+export type HttpMethod = "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
 
 export interface RequestJsonOptions {
   method?: HttpMethod;
@@ -57,7 +57,7 @@ export class ApiError extends Error {
 
 const DEFAULT_TIMEOUT_MS = 15000;
 
-function joinUrl(path: string, baseUrl = API_BASE_URL): string {
+export function joinUrl(path: string, baseUrl = API_BASE_URL): string {
   const base = baseUrl.replace(/\/+$/, "");
   const suffix = path.startsWith("/") ? path : `/${path}`;
   return `${base}${suffix}`;
@@ -112,6 +112,15 @@ function errorDetails(body: unknown): ApiErrorDetail[] {
   );
 }
 
+export function toApiError(status: number, body: unknown): ApiError {
+  return new ApiError(
+    status,
+    errorTitle(status, body),
+    body,
+    errorDetails(body),
+  );
+}
+
 export async function requestJson<T>(
   path: string,
   options: RequestJsonOptions = {},
@@ -157,8 +166,7 @@ export async function requestJson<T>(
     const data = await parseJsonSafe(response);
 
     if (!response.ok) {
-      const title = errorTitle(response.status, data);
-      throw new ApiError(response.status, title, data, errorDetails(data));
+      throw toApiError(response.status, data);
     }
 
     return data as T;

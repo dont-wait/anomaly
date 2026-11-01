@@ -1,27 +1,36 @@
 import { type CSSProperties, useSyncExternalStore } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircleExclamation, faXmark } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCircleCheck,
+  faCircleExclamation,
+  faXmark,
+} from "@fortawesome/free-solid-svg-icons";
 import { toast, TOAST_DURATION_MS } from "./toast";
 import "./toast.css";
 
 export function Toaster() {
   const current = useSyncExternalStore(toast.subscribe, toast.getSnapshot);
   return (
-    <div
-      className="toast-region"
-      aria-label="Thông báo"
-    >
+    <div className="toast-region" aria-label="Thông báo">
       {current && (
         <div
           key={current.id}
           className="toast-card"
-          style={{ "--toast-duration": `${TOAST_DURATION_MS}ms` } as CSSProperties}
+          style={
+            { "--toast-duration": `${TOAST_DURATION_MS}ms` } as CSSProperties
+          }
         >
           <span className="toast-icon" aria-hidden="true">
-            <FontAwesomeIcon icon={faCircleExclamation} />
+            <FontAwesomeIcon
+              icon={
+                current.tone === "success" ? faCircleCheck : faCircleExclamation
+              }
+            />
           </span>
           <div role="alert" aria-atomic="true" className="toast-content">
-            <p className="toast-title">Có lỗi xảy ra</p>
+            <p className="toast-title">
+              {current.tone === "success" ? "Thành công" : "Có lỗi xảy ra"}
+            </p>
             <p className="toast-message">{current.message}</p>
           </div>
           <button

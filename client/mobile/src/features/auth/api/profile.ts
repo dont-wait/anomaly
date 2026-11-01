@@ -8,11 +8,37 @@ export interface AuthUser {
   fullName?: string;
   email: string;
   currency: string;
-  idCardFrontUrl: string;
-  idCardBackUrl: string;
-  liveVideoUrl: string;
   isVerify: boolean;
   amount: number;
+  phone?: string;
+  dateOfBirth?: string;
+  address?: { line?: string; provinceCode?: string };
+  avatar?: ProfileMedia;
+  pendingEmail?: string | null;
+  identity?: {
+    type?: string;
+    number?: string;
+    issuedDate?: string;
+    issuedPlace?: string;
+    permanentAddress?: string;
+  };
+}
+
+export interface ProfileMedia {
+  mediaId: string;
+  type: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  status: string;
+}
+
+export interface ProfileDocumentSlot {
+  type: string;
+  required: boolean;
+  replaceable: boolean;
+  document: ProfileMedia | null;
 }
 
 export async function getInfo(
