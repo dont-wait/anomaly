@@ -31,10 +31,9 @@ import (
 )
 
 const (
-	maxAvatarBytes            = 5 << 20
-	maxDocumentBytes          = 10 << 20
-	passwordRetryAfterSeconds = 900
-	profileRouteBase          = "/api/auth/me"
+	maxAvatarBytes   = 5 << 20
+	maxDocumentBytes = 10 << 20
+	profileRouteBase = "/api/auth/me"
 )
 
 type profileMediaDownloader interface {
@@ -172,7 +171,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 			h.recordProfileAudit(r, claims.UserID, "PasswordChangeFailed")
 		case errors.Is(err, accountdomain.ErrTooManyAttempts):
 			h.recordProfileAudit(r, claims.UserID, "PasswordChangeThrottled")
-			w.Header().Set("Retry-After", strconv.Itoa(passwordRetryAfterSeconds))
+			w.Header().Set("Retry-After", strconv.Itoa(int(h.passwordRetryAfter.Seconds())))
 		}
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return

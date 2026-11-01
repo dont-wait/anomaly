@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"golang.org/x/crypto/bcrypt"
 
 	appotp "github.com/dont-wait/anomaly/internal/application/otp"
@@ -99,6 +100,7 @@ type limiterStub struct {
 	blocked  bool
 	failures int
 	resets   int
+	resetErr error
 }
 
 func (l *limiterStub) Allow(context.Context, string, string) (bool, error) { return !l.blocked, nil }
@@ -110,7 +112,7 @@ func (l *limiterStub) RecordFailure(context.Context, string, string) error {
 
 func (l *limiterStub) Reset(context.Context, string) error {
 	l.resets++
-	return nil
+	return l.resetErr
 }
 
 func passwordAccount(t *testing.T) *accountdomain.UserAccount {
@@ -127,7 +129,7 @@ func passwordAccount(t *testing.T) *accountdomain.UserAccount {
 func TestChangePasswordPersistsHashAndInvalidatesTokens(t *testing.T) {
 	repo := &profileRepoStub{account: passwordAccount(t)}
 	limiter := &limiterStub{}
-	err := NewChangePasswordHandler(repo).WithLimiter(limiter).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "new-password"})
+	err := NewChangePasswordHandler(repo).WithLimiter(limiter, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "new-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +144,7 @@ func TestChangePasswordPersistsHashAndInvalidatesTokens(t *testing.T) {
 func TestChangePasswordRecordsWrongCurrentPassword(t *testing.T) {
 	repo := &profileRepoStub{account: passwordAccount(t)}
 	limiter := &limiterStub{}
-	err := NewChangePasswordHandler(repo).WithLimiter(limiter).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "wrong", NewPassword: "new-password"})
+	err := NewChangePasswordHandler(repo).WithLimiter(limiter, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "wrong", NewPassword: "new-password"})
 	if !errors.Is(err, accountdomain.ErrCurrentPassword) {
 		t.Fatalf("error = %v", err)
 	}
@@ -153,7 +155,7 @@ func TestChangePasswordRecordsWrongCurrentPassword(t *testing.T) {
 
 func TestChangePasswordThrottledEvenWithCorrectPassword(t *testing.T) {
 	repo := &profileRepoStub{account: passwordAccount(t)}
-	err := NewChangePasswordHandler(repo).WithLimiter(&limiterStub{blocked: true}).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "new-password"})
+	err := NewChangePasswordHandler(repo).WithLimiter(&limiterStub{blocked: true}, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "new-password"})
 	if !errors.Is(err, accountdomain.ErrTooManyAttempts) || repo.saves != 0 {
 		t.Fatalf("error = %v, saves = %d", err, repo.saves)
 	}
@@ -186,7 +188,10 @@ func (o *otpStub) Consume(context.Context, string) error {
 	return nil
 }
 
-type pendingStub struct{ email string }
+type pendingStub struct {
+	email     string
+	deleteErr error
+}
 
 func (p *pendingStub) Set(_ context.Context, _, email string, _ time.Duration) error {
 	p.email = email
@@ -195,7 +200,7 @@ func (p *pendingStub) Set(_ context.Context, _, email string, _ time.Duration) e
 func (p *pendingStub) Get(context.Context, string) (string, error) { return p.email, nil }
 func (p *pendingStub) Delete(context.Context, string) error {
 	p.email = ""
-	return nil
+	return p.deleteErr
 }
 
 type notifierStub struct{ previous string }
@@ -215,7 +220,7 @@ type emailFixture struct {
 
 func newEmailFixture() *emailFixture {
 	f := &emailFixture{repo: &profileRepoStub{account: customerAccount()}, current: &otpStub{code: "111111"}, next: &otpStub{code: "222222"}, pending: &pendingStub{}, notifier: &notifierStub{}}
-	f.handler = NewEmailChangeHandler(f.repo, f.current, f.next, f.pending, f.notifier, time.Minute)
+	f.handler = NewEmailChangeHandler(f.repo, f.current, f.next, f.pending, f.notifier, time.Minute, zerolog.Nop())
 	return f
 }
 
@@ -289,5 +294,26 @@ func TestEmailChangeConfirmWithoutPendingExpires(t *testing.T) {
 	f := newEmailFixture()
 	if err := f.handler.Confirm(context.Background(), "owner", "111111", "222222"); !errors.Is(err, appotp.ErrExpired) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestChangePasswordSucceedsWhenResetFails(t *testing.T) {
+	repo := &profileRepoStub{account: passwordAccount(t)}
+	limiter := &limiterStub{resetErr: errors.New("redis down")}
+	err := NewChangePasswordHandler(repo).WithLimiter(limiter, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "new-password"})
+	if err != nil || repo.saves != 1 {
+		t.Fatalf("error = %v, saves = %d", err, repo.saves)
+	}
+}
+
+func TestEmailChangeConfirmSucceedsWhenCleanupFails(t *testing.T) {
+	f := newEmailFixture()
+	f.pending.email = "new@example.com"
+	f.pending.deleteErr = errors.New("redis down")
+	if err := f.handler.Confirm(context.Background(), "owner", "111111", "222222"); err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if f.repo.account.Email != "new@example.com" {
+		t.Fatalf("email = %q", f.repo.account.Email)
 	}
 }

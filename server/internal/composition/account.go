@@ -63,7 +63,9 @@ func AttachProfileSecurity(h *handleraccount.Handler, repo commands.AccountRepos
 	pending := otp.NewPendingEmailStore(rdb)
 	h.WithProfileSecurity(
 		otp.NewPasswordAttemptLimiter(rdb, cfg.PasswordAttemptLimit, cfg.PasswordSourceAttemptLimit, cfg.PasswordAttemptWindow),
-		commands.NewEmailChangeHandler(repo, otp.NewEmailChangeOTPStore(rdb, sender, "current"), otp.NewEmailChangeOTPStore(rdb, sender, "new"), pending, otp.NewEmailChangeNotifier(sender, logger), otp.EmailChangeTTL),
+		commands.NewEmailChangeHandler(repo, otp.NewEmailChangeOTPStore(rdb, sender, "current"), otp.NewEmailChangeOTPStore(rdb, sender, "new"), pending, otp.NewEmailChangeNotifier(sender, logger), otp.EmailChangeTTL, logger),
 		pending,
+		cfg.PasswordAttemptWindow,
+		logger,
 	)
 }

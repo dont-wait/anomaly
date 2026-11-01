@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 
+	"github.com/rs/zerolog"
 	"golang.org/x/crypto/bcrypt"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
@@ -25,14 +26,16 @@ type PasswordAttemptLimiter interface {
 type ChangePasswordHandler struct {
 	repo    AccountRepository
 	limiter PasswordAttemptLimiter
+	logger  zerolog.Logger
 }
 
 func NewChangePasswordHandler(repo AccountRepository) *ChangePasswordHandler {
-	return &ChangePasswordHandler{repo: repo}
+	return &ChangePasswordHandler{repo: repo, logger: zerolog.Nop()}
 }
 
-func (h *ChangePasswordHandler) WithLimiter(limiter PasswordAttemptLimiter) *ChangePasswordHandler {
+func (h *ChangePasswordHandler) WithLimiter(limiter PasswordAttemptLimiter, logger zerolog.Logger) *ChangePasswordHandler {
 	h.limiter = limiter
+	h.logger = logger
 	return h
 }
 
@@ -79,8 +82,11 @@ func (h *ChangePasswordHandler) Handle(ctx context.Context, cmd ChangePasswordCo
 	if err := h.repo.Save(ctx, account); err != nil {
 		return err
 	}
+	// The password has committed: a cleanup failure must not report it as failed.
 	if h.limiter != nil {
-		return h.limiter.Reset(ctx, cmd.AccountID)
+		if err := h.limiter.Reset(ctx, cmd.AccountID); err != nil {
+			h.logger.Warn().Err(err).Msg("reset password attempts failed")
+		}
 	}
 	return nil
 }

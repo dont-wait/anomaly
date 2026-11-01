@@ -21,24 +21,25 @@ import (
 )
 
 type Handler struct {
-	logger          zerolog.Logger
-	register        *commands.RegisterAccountCommandHandler
-	verify          *commands.VerifyAccountCommandHandler
-	login           *queries.LoginQueryHandler
-	getByID         *queries.GetAccountByIDQueryHandler
-	getByEmail      *queries.GetAccountByEmailQueryHandler
-	getAll          *queries.GetAllAccountsQueryHandler
-	tokens          queries.TokenService
-	kyc             KYCVerifier
-	media           MediaStore
-	realtime        *kycinfra.RealtimeStore
-	realtimeOrigins map[string]bool
-	profileRepo     commands.AccountRepository
-	profileAudit    audit.Recorder
-	updateProfile   *commands.UpdateCustomerProfileHandler
-	changePassword  *commands.ChangePasswordHandler
-	emailChange     *commands.EmailChangeHandler
-	pendingEmails   pendingEmailReader
+	logger             zerolog.Logger
+	register           *commands.RegisterAccountCommandHandler
+	verify             *commands.VerifyAccountCommandHandler
+	login              *queries.LoginQueryHandler
+	getByID            *queries.GetAccountByIDQueryHandler
+	getByEmail         *queries.GetAccountByEmailQueryHandler
+	getAll             *queries.GetAllAccountsQueryHandler
+	tokens             queries.TokenService
+	kyc                KYCVerifier
+	media              MediaStore
+	realtime           *kycinfra.RealtimeStore
+	realtimeOrigins    map[string]bool
+	profileRepo        commands.AccountRepository
+	profileAudit       audit.Recorder
+	updateProfile      *commands.UpdateCustomerProfileHandler
+	changePassword     *commands.ChangePasswordHandler
+	emailChange        *commands.EmailChangeHandler
+	pendingEmails      pendingEmailReader
+	passwordRetryAfter time.Duration
 }
 
 type pendingEmailReader interface {
@@ -53,8 +54,9 @@ func (h *Handler) WithProfile(repo commands.AccountRepository, recorder audit.Re
 	return h
 }
 
-func (h *Handler) WithProfileSecurity(limiter commands.PasswordAttemptLimiter, emailChange *commands.EmailChangeHandler, pending pendingEmailReader) *Handler {
-	h.changePassword.WithLimiter(limiter)
+func (h *Handler) WithProfileSecurity(limiter commands.PasswordAttemptLimiter, emailChange *commands.EmailChangeHandler, pending pendingEmailReader, passwordWindow time.Duration, logger zerolog.Logger) *Handler {
+	h.changePassword.WithLimiter(limiter, logger)
+	h.passwordRetryAfter = passwordWindow
 	h.emailChange = emailChange
 	h.pendingEmails = pending
 	return h

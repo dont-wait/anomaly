@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	appotp "github.com/dont-wait/anomaly/internal/application/otp"
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
@@ -34,10 +36,11 @@ type EmailChangeHandler struct {
 	pending  PendingEmailStore
 	notifier EmailChangeNotifier
 	ttl      time.Duration
+	logger   zerolog.Logger
 }
 
-func NewEmailChangeHandler(repo AccountRepository, current, next appotp.ContractOTPService, pending PendingEmailStore, notifier EmailChangeNotifier, ttl time.Duration) *EmailChangeHandler {
-	return &EmailChangeHandler{repo: repo, current: current, next: next, pending: pending, notifier: notifier, ttl: ttl}
+func NewEmailChangeHandler(repo AccountRepository, current, next appotp.ContractOTPService, pending PendingEmailStore, notifier EmailChangeNotifier, ttl time.Duration, logger zerolog.Logger) *EmailChangeHandler {
+	return &EmailChangeHandler{repo: repo, current: current, next: next, pending: pending, notifier: notifier, ttl: ttl, logger: logger}
 }
 
 func (h *EmailChangeHandler) Start(ctx context.Context, accountID, newEmail string) error {
@@ -105,7 +108,12 @@ func (h *EmailChangeHandler) Confirm(ctx context.Context, accountID, currentOTP,
 	if h.notifier != nil {
 		h.notifier.NotifyEmailChanged(ctx, previous, newEmail)
 	}
-	return h.clear(ctx, accountID)
+	// The change has committed: leftovers expire with their TTL, so a cleanup
+	// failure must not report it as failed.
+	if err := h.clear(ctx, accountID); err != nil {
+		h.logger.Warn().Err(err).Msg("clear email change state failed")
+	}
+	return nil
 }
 
 func (h *EmailChangeHandler) verify(ctx context.Context, accountID, currentOTP, newOTP string) error {
