@@ -94,6 +94,46 @@ export const AuthProvider = ({
     [tokenStore],
   );
 
+  const updateProfile = useCallback(async (input: {
+    phone?: string;
+    email?: string;
+    address?: { line: string; provinceCode: string };
+  }) => {
+    const currentToken = tokenStore.getToken();
+    if (!currentToken) throw new Error("Phiên đăng nhập đã hết hạn.");
+    const { updateCurrentProfile } = await import("./api/profileMutations");
+    await updateCurrentProfile(currentToken, input);
+    const profile = await refreshProfile();
+    if (!profile) throw new Error("Không thể tải lại hồ sơ sau khi cập nhật.");
+    return profile;
+  }, [refreshProfile, tokenStore]);
+
+  const changePassword = useCallback(async (input: {
+    currentPassword: string;
+    newPassword: string;
+  }) => {
+    const currentToken = tokenStore.getToken();
+    if (!currentToken) throw new Error("Phiên đăng nhập đã hết hạn.");
+    const { changeCurrentPassword } = await import("./api/profileMutations");
+    await changeCurrentPassword(currentToken, input);
+  }, [tokenStore]);
+
+  const uploadProfileAvatar = useCallback(async (file: File) => {
+    const currentToken = tokenStore.getToken();
+    if (!currentToken) throw new Error("Phiên đăng nhập đã hết hạn.");
+    const { uploadAvatar } = await import("./api/profileMutations");
+    await uploadAvatar(currentToken, file);
+    return refreshProfile();
+  }, [refreshProfile, tokenStore]);
+
+  const uploadProfileDocument = useCallback(async (type: string, file: File) => {
+    const currentToken = tokenStore.getToken();
+    if (!currentToken) throw new Error("Phiên đăng nhập đã hết hạn.");
+    const { uploadDocument } = await import("./api/profileMutations");
+    await uploadDocument(currentToken, type, file);
+    return refreshProfile();
+  }, [refreshProfile, tokenStore]);
+
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
@@ -173,8 +213,12 @@ export const AuthProvider = ({
       login,
       logout,
       refreshProfile,
+      updateProfile,
+      changePassword,
+      uploadProfileAvatar,
+      uploadProfileDocument,
     }),
-    [status, user, token, error, login, logout, refreshProfile],
+    [status, user, token, error, login, logout, refreshProfile, updateProfile, changePassword, uploadProfileAvatar, uploadProfileDocument],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

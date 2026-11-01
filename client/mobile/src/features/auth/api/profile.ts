@@ -13,6 +13,29 @@ export interface AuthUser {
   liveVideoUrl: string;
   isVerify: boolean;
   amount: number;
+  phone?: string;
+  dateOfBirth?: string;
+  address?: { line?: string; provinceCode?: string };
+  avatar?: ProfileMedia;
+  documents?: ProfileMedia[];
+  identity?: {
+    type?: string;
+    number?: string;
+    issuedDate?: string;
+    issuedPlace?: string;
+    permanentAddress?: string;
+  };
+}
+
+export interface ProfileMedia {
+  mediaId: string;
+  mediaUrl: string;
+  type: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  status: string;
 }
 
 export async function getInfo(

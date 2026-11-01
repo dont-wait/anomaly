@@ -20,6 +20,10 @@ export interface AuthContextValue extends AuthState {
   refreshProfile: (options?: {
     signal?: AbortSignal;
   }) => Promise<AuthUser | null>;
+  updateProfile: (input: { phone?: string; email?: string; address?: { line: string; provinceCode: string } }) => Promise<AuthUser>;
+  changePassword: (input: { currentPassword: string; newPassword: string }) => Promise<void>;
+  uploadProfileAvatar: (file: File) => Promise<AuthUser | null>;
+  uploadProfileDocument: (type: string, file: File) => Promise<AuthUser | null>;
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(

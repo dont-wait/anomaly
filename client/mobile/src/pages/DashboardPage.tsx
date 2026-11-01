@@ -239,6 +239,7 @@ const DashboardPage = () => {
       <ProfileSidebar
         open={profileSidebarOpen}
         name={account.ownerName}
+        token={token}
         onClose={() => setProfileSidebarOpen(false)}
         onLogout={() => {
           setProfileSidebarOpen(false);

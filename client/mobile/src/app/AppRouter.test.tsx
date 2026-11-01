@@ -39,6 +39,10 @@ const auth: AuthContextValue = {
   }),
   logout: vi.fn(),
   refreshProfile: vi.fn(),
+  updateProfile: vi.fn(),
+  changePassword: vi.fn(),
+  uploadProfileAvatar: vi.fn(),
+  uploadProfileDocument: vi.fn(),
 };
 function renderRouter() {
   return render(
