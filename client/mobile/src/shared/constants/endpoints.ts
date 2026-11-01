@@ -3,10 +3,16 @@ export const API_ENDPOINTS = {
     LOGIN: "/api/auth/login",
     REGISTER: "/api/auth/register",
     ME: "/api/auth/me",
+    PROFILE: "/api/auth/me/profile",
+    PASSWORD: "/api/auth/me/password",
+    EMAIL_CHANGE: "/api/auth/me/email-change",
+    EMAIL_CHANGE_CONFIRM: "/api/auth/me/email-change/confirm",
     PROFILE_DOCUMENTS: "/api/auth/me/documents",
     PROFILE_AVATAR: "/api/auth/me/avatar",
-    PROFILE_MEDIA: (id: string) => `/api/auth/me/media/${encodeURIComponent(id)}`,
-    PROFILE_DOCUMENT: (id: string) => `/api/auth/me/documents/${encodeURIComponent(id)}`,
+    PROFILE_MEDIA: (id: string) =>
+      `/api/auth/me/media/${encodeURIComponent(id)}`,
+    PROFILE_DOCUMENT: (id: string) =>
+      `/api/auth/me/documents/${encodeURIComponent(id)}`,
     OTP_REQUEST: "/api/auth/otp/request",
     OTP_VERIFY: "/api/auth/otp/verify",
   },

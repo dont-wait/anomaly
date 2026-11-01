@@ -11,6 +11,16 @@ import {
 } from "react";
 import { AuthContext, type AuthStatus } from "./authContext";
 import {
+  changeCurrentPassword,
+  confirmEmailChange as verifyEmailChange,
+  startEmailChange as requestEmailChange,
+  updateCurrentProfile,
+  uploadAvatar,
+  uploadDocument,
+  type ProfileUpdateInput,
+  type UploadProgress,
+} from "./api/profileMutations";
+import {
   login as loginRequest,
   toLoginError,
   type LoginInput,
@@ -33,6 +43,8 @@ export const AuthProvider = ({
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  // Chỉ response của lần đọc hồ sơ mới nhất được phép cập nhật state.
+  const profileGenerationRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -42,6 +54,7 @@ export const AuthProvider = ({
   }, []);
 
   const logout = useCallback(() => {
+    profileGenerationRef.current += 1;
     tokenStore.clearToken();
     if (!mountedRef.current) return;
     setToken(null);
@@ -62,17 +75,20 @@ export const AuthProvider = ({
         return null;
       }
 
+      const generation = ++profileGenerationRef.current;
       try {
         const profile = await getInfo(currentToken, {
           signal: options.signal,
         });
         if (!mountedRef.current) return profile;
+        if (generation !== profileGenerationRef.current) return profile;
         setToken(currentToken);
         setUser(profile);
         setStatus(AUTH_STATUS.AUTHENTICATED);
         setError(null);
         return profile;
       } catch (requestError) {
+        if (generation !== profileGenerationRef.current) return null;
         if (
           requestError instanceof ApiError &&
           (requestError.status === HTTP_STATUS.UNAUTHORIZED ||
@@ -94,45 +110,68 @@ export const AuthProvider = ({
     [tokenStore],
   );
 
-  const updateProfile = useCallback(async (input: {
-    phone?: string;
-    email?: string;
-    address?: { line: string; provinceCode: string };
-  }) => {
+  const requireToken = useCallback(() => {
     const currentToken = tokenStore.getToken();
     if (!currentToken) throw new Error("Phiên đăng nhập đã hết hạn.");
-    const { updateCurrentProfile } = await import("./api/profileMutations");
-    await updateCurrentProfile(currentToken, input);
-    const profile = await refreshProfile();
-    if (!profile) throw new Error("Không thể tải lại hồ sơ sau khi cập nhật.");
-    return profile;
-  }, [refreshProfile, tokenStore]);
-
-  const changePassword = useCallback(async (input: {
-    currentPassword: string;
-    newPassword: string;
-  }) => {
-    const currentToken = tokenStore.getToken();
-    if (!currentToken) throw new Error("Phiên đăng nhập đã hết hạn.");
-    const { changeCurrentPassword } = await import("./api/profileMutations");
-    await changeCurrentPassword(currentToken, input);
+    return currentToken;
   }, [tokenStore]);
 
-  const uploadProfileAvatar = useCallback(async (file: File) => {
-    const currentToken = tokenStore.getToken();
-    if (!currentToken) throw new Error("Phiên đăng nhập đã hết hạn.");
-    const { uploadAvatar } = await import("./api/profileMutations");
-    await uploadAvatar(currentToken, file);
-    return refreshProfile();
-  }, [refreshProfile, tokenStore]);
+  // Thay đổi đã được server xác nhận: lỗi khi tải lại không được biến nó thành thất bại.
+  const refreshAfterMutation = useCallback(
+    () => refreshProfile().catch(() => null),
+    [refreshProfile],
+  );
 
-  const uploadProfileDocument = useCallback(async (type: string, file: File) => {
-    const currentToken = tokenStore.getToken();
-    if (!currentToken) throw new Error("Phiên đăng nhập đã hết hạn.");
-    const { uploadDocument } = await import("./api/profileMutations");
-    await uploadDocument(currentToken, type, file);
-    return refreshProfile();
-  }, [refreshProfile, tokenStore]);
+  const updateProfile = useCallback(
+    async (input: ProfileUpdateInput) => {
+      const updated = await updateCurrentProfile(requireToken(), input);
+      profileGenerationRef.current += 1;
+      if (mountedRef.current) setUser(updated);
+      return (await refreshAfterMutation()) ?? updated;
+    },
+    [refreshAfterMutation, requireToken],
+  );
+
+  const changePassword = useCallback(
+    async (input: { currentPassword: string; newPassword: string }) => {
+      await changeCurrentPassword(requireToken(), input);
+      logout();
+      toast.success("Đã đổi mật khẩu. Vui lòng đăng nhập lại.");
+    },
+    [logout, requireToken],
+  );
+
+  const startEmailChange = useCallback(
+    async (newEmail: string) => {
+      await requestEmailChange(requireToken(), newEmail);
+      return refreshAfterMutation();
+    },
+    [refreshAfterMutation, requireToken],
+  );
+
+  const confirmEmailChange = useCallback(
+    async (input: { currentEmailOtp: string; newEmailOtp: string }) => {
+      await verifyEmailChange(requireToken(), input);
+      return refreshAfterMutation();
+    },
+    [refreshAfterMutation, requireToken],
+  );
+
+  const uploadProfileAvatar = useCallback(
+    async (file: File, onProgress?: UploadProgress) => {
+      await uploadAvatar(requireToken(), file, onProgress);
+      return refreshAfterMutation();
+    },
+    [refreshAfterMutation, requireToken],
+  );
+
+  const uploadProfileDocument = useCallback(
+    async (type: string, file: File, onProgress?: UploadProgress) => {
+      await uploadDocument(requireToken(), type, file, onProgress);
+      return refreshAfterMutation();
+    },
+    [refreshAfterMutation, requireToken],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -147,11 +186,12 @@ export const AuthProvider = ({
 
       setStatus(AUTH_STATUS.RESTORING);
       setToken(storedToken);
+      const generation = ++profileGenerationRef.current;
       try {
         const profile = await getInfo(storedToken, {
           signal: controller.signal,
         });
-        if (cancelled) return;
+        if (cancelled || generation !== profileGenerationRef.current) return;
         setUser(profile);
         setStatus(AUTH_STATUS.AUTHENTICATED);
         setError(null);
@@ -190,6 +230,7 @@ export const AuthProvider = ({
           signal: options.signal,
         });
         tokenStore.setToken(response.token);
+        profileGenerationRef.current += 1;
         if (!mountedRef.current) return response.user;
         setToken(response.token);
         setUser(response.user);
@@ -215,10 +256,26 @@ export const AuthProvider = ({
       refreshProfile,
       updateProfile,
       changePassword,
+      startEmailChange,
+      confirmEmailChange,
       uploadProfileAvatar,
       uploadProfileDocument,
     }),
-    [status, user, token, error, login, logout, refreshProfile, updateProfile, changePassword, uploadProfileAvatar, uploadProfileDocument],
+    [
+      status,
+      user,
+      token,
+      error,
+      login,
+      logout,
+      refreshProfile,
+      updateProfile,
+      changePassword,
+      startEmailChange,
+      confirmEmailChange,
+      uploadProfileAvatar,
+      uploadProfileDocument,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

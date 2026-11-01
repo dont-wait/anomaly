@@ -1,15 +1,20 @@
 import { API_ENDPOINTS } from "@/shared/constants/endpoints";
-import { API_BASE_URL } from "@/shared/constants";
-import { ApiError, requestApi } from "@/shared/lib/http";
-import type { AuthUser, ProfileMedia } from "./profile";
+import { ApiError, joinUrl, requestApi, toApiError } from "@/shared/lib/http";
+import type { AuthUser, ProfileDocumentSlot, ProfileMedia } from "./profile";
 
-const AUTH_HEADERS = (token: string) => ({ Authorization: `Bearer ${token}` });
+const UPLOAD_TIMEOUT_MS = 120_000;
+const NETWORK_ERROR =
+  "Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.";
 
-export function updateCurrentProfile(
-  token: string,
-  input: { phone?: string; email?: string; address?: { line: string; provinceCode: string } },
-) {
-  return requestApi<AuthUser>(`${API_ENDPOINTS.AUTH.ME}/profile`, {
+export type UploadProgress = (percent: number) => void;
+
+export interface ProfileUpdateInput {
+  phone?: string;
+  address?: { line?: string; provinceCode?: string };
+}
+
+export function updateCurrentProfile(token: string, input: ProfileUpdateInput) {
+  return requestApi<AuthUser>(API_ENDPOINTS.AUTH.PROFILE, {
     method: "PATCH",
     body: input,
     token,
@@ -20,39 +25,127 @@ export function changeCurrentPassword(
   token: string,
   input: { currentPassword: string; newPassword: string },
 ) {
-  return requestApi<{ changed: boolean }>(`${API_ENDPOINTS.AUTH.ME}/password`, {
+  return requestApi<unknown>(API_ENDPOINTS.AUTH.PASSWORD, {
     method: "PUT",
     body: input,
     token,
   });
 }
 
-export async function uploadAvatar(token: string, file: File) {
-  return uploadFile<ProfileMedia>(`${API_ENDPOINTS.AUTH.ME}/avatar`, token, { file });
+export function startEmailChange(token: string, newEmail: string) {
+  return requestApi<unknown>(API_ENDPOINTS.AUTH.EMAIL_CHANGE, {
+    method: "POST",
+    body: { newEmail },
+    token,
+  });
 }
 
-export async function uploadDocument(token: string, type: string, file: File) {
-  return uploadFile<ProfileMedia>(`${API_ENDPOINTS.AUTH.ME}/documents`, token, { type, file });
+export function confirmEmailChange(
+  token: string,
+  input: { currentEmailOtp: string; newEmailOtp: string },
+) {
+  return requestApi<unknown>(API_ENDPOINTS.AUTH.EMAIL_CHANGE_CONFIRM, {
+    method: "POST",
+    body: input,
+    token,
+  });
 }
 
-async function uploadFile<T>(path: string, token: string, fields: Record<string, string | File>): Promise<T> {
+export function getDocumentSlots(
+  token: string,
+  options: { signal?: AbortSignal } = {},
+) {
+  return requestApi<{ slots: ProfileDocumentSlot[] }>(
+    API_ENDPOINTS.AUTH.PROFILE_DOCUMENTS,
+    { token, signal: options.signal },
+  ).then((response) => response.slots);
+}
+
+export function uploadAvatar(
+  token: string,
+  file: File,
+  onProgress?: UploadProgress,
+) {
+  return uploadFile(
+    API_ENDPOINTS.AUTH.PROFILE_AVATAR,
+    token,
+    { file },
+    onProgress,
+  );
+}
+
+export function uploadDocument(
+  token: string,
+  type: string,
+  file: File,
+  onProgress?: UploadProgress,
+) {
+  return uploadFile(
+    API_ENDPOINTS.AUTH.PROFILE_DOCUMENTS,
+    token,
+    { type, file },
+    onProgress,
+  );
+}
+
+/** Tải media qua backend. Thành công trả raw bytes, lỗi trả JSON envelope. */
+export async function fetchProfileMedia(
+  token: string,
+  mediaId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(joinUrl(API_ENDPOINTS.AUTH.PROFILE_MEDIA(mediaId)), {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: options.signal,
+    });
+  } catch {
+    throw new ApiError(0, NETWORK_ERROR);
+  }
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => undefined);
+    throw toApiError(response.status, body);
+  }
+  return response.blob();
+}
+
+// Dùng XHR vì fetch không báo được tiến độ upload.
+function uploadFile(
+  path: string,
+  token: string,
+  fields: Record<string, string | File>,
+  onProgress?: UploadProgress,
+): Promise<ProfileMedia> {
   const form = new FormData();
   for (const [name, value] of Object.entries(fields)) form.append(name, value);
-  const response = await fetch(`${API_BASE_URL.replace(/\/+$/, "")}${path}`, {
-    method: "POST",
-    headers: AUTH_HEADERS(token),
-    body: form,
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", joinUrl(path));
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress?.(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.onerror = xhr.ontimeout = () => reject(new ApiError(0, NETWORK_ERROR));
+    xhr.onload = () => {
+      let body: unknown;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        body = undefined;
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(toApiError(xhr.status, body));
+      } else if (body && typeof body === "object" && "data" in body) {
+        resolve(body.data as ProfileMedia);
+      } else {
+        reject(new ApiError(0, "Phản hồi tải tệp không hợp lệ.", body));
+      }
+    };
+    xhr.send(form);
   });
-  let body: unknown;
-  try { body = await response.json(); } catch { body = undefined; }
-  if (!response.ok) {
-    const message = body && typeof body === "object" && "message" in body && typeof body.message === "string"
-      ? body.message
-      : `Yêu cầu thất bại (mã ${response.status}).`;
-    throw new ApiError(response.status, message, body);
-  }
-  if (!body || typeof body !== "object" || !("data" in body)) {
-    throw new Error("Phản hồi tải tệp không hợp lệ.");
-  }
-  return body.data as T;
 }

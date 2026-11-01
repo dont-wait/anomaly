@@ -1,6 +1,7 @@
 interface ToastMessage {
   id: number;
   message: string;
+  tone: "error" | "success";
 }
 
 export const TOAST_DURATION_MS = 5000;
@@ -17,12 +18,19 @@ function dismiss() {
   listeners.forEach((notify) => notify());
 }
 
+function show(message: string, tone: ToastMessage["tone"]) {
+  clearTimeout(dismissTimer);
+  current = { id: ++nextId, message, tone };
+  dismissTimer = setTimeout(dismiss, TOAST_DURATION_MS);
+  listeners.forEach((notify) => notify());
+}
+
 export const toast = {
   error(message: string) {
-    clearTimeout(dismissTimer);
-    current = { id: ++nextId, message };
-    dismissTimer = setTimeout(dismiss, TOAST_DURATION_MS);
-    listeners.forEach((notify) => notify());
+    show(message, "error");
+  },
+  success(message: string) {
+    show(message, "success");
   },
   dismiss,
   getSnapshot: () => current,
