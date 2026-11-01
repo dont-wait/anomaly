@@ -308,9 +308,8 @@ export default function LoanApplicationsPage({
                   Trạng thái:{" "}
                   <strong>{applicationStatusLabel(application.status)}</strong>
                 </p>
-                <p className="text-xs text-on-surface-variant">
-                  Sau khi nộp, admin phải thẩm định và ra quyết định. App không
-                  tự phê duyệt hoặc giải ngân.
+                <p className="text-xs text-on-surface-variant italic">
+                  Sau khi nộp, Chúng tôi phải thẩm định và ra quyết định. Quý khách vui lòng chờ kết quả trong 24h kể từ khi yêu cầu được gửi.
                 </p>
                 <Action
                   secondary
