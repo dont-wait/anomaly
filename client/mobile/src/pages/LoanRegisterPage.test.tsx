@@ -32,9 +32,6 @@ const auth: AuthContextValue = {
     fullName: "Test User",
     email: "test@example.com",
     currency: "VND",
-    idCardFrontUrl: "",
-    idCardBackUrl: "",
-    liveVideoUrl: "",
     isVerify: true,
     amount: 1_500_000,
   },
@@ -47,6 +44,8 @@ const auth: AuthContextValue = {
   changePassword: async () => undefined,
   uploadProfileAvatar: async () => auth.user,
   uploadProfileDocument: async () => auth.user,
+  startEmailChange: async () => auth.user,
+  confirmEmailChange: async () => auth.user,
 };
 
 const renderPage = () =>

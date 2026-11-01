@@ -40,7 +40,7 @@ Show:
 - Personal details: full name, date of birth, phone, email, residential address, and province/region where available.
 - Identity details: CCCD/identity number (masked), issue date/place, and permanent address where available.
 - A document section showing each required document's label, status, upload date, and preview/download action when available.
-- Separate actions for **Cập nhật thông tin**, **Đổi mật khẩu**, **Đổi ảnh đại diện**, and document updates.
+- Separate actions for **Cập nhật thông tin**, **Đổi mật khẩu**, and document updates. Tapping the avatar opens the avatar change flow; there is no separate button.
 
 Do not display internal account/customer IDs, RustFS keys, storage URLs, token values, password hashes, or backend implementation details.
 

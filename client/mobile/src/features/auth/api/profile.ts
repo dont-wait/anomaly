@@ -8,16 +8,13 @@ export interface AuthUser {
   fullName?: string;
   email: string;
   currency: string;
-  idCardFrontUrl: string;
-  idCardBackUrl: string;
-  liveVideoUrl: string;
   isVerify: boolean;
   amount: number;
   phone?: string;
   dateOfBirth?: string;
   address?: { line?: string; provinceCode?: string };
   avatar?: ProfileMedia;
-  documents?: ProfileMedia[];
+  pendingEmail?: string | null;
   identity?: {
     type?: string;
     number?: string;
@@ -29,13 +26,19 @@ export interface AuthUser {
 
 export interface ProfileMedia {
   mediaId: string;
-  mediaUrl: string;
   type: string;
   fileName: string;
   contentType: string;
   sizeBytes: number;
   uploadedAt: string;
   status: string;
+}
+
+export interface ProfileDocumentSlot {
+  type: string;
+  required: boolean;
+  replaceable: boolean;
+  document: ProfileMedia | null;
 }
 
 export async function getInfo(
