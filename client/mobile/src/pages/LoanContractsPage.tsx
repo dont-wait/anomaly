@@ -1,5 +1,5 @@
-import { faArrowLeft } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faArrowLeft, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import { useCallback, useEffect, useState } from "react";
 import { navigate, routes, loanContract } from "@/app/routes";
 import { useAuth } from "@/features/auth/useAuth";
@@ -37,6 +37,36 @@ const appendUnique = <T,>(
 ) => {
   const seen = new Set(current.map(key));
   return [...current, ...incoming.filter((item) => !seen.has(key(item)))];
+};
+
+const CHIP_TONES = {
+  success: "bg-emerald-50 text-emerald-700",
+  active: "bg-secondary text-white",
+  danger: "bg-red-50 text-red-700",
+  muted: "bg-gray-100 text-gray-700",
+};
+
+function StatusChip({
+  tone,
+  label,
+}: {
+  tone: keyof typeof CHIP_TONES;
+  label: string;
+}) {
+  return (
+    <span
+      className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${CHIP_TONES[tone]}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+const formatLoanDate = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("vi-VN");
 };
 
 export default function LoanContractsPage({ loanId }: { loanId?: string }) {
@@ -271,7 +301,7 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
                 onClick={() =>
                   void run(
                     refresh,
-                    "Đã tải lại dữ liệu. Nếu Mongo projector trễ, kết quả có thể chưa cập nhật ngay.",
+                    "Đã tải lại dữ liệu. Thanh toán vừa thực hiện có thể cần ít phút để hiển thị.",
                   )
                 }
               >
@@ -281,23 +311,39 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
           )}
           {schedule && (
             <Panel title="Lịch thanh toán">
-              {schedule.items?.map((item) => (
-                <div
-                  key={item.installmentNo}
-                  className="rounded-xl border p-3 text-xs"
-                >
-                  <div className="flex justify-between">
-                    <strong>
-                      Kỳ {item.installmentNo} · {item.dueDate}
-                    </strong>
-                    <span>{statusLabel(item.status)}</span>
+              {schedule.items?.map((item) => {
+                const paid = item.status === "paid";
+                const next = item.installmentNo === schedule.nextInstallmentNo;
+                return (
+                  <div
+                    key={item.installmentNo}
+                    className={`rounded-2xl border p-3 ${next ? "border-secondary bg-secondary-container/40" : "border-[#e2e7ff] bg-white"}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-primary">
+                          Kỳ {item.installmentNo}
+                        </p>
+                        <p className="text-xs text-on-surface-variant">
+                          Hạn {formatLoanDate(item.dueDate)}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-base font-bold text-primary">
+                          {vnd(item.totalDue)}
+                        </p>
+                        <StatusChip
+                          tone={paid ? "success" : next ? "active" : "muted"}
+                          label={next ? "Kỳ tới" : statusLabel(item.status)}
+                        />
+                      </div>
+                    </div>
+                    <p className="mt-2 border-t border-[#f0f1f9] pt-2 text-xs text-on-surface-variant">
+                      Gốc {vnd(item.principalDue)} · Lãi {vnd(item.interestDue)}
+                    </p>
                   </div>
-                  <p className="mt-1">
-                    Gốc {vnd(item.principalDue)} · Lãi {vnd(item.interestDue)}
-                  </p>
-                  <p className="font-semibold">Tổng: {vnd(item.totalDue)}</p>
-                </div>
-              ))}
+                );
+              })}
             </Panel>
           )}
           {schedule && repaymentResult && (
@@ -361,24 +407,71 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
               <p className="text-xs">Chưa có lần thanh toán thành công.</p>
             )}
             {payments.map((p) => (
-              <button
-                type="button"
+              <div
                 key={p.paymentId}
-                onClick={() => {
-                  if (token)
-                    void run(
-                      async () =>
-                        setPaymentDetail(
-                          await getLoanPayment(token, loanId, p.paymentId),
-                        ),
-                      "Đã tải biên nhận.",
-                    );
-                }}
-                className="block w-full rounded-xl border p-3 text-left text-xs"
+                className="rounded-2xl border border-[#e2e7ff] bg-white p-3"
               >
-                Kỳ {p.installmentNo} · {vnd(p.amount)} · {statusLabel(p.status)}{" "}
-                · Xem biên nhận
-              </button>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-primary">
+                      Kỳ {p.installmentNo}
+                    </p>
+                    <p className="text-xs text-on-surface-variant">
+                      {new Date(p.paidAt).toLocaleDateString("vi-VN")}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-base font-bold text-primary">
+                      {vnd(p.amount)}
+                    </p>
+                    <StatusChip
+                      tone={p.status === "failed" ? "danger" : "success"}
+                      label={statusLabel(p.status)}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={`Xem biên nhận kỳ ${p.installmentNo}`}
+                  onClick={() => {
+                    if (token)
+                      void run(
+                        async () =>
+                          setPaymentDetail(
+                            await getLoanPayment(token, loanId, p.paymentId),
+                          ),
+                        "Đã tải biên nhận.",
+                      );
+                  }}
+                  className="mt-2 flex min-h-11 w-full items-center justify-between border-t border-[#f0f1f9] pt-2 text-xs font-semibold text-secondary disabled:opacity-50"
+                >
+                  Xem biên nhận
+                  <FontAwesomeIcon icon={faChevronRight} />
+                </button>
+                {paymentDetail?.paymentId === p.paymentId && (
+                  <dl className="mt-2 space-y-1.5 rounded-xl bg-surface-container-low p-3 text-xs">
+                    {[
+                      ["Tiền gốc", vnd(paymentDetail.principalAmount)],
+                      ["Tiền lãi", vnd(paymentDetail.interestAmount)],
+                      ["Mã giao dịch", paymentDetail.transactionId],
+                      [
+                        "Thời điểm",
+                        new Date(paymentDetail.paidAt).toLocaleString("vi-VN"),
+                      ],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex justify-between gap-3">
+                        <dt className="shrink-0 text-on-surface-variant">
+                          {label}
+                        </dt>
+                        <dd className="min-w-0 text-right font-semibold break-all text-primary">
+                          {value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+              </div>
             ))}
             {nextPaymentCursor && (
               <Action
@@ -401,21 +494,6 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
               >
                 Xem thêm thanh toán
               </Action>
-            )}
-            {paymentDetail && (
-              <div className="rounded-xl bg-surface-container p-3 text-xs">
-                <strong>Biên nhận kỳ {paymentDetail.installmentNo}</strong>
-                <p>Thanh toán: {vnd(paymentDetail.amount)}</p>
-                <p>
-                  Gốc: {vnd(paymentDetail.principalAmount)} · Lãi:{" "}
-                  {vnd(paymentDetail.interestAmount)}
-                </p>
-                <p>Mã giao dịch: {paymentDetail.transactionId}</p>
-                <p>
-                  Thời điểm:{" "}
-                  {new Date(paymentDetail.paidAt).toLocaleString("vi-VN")}
-                </p>
-              </div>
             )}
           </Panel>
         </>

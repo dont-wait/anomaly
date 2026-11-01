@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routes } from "@/app/routes";
 import LoanApplicationsPage from "./LoanApplicationsPage";
 import {
+  attachLoanProfileDocuments,
   confirmLoanContract,
+  documentTypes,
   downloadLoanDocument,
   getLoan,
   getLoanOffer,
@@ -11,6 +13,7 @@ import {
   requestLoanOTP,
   uploadLoanDocument,
 } from "@/features/loans/api";
+import { uploadDocument } from "@/features/auth/api/profileMutations";
 import { ApiError } from "@/shared/lib/http";
 import type { LoanApplication, LoanOffer } from "@/features/loans/api";
 
@@ -18,10 +21,15 @@ vi.mock("@/features/auth/useAuth", () => ({
   useAuth: () => ({ token: "token", user: { id: "acc-1" } }),
 }));
 
+vi.mock("@/features/auth/api/profileMutations", () => ({
+  uploadDocument: vi.fn(async () => ({})),
+}));
+
 vi.mock("@/features/loans/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/features/loans/api")>();
   return {
     ...actual,
+    attachLoanProfileDocuments: vi.fn(),
     listLoans: vi.fn(),
     getLoan: vi.fn(),
     getLoanOffer: vi.fn(),
@@ -67,6 +75,8 @@ describe("LoanApplicationsPage", () => {
   beforeEach(() => {
     sessionStorage.clear();
     vi.mocked(listLoans).mockReset();
+    vi.mocked(attachLoanProfileDocuments).mockReset();
+    vi.mocked(attachLoanProfileDocuments).mockRejectedValue(new Error("none"));
     vi.mocked(getLoan).mockReset();
     vi.mocked(getLoanOffer).mockReset();
     vi.mocked(requestLoanOTP).mockReset();
@@ -225,6 +235,95 @@ describe("LoanApplicationsPage", () => {
     await waitFor(() =>
       expect(downloadLoanDocument).toHaveBeenCalledWith("token", "app-1", "d1"),
     );
+  });
+
+  it("summarises documents by review state and hides uploaded ones", async () => {
+    const docs = documentTypes.map((type, index) => ({
+      documentId: `d${index}`,
+      type,
+      verificationStatus: "pending",
+      uploadedAt: "2026-10-30T00:00:00Z",
+      mimeType: "image/jpeg",
+      sizeBytes: 2048,
+    }));
+    vi.mocked(getLoan).mockResolvedValueOnce({
+      ...baseApplication,
+      status: "draft",
+      documents: docs.slice(1),
+    });
+    const first = render(<LoanApplicationsPage applicationId="app-1" />);
+    expect(await screen.findByText("Vui lòng cập nhật chứng từ")).toBeTruthy();
+    expect(screen.getByLabelText("CCCD mặt trước: mở camera")).toBeTruthy();
+    expect(screen.queryByLabelText("CCCD mặt sau: mở camera")).toBeNull();
+    first.unmount();
+
+    vi.mocked(getLoan).mockResolvedValueOnce({
+      ...baseApplication,
+      status: "draft",
+      documents: docs,
+    });
+    const second = render(<LoanApplicationsPage applicationId="app-1" />);
+    expect(await screen.findByText(/đang chờ ngân hàng duyệt/)).toBeTruthy();
+    expect(screen.queryByText("Chứng từ đầy đủ")).toBeNull();
+    second.unmount();
+
+    vi.mocked(getLoan).mockResolvedValueOnce({
+      ...baseApplication,
+      status: "under_review",
+      documents: docs.map((doc) => ({
+        ...doc,
+        verificationStatus: "verified",
+      })),
+    });
+    render(<LoanApplicationsPage applicationId="app-1" />);
+    expect(await screen.findByText("Chứng từ đầy đủ")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Tải xuống/ })).toBeNull();
+  });
+
+  it("uses identity documents from the profile instead of asking again", async () => {
+    const draft = { ...baseApplication, status: "draft" as const };
+    vi.mocked(getLoan).mockResolvedValue(draft);
+    vi.mocked(attachLoanProfileDocuments).mockResolvedValue({
+      ...draft,
+      documents: (["IDENTITY_FRONT", "IDENTITY_BACK"] as const).map((type) => ({
+        documentId: type,
+        type,
+        verificationStatus: "pending",
+        uploadedAt: "2026-10-30T00:00:00Z",
+        mimeType: "image/jpeg",
+        sizeBytes: 2048,
+      })),
+    });
+    render(<LoanApplicationsPage applicationId="app-1" />);
+
+    expect(await screen.findByText("Đã có 2/7 chứng từ")).toBeTruthy();
+    expect(screen.queryByLabelText("CCCD mặt trước: mở camera")).toBeNull();
+    expect(attachLoanProfileDocuments).toHaveBeenCalledTimes(1);
+    expect(attachLoanProfileDocuments).toHaveBeenCalledWith("token", "app-1");
+  });
+
+  it("stores other documents in the profile, then snapshots them into the application", async () => {
+    const draft = { ...baseApplication, status: "draft" as const };
+    vi.mocked(getLoan).mockResolvedValue(draft);
+    vi.mocked(attachLoanProfileDocuments).mockResolvedValue(draft);
+    render(<LoanApplicationsPage applicationId="app-1" />);
+    const camera = await screen.findByLabelText(
+      "Sao kê lương 3 tháng: mở camera",
+    );
+    const photo = new File(["x"], "salary.jpg", { type: "image/jpeg" });
+    fireEvent.change(camera, { target: { files: [photo] } });
+
+    await waitFor(() =>
+      expect(uploadDocument).toHaveBeenCalledWith(
+        "token",
+        "SALARY_STATEMENT_3_MONTHS",
+        photo,
+      ),
+    );
+    await waitFor(() =>
+      expect(attachLoanProfileDocuments).toHaveBeenCalledTimes(2),
+    );
+    expect(uploadLoanDocument).not.toHaveBeenCalled();
   });
 
   it("treats a missing offer as an empty state", async () => {

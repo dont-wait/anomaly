@@ -39,6 +39,16 @@ export function documentLabel(type: string) {
       return "Chứng từ thu nhập";
     case "ADDRESS_PROOF":
       return "Chứng từ địa chỉ";
+    case "VNEID_PERSONAL":
+      return "VNeID - thông tin cá nhân";
+    case "VNEID_RESIDENCE":
+      return "VNeID - cư trú";
+    case "VSSID_PARTICIPATION":
+      return "VssID - tham gia BHXH";
+    case "VSSID_DETAIL":
+      return "VssID - chi tiết BHXH";
+    case "SALARY_STATEMENT_3_MONTHS":
+      return "Sao kê lương 3 tháng";
     default:
       return type;
   }

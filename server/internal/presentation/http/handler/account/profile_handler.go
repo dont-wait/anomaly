@@ -3,6 +3,7 @@ package account
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -313,7 +314,7 @@ func (h *Handler) uploadProfileMedia(w http.ResponseWriter, r *http.Request, ava
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusServiceUnavailable })
 		return
 	}
-	media := accountdomain.ProfileMedia{ID: mediaID, Type: kind, FileName: file.fileName, ContentType: file.contentType, StorageKey: key, SizeBytes: int64(len(file.data)), UploadedAt: time.Now().UTC(), Status: "ACTIVE"}
+	media := accountdomain.ProfileMedia{ID: mediaID, Type: kind, FileName: file.fileName, ContentType: file.contentType, StorageKey: key, SizeBytes: int64(len(file.data)), SHA256: fmt.Sprintf("%x", sha256.Sum256(file.data)), UploadedAt: time.Now().UTC(), Status: "ACTIVE"}
 	var previousKey string
 	if avatar {
 		if account.Customer.Avatar != nil {

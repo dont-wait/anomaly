@@ -3,7 +3,8 @@ import { navigate, routes } from "@/app/routes";
 import { ArrowLeftIcon, ChevronRightIcon, SavingsIcon } from "@/shared/icons";
 import { BottomNav } from "@/shared/layout/BottomNav";
 import { Logo } from "@/shared/layout/Logo";
-import { SelectSheet } from "@/shared/ui";
+import { MoneyInput } from "@/features/loans/components/MoneyInput";
+import { ChoiceList, StepForm } from "@/shared/ui";
 import { DEMO_ACCOUNT_BALANCE, DEMO_SOURCE_ACCOUNT, demoSavings } from "./mocks/savings";
 import { SAVINGS_TERMS, estimateSavings, formatDate, formatVnd, parseAmount } from "./utils/format";
 import type { SavingsContract, SavingsDraft, SavingsStatus } from "./model";
@@ -68,6 +69,7 @@ export default function SavingsPage() {
   const [selectedId, setSelectedId] = useState(demoSavings[0].id);
   const [amountText, setAmountText] = useState("10000000");
   const [termMonths, setTermMonths] = useState(12);
+  const [openStep, setOpenStep] = useState<"amount" | "term">("amount");
   const [accepted, setAccepted] = useState(false);
   const [draft, setDraft] = useState<SavingsDraft | null>(null);
   const [withdrawAccepted, setWithdrawAccepted] = useState(false);
@@ -82,11 +84,11 @@ export default function SavingsPage() {
   const canOpen = Number.isSafeInteger(amount) && amount >= 1_000_000 && amount <= DEMO_ACCOUNT_BALANCE;
 
   const showContract = (id: string) => { setSelectedId(id); setScreen("detail"); };
-  const startOpen = () => { setAccepted(false); setFormError(null); setScreen("open"); };
-  const previewOpen = () => {
+  const startOpen = () => { setAccepted(false); setFormError(null); setOpenStep("amount"); setScreen("open"); };
+  const previewOpen = (months: number) => {
     try {
       if (amount > DEMO_ACCOUNT_BALANCE) throw new Error("Số dư mô phỏng không đủ để gửi");
-      const quote = estimateSavings(amount, termMonths, new Date().toISOString());
+      const quote = estimateSavings(amount, months, new Date().toISOString());
       setDraft(quote); setAccepted(false); setFormError(null); setScreen("open-preview");
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Giá trị không hợp lệ");
@@ -154,34 +156,31 @@ export default function SavingsPage() {
       <BottomNav active="savings" onChange={(id) => { if (id === "home") navigate(routes.dashboard); }} />
     </> : null}
 
-    {screen === "open" && <>
-      <Head title="Mở sổ tiết kiệm" onBack={() => setScreen("list")} />
-      <main className="savings-content">
-        <section className="savings-banner"><span className="savings-overline">TÍCH LŨY</span><h2>Tiết kiệm có kỳ hạn</h2><p>Lãi suất cố định, an tâm với kế hoạch tương lai.</p></section>
-        <div className="savings-section-title"><h2>Tài khoản trích tiền</h2><span>Khả dụng</span></div>
-        <Section><Line label="Tài khoản thanh toán" value={DEMO_SOURCE_ACCOUNT} /><Line label="Số dư mô phỏng" value={formatVnd(DEMO_ACCOUNT_BALANCE)} /></Section>
-        <div className="savings-section-title"><h2>Số tiền gửi</h2><span>Từ 1.000.000 VND</span></div>
-        <Section>
-          <label htmlFor="savings-amount" className="savings-muted">Nhập số tiền (VND)</label>
-          <input id="savings-amount" className="savings-amount-input" inputMode="numeric" value={amountText}
-            onChange={(event) => { setAmountText(event.target.value); setFormError(null); }} />
-          <div className="savings-amount-chips">{[1_000_000, 5_000_000, 10_000_000].map((value) => <button type="button" key={value} onClick={() => { setAmountText(String(value)); setFormError(null); }}>{formatVnd(value)}</button>)}</div>
-        </Section>
-        <div className="savings-section-title"><h2>Chọn kỳ hạn</h2><span>Lãi suất cố định</span></div>
-        <Section><label className="savings-muted">Kỳ hạn gửi</label>
-          <SelectSheet id="savings-term" label="Kỳ hạn gửi" value={String(termMonths)} onChange={(value) => setTermMonths(Number(value))}
-            options={SAVINGS_TERMS.map(({ months, rate }) => ({ value: String(months), label: `${months} tháng`, description: `Lãi suất ${rate}%/năm` }))} />
-        </Section>
-        <Section className="savings-summary"><h3>Ước tính lợi nhuận</h3>
-          <Line label="Tiền gốc" value={Number.isFinite(amount) ? formatVnd(amount) : "—"} />
-          <Line label="Lãi suất năm" value={`${SAVINGS_TERMS.find((t) => t.months === termMonths)?.rate}%`} />
-          <Line label="Tiền lãi dự kiến" value={canOpen ? formatVnd(estimateSavings(amount, termMonths, new Date().toISOString()).interest) : "—"} />
-        </Section>
+    {screen === "open" && (
+      <StepForm
+        title="Mở sổ tiết kiệm"
+        stepId={openStep}
+        stepNumber={openStep === "amount" ? 1 : 2}
+        stepCount={3}
+        heading={openStep === "amount" ? "Bạn muốn gửi bao nhiêu?" : "Bạn muốn gửi trong bao lâu?"}
+        hint={openStep === "amount" ? `Tối thiểu ${formatVnd(1_000_000)}` : "Lãi suất cố định trong suốt kỳ hạn."}
+        canContinue={canOpen}
+        onBack={() => { if (openStep === "term") setOpenStep("amount"); else setScreen("list"); }}
+        onNext={() => { if (openStep === "amount") setOpenStep("term"); else previewOpen(termMonths); }}
+      >
+        {openStep === "amount" && <>
+          <MoneyInput label="Số tiền gửi" size="lg" value={Number.isFinite(amount) ? amount : 0} suggestMin={1_000_000} suggestMax={DEMO_ACCOUNT_BALANCE}
+            error={amount > DEMO_ACCOUNT_BALANCE ? "Số tiền vượt số dư khả dụng." : undefined}
+            onChange={(value) => { setAmountText(String(value)); setFormError(null); }} />
+          <div className="savings-amount-chips">{[1_000_000, 5_000_000, 10_000_000].map((value) => <button type="button" key={value} onClick={() => { setAmountText(String(value)); setFormError(null); }}>{value / 1_000_000} Triệu</button>)}</div>
+          <Section><Line label="Tài khoản trích tiền" value={DEMO_SOURCE_ACCOUNT} /><Line label="Số dư mô phỏng" value={formatVnd(DEMO_ACCOUNT_BALANCE)} /></Section>
+        </>}
+        {openStep === "term" && <ChoiceList label="Kỳ hạn gửi" value={String(termMonths)}
+          options={SAVINGS_TERMS.map(({ months, rate }) => ({ value: String(months), label: `${months} tháng`, description: `Lãi suất ${rate}%/năm` }))}
+          onChoose={(value) => setTermMonths(Number(value))} onConfirm={() => previewOpen(termMonths)} />}
         {formError && <p role="alert" className="savings-error">{formError}</p>}
-        {!canOpen && <p className="savings-hint">Nhập số tiền từ 1.000.000 VND và không vượt số dư mô phỏng.</p>}
-        <Button onClick={previewOpen} disabled={!canOpen}>Tiếp tục <span aria-hidden="true">→</span></Button>
-      </main>
-    </>}
+      </StepForm>
+    )}
 
     {screen === "open-preview" && draft && <>
       <Head title="Xác nhận gửi tiết kiệm" onBack={() => setScreen("open")} />

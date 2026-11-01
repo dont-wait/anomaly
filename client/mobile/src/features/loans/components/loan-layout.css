@@ -81,7 +81,7 @@
   padding: 8px 11px;
   color: #00236f;
   background: #eaedff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -99,7 +99,7 @@
   padding: 8px 11px;
   color: #00236f;
   background: #eaedff;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -136,7 +136,7 @@
   color: white;
   background: #00236f;
   box-shadow: 0 6px 15px rgb(0 35 111 / 14%);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 750;
   transition:
     transform 150ms,
@@ -162,7 +162,7 @@
   padding: 12px;
   color: #4b2696;
   background: #efe8ff;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .loan-notice-error {
@@ -217,6 +217,6 @@
   border-radius: 22px;
   color: #6b38d4;
   background: #f0eaff;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
 }

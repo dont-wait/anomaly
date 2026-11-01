@@ -82,7 +82,7 @@ func TestDocumentSlotsExposePolicyAndReadOnlyIdentity(t *testing.T) {
 	for _, slot := range slots {
 		byType[slot.Type] = slot
 	}
-	if len(slots) != 4 {
+	if len(slots) != 9 {
 		t.Fatalf("slots = %#v", slots)
 	}
 	front := byType["IDENTITY_FRONT"]

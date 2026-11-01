@@ -55,6 +55,7 @@ type ProfileMedia struct {
 	ContentType string
 	StorageKey  string
 	SizeBytes   int64
+	SHA256      string
 	UploadedAt  time.Time
 	Status      string
 }

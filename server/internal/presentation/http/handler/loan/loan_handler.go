@@ -127,6 +127,7 @@ type Handler struct {
 	Submit         *commands.SubmitLoanApplicationCommandHandler
 	Review         *commands.StartLoanReviewCommandHandler
 	DocumentReview *commands.ReviewLoanDocumentCommandHandler
+	AttachProfile  *commands.AttachProfileDocumentsCommandHandler
 	Assess         *commands.AssessLoanApplicationCommandHandler
 	Decide         *commands.ManualLoanDecisionCommandHandler
 	Disburse       *commands.DisburseLoanCommandHandler
@@ -380,6 +381,11 @@ func RegisterRoutes(
 		"POST /api/loans/{applicationId}/submit",
 		h.submit,
 		"submitPersonalLoan",
+	)
+	auth(
+		"POST /api/loans/{applicationId}/documents/from-profile",
+		h.attachProfileDocuments,
+		"attachPersonalLoanProfileDocuments",
 	)
 	auth(
 		"POST /api/loans/{applicationId}/documents/{documentId}/verification",
@@ -995,6 +1001,24 @@ func (h *Handler) submit(
 		return
 	}
 
+	httpx.WriteJSON(w, 200, result)
+}
+
+// POST /api/loans/{applicationId}/documents/from-profile
+func (h *Handler) attachProfileDocuments(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	a, err := h.application(r, true)
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+	result, err := h.AttachProfile.Handle(r.Context(), a.Id, a.CustomerId)
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
 	httpx.WriteJSON(w, 200, result)
 }
 

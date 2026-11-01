@@ -201,6 +201,15 @@ export interface VerifiedEvidenceInput {
 }
 
 // Product and pre-application quote (PR #115)
+export const attachLoanProfileDocuments = (
+  token: string,
+  applicationId: string,
+) =>
+  requestJson<LoanApplication>(
+    `/api/loans/${encodeURIComponent(applicationId)}/documents/from-profile`,
+    { method: "POST", token },
+  );
+
 export const listLoanPackages = (token: string, signal?: AbortSignal) =>
   get<{ items: LoanPackage[] }>(`${root}/packages`, token, signal);
 export const preQuoteLoan = (token: string, input: LoanPreQuoteInput) =>

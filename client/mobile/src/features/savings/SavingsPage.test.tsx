@@ -20,7 +20,12 @@ describe("Stitch savings UI mock", () => {
     render(<SavingsPage />);
     fireEvent.click(screen.getByRole("button", { name: /Gửi tiết kiệm mới/ }));
     expect(screen.getByRole("heading", { name: "Mở sổ tiết kiệm" })).toBeTruthy();
+    expect(screen.getByText("Bước 1/3")).toBeTruthy();
+    expect(screen.queryByRole("radiogroup", { name: "Kỳ hạn gửi" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Tiếp tục/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /^6 tháng/ }));
+    expect(screen.getByText("Bước 2/3")).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: /^6 tháng/ }));
     const confirm = screen.getByRole("button", { name: /Xác nhận gửi/ });
     expect(confirm.hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("checkbox"));

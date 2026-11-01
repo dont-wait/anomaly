@@ -160,13 +160,19 @@ func toProfileResponse(a *accountdomain.UserAccount) AccountResponsePrivate {
 }
 
 // toProfileDocumentSlots applies the first-release document policy: verified
-// identity evidence is read-only, income and address proofs are optional.
+// identity evidence is read-only, other documents are optional in the profile.
 func toProfileDocumentSlots(a *accountdomain.UserAccount) []ProfileDocumentSlot {
 	slots := []ProfileDocumentSlot{
 		{Type: "IDENTITY_FRONT", Required: true},
 		{Type: "IDENTITY_BACK", Required: true},
 		{Type: "INCOME_PROOF", Replaceable: true},
 		{Type: "ADDRESS_PROOF", Replaceable: true},
+		// Chứng từ vay: tải một lần ở profile, mỗi hồ sơ vay giữ bản chụp riêng.
+		{Type: "VNEID_PERSONAL", Replaceable: true},
+		{Type: "VNEID_RESIDENCE", Replaceable: true},
+		{Type: "VSSID_PARTICIPATION", Replaceable: true},
+		{Type: "VSSID_DETAIL", Replaceable: true},
+		{Type: "SALARY_STATEMENT_3_MONTHS", Replaceable: true},
 	}
 	if a.Customer != nil {
 		for index := range slots {

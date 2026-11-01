@@ -4,11 +4,12 @@ import {
   faFolderOpen,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { navigate, routes, loanApplication } from "@/app/routes";
 import { useAuth } from "@/features/auth/useAuth";
 import {
   acceptLoanOffer,
+  attachLoanProfileDocuments,
   confirmLoanContract,
   documentLabels,
   documentTypes,
@@ -33,6 +34,7 @@ import {
   percentBps,
   vnd,
 } from "@/features/loans/format";
+import { uploadDocument } from "@/features/auth/api/profileMutations";
 import { ApiError } from "@/shared/lib/http";
 import {
   LoanDocumentCard,
@@ -55,6 +57,11 @@ const appendUnique = <T,>(
   return [...current, ...incoming.filter((item) => !seen.has(key(item)))];
 };
 
+const PROFILE_DOCUMENT_TYPES: DocumentType[] = [
+  "IDENTITY_FRONT",
+  "IDENTITY_BACK",
+];
+
 const missingDocumentTypes = (application: LoanApplication) =>
   documentTypes.filter(
     (type) =>
@@ -62,6 +69,49 @@ const missingDocumentTypes = (application: LoanApplication) =>
         (doc) => doc.type === type && doc.verificationStatus !== "rejected",
       ),
   );
+
+type DocumentState = "complete" | "needsUpdate" | "pending";
+
+/** Chỉ đầy đủ khi cả 7 loại đã được duyệt; đã gửi đủ nhưng chưa duyệt thì đang chờ. */
+const documentState = (application: LoanApplication): DocumentState => {
+  if (missingDocumentTypes(application).length > 0) return "needsUpdate";
+  const allVerified = documentTypes.every((type) =>
+    (application.documents ?? []).some(
+      (doc) => doc.type === type && doc.verificationStatus === "verified",
+    ),
+  );
+  return allVerified ? "complete" : "pending";
+};
+
+const DOCUMENT_SUMMARY: Record<
+  DocumentState,
+  { text: string; className: string }
+> = {
+  complete: {
+    text: "Chứng từ đầy đủ",
+    className: "bg-emerald-50 text-emerald-700",
+  },
+  needsUpdate: {
+    text: "Vui lòng cập nhật chứng từ",
+    className: "bg-amber-50 text-amber-800",
+  },
+  pending: {
+    text: "Đã gửi đủ chứng từ, đang chờ ngân hàng duyệt",
+    className: "bg-blue-50 text-blue-700",
+  },
+};
+
+function DocumentSummary({ application }: { application: LoanApplication }) {
+  const summary = DOCUMENT_SUMMARY[documentState(application)];
+  return (
+    <p
+      role="status"
+      className={`rounded-xl px-3 py-2 text-sm font-semibold ${summary.className}`}
+    >
+      {summary.text}
+    </p>
+  );
+}
 
 export default function LoanApplicationsPage({
   applicationId,
@@ -144,6 +194,28 @@ export default function LoanApplicationsPage({
     };
   }, [applicationId, onApplicationChange, token]);
 
+  // Chứng từ đã có trong profile thì chụp vào hồ sơ, khách không phải tải lại. Thất bại vẫn
+  // tải tay được nên không báo lỗi.
+  const attachedProfile = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      !token ||
+      application?.status !== "draft" ||
+      attachedProfile.current === application.id ||
+      documentTypes.every((type) =>
+        (application.documents ?? []).some((doc) => doc.type === type),
+      )
+    )
+      return;
+    attachedProfile.current = application.id;
+    attachLoanProfileDocuments(token, application.id)
+      .then((updated) => {
+        setApplication(updated);
+        onApplicationChange?.(updated);
+      })
+      .catch(() => undefined);
+  }, [application, onApplicationChange, token]);
+
   const run = async (fn: () => Promise<unknown>, success: string) => {
     setBusy(true);
     setError("");
@@ -168,10 +240,16 @@ export default function LoanApplicationsPage({
       setError("Chỉ nhận PDF/JPEG/PNG tối đa 10 MiB.");
       return;
     }
-    await run(
-      () => uploadLoanDocument(token, applicationId, type, file),
-      `Đã tải ${documentLabels[type]} lên hồ sơ.`,
-    );
+    await run(async () => {
+      // CCCD đến từ KYC nên nộp thẳng vào hồ sơ. Loại khác lưu vào profile để
+      // dùng lại cho hồ sơ sau, rồi chụp một bản vào hồ sơ này.
+      if (PROFILE_DOCUMENT_TYPES.includes(type)) {
+        await uploadLoanDocument(token, applicationId, type, file);
+        return;
+      }
+      await uploadDocument(token, type, file);
+      await attachLoanProfileDocuments(token, applicationId);
+    }, `Đã tải ${documentLabels[type]} lên hồ sơ.`);
   };
   const download = async (documentId: string) => {
     if (!token || !applicationId) return;
@@ -238,7 +316,7 @@ export default function LoanApplicationsPage({
                       </span>
                     </span>
                     <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${status?.className ?? "bg-gray-100 text-gray-700"}`}
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${status?.className ?? "bg-gray-100 text-gray-700"}`}
                     >
                       {applicationStatusLabel(app.status)}
                     </span>
@@ -309,7 +387,9 @@ export default function LoanApplicationsPage({
                   <strong>{applicationStatusLabel(application.status)}</strong>
                 </p>
                 <p className="text-xs text-on-surface-variant italic">
-                  Sau khi nộp, Chúng tôi phải thẩm định và ra quyết định. Quý khách vui lòng chờ kết quả trong 24h kể từ khi yêu cầu được gửi.
+                  Sau khi nộp, Chúng tôi phải thẩm định và ra quyết định. Quý
+                  khách vui lòng chờ kết quả trong 24h kể từ khi yêu cầu được
+                  gửi.
                 </p>
                 <Action
                   secondary
@@ -324,10 +404,7 @@ export default function LoanApplicationsPage({
               </Panel>
               {application.status === "draft" && (
                 <Panel title="Hoàn tất hồ sơ">
-                  <p className="text-sm">
-                    Hồ sơ chưa được gửi. Tải đủ chứng từ rồi gửi để ngân hàng
-                    thẩm định.
-                  </p>
+                  <DocumentSummary application={application} />
                   <label className="block text-xs font-semibold text-primary">
                     Đã có {documentTypes.length - missingDocuments.length}/
                     {documentTypes.length} chứng từ
@@ -341,30 +418,30 @@ export default function LoanApplicationsPage({
                     Chụp trực tiếp hoặc chọn tệp PDF, JPEG, PNG, tối đa 10 MiB
                     mỗi tệp.
                   </p>
-                  {documentTypes.map((type) => {
-                    const documents = application.documents ?? [];
-                    const doc = documents.find(
-                      (d) =>
-                        d.type === type && d.verificationStatus !== "rejected",
-                    );
-                    return (
-                      <LoanDocumentCard
-                        key={type}
-                        type={type}
-                        document={doc}
-                        rejected={documents.some((d) => d.type === type)}
-                        disabled={busy}
-                        uploading={uploadingType === type}
-                        onSelect={(file) => {
-                          setUploadingType(type);
-                          void upload(type, file).finally(() =>
-                            setUploadingType(null),
-                          );
-                        }}
-                        onDownload={(id) => void download(id)}
-                      />
-                    );
-                  })}
+                  {missingDocuments.length > 0 && (
+                    <p className="text-xs text-on-surface-variant">
+                      Chụp trực tiếp hoặc chọn tệp PDF, JPEG, PNG, tối đa 10 MiB
+                      mỗi tệp.
+                    </p>
+                  )}
+                  {missingDocuments.map((type) => (
+                    <LoanDocumentCard
+                      key={type}
+                      type={type}
+                      rejected={(application.documents ?? []).some(
+                        (d) => d.type === type,
+                      )}
+                      disabled={busy}
+                      uploading={uploadingType === type}
+                      onSelect={(file) => {
+                        setUploadingType(type);
+                        void upload(type, file).finally(() =>
+                          setUploadingType(null),
+                        );
+                      }}
+                      onDownload={(id) => void download(id)}
+                    />
+                  ))}
                   {missingDocuments.length > 0 && (
                     <p className="text-xs text-on-surface-variant">
                       Còn thiếu:{" "}
@@ -390,13 +467,15 @@ export default function LoanApplicationsPage({
               {application.status !== "draft" &&
                 (application.documents?.length ?? 0) > 0 && (
                   <Panel title="Chứng từ đã gửi">
-                    {application.documents?.map((doc) => (
-                      <LoanDocumentRow
-                        key={doc.documentId}
-                        document={doc}
-                        onDownload={(id) => void download(id)}
-                      />
-                    ))}
+                    <DocumentSummary application={application} />
+                    {documentState(application) !== "complete" &&
+                      application.documents?.map((doc) => (
+                        <LoanDocumentRow
+                          key={doc.documentId}
+                          document={doc}
+                          onDownload={(id) => void download(id)}
+                        />
+                      ))}
                   </Panel>
                 )}
               {application.status === "under_review" && (

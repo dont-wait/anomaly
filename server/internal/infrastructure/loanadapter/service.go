@@ -1,6 +1,7 @@
 package loanadapter
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -306,4 +307,88 @@ func (a *Access) LoanContractEmail(ctx context.Context, customerID string) (stri
 		return "", fmt.Errorf("active verified customer email required")
 	}
 	return u.Email, nil
+}
+
+// VerifiedProfileDocuments trả CCCD đã xác minh qua KYC và các chứng từ đang
+// hiệu lực trong hồ sơ cá nhân có thể dùng lại cho hồ sơ vay.
+func (a *Access) VerifiedProfileDocuments(
+	ctx context.Context,
+	customerID string,
+) ([]loandomain.ApplicationDocument, error) {
+	if a == nil || a.Accounts == nil {
+		return nil, fmt.Errorf("loan profile documents unavailable")
+	}
+	user, err := a.Accounts.FindByID(ctx, customerID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, nil
+	}
+	var documents []loandomain.ApplicationDocument
+	if session := user.VerifiedKYCSession(); session != nil {
+		for _, item := range []struct {
+			documentType string
+			media        account.MediaObject
+		}{
+			{"IDENTITY_FRONT", session.Media.IdentityFront},
+			{"IDENTITY_BACK", session.Media.IdentityBack},
+		} {
+			documents = append(documents, loandomain.ApplicationDocument{
+				Type:       item.documentType,
+				StorageKey: item.media.StorageKey,
+				MIMEType:   item.media.MIMEType,
+				SizeBytes:  item.media.SizeBytes,
+				SHA256:     item.media.SHA256,
+			})
+		}
+	}
+	if user.Customer != nil {
+		for _, media := range user.Customer.Documents {
+			if media.Status != "ACTIVE" || !reusableProfileDocument(media.Type) {
+				continue
+			}
+			documents = append(documents, loandomain.ApplicationDocument{
+				Type:       media.Type,
+				StorageKey: media.StorageKey,
+				MIMEType:   media.ContentType,
+				SizeBytes:  media.SizeBytes,
+				SHA256:     media.SHA256,
+			})
+		}
+	}
+	return documents, nil
+}
+
+// CopyLoanDocument tạo bản sao riêng cho hồ sơ vay.
+func (v *DocumentVerifier) CopyLoanDocument(
+	ctx context.Context,
+	sourceKey, targetKey, mimeType string,
+) error {
+	if v == nil || v.Media == nil {
+		return fmt.Errorf("loan media storage unavailable")
+	}
+	source, err := v.Media.Download(ctx, sourceKey)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = source.Body.Close() }()
+	// S3 client cần body tua lại được, nên đọc vào bộ nhớ trong giới hạn chứng từ.
+	data, err := io.ReadAll(io.LimitReader(source.Body, (10<<20)+1))
+	if err != nil {
+		return err
+	}
+	if len(data) > 10<<20 {
+		return fmt.Errorf("document size exceeds loan limit")
+	}
+	return v.Media.Upload(ctx, targetKey, bytes.NewReader(data), mimeType)
+}
+
+func reusableProfileDocument(documentType string) bool {
+	switch documentType {
+	case "VNEID_PERSONAL", "VNEID_RESIDENCE", "VSSID_PARTICIPATION",
+		"VSSID_DETAIL", "SALARY_STATEMENT_3_MONTHS":
+		return true
+	}
+	return false
 }
