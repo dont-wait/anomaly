@@ -5,3 +5,4 @@ export * from "./Badge";
 export * from "./Button";
 export * from "./Input";
 export * from "./BottomSheet";
+export * from "./SelectSheet";
