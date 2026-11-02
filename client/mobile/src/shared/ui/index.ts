@@ -4,6 +4,7 @@ export * from "./IconButton";
 export * from "./Badge";
 export * from "./Button";
 export * from "./Input";
+export * from "./PasswordInput";
 export * from "./BottomSheet";
 export * from "./SelectSheet";
 export * from "./FileSourcePicker";

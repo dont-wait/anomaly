@@ -1,6 +1,7 @@
 export const routes = {
   login: "#/login",
   register: "#/register",
+  forgotPassword: "#/forgot-password",
   dashboard: "#/dashboard",
   transfer: "#/transfer",
   transactions: "#/transactions",

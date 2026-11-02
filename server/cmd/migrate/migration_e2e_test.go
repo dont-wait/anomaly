@@ -103,7 +103,7 @@ func TestMigrationsAgainstMongoDB(t *testing.T) {
 		CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
 		DOB:            time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
 		Email:          fmt.Sprintf("migration-%d@example.com", time.Now().UnixNano()),
-		Password:       "migration-e2e-password",
+		Password:       "Migration-e2e-password1",
 	})
 	if err != nil {
 		t.Fatalf("register account against migrated schema: %v", err)

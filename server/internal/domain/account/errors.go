@@ -7,7 +7,7 @@ var (
 	ErrIdempotencyConflict    = errors.New("idempotency key already used with different registration data")
 	ErrRegistrationPending    = errors.New("registration is still being persisted; retry shortly")
 	ErrInvalidEmail           = errors.New("invalid email")
-	ErrWeakPassword           = errors.New("password must be at least 8 characters")
+	ErrWeakPassword           = errors.New("password must be at least 8 characters and include uppercase, lowercase, digit and special characters")
 	ErrInvalidUsername        = errors.New("username must not be empty")
 	ErrInvalidCCCD            = errors.New("CCCD must be exactly 12 digits")
 	ErrInvalidDate            = errors.New("invalid or missing date")

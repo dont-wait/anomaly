@@ -333,3 +333,37 @@ describe("ProfileSidebar", () => {
     expect(screen.queryByText("Lưu ảnh")).toBeNull();
   });
 });
+
+describe("ChangePasswordPanel", () => {
+  const strong = ["New", "pass1", "!"].join("");
+  const submit = () =>
+    screen.getByRole<HTMLButtonElement>("button", {
+      name: "Cập nhật mật khẩu",
+    });
+
+  it("submits the current and new password", async () => {
+    const changePassword = vi.fn(async () => undefined);
+    renderSidebar(auth({ changePassword }));
+    fireEvent.click(screen.getByText("Đổi mật khẩu"));
+    type("Mật khẩu hiện tại", "Current1!");
+    type("Mật khẩu mới", strong);
+    type("Xác nhận mật khẩu mới", strong);
+    fireEvent.click(submit());
+    await waitFor(() =>
+      expect(changePassword).toHaveBeenCalledWith({
+        currentPassword: "Current1!",
+        newPassword: strong,
+      }),
+    );
+  });
+
+  it("rejects a password over the 72-byte server limit", async () => {
+    renderSidebar(auth());
+    fireEvent.click(screen.getByText("Đổi mật khẩu"));
+    const tooLong = `Aa1!${"x".repeat(69)}`;
+    type("Mật khẩu hiện tại", "Current1!");
+    type("Mật khẩu mới", tooLong);
+    type("Xác nhận mật khẩu mới", tooLong);
+    expect(submit().disabled).toBe(true);
+  });
+});

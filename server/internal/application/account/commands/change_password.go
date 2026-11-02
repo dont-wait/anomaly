@@ -9,6 +9,8 @@ import (
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
 
+const maxPasswordBytes = 72
+
 type ChangePasswordCommand struct {
 	AccountID       string
 	CurrentPassword string
@@ -39,9 +41,34 @@ func (h *ChangePasswordHandler) WithLimiter(limiter PasswordAttemptLimiter, logg
 	return h
 }
 
-func (h *ChangePasswordHandler) Handle(ctx context.Context, cmd ChangePasswordCommand) error {
-	if len(cmd.NewPassword) < minPasswordLength || len(cmd.NewPassword) > 72 {
+// validateNewPassword mirrors the client rules. bcrypt only hashes the first 72
+// bytes, so longer passwords are rejected instead of being silently truncated.
+func validateNewPassword(password string) error {
+	if len(password) < minPasswordLength || len(password) > maxPasswordBytes {
 		return accountdomain.ErrWeakPassword
+	}
+	var lower, upper, digit, special bool
+	for _, r := range password {
+		switch {
+		case r >= 'a' && r <= 'z':
+			lower = true
+		case r >= 'A' && r <= 'Z':
+			upper = true
+		case r >= '0' && r <= '9':
+			digit = true
+		default:
+			special = true
+		}
+	}
+	if !lower || !upper || !digit || !special {
+		return accountdomain.ErrWeakPassword
+	}
+	return nil
+}
+
+func (h *ChangePasswordHandler) Handle(ctx context.Context, cmd ChangePasswordCommand) error {
+	if err := validateNewPassword(cmd.NewPassword); err != nil {
+		return err
 	}
 	if h.limiter != nil {
 		allowed, err := h.limiter.Allow(ctx, cmd.AccountID, cmd.Source)
