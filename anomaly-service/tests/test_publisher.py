@@ -11,22 +11,51 @@ from app.publisher import KafkaOutputPublisher, canonical_risk_event, sign_risk_
 
 def assessment():
     prediction = Prediction("aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1", 0.9, 1, 0.5, "v1", "f1")
-    return prediction.as_dict()
+    return {
+        "schema_version": 1,
+        "event_id": "event-1",
+        "occurred_at": "2026-10-19T10:30:00Z",
+        "scored_at": "2026-10-19T10:30:01.120Z",
+        **prediction.as_dict(),
+    }
 
 
 def test_signature_matches_fixed_canonical_bytes():
     event = assessment()
     canonical = (
-        '{"transaction_id":"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",'
-        '"risk_score":0.9,"predicted_label":1,"threshold":0.5,'
-        '"model_version":"v1","feature_version":"f1"}'
+        '{"event_id":"event-1","feature_version":"f1","model_version":"v1",'
+        '"occurred_at":"2026-10-19T10:30:00Z","predicted_label":1,"risk_score":0.9,'
+        '"schema_version":1,"scored_at":"2026-10-19T10:30:01.12Z","threshold":0.5,'
+        '"transaction_id":"aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1"}'
     )
     expected = hmac.new(b"test-secret", canonical.encode("utf-8"), hashlib.sha256).hexdigest()
     signed = sign_risk_event(event, "test-secret")
-    assert signed == {**event, "signature": expected}
+    assert signed == {**event, "scored_at": "2026-10-19T10:30:01.12Z", "signature": expected}
     assert "signature" not in event
     assert sign_risk_event(dict(reversed(list(event.items()))), "test-secret") == signed
     assert sign_risk_event({**event, "signature": "stale"}, "test-secret") == signed
+
+
+@pytest.mark.parametrize("field", ["schema_version", "event_id", "occurred_at", "scored_at"])
+def test_missing_metadata_cannot_be_signed(field):
+    event = assessment()
+    del event[field]
+    with pytest.raises(ValueError, match=field):
+        sign_risk_event(event, "secret")
+
+
+def test_offset_timestamp_is_normalized_to_utc_before_signing():
+    signed = sign_risk_event(
+        {**assessment(), "occurred_at": "2026-10-19T17:30:00.123456700+07:00"}, "secret"
+    )
+    assert signed["occurred_at"] == "2026-10-19T10:30:00.1234567Z"
+    assert signed == sign_risk_event(signed, "secret")
+
+
+@pytest.mark.parametrize("value", ["2026-10-19T10:30:00", "2026-10-19T10:30:00+25:00", "nope"])
+def test_invalid_timestamp_cannot_be_signed(value):
+    with pytest.raises(ValueError):
+        sign_risk_event({**assessment(), "occurred_at": value}, "secret")
 
 
 def test_changed_payload_or_key_fails_signature_comparison():
@@ -36,6 +65,8 @@ def test_changed_payload_or_key_fails_signature_comparison():
         {**event, "risk_score": 0.8},
         {**event, "transaction_id": "tx-2"},
         {**event, "feature_version": "f2"},
+        {**event, "event_id": "event-2"},
+        {**event, "occurred_at": "2026-10-19T10:30:02Z"},
     ):
         assert not hmac.compare_digest(signature, sign_risk_event(changed, "secret")["signature"])
     assert not hmac.compare_digest(signature, sign_risk_event(event, "wrong-key")["signature"])

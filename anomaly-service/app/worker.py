@@ -117,10 +117,10 @@ def run(config, *, consumer=None, predictor=None, output=None, training=None):
             consumer.commit()
             if result is not None:
                 log.info(
-                    "decision published transfer_id=%s score=%.6f decision=%s",
-                    result["transfer_id"],
+                    "assessment published transaction_id=%s score=%.6f label=%s",
+                    result["transaction_id"],
                     result["risk_score"],
-                    result["decision"],
+                    result["predicted_label"],
                 )
     finally:
         if getattr(consumer, "close", None) is not None:

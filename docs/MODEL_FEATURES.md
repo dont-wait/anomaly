@@ -166,13 +166,15 @@ commit rolling feature state sau khi debit/credit thành công.
 
 ### Risk decision retention và recovery
 
-- API chỉ sử dụng decision chưa finalized và `expires_at > now`; không chờ MongoDB
-  TTL xóa record mới coi là hết hạn.
-- Response được lưu lần đầu theo `transfer_id`. Chỉ cho phép `PENDING` tiến tới
-  `ALLOW`/`BLOCK` với cùng `source_event_id`; terminal decision và finalized record
-  không bị ghi đè hoặc gia hạn bởi redelivery. Terminal response đầu tiên được giữ
-  nguyên, response mâu thuẫn đến sau không thay đổi kết quả đã nhận.
-- Finalize là idempotent và giữ audit thêm 24 giờ từ lần finalize đầu tiên.
+- Model chỉ publish assessment `ModelResponse` (`schema_version`, `event_id`,
+  `transaction_id`, `occurred_at`, `scored_at`, `risk_score`, `predicted_label`,
+  `threshold`, `model_version`, `feature_version`, `signature`), không gửi ALLOW/BLOCK.
+  Server suy ra quyết định từ `risk_score` (`DecisionForScore`).
+- API chỉ sử dụng assessment chưa finalized và có `event_id` khớp `TransferCreated`.
+- Assessment được lưu duy nhất theo `transaction_id`, `model_version`,
+  `feature_version`. Redelivery cùng kết quả được bỏ qua; response mâu thuẫn được park,
+  không ghi đè kết quả đã nhận.
+- Finalize là idempotent.
   Confirm retry thử cleanup lại; banking projector cũng finalize khi project event
   terminal, cùng MongoDB transaction với checkpoint, để khôi phục khi API crash.
 - Response JSON/validation/correlation lỗi được park trong MongoDB collection

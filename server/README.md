@@ -213,10 +213,10 @@ go run .
 
 Publisher GATv2 nằm tại `anomaly-service` và chạy như một service riêng. Service
 này dùng Kafka `TransferCreated` làm trigger, đọc event gốc + history từ
-EventStoreDB, chạy bundle GATv2 local rồi publish decision đúng schema mock cùng
-HMAC `signature` vào `anomaly.bank.risk-decisions.v1`, cùng training record. Policy
-đã chốt: label `1 → BLOCK`, `0 → ALLOW`; lỗi inference giữ offset để retry. Server
-xác minh chữ ký/correlation trước khi lưu `risk_decisions`. Dừng `consumer-mock`
+EventStoreDB, chạy bundle GATv2 local rồi publish assessment `ModelResponse` cùng
+HMAC `signature` vào `anomaly.bank.risk-decisions.v1`, cùng training record. Server
+suy ra ALLOW/BLOCK từ `risk_score`; lỗi inference giữ offset để retry. Server
+xác minh chữ ký trước khi lưu `risk_decisions`. Dừng `consumer-mock`
 trước khi dùng worker thật; ALLOW vẫn cần OTP hợp lệ khi confirm. Xem
 [anomaly-service/README.md](../anomaly-service/README.md).
 
