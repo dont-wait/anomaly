@@ -237,3 +237,23 @@ func setTransferOTPChallenge(t *testing.T, rdb *redis.Client, id, code string, t
 		t.Fatal(err)
 	}
 }
+
+func TestRedeemSpendsChallengeWithoutLeavingAuthorization(t *testing.T) {
+	store, rdb := newTransferOTPTestStore(t)
+	ctx := context.Background()
+	id := "redeem"
+	setTransferOTPChallenge(t, rdb, id, "123456", 30*time.Second)
+
+	if err := store.Redeem(ctx, id, "000000"); !errors.Is(err, ErrTransferOTPInvalid) {
+		t.Fatalf("wrong code: %v", err)
+	}
+	if err := store.Redeem(ctx, id, "123456"); err != nil {
+		t.Fatalf("correct code: %v", err)
+	}
+	if err := store.Redeem(ctx, id, "000000"); !errors.Is(err, ErrTransferOTPExpired) {
+		t.Fatalf("after redeem: %v", err)
+	}
+	if err := store.Redeem(ctx, id, "123456"); !errors.Is(err, ErrTransferOTPExpired) {
+		t.Fatalf("replay: %v", err)
+	}
+}

@@ -67,6 +67,27 @@ export async function login(
   return data;
 }
 
+export function requestPasswordReset(input: {
+  cccdNumber: string;
+  email: string;
+}) {
+  return requestApi<unknown>(API_ENDPOINTS.AUTH.PASSWORD_RESET_REQUEST, {
+    method: "POST",
+    body: input,
+  });
+}
+
+export function confirmPasswordReset(input: {
+  cccdNumber: string;
+  otp: string;
+  newPassword: string;
+}) {
+  return requestApi<unknown>(API_ENDPOINTS.AUTH.PASSWORD_RESET_CONFIRM, {
+    method: "POST",
+    body: input,
+  });
+}
+
 export async function createKycSession(
   input: LoginInput,
   options: { signal?: AbortSignal } = {},

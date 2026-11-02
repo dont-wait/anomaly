@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { faArrowLeft } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAuth } from "@/features/auth/useAuth";
@@ -7,9 +7,9 @@ import {
   requestProfileChange,
 } from "@/features/auth/api/profileMutations";
 import type { ProfileMedia } from "@/features/auth/api/profile";
-import { passwordRules } from "@/features/registration/model";
+import { isAcceptedNewPassword } from "@/features/registration/model";
 import { ApiError } from "@/shared/lib/http";
-import { FileSourcePicker, SelectSheet } from "@/shared/ui";
+import { FileSourcePicker, PasswordToggle, SelectSheet } from "@/shared/ui";
 import { PROVINCES } from "./provinces";
 import type { ProfileChangeInput } from "@/features/auth/api/profile";
 import {
@@ -150,6 +150,46 @@ function ProfileInput({
       />
       {error && <span className="profile-field-error">{error}</span>}
     </label>
+  );
+}
+
+function ProfilePasswordInput({
+  label,
+  value,
+  onChange,
+  autoComplete,
+  error,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: "current-password" | "new-password";
+  error?: string;
+}) {
+  const id = useId();
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="profile-field">
+      <label htmlFor={id}>{label}</label>
+      <div className="profile-password">
+        <input
+          id={id}
+          className="profile-input"
+          type={visible ? "text" : "password"}
+          autoComplete={autoComplete}
+          value={value}
+          aria-invalid={Boolean(error)}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <PasswordToggle
+          label={label}
+          visible={visible}
+          onToggle={() => setVisible(!visible)}
+          className="profile-password-toggle"
+        />
+      </div>
+      {error && <span className="profile-field-error">{error}</span>}
+    </div>
   );
 }
 
@@ -453,9 +493,8 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
             value={newEmail}
             onChange={setNewEmail}
           />
-          <ProfileInput
+          <ProfilePasswordInput
             label="Mật khẩu hiện tại"
-            type="password"
             autoComplete="current-password"
             value={currentPassword}
             onChange={setCurrentPassword}
@@ -486,7 +525,7 @@ export function ChangePasswordPanel({ onBack }: PanelProps) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const strong = passwordRules(newPassword).every(Boolean);
+  const strong = isAcceptedNewPassword(newPassword);
   const mismatch = confirmPassword !== "" && confirmPassword !== newPassword;
 
   const submit = async () => {
@@ -502,23 +541,20 @@ export function ChangePasswordPanel({ onBack }: PanelProps) {
 
   return (
     <PanelShell title="Đổi mật khẩu" onBack={onBack} busy={busy} error={error}>
-      <ProfileInput
+      <ProfilePasswordInput
         label="Mật khẩu hiện tại"
-        type="password"
         autoComplete="current-password"
         value={currentPassword}
         onChange={setCurrentPassword}
       />
-      <ProfileInput
+      <ProfilePasswordInput
         label="Mật khẩu mới"
-        type="password"
         autoComplete="new-password"
         value={newPassword}
         onChange={setNewPassword}
       />
-      <ProfileInput
+      <ProfilePasswordInput
         label="Xác nhận mật khẩu mới"
-        type="password"
         autoComplete="new-password"
         value={confirmPassword}
         onChange={setConfirmPassword}

@@ -30,3 +30,8 @@ export const passwordRules = (value: string) => [
   /[a-z]/.test(value) && /[A-Z]/.test(value),
   /\d/.test(value) && /[^a-zA-Z0-9]/.test(value),
 ];
+const MAX_PASSWORD_BYTES = 72;
+/** Quy tắc cho mật khẩu mới, gồm giới hạn 72 byte của bcrypt ở server. */
+export const isAcceptedNewPassword = (value: string) =>
+  passwordRules(value).every(Boolean) &&
+  new TextEncoder().encode(value).length <= MAX_PASSWORD_BYTES;

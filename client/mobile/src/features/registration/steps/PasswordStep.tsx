@@ -2,7 +2,7 @@ import type { RegistrationFlowState } from "../useRegistrationFlow";
 import { Next, Password, StepHeading } from "../components/StepPrimitives";
 import { faCheck, faLock } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { passwordRules } from "../model";
+import { isAcceptedNewPassword, passwordRules } from "../model";
 
 export function PasswordStep({
   error,
@@ -79,9 +79,7 @@ export function PasswordStep({
           {busy && <p role="status">{progress}</p>}
           <Next
             disabled={
-              busy ||
-              !passwordRules(password).every(Boolean) ||
-              password !== confirm
+              busy || !isAcceptedNewPassword(password) || password !== confirm
             }
           >
             {busy ? "Đang tạo tài khoản…" : "Tạo tài khoản và tiếp tục"}

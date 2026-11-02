@@ -10,7 +10,7 @@ POST {{base_url}}/api/auth/register
   "cccdIssuedDate": "2020-06-15T00:00:00Z",
   "dob": "1995-03-20T00:00:00Z",
   "email": "hurl-{{newUuid}}@example.com",
-  "password": "hurl-password-123"
+  "password": "Hurl-password-123"
 }
 HTTP 201
 Content-Type: application/json
@@ -25,7 +25,7 @@ jsonpath "$.data.kycExpiresAt" isIsoDate
 POST {{base_url}}/api/auth/login
 {
   "cccdNumber": "{{cccd}}",
-  "password": "hurl-password-123"
+  "password": "Hurl-password-123"
 }
 HTTP 403
 Content-Type: application/json
@@ -35,7 +35,7 @@ jsonpath "$.errors[0].code" == "KYC_REQUIRED"
 POST {{base_url}}/api/kyc/session
 {
   "cccdNumber": "{{cccd}}",
-  "password": "hurl-password-123"
+  "password": "Hurl-password-123"
 }
 HTTP 200
 Content-Type: application/json

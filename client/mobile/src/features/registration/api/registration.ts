@@ -54,7 +54,7 @@ export function registrationError(error: unknown) {
     if (error.hasCode("INVALID_CCCD"))
       return "Số CCCD phải gồm đúng 12 chữ số.";
     if (error.hasCode("WEAK_PASSWORD"))
-      return "Mật khẩu phải có ít nhất 8 ký tự.";
+      return "Mật khẩu cần ít nhất 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt.";
     if (error.hasCode("INVALID_USERNAME"))
       return "Vui lòng nhập tên tài khoản.";
     if (error.hasCode("INVALID_DATE"))

@@ -65,6 +65,8 @@ func (cmd RegisterAccountCommand) ValidateCustomerDetails() error {
 type RegisterAccountCommandHandler struct {
 	writeRepo AccountCreator
 	readRepo  AccountRepository
+	// seedPasswords relaxes the password policy for local demo seeding only.
+	seedPasswords bool
 }
 
 func NewRegisterAccountCommandHandler(
@@ -72,6 +74,13 @@ func NewRegisterAccountCommandHandler(
 	readRepo AccountRepository,
 ) *RegisterAccountCommandHandler {
 	return &RegisterAccountCommandHandler{writeRepo: writeRepo, readRepo: readRepo}
+}
+
+// AllowSeedPasswords keeps development seeds working with an operator-chosen
+// admin password such as ANOMALY_DEMO_ADMIN_PASSWORD. Never use it for requests.
+func (h *RegisterAccountCommandHandler) AllowSeedPasswords() *RegisterAccountCommandHandler {
+	h.seedPasswords = true
+	return h
 }
 
 func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd RegisterAccountCommand) (*accountdomain.UserAccount, error) {
@@ -85,8 +94,12 @@ func (h *RegisterAccountCommandHandler) Handle(ctx context.Context, cmd Register
 	}
 	cmd.Email = parsedEmail.Address
 
-	if len(cmd.Password) < minPasswordLength {
-		return nil, accountdomain.ErrWeakPassword
+	if h.seedPasswords {
+		if len(cmd.Password) < minPasswordLength {
+			return nil, accountdomain.ErrWeakPassword
+		}
+	} else if err := validateNewPassword(cmd.Password); err != nil {
+		return nil, err
 	}
 
 	if cmd.Username == "" {

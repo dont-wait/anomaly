@@ -40,7 +40,10 @@ func (s *profileRepoStub) FindByUsername(context.Context, string) (*accountdomai
 	return nil, nil
 }
 
-func (s *profileRepoStub) FindByCCCDNumber(context.Context, string) (*accountdomain.UserAccount, error) {
+func (s *profileRepoStub) FindByCCCDNumber(_ context.Context, cccd string) (*accountdomain.UserAccount, error) {
+	if s.account != nil && s.account.Customer != nil && s.account.Customer.Identity.Number == cccd {
+		return s.account, nil
+	}
 	return nil, nil
 }
 
@@ -134,11 +137,11 @@ func passwordAccount(t *testing.T) *accountdomain.UserAccount {
 func TestChangePasswordPersistsHashAndInvalidatesTokens(t *testing.T) {
 	repo := &profileRepoStub{account: passwordAccount(t)}
 	limiter := &limiterStub{}
-	err := NewChangePasswordHandler(repo).WithLimiter(limiter, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "new-password"})
+	err := NewChangePasswordHandler(repo).WithLimiter(limiter, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "New-passw0rd"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(repo.account.PasswordHash), []byte("new-password")); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(repo.account.PasswordHash), []byte("New-passw0rd")); err != nil {
 		t.Fatalf("stored hash does not match: %v", err)
 	}
 	if repo.account.TokenVersion != 1 || repo.account.Version != 1 || repo.saves != 1 || limiter.resets != 1 {
@@ -149,7 +152,7 @@ func TestChangePasswordPersistsHashAndInvalidatesTokens(t *testing.T) {
 func TestChangePasswordRecordsWrongCurrentPassword(t *testing.T) {
 	repo := &profileRepoStub{account: passwordAccount(t)}
 	limiter := &limiterStub{}
-	err := NewChangePasswordHandler(repo).WithLimiter(limiter, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "wrong", NewPassword: "new-password"})
+	err := NewChangePasswordHandler(repo).WithLimiter(limiter, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "wrong", NewPassword: "New-passw0rd"})
 	if !errors.Is(err, accountdomain.ErrCurrentPassword) {
 		t.Fatalf("error = %v", err)
 	}
@@ -160,7 +163,7 @@ func TestChangePasswordRecordsWrongCurrentPassword(t *testing.T) {
 
 func TestChangePasswordThrottledEvenWithCorrectPassword(t *testing.T) {
 	repo := &profileRepoStub{account: passwordAccount(t)}
-	err := NewChangePasswordHandler(repo).WithLimiter(&limiterStub{blocked: true}, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "new-password"})
+	err := NewChangePasswordHandler(repo).WithLimiter(&limiterStub{blocked: true}, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "New-passw0rd"})
 	if !errors.Is(err, accountdomain.ErrTooManyAttempts) || repo.saves != 0 {
 		t.Fatalf("error = %v, saves = %d", err, repo.saves)
 	}
@@ -330,7 +333,7 @@ func TestEmailChangeConfirmWithoutPendingExpires(t *testing.T) {
 func TestChangePasswordSucceedsWhenResetFails(t *testing.T) {
 	repo := &profileRepoStub{account: passwordAccount(t)}
 	limiter := &limiterStub{resetErr: errors.New("redis down")}
-	err := NewChangePasswordHandler(repo).WithLimiter(limiter, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "new-password"})
+	err := NewChangePasswordHandler(repo).WithLimiter(limiter, zerolog.Nop()).Handle(context.Background(), ChangePasswordCommand{AccountID: "owner", CurrentPassword: "old-password", NewPassword: "New-passw0rd"})
 	if err != nil || repo.saves != 1 {
 		t.Fatalf("error = %v, saves = %d", err, repo.saves)
 	}

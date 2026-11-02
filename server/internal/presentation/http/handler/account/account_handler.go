@@ -41,6 +41,8 @@ type Handler struct {
 	emailChange        *commands.EmailChangeHandler
 	pendingEmails      pendingEmailReader
 	passwordRetryAfter time.Duration
+	passwordReset      *commands.PasswordResetHandler
+	passwordResetSlots chan struct{}
 }
 
 type pendingEmailReader interface {
@@ -61,6 +63,12 @@ func (h *Handler) WithProfileSecurity(limiter commands.PasswordAttemptLimiter, e
 	h.passwordRetryAfter = passwordWindow
 	h.emailChange = emailChange
 	h.pendingEmails = pending
+	return h
+}
+
+func (h *Handler) WithPasswordReset(reset *commands.PasswordResetHandler) *Handler {
+	h.passwordReset = reset
+	h.passwordResetSlots = make(chan struct{}, maxPendingPasswordResets)
 	return h
 }
 

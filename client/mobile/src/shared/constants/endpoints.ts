@@ -12,6 +12,8 @@ export const API_ENDPOINTS = {
     PROFILE_AVATAR: "/api/auth/me/avatar",
     PROFILE_MEDIA: (id: string) =>
       `/api/auth/me/media/${encodeURIComponent(id)}`,
+    PASSWORD_RESET_REQUEST: "/api/auth/password-reset/request",
+    PASSWORD_RESET_CONFIRM: "/api/auth/password-reset/confirm",
     OTP_REQUEST: "/api/auth/otp/request",
     OTP_VERIFY: "/api/auth/otp/verify",
   },

@@ -21,6 +21,11 @@ func NewEmailChangeOTPStore(rdb *redis.Client, sender TransferMailSender) *Trans
 	return &TransferOTPStore{rdb: rdb, mail: sender, prefix: "email-change", purpose: appotp.OTPEmailChange}
 }
 
+// NewPasswordResetOTPStore sends the challenge that proves control of the account email.
+func NewPasswordResetOTPStore(rdb *redis.Client, sender TransferMailSender) *TransferOTPStore {
+	return &TransferOTPStore{rdb: rdb, mail: sender, prefix: "password-reset", purpose: appotp.OTPEmailPasswordReset}
+}
+
 type PendingEmailStore struct{ rdb *redis.Client }
 
 func NewPendingEmailStore(rdb *redis.Client) *PendingEmailStore {
@@ -62,6 +67,23 @@ func (n *EmailChangeNotifier) NotifyEmailChanged(ctx context.Context, previous, 
 	}
 }
 
+type PasswordResetNotifier struct {
+	mail   TransferMailSender
+	logger zerolog.Logger
+}
+
+func NewPasswordResetNotifier(sender TransferMailSender, logger zerolog.Logger) *PasswordResetNotifier {
+	return &PasswordResetNotifier{mail: sender, logger: logger}
+}
+
+func (n *PasswordResetNotifier) NotifyPasswordReset(ctx context.Context, email string) {
+	text := "Mật khẩu tài khoản AnomalyBank của bạn vừa được đặt lại. Nếu không phải bạn thực hiện, hãy liên hệ ngân hàng ngay.\n\nYour AnomalyBank password was just reset. If this was not you, contact the bank immediately."
+	err := n.mail.Send(ctx, maildomain.MailMessage{To: email, Subject: "[AnomalyBank] Mật khẩu đã được đặt lại / Password reset", Text: text, HTML: "<p>" + text + "</p>"})
+	if err != nil {
+		n.logger.Warn().Err(err).Msg("send password reset notice failed")
+	}
+}
+
 // PasswordAttemptLimiter counts failed current-password checks in Redis. Redis
 // errors propagate so a password check fails closed instead of going unthrottled.
 type PasswordAttemptLimiter struct {
@@ -69,21 +91,35 @@ type PasswordAttemptLimiter struct {
 	accountLimit int64
 	sourceLimit  int64
 	window       time.Duration
+	prefix       string
 }
 
 func NewPasswordAttemptLimiter(rdb *redis.Client, accountLimit, sourceLimit int, window time.Duration) *PasswordAttemptLimiter {
-	return &PasswordAttemptLimiter{rdb: rdb, accountLimit: int64(accountLimit), sourceLimit: int64(sourceLimit), window: window}
+	return &PasswordAttemptLimiter{rdb: rdb, accountLimit: int64(accountLimit), sourceLimit: int64(sourceLimit), window: window, prefix: "password-attempts"}
 }
 
-func passwordAccountKey(accountID string) string { return "password-attempts:account:" + accountID }
-func passwordSourceKey(source string) string     { return "password-attempts:source:" + source }
+// NewPasswordResetAttemptLimiter counts separately, so unauthenticated reset
+// guesses cannot lock a signed-in customer out of changing their password.
+func NewPasswordResetAttemptLimiter(rdb *redis.Client, accountLimit, sourceLimit int, window time.Duration) *PasswordAttemptLimiter {
+	limiter := NewPasswordAttemptLimiter(rdb, accountLimit, sourceLimit, window)
+	limiter.prefix = "password-reset-attempts"
+	return limiter
+}
+
+func (l *PasswordAttemptLimiter) accountKey(accountID string) string {
+	return l.prefix + ":account:" + accountID
+}
+
+func (l *PasswordAttemptLimiter) sourceKey(source string) string {
+	return l.prefix + ":source:" + source
+}
 
 func (l *PasswordAttemptLimiter) Allow(ctx context.Context, accountID, source string) (bool, error) {
-	accountCount, err := l.count(ctx, passwordAccountKey(accountID))
+	accountCount, err := l.count(ctx, l.accountKey(accountID))
 	if err != nil {
 		return false, err
 	}
-	sourceCount, err := l.count(ctx, passwordSourceKey(source))
+	sourceCount, err := l.count(ctx, l.sourceKey(source))
 	if err != nil {
 		return false, err
 	}
@@ -99,7 +135,7 @@ func (l *PasswordAttemptLimiter) count(ctx context.Context, key string) (int64, 
 }
 
 func (l *PasswordAttemptLimiter) RecordFailure(ctx context.Context, accountID, source string) error {
-	for _, key := range []string{passwordAccountKey(accountID), passwordSourceKey(source)} {
+	for _, key := range []string{l.accountKey(accountID), l.sourceKey(source)} {
 		count, err := l.rdb.Incr(ctx, key).Result()
 		if err != nil {
 			return err
@@ -114,5 +150,5 @@ func (l *PasswordAttemptLimiter) RecordFailure(ctx context.Context, accountID, s
 }
 
 func (l *PasswordAttemptLimiter) Reset(ctx context.Context, accountID string) error {
-	return l.rdb.Del(ctx, passwordAccountKey(accountID)).Err()
+	return l.rdb.Del(ctx, l.accountKey(accountID)).Err()
 }

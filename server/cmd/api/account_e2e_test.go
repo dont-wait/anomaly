@@ -69,7 +69,7 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 				CCCDIssuedDate: now,
 				DOB:            now.AddDate(-25, 0, 0),
 				Email:          sharedEmail,
-				Password:       "e2e-password-123",
+				Password:       "E2e-password-123",
 			})
 			if account != nil {
 				accounts <- account.Id
@@ -126,7 +126,7 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 		CCCDIssuedDate: now,
 		DOB:            now.AddDate(-30, 0, 0),
 		Email:          fmt.Sprintf("second-%d@example.com", time.Now().UnixNano()),
-		Password:       "e2e-password-123",
+		Password:       "E2e-password-123",
 	})
 	if err != nil {
 		t.Fatalf("register second account: %v", err)
@@ -185,7 +185,7 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 	attempt := commands.RegisterAccountCommand{
 		IdempotencyKey: "a3be2b9a-d903-471f-8101-6d58d4814ac4",
 		Username:       "idempotent-account", Email: "idempotent@example.com",
-		CCCDNumber: "999999999999", Password: "e2e-password-123",
+		CCCDNumber: "999999999999", Password: "E2e-password-123",
 		DOB:            time.Date(1995, 1, 1, 0, 0, 0, 0, time.UTC),
 		CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
@@ -209,7 +209,7 @@ func TestConcurrentRegistrationPersistsOneAccountWithoutEventStore(t *testing.T)
 	if err != nil || persisted.CustomerId != first.CustomerId {
 		t.Fatalf("duplicate create changed the persisted aggregate: %v", err)
 	}
-	attempt.Password = "changed-password-123"
+	attempt.Password = "Changed-password-123"
 	if _, err := freshHandler.Handle(ctx, attempt); !errors.Is(err, accountdomain.ErrIdempotencyConflict) {
 		t.Fatalf("changed payload = %v", err)
 	}
