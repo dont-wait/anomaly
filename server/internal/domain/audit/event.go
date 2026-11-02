@@ -42,6 +42,7 @@ type Event struct {
 	TransactionID string    `json:"transactionId,omitempty"`
 	ChallengeID   string    `json:"challengeId,omitempty"`
 	ReasonCode    string    `json:"reasonCode,omitempty"`
+	Reason        string    `json:"reason,omitempty"`
 	AttemptsLeft  *int      `json:"attemptsLeft,omitempty"`
 	EmailHash     string    `json:"emailHash,omitempty"`
 }

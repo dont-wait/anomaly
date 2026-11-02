@@ -9,7 +9,7 @@ import {
 interface Props {
   accountNo: string;
   status: "active" | "locked";
-  onConfirm: () => Promise<void>;
+  onConfirm: (reason?: string) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -25,6 +25,7 @@ export function AccountStatusConfirmation({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [completed, setCompleted] = useState(false);
+  const [reason, setReason] = useState("");
   const locking = status === "locked";
   const action = locking ? "Khóa" : "Mở khóa";
 
@@ -41,7 +42,7 @@ export function AccountStatusConfirmation({
     setBusy(true);
     setError("");
     try {
-      await onConfirm();
+      await onConfirm(reason.trim() || undefined);
       setCompleted(true);
     } catch (cause) {
       setError(
@@ -129,6 +130,18 @@ export function AccountStatusConfirmation({
                 Nhập chính xác{" "}
                 <strong className="text-(--admin-text)">OK</strong> để xác nhận.
               </span>
+              {locking && (
+                <textarea
+                  aria-label="Lý do khóa tài khoản"
+                  value={reason}
+                  maxLength={500}
+                  rows={3}
+                  disabled={busy}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="Nhập lý do khóa tài khoản..."
+                  className="w-full resize-none rounded-sm border border-(--admin-border) bg-(--admin-background) px-3 py-2 text-[12px] text-(--admin-text) outline-none focus:border-(--admin-primary) disabled:opacity-50"
+                />
+              )}
               <input
                 id="account-status-confirmation"
                 autoComplete="off"
@@ -155,7 +168,9 @@ export function AccountStatusConfirmation({
               </button>
               <button
                 type="submit"
-                disabled={confirmation !== "OK" || busy}
+                disabled={
+                  confirmation !== "OK" || busy || (locking && !reason.trim())
+                }
                 className={`h-10 rounded-sm px-2 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 ${locking ? "bg-(--admin-danger)" : "bg-(--admin-primary)"}`}
               >
                 {busy ? "Đang xử lý..." : `${action} tài khoản`}

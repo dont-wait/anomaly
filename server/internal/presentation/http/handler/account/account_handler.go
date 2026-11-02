@@ -295,6 +295,7 @@ type loginRequest struct {
 type accountStatusRequest struct {
 	Status    string `json:"status"`
 	AccountNo string `json:"accountNo,omitempty"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 type financialAccountLookup interface {
@@ -335,6 +336,15 @@ func (h *Handler) UpdateAccountStatus(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, h.logger, errors.New("status must be active or locked"), func(error) int { return http.StatusBadRequest })
 		return
 	}
+	reason := strings.TrimSpace(req.Reason)
+	if status == accountdomain.AccountStatusLocked && reason == "" {
+		httpx.WriteError(w, h.logger, errors.New("reason is required when locking an account"), func(error) int { return http.StatusBadRequest })
+		return
+	}
+	if len(reason) > 500 {
+		httpx.WriteError(w, h.logger, errors.New("reason must be at most 500 characters"), func(error) int { return http.StatusBadRequest })
+		return
+	}
 	account, err := h.profileRepo.FindByID(r.Context(), targetID)
 	if err == nil && account == nil {
 		if lookup, ok := h.profileRepo.(financialAccountLookup); ok {
@@ -372,6 +382,7 @@ func (h *Handler) UpdateAccountStatus(w http.ResponseWriter, r *http.Request) {
 			event.AccountID = account.Id
 			event.ActorID = claims.UserID
 			event.ReasonCode = string(status)
+			event.Reason = reason
 			if err := h.profileAudit.Record(r.Context(), event); err != nil {
 				h.logger.Warn().Err(err).Msg("account status audit failed")
 			}

@@ -30,7 +30,11 @@ it.each(["locked", "active"] as const)(
         onCancel={vi.fn()}
       />,
     );
-    const input = screen.getByLabelText(/Nhập chính xác/);
+    const input = screen.getByRole("textbox", { name: /OK/ });
+    const reason =
+      status === "locked"
+        ? screen.getByLabelText("Lý do khóa tài khoản")
+        : null;
     const button = screen.getByRole("button", {
       name: status === "locked" ? "Khóa tài khoản" : "Mở khóa tài khoản",
     });
@@ -41,6 +45,8 @@ it.each(["locked", "active"] as const)(
       expect(onConfirm).not.toHaveBeenCalled();
     }
     fireEvent.change(input, { target: { value: "OK" } });
+    if (reason)
+      fireEvent.change(reason, { target: { value: "Đăng nhập bất thường" } });
     fireEvent.click(button);
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
   },

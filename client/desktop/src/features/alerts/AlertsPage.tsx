@@ -653,11 +653,12 @@ export function AlertsPage() {
           accountNo={pendingAction.accountNo || pendingAction.accountId}
           status={pendingAction.status}
           onCancel={() => setPendingAction(null)}
-          onConfirm={async () => {
+          onConfirm={async (reason) => {
             await updateAccountStatus(
               pendingAction.accountId,
               pendingAction.status,
               pendingAction.accountNo,
+              reason,
             );
             setAccountStatuses((current) => ({
               ...current,

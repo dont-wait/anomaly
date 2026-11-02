@@ -631,6 +631,9 @@ func auditTimelineItem(recorded timelineRecorded, event audit.Event) (timelineIt
 	if event.ReasonCode != "" {
 		item.Details["reasonCode"] = event.ReasonCode
 	}
+	if event.Reason != "" {
+		item.Details["reason"] = event.Reason
+	}
 	if event.Type == audit.AccountLocked || event.Type == audit.AccountUnlocked {
 		item.Details["status"] = map[bool]string{true: "locked", false: "active"}[event.Type == audit.AccountLocked]
 	}

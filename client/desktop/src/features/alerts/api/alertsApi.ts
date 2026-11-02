@@ -12,6 +12,7 @@ export async function updateAccountStatus(
   accountId: string,
   status: "active" | "locked",
   accountNo?: string,
+  reason?: string,
 ): Promise<void> {
   const session = readAdminSession();
   const response = await fetch(
@@ -22,7 +23,7 @@ export async function updateAccountStatus(
         "Content-Type": "application/json",
         ...(session ? { Authorization: `Bearer ${session.accessToken}` } : {}),
       },
-      body: JSON.stringify({ status, accountNo }),
+      body: JSON.stringify({ status, accountNo, reason }),
     },
   );
   if (!response.ok) throw new Error("Không thể cập nhật trạng thái tài khoản.");
