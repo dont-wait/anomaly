@@ -495,6 +495,10 @@ func bankingTimelineItem(recorded timelineRecorded, accountID, financialID strin
 			return timelineItemDTO{}, false, nil
 		}
 		item.Category, item.Summary = "account", "Tài khoản được cập nhật"
+		item.Details["status"] = string(record.Account.Status)
+		if record.Account.Status == accountdomain.AccountStatusLocked {
+			item.Summary = "Tài khoản bị khóa"
+		}
 	case journal.BalanceSeeded:
 		if journal.FinancialAccountID(record.AccountID) != financialID {
 			return timelineItemDTO{}, false, nil
@@ -610,6 +614,10 @@ func auditTimelineItem(recorded timelineRecorded, event audit.Event) (timelineIt
 	category := ""
 	summary := ""
 	switch {
+	case event.Type == audit.AccountLocked:
+		category, summary = "account", "Tài khoản bị khóa"
+	case event.Type == audit.AccountUnlocked:
+		category, summary = "account", "Tài khoản được mở khóa"
 	case strings.HasPrefix(event.Type, "TransferOTP"):
 		category, summary = "otp", "OTP chuyển tiền được xác thực"
 	case strings.HasPrefix(event.Type, "EmailOTP"):
@@ -622,6 +630,9 @@ func auditTimelineItem(recorded timelineRecorded, event audit.Event) (timelineIt
 	item := timelineItemDTO{EventID: event.ID, EventType: event.Type, Category: category, OccurredAt: event.OccurredAt, SourceStream: recorded.StreamID, SourceRevision: recorded.Revision, AccountID: event.AccountID, ActorID: event.ActorID, TransactionID: event.TransactionID, Summary: summary, Details: map[string]any{}}
 	if event.ReasonCode != "" {
 		item.Details["reasonCode"] = event.ReasonCode
+	}
+	if event.Type == audit.AccountLocked || event.Type == audit.AccountUnlocked {
+		item.Details["status"] = map[bool]string{true: "locked", false: "active"}[event.Type == audit.AccountLocked]
 	}
 	if event.AttemptsLeft != nil {
 		item.Details["attemptsLeft"] = *event.AttemptsLeft
