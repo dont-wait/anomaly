@@ -1,6 +1,7 @@
 package eventstore
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -8,6 +9,39 @@ import (
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 )
+
+// The API composition passes BankRepository, not the Mongo account repository.
+// Keep its optional admin lookup contract checked at compile time.
+var _ interface {
+	FindByFinancialID(context.Context, string) (*accountdomain.UserAccount, error)
+	FindByAccountNo(context.Context, string) (*accountdomain.UserAccount, error)
+} = (*BankRepository)(nil)
+
+func TestAccountByFinancialIDResolvesPublicAccountID(t *testing.T) {
+	const accountID = "697dcd791d549fbe9a2a9423c6455d7d"
+	fid := financialID(accountID).Hex()
+	state := bankState{
+		Accounts: map[string]*accountdomain.UserAccount{
+			accountID: {Id: accountID, AccountNo: "79548859179658", Status: accountdomain.AccountStatusActive},
+		},
+		Balances: map[string]int64{fid: 123000},
+	}
+	got, err := state.accountByFinancialID(fid)
+	if err != nil || got == nil {
+		t.Fatalf("financial lookup = (%v, %v), want account", got, err)
+	}
+	if got.Id != accountID || got.Balance.Current != 123000 {
+		t.Fatalf("resolved account = %#v, want public ID and ledger balance", got)
+	}
+	got.Status = accountdomain.AccountStatusLocked
+	if state.Accounts[accountID].Status != accountdomain.AccountStatusActive {
+		t.Fatal("lookup must return a copy, not mutate replay state")
+	}
+	missing, err := state.accountByFinancialID("000000000000000000000000")
+	if err != nil || missing != nil {
+		t.Fatalf("missing lookup = (%v, %v), want nil", missing, err)
+	}
+}
 
 func TestTransferByIdempotencyKeyIsOwnerScopedAndCaseInsensitive(t *testing.T) {
 	const (
