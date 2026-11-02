@@ -272,6 +272,11 @@ func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *account
 		if bankingCandidate == nil && auditCandidate == nil && loanCandidate == nil {
 			break
 		}
+		if duplicateAccountStatusProjection(bankingCandidate, auditCandidate) {
+			positions.BankingRevision = int64Pointer(bankingCandidate.next)
+			bankingCandidate = nil
+			continue
+		}
 		selected := selectTimelineCandidate(bankingCandidate, auditCandidate, loanCandidate)
 		switch selected {
 		case bankingCandidate:
@@ -321,6 +326,31 @@ func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *account
 	positions.From = fromRaw
 	positions.To = toRaw
 	return items, encodeTimelineCursor(positions), true, nil
+}
+
+func duplicateAccountStatusProjection(banking, auditCandidate *timelineCandidate) bool {
+	if banking == nil || auditCandidate == nil || banking.item.Category != "account" || auditCandidate.item.Category != "account" {
+		return false
+	}
+	if banking.item.EventType != journal.ProfileUpdated && banking.item.EventType != journal.AccountUpdated {
+		return false
+	}
+	status, ok := banking.item.Details["status"].(string)
+	if !ok {
+		return false
+	}
+	auditStatus, ok := auditCandidate.item.Details["status"].(string)
+	if !ok || status != auditStatus {
+		return false
+	}
+	if auditCandidate.item.EventType != audit.AccountLocked && auditCandidate.item.EventType != audit.AccountUnlocked {
+		return false
+	}
+	delta := banking.item.OccurredAt.Sub(auditCandidate.item.OccurredAt)
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta <= 5*time.Second
 }
 
 func timelineCandidateAfter(left, right *timelineCandidate) bool {
