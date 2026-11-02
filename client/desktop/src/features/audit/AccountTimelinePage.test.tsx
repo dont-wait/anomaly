@@ -42,6 +42,7 @@ const response = {
 describe("AccountTimelinePage", () => {
   beforeEach(() => {
     vi.mocked(getAccountTimeline).mockReset();
+    window.location.hash = "#/admin/audit/accounts";
   });
 
   it("keeps an empty search neutral and does not call the API", () => {
@@ -51,6 +52,13 @@ describe("AccountTimelinePage", () => {
     expect((button as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(getAccountTimeline).not.toHaveBeenCalled();
+  });
+
+  it("prefills the account from an explorer link", () => {
+    window.location.hash = "#/admin/audit/accounts?account=ACC-0001";
+    render(<AccountTimelinePage />);
+
+    expect((screen.getByPlaceholderText(/Account ID/i) as HTMLInputElement).value).toBe("ACC-0001");
   });
 
   it("searches by account and renders the grouped timeline", async () => {

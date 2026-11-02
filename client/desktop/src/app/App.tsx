@@ -6,12 +6,13 @@ import {
 } from "@/features/auth/api/adminSession";
 import { AdminShell } from "@/components/layout/AdminShell";
 import { AccountTimelinePage } from "@/features/audit/AccountTimelinePage";
+import { EventExplorerPage } from "@/features/audit/EventExplorerPage";
 import { LoanReviewPage } from "@/features/loans/LoanReviewPage";
 import { ProfileChangesPage } from "@/features/profileChanges/ProfileChangesPage";
 import { MonitorPage } from "@/features/monitor/MonitorPage";
 import {
-  isProtectedRoute,
   navigate,
+  protectedRouteFromHash,
   routes,
   type ProtectedRoute,
 } from "./routes";
@@ -57,6 +58,7 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const isMonitor = route === routes.monitor;
   const isAccountTimeline = route === routes.auditAccounts;
+  const isEventExplorer = route === routes.audit;
   const isLoanReview = route === routes.loanApplications;
   useEffect(() => {
     let active = true;
@@ -99,6 +101,8 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
         <MonitorPage />
       ) : isAccountTimeline ? (
         <AccountTimelinePage />
+      ) : isEventExplorer ? (
+        <EventExplorerPage />
       ) : isLoanReview ? (
         <LoanReviewPage />
       ) : route === routes.profileChanges ? (
@@ -112,7 +116,8 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
 
 export default function App() {
   const hash = useHash();
+  const protectedRoute = protectedRouteFromHash(hash);
 
-  if (isProtectedRoute(hash)) return <ProtectedAdmin route={hash} />;
+  if (protectedRoute) return <ProtectedAdmin route={protectedRoute} />;
   return <LoginPage />;
 }
