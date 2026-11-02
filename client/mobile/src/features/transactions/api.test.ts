@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { getTransactionSummary, listTransactions } from "./api";
+import { getTransaction, getTransactionSummary, listTransactions } from "./api";
+import { KIND_LABEL } from "./utils/format";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -81,3 +82,36 @@ it("requests a complete date-range summary independently of the transaction page
   );
   expect(summary.totalIn).toBe(5_000_000);
 });
+
+it.each(["savings", "loan_disbursement", "loan_repayment"])(
+  "shows the bank as the counterparty of %s transactions",
+  async (kind) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: "tx-1",
+            reference: "R1",
+            direction: "out",
+            status: "success",
+            kind,
+            amount: 100_000,
+            fee: 0,
+            note: "",
+            counterparty: {
+              name: "ANOMALY LOAN",
+              accountNo: "",
+              bankCode: "ANOMALY",
+            },
+            createdAt: "2026-10-09T01:02:03Z",
+          }),
+      } as Response),
+    );
+    const record = await getTransaction("access-token", "tx-1");
+    expect(record.counterparty.name).toBe("Ngân hàng Anomaly");
+    expect(KIND_LABEL[record.kind]).toBeTruthy();
+  },
+);

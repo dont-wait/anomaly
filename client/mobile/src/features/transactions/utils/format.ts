@@ -78,6 +78,7 @@ export const KIND_LABEL: Record<TransactionKind, string> = {
   savings: "Tiết kiệm",
   salary: "Lương",
   loan_disbursement: "Giải ngân khoản vay",
+  loan_repayment: "Trả nợ khoản vay",
 };
 
 export function transactionTitle(record: TransactionRecord) {

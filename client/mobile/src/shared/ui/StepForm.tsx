@@ -54,7 +54,7 @@ export function StepForm({
     <form
       noValidate
       onSubmit={submit}
-      className="mx-auto flex h-dvh max-w-md flex-col bg-background text-on-surface"
+      className="mx-auto flex h-dvh w-full max-w-md flex-col bg-background text-on-surface"
     >
       <header className="shrink-0 border-b border-primary/5 px-4 pt-3 pb-3">
         <div className="flex items-center gap-2">
