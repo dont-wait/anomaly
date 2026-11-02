@@ -33,3 +33,38 @@ export interface TimelineResponse {
   nextCursor?: string;
   hasMore: boolean;
 }
+
+export type EventExplorerCategory = "all" | "account" | "transfer" | "otp" | "login" | "loan" | "other";
+
+export interface EventExplorerListItem {
+  eventId: string;
+  category: Exclude<EventExplorerCategory, "all">;
+  occurredAt: string;
+  accounts?: EventExplorerAccount[];
+  transactionId?: string;
+  loanId?: string;
+  summary: string;
+}
+
+export interface EventExplorerItem extends EventExplorerListItem {
+  eventType: string;
+  sourceStream: string;
+  sourceRevision: number;
+  actorId?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface EventExplorerAccount {
+  accountNo: string;
+  customerName?: string;
+  username?: string;
+  role?: string;
+}
+
+export interface EventExplorerResponse {
+  items: EventExplorerListItem[];
+  nextCursor?: string;
+  hasMore: boolean;
+  scanComplete: boolean;
+  scanned: number;
+}

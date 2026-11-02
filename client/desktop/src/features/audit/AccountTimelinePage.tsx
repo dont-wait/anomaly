@@ -18,6 +18,12 @@ const subtle = "bg-(--admin-surface-subtle)";
 const mono = "font-(family-name:--admin-font-mono)";
 const PAGE_LIMIT = 20;
 
+function accountQueryFromHash(): string {
+  const queryStart = window.location.hash.indexOf("?");
+  if (queryStart < 0) return "";
+  return new URLSearchParams(window.location.hash.slice(queryStart + 1)).get("account") || "";
+}
+
 type AppliedTimelineQuery = {
   input: string;
   accountId: string;
@@ -271,7 +277,7 @@ function DateField({
 }
 
 export function AccountTimelinePage() {
-  const [accountInput, setAccountInput] = useState("");
+  const [accountInput, setAccountInput] = useState(accountQueryFromHash);
   const [category, setCategory] = useState<TimelineCategory>("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -387,19 +393,13 @@ export function AccountTimelinePage() {
   return (
     <div className="grid gap-3">
       <section className={`${subtle} rounded-(--admin-radius-md) p-4`}>
-        <div className="flex items-start gap-3">
+        <div className="flex items-center gap-3">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-(--admin-radius-md) bg-(--admin-primary-soft) text-(--admin-primary)">
             <FontAwesomeIcon icon={faClockRotateLeft} aria-hidden="true" />
           </div>
-          <div>
-            <h1 className="text-[18px] font-bold uppercase tracking-[-0.02em] text-(--admin-text)">
-              Lịch sử tài khoản
-            </h1>
-            <p className="mt-1 text-[12px] leading-5 text-(--admin-text-muted)">
-              Xem timeline event đã ghi nhận. Màn hình chỉ đọc, không thực hiện
-              lại nghiệp vụ.
-            </p>
-          </div>
+          <h1 className="text-[18px] font-bold uppercase tracking-[-0.02em] text-(--admin-text)">
+            Lịch sử tài khoản
+          </h1>
         </div>
         <form
           className="mt-4 grid gap-2 md:grid-cols-[minmax(220px,1fr)_150px_140px_140px_auto]"

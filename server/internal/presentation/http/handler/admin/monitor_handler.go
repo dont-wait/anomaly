@@ -128,6 +128,7 @@ func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc 
 	})
 	if len(timelines) > 0 && timelines[0] != nil {
 		RegisterTimelineRoutes(router, timelines[0], tokenSvc, currentAdmin)
+		RegisterEventExplorerRoutes(router, timelines[0], tokenSvc, currentAdmin)
 	}
 }
 
