@@ -297,7 +297,6 @@ export function AlertsPage() {
                 <th className="px-2">Tài khoản nguồn</th>
                 <th className="px-2">Tài khoản đích</th>
                 <th className="px-2">Điểm rủi ro</th>
-                <th className="px-2">Trạng thái</th>
               </tr>
             </thead>
             <tbody>
@@ -351,10 +350,6 @@ export function AlertsPage() {
                     className={`${mono} px-2 text-[11px] text-(--admin-text)`}
                   >
                     {item.riskScore.toFixed(4)}
-                  </td>
-                  <td className="px-2 text-[11px] text-(--admin-text-secondary)">
-                    {statusLabel[item.transaction?.status || ""] ||
-                      "Chưa xác định"}
                   </td>
                 </tr>
               ))}
