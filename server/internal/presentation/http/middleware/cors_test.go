@@ -37,3 +37,25 @@ func TestNewCORSAllowsIdempotencyKeyPreflight(t *testing.T) {
 		}
 	}
 }
+
+func TestNewCORSAllowsPatchPreflight(t *testing.T) {
+	handler := NewCORS([]string{"http://localhost:1422"})(
+		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			t.Fatal("preflight request reached the next handler")
+		}),
+	)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodOptions, "/api/admin/accounts/account-1/status", nil)
+	request.Header.Set("Origin", "http://localhost:1422")
+	request.Header.Set("Access-Control-Request-Method", http.MethodPatch)
+	request.Header.Set("Access-Control-Request-Headers", "content-type, authorization")
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	}
+	if !strings.Contains(recorder.Header().Get("Access-Control-Allow-Methods"), "PATCH") {
+		t.Fatalf("allow methods = %q, missing PATCH", recorder.Header().Get("Access-Control-Allow-Methods"))
+	}
+}
