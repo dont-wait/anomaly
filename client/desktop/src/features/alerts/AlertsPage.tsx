@@ -10,6 +10,7 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { getMonitorDashboard, updateAccountStatus } from "./api/alertsApi";
+import { AccountStatusConfirmation } from "./AccountStatusConfirmation";
 import type {
   MonitorDashboardResponse,
   RiskAssessment,
@@ -52,6 +53,11 @@ export function AlertsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [pendingAction, setPendingAction] = useState<{
+    accountId: string;
+    accountNo?: string;
+    status: "active" | "locked";
+  } | null>(null);
 
   function resetFilters() {
     setRange("7d");
@@ -125,28 +131,14 @@ export function AlertsPage() {
     currentPage * ALERTS_PAGE_SIZE,
   );
 
-  const changeAccountStatus = async (
+  const changeAccountStatus = (
     accountId: string | undefined,
     next: "active" | "locked",
     accountNo?: string,
   ) => {
     if (!accountId) return;
-    setBusy(true);
     setActionMessage(null);
-    try {
-      await updateAccountStatus(accountId, next, accountNo);
-      setActionMessage(
-        next === "locked" ? "Đã khóa tài khoản." : "Đã mở khóa tài khoản.",
-      );
-    } catch (cause) {
-      setActionMessage(
-        cause instanceof Error
-          ? cause.message
-          : "Không thể cập nhật tài khoản.",
-      );
-    } finally {
-      setBusy(false);
-    }
+    setPendingAction({ accountId, accountNo, status: next });
   };
 
   return (
@@ -634,6 +626,26 @@ export function AlertsPage() {
             </div>
           </aside>
         </div>
+      )}
+      {pendingAction && (
+        <AccountStatusConfirmation
+          accountNo={pendingAction.accountNo || pendingAction.accountId}
+          status={pendingAction.status}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={async () => {
+            await updateAccountStatus(
+              pendingAction.accountId,
+              pendingAction.status,
+              pendingAction.accountNo,
+            );
+            setActionMessage(
+              pendingAction.status === "locked"
+                ? "Đã khóa tài khoản."
+                : "Đã mở khóa tài khoản.",
+            );
+            setPendingAction(null);
+          }}
+        />
       )}
     </div>
   );
