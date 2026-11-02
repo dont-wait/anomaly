@@ -293,11 +293,13 @@ type loginRequest struct {
 }
 
 type accountStatusRequest struct {
-	Status string `json:"status"`
+	Status    string `json:"status"`
+	AccountNo string `json:"accountNo,omitempty"`
 }
 
 type financialAccountLookup interface {
 	FindByFinancialID(context.Context, string) (*accountdomain.UserAccount, error)
+	FindByAccountNo(context.Context, string) (*accountdomain.UserAccount, error)
 }
 
 // UpdateAccountStatus allows an administrator to lock or unlock a customer
@@ -337,6 +339,9 @@ func (h *Handler) UpdateAccountStatus(w http.ResponseWriter, r *http.Request) {
 	if err == nil && account == nil {
 		if lookup, ok := h.profileRepo.(financialAccountLookup); ok {
 			account, err = lookup.FindByFinancialID(r.Context(), targetID)
+			if err == nil && account == nil {
+				account, err = lookup.FindByAccountNo(r.Context(), strings.TrimSpace(req.AccountNo))
+			}
 		}
 	}
 	if err != nil || account == nil {

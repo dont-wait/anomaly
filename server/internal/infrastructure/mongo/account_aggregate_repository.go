@@ -183,6 +183,11 @@ func (r *AccountAggregateRepository) FindByFinancialID(ctx context.Context, id s
 	return r.hydrate(ctx, account, err)
 }
 
+func (r *AccountAggregateRepository) FindByAccountNo(ctx context.Context, accountNo string) (*accountdomain.UserAccount, error) {
+	account, err := r.accounts.FindByAccountNo(ctx, accountNo)
+	return r.hydrate(ctx, account, err)
+}
+
 func (r *AccountAggregateRepository) FindByEmail(ctx context.Context, email string) (*accountdomain.UserAccount, error) {
 	account, err := r.accounts.FindByEmail(ctx, email)
 	return r.hydrate(ctx, account, err)

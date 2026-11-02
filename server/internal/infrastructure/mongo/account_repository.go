@@ -137,6 +137,22 @@ func (r *AccountRepository) FindByFinancialID(ctx context.Context, id string) (*
 	return fromRecord(rec)
 }
 
+// FindByAccountNo resolves the public account number to its account document.
+func (r *AccountRepository) FindByAccountNo(ctx context.Context, accountNo string) (*accountdomain.UserAccount, error) {
+	if accountNo == "" {
+		return nil, nil
+	}
+	var rec accountRecord
+	err := r.col.FindOne(ctx, bson.M{"account_no": accountNo}).Decode(&rec)
+	if err != nil {
+		if err == mongodrv.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return fromRecord(rec)
+}
+
 func (r *AccountRepository) FindByEmail(ctx context.Context, email string) (*accountdomain.UserAccount, error) {
 	var rec accountRecord
 	err := r.col.FindOne(ctx, map[string]string{"email": email}).Decode(&rec)

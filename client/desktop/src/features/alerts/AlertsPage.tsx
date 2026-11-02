@@ -128,12 +128,13 @@ export function AlertsPage() {
   const changeAccountStatus = async (
     accountId: string | undefined,
     next: "active" | "locked",
+    accountNo?: string,
   ) => {
     if (!accountId) return;
     setBusy(true);
     setActionMessage(null);
     try {
-      await updateAccountStatus(accountId, next);
+      await updateAccountStatus(accountId, next, accountNo);
       setActionMessage(
         next === "locked" ? "Đã khóa tài khoản." : "Đã mở khóa tài khoản.",
       );
@@ -548,6 +549,7 @@ export function AlertsPage() {
                         void changeAccountStatus(
                           selected.transaction?.sourceAccountId,
                           "locked",
+                          selected.transaction?.sourceAccountNo,
                         )
                       }
                       className="flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-(--admin-danger) px-2 text-[12px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
@@ -561,6 +563,7 @@ export function AlertsPage() {
                         void changeAccountStatus(
                           selected.transaction?.sourceAccountId,
                           "active",
+                          selected.transaction?.sourceAccountNo,
                         )
                       }
                       className={`${surface} flex h-9 w-full items-center justify-center gap-2 rounded-sm border border-(--admin-border) px-2 text-[12px] font-semibold text-(--admin-text) transition-colors hover:border-(--admin-primary) hover:bg-(--admin-surface-hover) disabled:cursor-not-allowed disabled:opacity-50`}
@@ -606,6 +609,7 @@ export function AlertsPage() {
                         void changeAccountStatus(
                           selected.transaction?.destinationAccountId,
                           "locked",
+                          selected.transaction?.destinationAccountNo,
                         )
                       }
                       className="flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-(--admin-danger) px-2 text-[12px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
@@ -621,6 +625,7 @@ export function AlertsPage() {
                         void changeAccountStatus(
                           selected.transaction?.destinationAccountId,
                           "active",
+                          selected.transaction?.destinationAccountNo,
                         )
                       }
                       className={`${surface} flex h-9 w-full items-center justify-center gap-2 rounded-sm border border-(--admin-border) px-2 text-[12px] font-semibold text-(--admin-text) transition-colors hover:border-(--admin-primary) hover:bg-(--admin-surface-hover) disabled:cursor-not-allowed disabled:opacity-50`}
