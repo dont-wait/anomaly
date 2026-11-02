@@ -7,46 +7,22 @@ import re
 from datetime import datetime
 from decimal import Decimal
 
-from .contracts import PREDICTION_FIELDS, Prediction
+from .contracts import Prediction
 
-DECISION_FIELDS = (
-    "transfer_id", "source_event_id", "decision", "is_anomalous",
-    "risk_score", "model_version", "evaluated_at",
-)
+RISK_EVENT_METADATA_FIELDS = ("schema_version", "event_id", "occurred_at", "scored_at")
+TIMESTAMP_FIELDS = ("occurred_at", "scored_at")
 
 
-def canonical_risk_decision(risk_event):
-    """Match riskDecisionUnsigned in the server and consumer-mock Go publisher."""
-    if set(risk_event) - {"signature"} != set(DECISION_FIELDS):
-        raise ValueError("risk decision fields must match the server contract")
-    unsigned = {key: risk_event[key] for key in DECISION_FIELDS}
-    for key in ("transfer_id", "source_event_id", "model_version"):
-        if not isinstance(unsigned[key], str) or not unsigned[key].strip():
-            raise ValueError(f"{key} must be a nonempty string")
-    decision = unsigned["decision"]
-    if decision not in {"ALLOW", "BLOCK", "PENDING"}:
-        raise ValueError("decision must be ALLOW, BLOCK or PENDING")
-    anomalous = unsigned["is_anomalous"]
-    if type(anomalous) is not bool or anomalous != (decision == "BLOCK"):
-        raise ValueError("is_anomalous must agree with decision")
-    score = unsigned["risk_score"]
-    if (isinstance(score, bool) or not isinstance(score, (int, float))
-            or not math.isfinite(score) or not 0 <= score <= 1):
-        raise ValueError("risk_score must be finite and in [0, 1]")
-    unsigned["risk_score"] = float(score)
-    timestamp = unsigned["evaluated_at"]
-    if not isinstance(timestamp, str) or not re.fullmatch(
-        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z", timestamp
+def _go_timestamp(name, value):
+    """Match how Go re-marshals a decoded UTC time.Time: RFC3339Nano without trailing zeros."""
+    if not isinstance(value, str) or not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z", value
     ):
-        raise ValueError("evaluated_at must be an RFC3339 UTC timestamp")
-    datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-    if "." in timestamp:
-        timestamp = timestamp[:-1].rstrip("0").rstrip(".") + "Z"
-    unsigned["evaluated_at"] = timestamp
-    canonical = "{" + ",".join(
-        f'{json.dumps(key)}:{_go_json(unsigned[key])}' for key in DECISION_FIELDS
-    ) + "}"
-    return unsigned, canonical.encode("utf-8")
+        raise ValueError(f"{name} must be an RFC3339 UTC timestamp")
+    datetime.fromisoformat(value[:19] + "+00:00")
+    if "." in value:
+        value = value[:-1].rstrip("0").rstrip(".") + "Z"
+    return value
 
 
 def _go_json(value):
@@ -68,16 +44,24 @@ def _go_json(value):
 
 
 def canonical_risk_event(risk_event):
-    """Use the field order and serialization of the server's ModelResponse struct."""
-    if "transfer_id" in risk_event:
-        return canonical_risk_decision(risk_event)
+    """Match riskassessment.CanonicalJSON in the server: a sorted-key Go map."""
     unsigned = {key: value for key, value in risk_event.items() if key != "signature"}
-    prediction = Prediction.from_payload(unsigned)
-    unsigned = prediction.as_dict()
+    metadata = {}
+    for key in RISK_EVENT_METADATA_FIELDS:
+        if key not in unsigned:
+            raise ValueError(f"risk event {key} is required")
+        metadata[key] = unsigned.pop(key)
+    if type(metadata["schema_version"]) is not int or metadata["schema_version"] != 1:
+        raise ValueError("schema_version must be 1")
+    if not isinstance(metadata["event_id"], str) or not metadata["event_id"].strip():
+        raise ValueError("event_id must be a nonempty string")
+    for key in TIMESTAMP_FIELDS:
+        metadata[key] = _go_timestamp(key, metadata[key])
+    normalized = {**metadata, **Prediction.from_payload(unsigned).as_dict()}
     canonical = "{" + ",".join(
-        f'{json.dumps(key)}:{_go_json(unsigned[key])}' for key in PREDICTION_FIELDS
+        f"{json.dumps(key)}:{_go_json(normalized[key])}" for key in sorted(normalized)
     ) + "}"
-    return unsigned, canonical.encode("utf-8")
+    return normalized, canonical.encode("utf-8")
 
 
 def sign_risk_event(risk_event, signing_key):
@@ -102,11 +86,8 @@ class KafkaOutputPublisher:
 
     def publish(self, risk_event):
         signed = sign_risk_event(risk_event, self._signing_key)
-        if "transfer_id" in signed:
-            key = signed["transfer_id"].encode()
-        else:
-            key = ":".join(signed[field] for field in (
-                "transaction_id", "model_version", "feature_version"
-            )).encode()
+        key = ":".join(signed[field] for field in (
+            "transaction_id", "model_version", "feature_version"
+        )).encode()
         value = json.dumps(signed, ensure_ascii=False, separators=(",", ":")).encode()
         self.producer.send(self.topic, key=key, value=value).get(timeout=self.timeout)

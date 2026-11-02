@@ -1,4 +1,4 @@
-"""Create synthetic Kafka messages to verify the decision contract, not model accuracy."""
+"""Create synthetic Kafka messages to verify the risk event contract, not model accuracy."""
 
 import argparse
 import json
@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.contracts import Prediction, build_risk_event  # noqa: E402
+from app.contracts import Prediction, build_risk_event, utc_now  # noqa: E402
 from app.publisher import sign_risk_event  # noqa: E402
 
 
@@ -26,6 +26,7 @@ def main():
         event = SimpleNamespace(
             transaction_id=transaction_id,
             event_id=str(uuid.uuid5(uuid.NAMESPACE_OID, transaction_id + ":TransferCreated")),
+            occurred_at=utc_now(),
         )
         prediction = Prediction(
             transaction_id, score, int(score >= 0.95), 0.95,
@@ -51,8 +52,8 @@ def main():
             json.dumps(message, ensure_ascii=False, separators=(",", ":")) + "\n",
             encoding="utf-8",
         )
-    print(f"Synthetic BLOCK transfer_id: {decision['transfer_id']}")
-    print(f"Synthetic ALLOW transfer_id: {messages['allow']['transfer_id']}")
+    print(f"Synthetic BLOCK transaction_id: {decision['transaction_id']}")
+    print(f"Synthetic ALLOW transaction_id: {messages['allow']['transaction_id']}")
     print(f"Messages written to {args.output_dir}")
 
 

@@ -21,8 +21,7 @@ TransferCreated
   → anomaly-service consume TransferCreated
   → đọc raw request + toàn bộ transfer event trước occurredAt từ EventStoreDB
   → GATv2 ReplayPredictor (bundle local)
-  → label 1 → BLOCK, label 0 → ALLOW
-  → ký HMAC, publish decision vào anomaly.bank.risk-decisions.v1
+  → ký HMAC, publish assessment vào anomaly.bank.risk-decisions.v1
   → ghi JSONL + publish anomaly.model.training.v1
   → commit Kafka offset
 
@@ -39,18 +38,17 @@ Input không phải trigger được commit; trigger sai định dạng JSON/env
 log và bỏ qua có chủ đích. Lỗi model/history, identity không tương thích và lỗi
 output không được coi là input có thể bỏ qua.
 
-Output dùng đúng schema `consumer-mock`: `transfer_id`, `source_event_id`,
-`decision`, `is_anomalous`, `risk_score`, `model_version`, `evaluated_at`,
-`signature`. Worker dùng score/model version thật từ GATv2; `predicted_label=1`
-phát `BLOCK`, label `0` phát `ALLOW`. Label đã được kiểm tra bằng
-`int(risk_score >= threshold)` theo threshold của bundle. Không sinh `PENDING`
-hoặc `ALLOW` thay thế khi inference lỗi: worker giữ offset và dừng để retry.
+Output dùng đúng schema `ModelResponse` của server và `consumer-mock`:
+`schema_version`, `event_id`, `transaction_id`, `occurred_at`, `scored_at`,
+`risk_score`, `predicted_label`, `threshold`, `model_version`, `feature_version`,
+`signature`. Label đã được kiểm tra bằng `int(risk_score >= threshold)` theo
+threshold của bundle. Worker không quyết định ALLOW/BLOCK: server suy ra quyết định
+từ `risk_score` (`DecisionForScore`). Không sinh kết quả thay thế khi inference lỗi:
+worker giữ offset và dừng để retry.
 
-Server dùng decision này qua luồng `risk_decisions` hiện tại, kiểm tra
-`source_event_id` khớp `TransferCreated` của `transfer_id`. `ALLOW` vẫn yêu cầu OTP
-hợp lệ để hoàn tất giao dịch; `BLOCK` được xử lý theo luồng fail transfer hiện tại.
-Prediction sáu field gốc (kèm threshold/feature version) vẫn giữ trong training
-record. Worker không phát thêm message assessment riêng ngoài response trên topic này.
+Server lưu assessment vào `risk_decisions`. `ALLOW` vẫn yêu cầu OTP hợp lệ để hoàn
+tất giao dịch; `BLOCK` được xử lý theo luồng fail transfer hiện tại. Prediction gốc
+vẫn được giữ trong training record.
 
 **Thay mock:** dừng process `consumer-mock` trước khi tạo giao dịch mới để test
 worker thật. Hai consumer group khác nhau đều nhận cùng event; server giữ terminal
@@ -144,20 +142,17 @@ Publisher thêm `signature` dạng hex chữ thường vào mỗi risk message:
 signature = HMAC-SHA256(secret_key_utf8, canonical_json_without_signature_utf8)
 ```
 
-Canonical JSON theo đúng struct `riskDecisionUnsigned` của server Go và mock,
-gồm bảy field đúng thứ tự: `transfer_id`, `source_event_id`, `decision`,
-`is_anomalous`, `risk_score`, `model_version`, `evaluated_at`; bỏ `signature`.
+Canonical JSON theo đúng `riskassessment.CanonicalJSON` của server Go và mock:
+mười field của `ModelResponse` với key sắp xếp theo alphabet, bỏ `signature`.
 JSON compact UTF-8, escape HTML (`<`, `>`, `&`) và U+2028/U+2029 như `encoding/json`;
 số thực theo cách biểu diễn của Go (ví dụ `0.0 → 0`, `1e-07 → 1e-7`), thời gian UTC
-RFC3339Nano bỏ zero thừa. Không sắp xếp key theo alphabet. Server xác minh HMAC
-bằng constant-time comparison, kiểm tra metadata/correlation và decision hợp lệ
+RFC3339Nano bỏ zero thừa. Server xác minh HMAC
+bằng constant-time comparison, kiểm tra metadata hợp lệ
 trước khi lưu. Message unsigned, sai key, bị sửa hoặc sai schema được park vào
 `risk_decision_rejections`; lỗi lưu DB không commit offset.
 
-Các test dùng chung fixture Python/Go để kiểm tra bytes canonical và server decoder
-của cả decision và assessment. Nhánh assessment hiện có của server vẫn được bảo vệ
-HMAC và kiểm tra thiếu/null field, nhưng worker thật hiện phát decision theo mock.
-Training record/topic giữ prediction gốc, không có chữ ký decision.
+`tests/fixtures/model_responses.json` kiểm tra bytes canonical và chữ ký phía Python.
+Training record/topic giữ prediction gốc, không có chữ ký.
 HMAC không mã hóa payload và không tự chống replay; DB xử lý redelivery.
 
 ## Chạy
@@ -311,7 +306,7 @@ set +a
 python anomaly-service/scripts/build_verify_messages.py --output-dir /tmp/anomaly-decision-verify
 ```
 
-Script tạo hai transfer ID tổng hợp: `valid.json` là BLOCK, `allow.json` là ALLOW,
+Script tạo hai transaction ID tổng hợp: `valid.json` (score 0.98, server quyết định BLOCK), `allow.json` (score 0.08, ALLOW),
 và bốn message lỗi (`tampered`, `unsigned`, `wrong-key`, `missing-score`); không ghi secret ra file
 hay stdout. Đây là test contract/transport với score tổng hợp, không chạy model
 và không tạo giao dịch/chuyển tiền.
@@ -346,15 +341,15 @@ done
 docker compose --env-file server/.env -f server/docker-compose.yml logs --since 5m anomaly-server
 ```
 
-Kỳ vọng message hợp lệ có log `risk decision processed`, với decision BLOCK hoặc
-ALLOW tương ứng; bốn message lỗi có log `invalid risk decision parked`.
+Kỳ vọng message hợp lệ có log `model assessment stored`, bốn message lỗi có log
+`invalid model response parked`.
 Lấy hai transfer ID do script in ra, rồi chạy các truy vấn tương đương SELECT
 trong Mongo shell (thay placeholder; các lệnh dưới chỉ đọc):
 
 ```javascript
 use anomaly
-db.risk_decisions.find({transfer_id: {$in: ["<block-transfer-id>", "<allow-transfer-id>"]}})
-db.risk_decisions.countDocuments({transfer_id: "<block-transfer-id>"}) // 1 dù publish hai lần
+db.risk_decisions.find({transaction_id: {$in: ["<block-transfer-id>", "<allow-transfer-id>"]}})
+db.risk_decisions.countDocuments({transaction_id: "<block-transfer-id>"}) // 1 dù publish hai lần
 db.risk_decision_rejections.find({created_at: {$gte: new Date(Date.now() - 5*60*1000)}}, {reason: 1, topic: 1, partition: 1, offset: 1})
 ```
 
@@ -362,7 +357,7 @@ db.risk_decision_rejections.find({created_at: {$gte: new Date(Date.now() - 5*60*
 
 Dừng `consumer-mock`. Chạy worker với dependencies Python/GATv2 và bundle tương thích,
 đợi worker nhận partition rồi tạo transfer mới trên app. Kiểm tra log
-`decision published`, `risk decision processed`, và
+`assessment published`, `model assessment stored`, và
 JSONL `request.payload.ip_address` (khi server quan sát được IP). Bundle hiện tại
 không có feature IP: IP được giữ cho training/audit, không đưa vào input bundle.
 History đưa vào model cũng bỏ `riskAssessment` để tránh feedback/leakage.
@@ -397,25 +392,27 @@ Topic: `anomaly.bank.risk-decisions.v1` (cấu hình được).
 
 ```json
 {
-  "transfer_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
-  "source_event_id": "<TransferCreated-event-id-from-relay>",
-  "decision": "BLOCK",
-  "is_anomalous": true,
+  "schema_version": 1,
+  "event_id": "<TransferCreated-event-id-from-relay>",
+  "transaction_id": "aaaaaaa1-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+  "occurred_at": "2026-10-19T10:30:00.123456789Z",
+  "scored_at": "2026-10-19T10:30:01.123Z",
   "risk_score": 0.9821,
-  "model_version": "gatv2-device-control-v1",
-  "evaluated_at": "2026-10-19T10:30:01.123Z",
+  "predicted_label": 1,
+  "threshold": 0.9779161810874939,
+  "model_version": "gatv2-1m-baseline-v1",
+  "feature_version": "schema-3-bb68f6c99a1c",
   "signature": "<64-lowercase-hex-HMAC-SHA256-characters>"
 }
 ```
 
-- Kafka key: `transfer_id`, giống `consumer-mock`.
-- `source_event_id` giữ nguyên ID trigger relay, để server kiểm tra correlation.
+- Kafka key: `transaction_id:model_version:feature_version`, giống `consumer-mock`.
+- `event_id` giữ nguyên ID trigger relay; `occurred_at` là thời gian của request gốc.
 - `risk_score` là sigmoid của weighted-BCE logit, **không phải xác suất gian
   lận đã hiệu chỉnh**.
-- Policy đã chốt: `predicted_label=1 → BLOCK/true`, `0 → ALLOW/false`.
-- `threshold`, `predicted_label`, `feature_version` vẫn có trong training record;
-  không thêm field vào envelope decision của mock.
-- Server dedupe theo `transfer_id`, không ghi đè terminal decision đã chấp nhận.
+- `predicted_label` chỉ là kết quả đánh giá của model. Server quyết định ALLOW/BLOCK
+  từ `risk_score` (`DecisionForScore`), không dùng label hay threshold của bundle.
+- Server dedupe theo `transaction_id`, `model_version`, `feature_version`.
 
 ## Training data
 

@@ -24,12 +24,10 @@ def test_verify_script_builds_signed_and_invalid_messages_without_exposing_key(t
     assert set(messages) == {"valid", "allow", "tampered", "unsigned", "wrong-key", "missing-score"}
     valid = messages["valid"]
     assert valid == sign_risk_event(valid, secret)
-    assert valid["transfer_id"] in result.stdout
-    assert valid["decision"] == "BLOCK"
-    assert valid["is_anomalous"] is True
-    assert messages["allow"]["decision"] == "ALLOW"
-    assert messages["allow"]["is_anomalous"] is False
-    assert messages["allow"]["transfer_id"] != valid["transfer_id"]
+    assert valid["transaction_id"] in result.stdout
+    assert valid["predicted_label"] == 1
+    assert messages["allow"]["predicted_label"] == 0
+    assert messages["allow"]["transaction_id"] != valid["transaction_id"]
     assert messages["allow"] == sign_risk_event(messages["allow"], secret)
     assert messages["tampered"]["signature"] != sign_risk_event(messages["tampered"], secret)[
         "signature"
