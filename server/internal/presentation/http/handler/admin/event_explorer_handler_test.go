@@ -18,10 +18,10 @@ func TestParseEventExplorerRangeSupportsDateBounds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse range: %v", err)
 	}
-	if !from.Equal(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)) {
+	if !from.Equal(time.Date(2026, 10, 1, 0, 0, 0, 0, time.FixedZone("ICT", 7*60*60)).UTC()) {
 		t.Fatalf("from = %s", from)
 	}
-	if !to.Equal(time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)) {
+	if !to.Equal(time.Date(2026, 10, 31, 0, 0, 0, 0, time.FixedZone("ICT", 7*60*60)).UTC()) {
 		t.Fatalf("to = %s", to)
 	}
 }
@@ -170,6 +170,29 @@ func TestBuildEventExplorerItemExtractsLoanPaymentTransactionID(t *testing.T) {
 		Data:        payload,
 	})
 	if !ok || item.TransactionID != "loan-payment-tx-1" || item.LoanID != "loan-1" || item.Category != "loan" {
+		t.Fatalf("item = %+v, ok = %v", item, ok)
+	}
+}
+
+func TestBuildEventExplorerItemExtractsNestedLoanApplicationAccount(t *testing.T) {
+	payload, err := json.Marshal(map[string]any{
+		"application": map[string]any{
+			"id":                    "loan-1",
+			"disbursementAccountId": "account-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal loan event: %v", err)
+	}
+	item, ok := buildEventExplorerItem(&esdb.RecordedEvent{
+		EventID:     uuid.New(),
+		EventType:   "LoanApplicationCreated",
+		StreamID:    "loan-application-loan-1",
+		EventNumber: 0,
+		CreatedDate: time.Date(2026, 10, 30, 7, 30, 0, 0, time.UTC),
+		Data:        payload,
+	})
+	if !ok || item.LoanID != "loan-1" || len(item.AccountIDs) != 1 || item.AccountIDs[0] != "account-1" {
 		t.Fatalf("item = %+v, ok = %v", item, ok)
 	}
 }

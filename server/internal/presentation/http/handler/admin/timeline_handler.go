@@ -52,6 +52,8 @@ type TimelineHandler struct {
 	explorerAccountsMu sync.RWMutex
 	explorerAccountsAt time.Time
 	explorerAccounts   []*accountdomain.UserAccount
+	loanAccountsMu     sync.RWMutex
+	loanAccounts       map[string]string
 }
 
 func NewTimelineHandler(client *esdb.Client, accounts accountTimelineLookup, loanTimeline ...loanTimelineLookup) *TimelineHandler {

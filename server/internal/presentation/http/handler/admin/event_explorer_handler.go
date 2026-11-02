@@ -342,7 +342,11 @@ func parseEventExplorerTime(raw string, endOfDay bool) (time.Time, error) {
 	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
 		return parsed.UTC(), nil
 	}
-	parsed, err := time.Parse("2006-01-02", raw)
+	location, err := time.LoadLocation("Asia/Ho_Chi_Minh")
+	if err != nil {
+		return time.Time{}, err
+	}
+	parsed, err := time.ParseInLocation("2006-01-02", raw, location)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -448,6 +452,7 @@ func (h *TimelineHandler) readEventExplorerBrowsePage(ctx context.Context, query
 	readCount := 0
 	sourceExhausted := false
 	pageFull := false
+	lookaheadMatched := false
 	var lastScannedPosition esdb.Position
 	var lastReturnedPosition esdb.Position
 	for scanned < eventExplorerMaxScan && readCount < eventExplorerBatchSize+1 {
@@ -470,11 +475,21 @@ func (h *TimelineHandler) readEventExplorerBrowsePage(ctx context.Context, query
 		scanned++
 		lastScannedPosition = position
 		item, ok := buildEventExplorerItem(recorded.Event)
-		if !ok || !eventExplorerMatches(item, query) {
+		if !ok {
+			continue
+		}
+		if item.Category == "loan" && len(item.AccountIDs) == 0 {
+			accountID, accountErr := h.loanAccountFromStream(ctx, recorded.Event.StreamID)
+			if accountErr == nil && accountID != "" {
+				item.AccountIDs = uniqueStrings(accountID)
+			}
+		}
+		if !eventExplorerMatches(item, query) {
 			continue
 		}
 		if len(items) == query.Limit {
 			pageFull = true
+			lookaheadMatched = true
 			break
 		}
 		items = append(items, item)
@@ -491,7 +506,7 @@ func (h *TimelineHandler) readEventExplorerBrowsePage(ctx context.Context, query
 		return items, "", false, scanned, nil
 	}
 	cursorPosition := lastScannedPosition
-	if pageFull {
+	if lookaheadMatched {
 		cursorPosition = lastReturnedPosition
 	}
 	if cursorPosition == (esdb.Position{}) {
@@ -723,6 +738,17 @@ func buildGenericLoanItem(recorded *esdb.RecordedEvent) (eventExplorerItemDTO, b
 	}
 	accountID, _ := raw["accountId"].(string)
 	loanID, _ := raw["loanId"].(string)
+	if application, ok := raw["application"].(map[string]any); ok {
+		if accountID == "" {
+			accountID, _ = application["disbursementAccountId"].(string)
+		}
+		if loanID == "" {
+			loanID, _ = application["id"].(string)
+		}
+	}
+	if loanID == "" {
+		loanID = strings.TrimPrefix(recorded.StreamID, "loan-application-")
+	}
 	return eventExplorerItemDTO{
 		EventID:        recorded.EventID.String(),
 		EventType:      recorded.EventType,
@@ -734,6 +760,51 @@ func buildGenericLoanItem(recorded *esdb.RecordedEvent) (eventExplorerItemDTO, b
 		LoanID:         loanID,
 		Summary:        recorded.EventType,
 	}, true
+}
+
+func (h *TimelineHandler) loanAccountFromStream(ctx context.Context, streamID string) (string, error) {
+	loanID := strings.TrimPrefix(streamID, "loan-application-")
+	if loanID == streamID || loanID == "" {
+		return "", nil
+	}
+	h.loanAccountsMu.RLock()
+	if h.loanAccounts != nil {
+		accountID := h.loanAccounts[loanID]
+		h.loanAccountsMu.RUnlock()
+		return accountID, nil
+	}
+	h.loanAccountsMu.RUnlock()
+
+	stream, err := h.client.ReadStream(ctx, streamID, esdb.ReadStreamOptions{Direction: esdb.Forwards, From: esdb.Start{}}, 1)
+	if err != nil {
+		return "", err
+	}
+	defer stream.Close()
+	recorded, err := stream.Recv()
+	if errors.Is(err, io.EOF) {
+		return "", nil
+	}
+	if err != nil || recorded == nil || recorded.Event == nil {
+		return "", err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(recorded.Event.Data, &raw); err != nil {
+		return "", err
+	}
+	accountID := ""
+	if application, ok := raw["application"].(map[string]any); ok {
+		accountID, _ = application["disbursementAccountId"].(string)
+	}
+	if accountID == "" {
+		accountID, _ = raw["accountId"].(string)
+	}
+	h.loanAccountsMu.Lock()
+	if h.loanAccounts == nil {
+		h.loanAccounts = make(map[string]string)
+	}
+	h.loanAccounts[loanID] = accountID
+	h.loanAccountsMu.Unlock()
+	return accountID, nil
 }
 
 func eventExplorerSupportedStream(stream string) bool {

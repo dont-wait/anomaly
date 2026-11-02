@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight, faCircleExclamation, faCode, faMagnifyingGlass, faRotate } from "@fortawesome/free-solid-svg-icons";
 import { navigate, routes } from "@/app/routes";
@@ -115,15 +115,25 @@ export function EventExplorerPage() {
   const [detailError, setDetailError] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const searchRequestRef = useRef(0);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const detailRequestRef = useRef(0);
+  const detailAbortRef = useRef<AbortController | null>(null);
 
   const draftChanged = !sameQuery(appliedQuery, query);
   const neutralError = error === "Dữ liệu event không hợp lệ" || error === "Không tìm thấy dữ liệu phù hợp." || error === "Không thể tải event.";
 
   async function loadPage(nextQuery: EventExplorerQuery, cursor: string | undefined, targetPage: number) {
+    const requestId = searchRequestRef.current + 1;
+    searchRequestRef.current = requestId;
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
     setLoading(true);
     setError("");
     try {
-      const response = await getEventExplorer({ ...nextQuery, cursor, limit: 20 });
+      const response = await getEventExplorer({ ...nextQuery, cursor, limit: 20, signal: controller.signal });
+      if (searchRequestRef.current !== requestId) return;
       setResult(response);
       setAppliedQuery(nextQuery);
       setPage(targetPage);
@@ -134,10 +144,11 @@ export function EventExplorerPage() {
         return next;
       });
     } catch (reason) {
+      if (searchRequestRef.current !== requestId) return;
       setResult(null);
       setError(reason instanceof EventExplorerApiError ? reason.message : "Không thể tải event.");
     } finally {
-      setLoading(false);
+      if (searchRequestRef.current === requestId) setLoading(false);
     }
   }
 
@@ -148,24 +159,34 @@ export function EventExplorerPage() {
   }
 
   function reset() {
+    searchRequestRef.current += 1;
+    searchAbortRef.current?.abort();
+    searchAbortRef.current = null;
     setQuery(initialQuery);
     setAppliedQuery(null);
     setResult(null);
     setPage(1);
     setPageCursors([undefined]);
     setError("");
+    setLoading(false);
   }
 
   async function openDetails(item: EventExplorerListItem) {
+    const requestId = detailRequestRef.current + 1;
+    detailRequestRef.current = requestId;
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
     setSelectedItem(item);
     setDetailLoading(true);
     setDetailError("");
     try {
-      setSelectedItem(await getEventExplorerDetail(item));
+      const detail = await getEventExplorerDetail({ ...item, signal: controller.signal });
+      if (detailRequestRef.current === requestId) setSelectedItem(detail);
     } catch (reason) {
-      setDetailError(reason instanceof EventExplorerApiError ? reason.message : "Không thể tải chi tiết event.");
+      if (detailRequestRef.current === requestId) setDetailError(reason instanceof EventExplorerApiError ? reason.message : "Không thể tải chi tiết event.");
     } finally {
-      setDetailLoading(false);
+      if (detailRequestRef.current === requestId) setDetailLoading(false);
     }
   }
 
@@ -194,7 +215,7 @@ export function EventExplorerPage() {
         {result && result.items.length > 0 && <div className="w-full overflow-x-auto"><table className="w-full min-w-250 text-left"><thead><tr className="h-8 border-b border-(--admin-border) text-[10px] font-semibold uppercase tracking-[0.04em] text-(--admin-text-muted)"><th className="px-2">Thời điểm</th><th className="px-2">Sự kiện</th><th className="px-2">Nhóm</th><th className="px-2">Mã giao dịch</th><th className="px-2">Tài khoản liên quan</th></tr></thead><tbody>{result.items.map((item) => <tr key={item.eventId} className="h-11 cursor-pointer border-b border-(--admin-border-subtle) transition-colors hover:bg-(--admin-surface-hover)" role="button" tabIndex={0} onClick={() => void openDetails(item)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") void openDetails(item); }}><td className={`${mono} whitespace-nowrap px-2 text-[10px] text-(--admin-text-muted)`}>{formatDateTime(item.occurredAt)}</td><td className="max-w-60 truncate px-2 text-[12px] font-semibold text-(--admin-text)">{eventLabel(item)}</td><td className={`${mono} px-2 text-[10px] uppercase text-(--admin-text-secondary)`}>{categoryLabels[item.category]}</td><td className={`${mono} px-2 text-[11px] text-(--admin-primary)`}>{item.transactionId || "—"}</td><td className={`${mono} max-w-55 truncate px-2 text-[10px] text-(--admin-text-muted)`}>{item.accounts?.map((account) => `${account.role ? `${account.role}: ` : ""}${account.accountNo}`).join(", ") || "—"}</td></tr>)}</tbody></table></div>}
         {result && <div className="mt-3 flex items-center justify-center gap-3"><button className={`${surface} h-8 rounded-sm border border-(--admin-border) px-3 text-[12px] text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} type="button" disabled={loading || page === 1 || draftChanged} onClick={() => { const cursor = pageCursors[page - 2]; if (appliedQuery) void loadPage(appliedQuery, cursor, page - 1); }}>← Trang trước</button><span className={`${mono} text-[11px] text-(--admin-text-muted)`}>Trang {page}</span><button className={`${surface} h-8 rounded-sm border border-(--admin-border) px-3 text-[12px] text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} type="button" disabled={loading || !result.hasMore || draftChanged || !result.nextCursor} onClick={() => { if (appliedQuery && result.nextCursor) void loadPage(appliedQuery, result.nextCursor, page + 1); }}>Trang sau →</button></div>}
       </section>
-      {selectedItem && <EventDetailDrawer item={selectedItem} loading={detailLoading} error={detailError} onClose={() => { setSelectedItem(null); setDetailError(""); }} />}
+      {selectedItem && <EventDetailDrawer item={selectedItem} loading={detailLoading} error={detailError} onClose={() => { detailRequestRef.current += 1; detailAbortRef.current?.abort(); detailAbortRef.current = null; setSelectedItem(null); setDetailLoading(false); setDetailError(""); }} />}
     </div>
   );
 }

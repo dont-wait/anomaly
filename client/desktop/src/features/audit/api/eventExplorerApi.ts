@@ -69,11 +69,12 @@ export async function getEventExplorer(options: EventExplorerQuery): Promise<Eve
   }
 }
 
-export async function getEventExplorerDetail(item: { eventId: string }): Promise<EventExplorerItem> {
+export async function getEventExplorerDetail(item: { eventId: string; signal?: AbortSignal }): Promise<EventExplorerItem> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}/api/admin/audit/events/${encodeURIComponent(item.eventId)}`, {
       headers: authHeaders(),
+      signal: item.signal,
     });
   } catch {
     throw new EventExplorerApiError();
