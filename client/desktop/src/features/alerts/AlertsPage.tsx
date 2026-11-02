@@ -668,7 +668,6 @@ export function AlertsPage() {
                 ? "Đã khóa tài khoản."
                 : "Đã mở khóa tài khoản.",
             );
-            setPendingAction(null);
           }}
         />
       )}
