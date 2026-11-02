@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
@@ -44,10 +45,13 @@ type loanTimelineReadiness interface {
 }
 
 type TimelineHandler struct {
-	client       *esdb.Client
-	accounts     accountTimelineLookup
-	loanTimeline loanTimelineLookup
-	loanReady    loanTimelineReadiness
+	client             *esdb.Client
+	accounts           accountTimelineLookup
+	loanTimeline       loanTimelineLookup
+	loanReady          loanTimelineReadiness
+	explorerAccountsMu sync.RWMutex
+	explorerAccountsAt time.Time
+	explorerAccounts   []*accountdomain.UserAccount
 }
 
 func NewTimelineHandler(client *esdb.Client, accounts accountTimelineLookup, loanTimeline ...loanTimelineLookup) *TimelineHandler {

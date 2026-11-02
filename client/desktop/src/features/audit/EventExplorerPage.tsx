@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight, faCircleExclamation, faCode, faMagnifyingGlass, faRotate } from "@fortawesome/free-solid-svg-icons";
 import { navigate, routes } from "@/app/routes";
 import { EventExplorerApiError, getEventExplorer, getEventExplorerDetail, type EventExplorerQuery } from "./api/eventExplorerApi";
-import type { EventExplorerCategory, EventExplorerItem, EventExplorerResponse } from "./model";
+import type { EventExplorerCategory, EventExplorerItem, EventExplorerListItem, EventExplorerResponse } from "./model";
 
 const surface = "bg-(--admin-surface)";
 const subtle = "bg-(--admin-surface-subtle)";
@@ -54,8 +54,11 @@ function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(value));
 }
 
-function eventLabel(item: EventExplorerItem): string {
-  return eventTypeLabels[item.eventType] || item.summary || item.eventType;
+type EventExplorerDisplayItem = EventExplorerListItem | EventExplorerItem;
+
+function eventLabel(item: EventExplorerDisplayItem): string {
+  const eventType = "eventType" in item ? item.eventType : "";
+  return eventTypeLabels[eventType] || item.summary || eventType;
 }
 
 function formatMoney(value: unknown, currency: unknown): string | null {
@@ -63,8 +66,8 @@ function formatMoney(value: unknown, currency: unknown): string | null {
   return `${value.toLocaleString("vi-VN")} ${typeof currency === "string" && currency ? currency : "VND"}`;
 }
 
-function businessDetails(item: EventExplorerItem): string[] {
-  const details = item.details || {};
+function businessDetails(item: EventExplorerDisplayItem): string[] {
+  const details = "details" in item ? item.details || {} : {};
   const lines: string[] = [];
   const amount = formatMoney(details.amount, details.currency);
   if (amount) lines.push(`Số tiền: ${amount}`);
@@ -80,7 +83,7 @@ function sameQuery(left: EventExplorerQuery | null, right: EventExplorerQuery): 
   return ["searchType", "search", "category", "eventType", "status", "from", "to"].every((key) => left[key as keyof EventExplorerQuery] === right[key as keyof EventExplorerQuery]);
 }
 
-function EventDetailDrawer({ item, loading, error, onClose }: { item: EventExplorerItem; loading: boolean; error: string; onClose: () => void }) {
+function EventDetailDrawer({ item, loading, error, onClose }: { item: EventExplorerDisplayItem; loading: boolean; error: string; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <aside className={`${subtle} h-full w-full max-w-120 overflow-y-auto p-4 shadow-2xl`} role="dialog" aria-modal="true" aria-label="Chi tiết event">
@@ -95,7 +98,7 @@ function EventDetailDrawer({ item, loading, error, onClose }: { item: EventExplo
         </dl>
         {businessDetails(item).length > 0 && <div className="mt-4 border-t border-(--admin-border) pt-4"><h3 className="text-[13px] font-semibold text-(--admin-text)">Thông tin giao dịch</h3><div className="mt-2 grid gap-1 text-[12px] text-(--admin-text-secondary)">{businessDetails(item).map((line) => <span key={line}>{line}</span>)}</div></div>}
         {item.accounts && item.accounts.length > 0 && <div className="mt-4 border-t border-(--admin-border) pt-4"><h3 className="text-[13px] font-semibold text-(--admin-text)">Tài khoản liên quan</h3><div className="mt-2 grid gap-1">{item.accounts.map((account) => <button key={`${account.accountNo}:${account.role}`} className="flex items-center justify-between rounded-sm px-2 py-1.5 text-left text-[12px] text-(--admin-primary) hover:bg-(--admin-surface-hover)" type="button" onClick={() => navigate(`${routes.auditAccounts}?account=${encodeURIComponent(account.accountNo)}`)}><span className="min-w-0 truncate"><strong className={`${mono} block`}>{account.role ? `${account.role}: ` : ""}{account.accountNo}</strong>{account.customerName && <small className="block text-(--admin-text-muted)">{account.customerName}</small>}</span><FontAwesomeIcon icon={faArrowRight} className="text-[10px]" aria-hidden="true" /></button>)}</div></div>}
-        <details className="mt-4 border-t border-(--admin-border) pt-4"><summary className="cursor-pointer text-[13px] font-semibold text-(--admin-text)">Thông tin kỹ thuật</summary>{loading ? <p className="mt-2 text-[12px] text-(--admin-text-muted)">Đang tải chi tiết...</p> : error ? <p className="mt-2 text-[12px] text-(--admin-danger)" role="alert">{error}</p> : <div className="mt-2 grid gap-2"><dl className="grid gap-1 text-[11px] text-(--admin-text-muted)"><div className="flex justify-between gap-4"><dt>Event ID</dt><dd className={`${mono} max-w-65 break-all text-right`}>{item.eventId}</dd></div><div className="flex justify-between gap-4"><dt>Event type</dt><dd className={`${mono} text-right`}>{item.eventType}</dd></div><div className="flex justify-between gap-4"><dt>Stream</dt><dd className={`${mono} max-w-65 break-all text-right`}>{item.sourceStream}</dd></div><div className="flex justify-between gap-4"><dt>Revision</dt><dd className={`${mono} text-right`}>{item.sourceRevision}</dd></div></dl><pre className={`${mono} overflow-x-auto rounded-sm bg-(--admin-background) p-3 text-[10px] leading-4 text-(--admin-text-secondary)`}>{JSON.stringify(item.details || {}, null, 2)}</pre></div>}</details>
+        <details className="mt-4 border-t border-(--admin-border) pt-4"><summary className="cursor-pointer text-[13px] font-semibold text-(--admin-text)">Thông tin kỹ thuật</summary>{loading ? <p className="mt-2 text-[12px] text-(--admin-text-muted)">Đang tải chi tiết...</p> : error ? <p className="mt-2 text-[12px] text-(--admin-danger)" role="alert">{error}</p> : <div className="mt-2 grid gap-2"><dl className="grid gap-1 text-[11px] text-(--admin-text-muted)"><div className="flex justify-between gap-4"><dt>Event ID</dt><dd className={`${mono} max-w-65 break-all text-right`}>{item.eventId}</dd></div>{"eventType" in item && <div className="flex justify-between gap-4"><dt>Event type</dt><dd className={`${mono} text-right`}>{item.eventType}</dd></div>}{"sourceStream" in item && <div className="flex justify-between gap-4"><dt>Stream</dt><dd className={`${mono} max-w-65 break-all text-right`}>{item.sourceStream}</dd></div>}{"sourceRevision" in item && <div className="flex justify-between gap-4"><dt>Revision</dt><dd className={`${mono} text-right`}>{item.sourceRevision}</dd></div>}</dl><pre className={`${mono} overflow-x-auto rounded-sm bg-(--admin-background) p-3 text-[10px] leading-4 text-(--admin-text-secondary)`}>{JSON.stringify("details" in item ? item.details || {} : {}, null, 2)}</pre></div>}</details>
       </aside>
     </div>
   );
@@ -107,7 +110,7 @@ export function EventExplorerPage() {
   const [result, setResult] = useState<EventExplorerResponse | null>(null);
   const [page, setPage] = useState(1);
   const [pageCursors, setPageCursors] = useState<Array<string | undefined>>([undefined]);
-  const [selectedItem, setSelectedItem] = useState<EventExplorerItem | null>(null);
+  const [selectedItem, setSelectedItem] = useState<EventExplorerDisplayItem | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -152,7 +155,7 @@ export function EventExplorerPage() {
     setError("");
   }
 
-  async function openDetails(item: EventExplorerItem) {
+  async function openDetails(item: EventExplorerListItem) {
     setSelectedItem(item);
     setDetailLoading(true);
     setDetailError("");
@@ -187,7 +190,7 @@ export function EventExplorerPage() {
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-[16px] font-semibold uppercase text-(--admin-text)">Kết quả tra cứu</h2><p className="mt-0.5 text-[11px] text-(--admin-text-muted)">{result ? `${result.items.length} event · đã quét ${result.scanned}` : "Chưa thực hiện tra cứu"}</p></div><button className={`${surface} flex h-8 items-center gap-2 rounded-sm border border-(--admin-border) px-2.5 text-[12px] text-(--admin-text) transition-colors hover:border-(--admin-primary) hover:bg-(--admin-surface-hover)`} type="button" onClick={() => submit()} disabled={loading}><FontAwesomeIcon icon={faRotate} className={loading ? "animate-spin" : ""} aria-hidden="true" />Làm mới</button></div>
         {!result && !loading && !error && <div className="grid min-h-48 place-items-center text-center text-[12px] text-(--admin-text-muted)">Nhập điều kiện và chọn “Tìm kiếm” để tra cứu event.</div>}
         {result && result.items.length === 0 && <div className="grid min-h-48 place-items-center text-center text-[12px] text-(--admin-text-muted)">{result.scanComplete ? "Không tìm thấy event phù hợp." : "Chưa thấy kết quả trong phạm vi vừa quét. Hãy bấm Trang sau để tiếp tục."}</div>}
-        {result && result.items.length > 0 && <div className="w-full overflow-x-auto"><table className="w-full min-w-250 text-left"><thead><tr className="h-8 border-b border-(--admin-border) text-[10px] font-semibold uppercase tracking-[0.04em] text-(--admin-text-muted)"><th className="px-2">Thời điểm</th><th className="px-2">Sự kiện</th><th className="px-2">Nhóm</th><th className="px-2">Mã giao dịch</th><th className="px-2">Tài khoản liên quan</th></tr></thead><tbody>{result.items.map((item) => <tr key={`${item.sourceStream}:${item.sourceRevision}:${item.eventId}`} className="h-11 cursor-pointer border-b border-(--admin-border-subtle) transition-colors hover:bg-(--admin-surface-hover)" role="button" tabIndex={0} onClick={() => void openDetails(item)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") void openDetails(item); }}><td className={`${mono} whitespace-nowrap px-2 text-[10px] text-(--admin-text-muted)`}>{formatDateTime(item.occurredAt)}</td><td className="max-w-60 truncate px-2 text-[12px] font-semibold text-(--admin-text)" title={item.eventType}>{eventLabel(item)}</td><td className={`${mono} px-2 text-[10px] uppercase text-(--admin-text-secondary)`}>{categoryLabels[item.category]}</td><td className={`${mono} px-2 text-[11px] text-(--admin-primary)`}>{item.transactionId || "—"}</td><td className={`${mono} max-w-55 truncate px-2 text-[10px] text-(--admin-text-muted)`}>{item.accounts?.map((account) => `${account.role ? `${account.role}: ` : ""}${account.accountNo}`).join(", ") || "—"}</td></tr>)}</tbody></table></div>}
+        {result && result.items.length > 0 && <div className="w-full overflow-x-auto"><table className="w-full min-w-250 text-left"><thead><tr className="h-8 border-b border-(--admin-border) text-[10px] font-semibold uppercase tracking-[0.04em] text-(--admin-text-muted)"><th className="px-2">Thời điểm</th><th className="px-2">Sự kiện</th><th className="px-2">Nhóm</th><th className="px-2">Mã giao dịch</th><th className="px-2">Tài khoản liên quan</th></tr></thead><tbody>{result.items.map((item) => <tr key={item.eventId} className="h-11 cursor-pointer border-b border-(--admin-border-subtle) transition-colors hover:bg-(--admin-surface-hover)" role="button" tabIndex={0} onClick={() => void openDetails(item)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") void openDetails(item); }}><td className={`${mono} whitespace-nowrap px-2 text-[10px] text-(--admin-text-muted)`}>{formatDateTime(item.occurredAt)}</td><td className="max-w-60 truncate px-2 text-[12px] font-semibold text-(--admin-text)">{eventLabel(item)}</td><td className={`${mono} px-2 text-[10px] uppercase text-(--admin-text-secondary)`}>{categoryLabels[item.category]}</td><td className={`${mono} px-2 text-[11px] text-(--admin-primary)`}>{item.transactionId || "—"}</td><td className={`${mono} max-w-55 truncate px-2 text-[10px] text-(--admin-text-muted)`}>{item.accounts?.map((account) => `${account.role ? `${account.role}: ` : ""}${account.accountNo}`).join(", ") || "—"}</td></tr>)}</tbody></table></div>}
         {result && <div className="mt-3 flex items-center justify-center gap-3"><button className={`${surface} h-8 rounded-sm border border-(--admin-border) px-3 text-[12px] text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} type="button" disabled={loading || page === 1 || draftChanged} onClick={() => { const cursor = pageCursors[page - 2]; if (appliedQuery) void loadPage(appliedQuery, cursor, page - 1); }}>← Trang trước</button><span className={`${mono} text-[11px] text-(--admin-text-muted)`}>Trang {page}</span><button className={`${surface} h-8 rounded-sm border border-(--admin-border) px-3 text-[12px] text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} type="button" disabled={loading || !result.hasMore || draftChanged || !result.nextCursor} onClick={() => { if (appliedQuery && result.nextCursor) void loadPage(appliedQuery, result.nextCursor, page + 1); }}>Trang sau →</button></div>}
       </section>
       {selectedItem && <EventDetailDrawer item={selectedItem} loading={detailLoading} error={detailError} onClose={() => { setSelectedItem(null); setDetailError(""); }} />}

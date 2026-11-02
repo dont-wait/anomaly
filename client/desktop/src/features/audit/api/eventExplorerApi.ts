@@ -1,5 +1,5 @@
 import { API_BASE_URL, readAdminSession } from "@/features/auth/api/adminSession";
-import type { EventExplorerCategory, EventExplorerResponse } from "../model";
+import type { EventExplorerCategory, EventExplorerItem, EventExplorerResponse } from "../model";
 
 export class EventExplorerApiError extends Error {
   readonly status?: number;
@@ -59,20 +59,18 @@ export async function getEventExplorer(options: EventExplorerQuery): Promise<Eve
     throw new EventExplorerApiError(message, response.status);
   }
   try {
-    return (await response.json()) as EventExplorerResponse;
+    const body = (await response.json()) as { data?: EventExplorerResponse };
+    if (!body.data) throw new Error("missing data");
+    return body.data;
   } catch {
     throw new EventExplorerApiError("Dữ liệu event không hợp lệ", response.status);
   }
 }
 
-export async function getEventExplorerDetail(item: { eventId: string; sourceStream: string; sourceRevision: number }): Promise<EventExplorerResponse["items"][number]> {
-  const query = new URLSearchParams({
-    stream: item.sourceStream,
-    revision: String(item.sourceRevision),
-  });
+export async function getEventExplorerDetail(item: { eventId: string }): Promise<EventExplorerItem> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/api/admin/audit/events/${encodeURIComponent(item.eventId)}?${query.toString()}`, {
+    response = await fetch(`${API_BASE_URL}/api/admin/audit/events/${encodeURIComponent(item.eventId)}`, {
       headers: authHeaders(),
     });
   } catch {
@@ -82,7 +80,9 @@ export async function getEventExplorerDetail(item: { eventId: string; sourceStre
     throw new EventExplorerApiError(response.status === 404 ? "Không tìm thấy event." : "Không thể tải chi tiết event.", response.status);
   }
   try {
-    return (await response.json()) as EventExplorerResponse["items"][number];
+    const body = (await response.json()) as { data?: EventExplorerItem };
+    if (!body.data) throw new Error("missing data");
+    return body.data;
   } catch {
     throw new EventExplorerApiError("Dữ liệu chi tiết event không hợp lệ", response.status);
   }

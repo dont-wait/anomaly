@@ -57,6 +57,7 @@ describe("EventExplorerPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Chuyển tiền thành công/i }));
     expect(screen.getByRole("dialog", { name: "Chi tiết event" })).toBeTruthy();
+    expect(getEventExplorerDetail).toHaveBeenCalledWith(expect.objectContaining({ eventId: "event-1" }));
     await waitFor(() => expect(screen.getByText("Số tiền: 500.000 VND")).toBeTruthy());
     fireEvent.click(screen.getByText("Thông tin kỹ thuật"));
     expect(screen.getByText("event-1")).toBeTruthy();

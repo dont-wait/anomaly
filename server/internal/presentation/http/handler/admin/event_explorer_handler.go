@@ -15,6 +15,7 @@ import (
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	"github.com/dont-wait/anomaly/internal/domain/audit"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
+	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 	esdb "github.com/kurrent-io/KurrentDB-Client-Go/kurrentdb"
@@ -62,11 +63,21 @@ type eventExplorerAccountDTO struct {
 }
 
 type eventExplorerResponse struct {
-	Items        []eventExplorerItemDTO `json:"items"`
-	NextCursor   string                 `json:"nextCursor,omitempty"`
-	HasMore      bool                   `json:"hasMore"`
-	ScanComplete bool                   `json:"scanComplete"`
-	Scanned      int                    `json:"scanned"`
+	Items        []eventExplorerListItemDTO `json:"items"`
+	NextCursor   string                     `json:"nextCursor,omitempty"`
+	HasMore      bool                       `json:"hasMore"`
+	ScanComplete bool                       `json:"scanComplete"`
+	Scanned      int                        `json:"scanned"`
+}
+
+type eventExplorerListItemDTO struct {
+	EventID       string                    `json:"eventId"`
+	Category      string                    `json:"category"`
+	OccurredAt    time.Time                 `json:"occurredAt"`
+	Accounts      []eventExplorerAccountDTO `json:"accounts,omitempty"`
+	TransactionID string                    `json:"transactionId,omitempty"`
+	LoanID        string                    `json:"loanId,omitempty"`
+	Summary       string                    `json:"summary"`
 }
 
 type eventExplorerQuery struct {
@@ -101,7 +112,7 @@ func RegisterEventExplorerRoutes(router *openapi.Registry, handler *TimelineHand
 			{Name: "limit", In: "query", Type: "integer", Example: "20"},
 			{Name: "cursor", In: "query", Type: "string"},
 		},
-		Response: eventExplorerResponse{}, FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusRequestEntityTooLarge, http.StatusInternalServerError},
+		Response: eventExplorerResponse{}, FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusInternalServerError},
 	})
 	router.Handle("GET /api/admin/audit/events/{id}", securedDetail, openapi.Operation{
 		ID: "adminEventExplorerDetail", Summary: "Get admin audit event detail", Tags: []string{"Admin Audit"}, Auth: true,
@@ -110,7 +121,7 @@ func RegisterEventExplorerRoutes(router *openapi.Registry, handler *TimelineHand
 			{Name: "stream", In: "query", Type: "string"},
 			{Name: "revision", In: "query", Type: "integer"},
 		},
-		Response: eventExplorerItemDTO{}, FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError},
+		Response: eventExplorerItemDTO{}, FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusInternalServerError},
 	})
 }
 
@@ -120,19 +131,19 @@ func (h *TimelineHandler) EventExplorer(w http.ResponseWriter, r *http.Request) 
 
 	query, err := parseEventExplorerQuery(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeEventExplorerError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	var accountDirectory []*accountdomain.UserAccount
 	if query.AccountRaw != "" {
 		accountDirectory, err = h.loadEventExplorerAccounts(ctx)
 		if err != nil {
-			http.Error(w, "could not resolve account", http.StatusInternalServerError)
+			writeEventExplorerError(w, http.StatusInternalServerError, "could not resolve account")
 			return
 		}
 		account := findEventExplorerAccount(accountDirectory, query.AccountRaw)
 		if account == nil {
-			http.Error(w, "account not found", http.StatusNotFound)
+			writeEventExplorerError(w, http.StatusNotFound, "account not found")
 			return
 		}
 		query.AccountID = account.Id
@@ -141,28 +152,27 @@ func (h *TimelineHandler) EventExplorer(w http.ResponseWriter, r *http.Request) 
 	queryKey := eventExplorerQueryKey(query)
 	cursor, err := decodeEventExplorerCursor(r.URL.Query().Get("cursor"))
 	if err != nil {
-		http.Error(w, "invalid cursor", http.StatusBadRequest)
+		writeEventExplorerError(w, http.StatusBadRequest, "invalid cursor")
 		return
 	}
 	if cursor.QueryKey != "" && cursor.QueryKey != queryKey {
-		http.Error(w, "cursor does not match the requested filters", http.StatusBadRequest)
+		writeEventExplorerError(w, http.StatusBadRequest, "cursor does not match the requested filters")
 		return
 	}
 
 	items, nextCursor, hasMore, scanned, err := h.readEventExplorerPage(ctx, query, cursor)
 	if err != nil {
 		if errors.Is(err, errEventExplorerTooLarge) {
-			http.Error(w, "event search is too broad; narrow the filters", http.StatusRequestEntityTooLarge)
+			writeEventExplorerError(w, http.StatusRequestEntityTooLarge, "event search is too broad; narrow the filters")
 			return
 		}
-		http.Error(w, "could not load audit events", http.StatusInternalServerError)
+		writeEventExplorerError(w, http.StatusInternalServerError, "could not load audit events")
 		return
 	}
 	if eventExplorerItemsHaveAccounts(items) && accountDirectory == nil {
 		accountDirectory, err = h.loadEventExplorerAccounts(ctx)
 		if err != nil {
-			http.Error(w, "could not resolve event accounts", http.StatusInternalServerError)
-			return
+			accountDirectory = nil
 		}
 	}
 	if accountDirectory != nil {
@@ -171,8 +181,8 @@ func (h *TimelineHandler) EventExplorer(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(eventExplorerResponse{
-		Items:        items,
+	httpx.WriteSuccess(w, http.StatusOK, "Audit events loaded", eventExplorerResponse{
+		Items:        eventExplorerListItems(items),
 		NextCursor:   nextCursor,
 		HasMore:      hasMore,
 		ScanComplete: !hasMore,
@@ -186,7 +196,7 @@ func (h *TimelineHandler) EventExplorerDetail(w http.ResponseWriter, r *http.Req
 
 	eventID := strings.TrimSpace(r.PathValue("id"))
 	if eventID == "" {
-		http.Error(w, "event id is required", http.StatusBadRequest)
+		writeEventExplorerError(w, http.StatusBadRequest, "event id is required")
 		return
 	}
 	streamID := strings.TrimSpace(r.URL.Query().Get("stream"))
@@ -196,12 +206,12 @@ func (h *TimelineHandler) EventExplorerDetail(w http.ResponseWriter, r *http.Req
 	var err error
 	if streamID != "" || rawRevision != "" {
 		if streamID == "" || rawRevision == "" {
-			http.Error(w, "stream and revision must be provided together", http.StatusBadRequest)
+			writeEventExplorerError(w, http.StatusBadRequest, "stream and revision must be provided together")
 			return
 		}
 		revision, parseErr := strconv.ParseUint(rawRevision, 10, 64)
 		if parseErr != nil {
-			http.Error(w, "revision must be a positive integer", http.StatusBadRequest)
+			writeEventExplorerError(w, http.StatusBadRequest, "revision must be a positive integer")
 			return
 		}
 		item, found, err = h.readEventExplorerDetail(ctx, eventID, streamID, revision)
@@ -210,29 +220,35 @@ func (h *TimelineHandler) EventExplorerDetail(w http.ResponseWriter, r *http.Req
 	}
 	if err != nil {
 		if errors.Is(err, errEventExplorerTooLarge) {
-			http.Error(w, "event search is too broad; provide stream and revision", http.StatusRequestEntityTooLarge)
+			writeEventExplorerError(w, http.StatusRequestEntityTooLarge, "event search is too broad; provide stream and revision")
 			return
 		}
-		http.Error(w, "could not load audit event", http.StatusInternalServerError)
+		writeEventExplorerError(w, http.StatusInternalServerError, "could not load audit event")
 		return
 	}
 	if !found {
-		http.Error(w, "event not found", http.StatusNotFound)
+		writeEventExplorerError(w, http.StatusNotFound, "event not found")
 		return
 	}
 	enrichedItems := []eventExplorerItemDTO{item}
 	if eventExplorerItemsHaveAccounts(enrichedItems) {
 		accountDirectory, loadErr := h.loadEventExplorerAccounts(ctx)
-		if loadErr != nil {
-			http.Error(w, "could not resolve event accounts", http.StatusInternalServerError)
-			return
+		if loadErr == nil {
+			h.enrichEventExplorerAccounts(enrichedItems, accountDirectory)
 		}
-		h.enrichEventExplorerAccounts(enrichedItems, accountDirectory)
 	}
 	item = enrichedItems[0]
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(item)
+	httpx.WriteSuccess(w, http.StatusOK, "Audit event loaded", item)
+}
+
+func writeEventExplorerError(w http.ResponseWriter, status int, detail string) {
+	httpx.WriteJSON(w, status, httpx.ErrorResponse{
+		Status: status,
+		Title:  http.StatusText(status),
+		Errors: []httpx.ErrorDetail{{Code: httpx.ErrorCodeForStatus(status), Detail: detail}},
+	})
 }
 
 func (h *TimelineHandler) findEventExplorerItem(ctx context.Context, eventID string) (eventExplorerItemDTO, bool, error) {
@@ -760,7 +776,20 @@ func (h *TimelineHandler) loadEventExplorerAccounts(ctx context.Context) ([]*acc
 	if h.accounts == nil {
 		return []*accountdomain.UserAccount{}, nil
 	}
+	h.explorerAccountsMu.RLock()
+	if !h.explorerAccountsAt.IsZero() && time.Since(h.explorerAccountsAt) < 30*time.Second {
+		accounts := append([]*accountdomain.UserAccount(nil), h.explorerAccounts...)
+		h.explorerAccountsMu.RUnlock()
+		return accounts, nil
+	}
+	h.explorerAccountsMu.RUnlock()
 	accounts, err := h.accounts.FindAll(ctx)
+	if err == nil {
+		h.explorerAccountsMu.Lock()
+		h.explorerAccounts = append([]*accountdomain.UserAccount(nil), accounts...)
+		h.explorerAccountsAt = time.Now()
+		h.explorerAccountsMu.Unlock()
+	}
 	return accounts, err
 }
 
@@ -784,6 +813,41 @@ func eventExplorerItemsHaveAccounts(items []eventExplorerItemDTO) bool {
 		}
 	}
 	return false
+}
+
+func eventExplorerListItems(items []eventExplorerItemDTO) []eventExplorerListItemDTO {
+	result := make([]eventExplorerListItemDTO, 0, len(items))
+	for _, item := range items {
+		result = append(result, eventExplorerListItemDTO{
+			EventID:       item.EventID,
+			Category:      item.Category,
+			OccurredAt:    item.OccurredAt,
+			Accounts:      item.Accounts,
+			TransactionID: item.TransactionID,
+			LoanID:        item.LoanID,
+			Summary:       eventExplorerBusinessSummary(item),
+		})
+	}
+	return result
+}
+
+func eventExplorerBusinessSummary(item eventExplorerItemDTO) string {
+	labels := map[string]string{
+		"TransferCreated":                  "Yêu cầu chuyển tiền được tạo",
+		"TransferCompleted":                "Chuyển tiền thành công",
+		"TransferFailed":                   "Chuyển tiền thất bại",
+		"TransferCancelled":                "Chuyển tiền bị hủy",
+		"TransferOTPUpdated":               "OTP chuyển tiền được cập nhật",
+		"TransferOTPVerificationFailed":    "Xác thực OTP chuyển tiền thất bại",
+		"TransferOTPVerificationSucceeded": "Xác thực OTP chuyển tiền thành công",
+		"TransferOTPExpired":               "OTP chuyển tiền hết hạn",
+		"LoginSucceeded":                   "Đăng nhập thành công",
+		"LoginFailed":                      "Đăng nhập thất bại",
+	}
+	if label := labels[item.EventType]; label != "" {
+		return label
+	}
+	return item.Summary
 }
 
 func (h *TimelineHandler) enrichEventExplorerAccounts(items []eventExplorerItemDTO, accounts []*accountdomain.UserAccount) {
