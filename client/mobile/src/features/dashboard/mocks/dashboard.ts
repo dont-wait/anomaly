@@ -16,7 +16,6 @@ export const mockAccount: Account = {
 
 export const mockQuickActions: QuickAction[] = [
   { id: "qa_transfer", label: "Chuyển tiền", icon: "transfer" },
-  { id: "qa_topup", label: "Nạp tiền ĐT", icon: "topup" },
   { id: "qa_bill", label: "Hóa đơn", icon: "bill" },
   { id: "qa_savings", label: "Tiết kiệm", icon: "savings" },
   { id: "qa_more", label: "Xem thêm", icon: "more" },
