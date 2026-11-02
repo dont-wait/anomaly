@@ -51,6 +51,11 @@ func (h *LoginQueryHandler) Handle(ctx context.Context, q LoginQuery) (*LoginRes
 				return nil, auditErr
 			}
 		}
+		if errors.Is(err, accountdomain.ErrAccountLocked) {
+			if auditErr := h.recordLogin(ctx, audit.LoginFailed, "account_locked", ""); auditErr != nil {
+				return nil, auditErr
+			}
+		}
 		return nil, err
 	}
 	if !acc.IsVerified() {
@@ -114,6 +119,9 @@ func validateCredentials(ctx context.Context, repo AccountQueryRepository, cccdN
 			return nil, accountdomain.ErrInvalidCredentials
 		}
 		return nil, accountdomain.ErrInvalidCredentials
+	}
+	if acc.Status == accountdomain.AccountStatusLocked {
+		return nil, accountdomain.ErrAccountLocked
 	}
 	return acc, nil
 }

@@ -17,6 +17,7 @@ export function useLoginForm() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [accountLocked, setAccountLocked] = useState(false);
 
   const isBusy = isSubmitting || authStatus === AUTH_STATUS.RESTORING;
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -24,6 +25,7 @@ export function useLoginForm() {
     if (isSubmitting) return;
 
     setFormError(null);
+    setAccountLocked(false);
     toast.dismiss();
     try {
       assertValidLoginInput({ cccdNumber: cccd, password });
@@ -37,6 +39,13 @@ export function useLoginForm() {
       setPassword("");
       navigate(routes.dashboard);
     } catch (submitError) {
+      if (
+        submitError instanceof ApiError &&
+        submitError.hasCode("ACCOUNT_LOCKED")
+      ) {
+        setAccountLocked(true);
+        return;
+      }
       if (
         submitError instanceof ApiError &&
         submitError.hasCode("KYC_REQUIRED")
@@ -80,8 +89,11 @@ export function useLoginForm() {
     handleSubmit,
     signOut: () => {
       setFormError(null);
+      setAccountLocked(false);
       toast.dismiss();
       logout();
     },
+    accountLocked,
+    dismissAccountLocked: () => setAccountLocked(false),
   };
 }

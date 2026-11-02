@@ -2,7 +2,6 @@ export const routes = {
   login: "#/admin/login",
   monitor: "#/admin/monitor",
   alerts: "#/admin/alerts",
-  riskAccounts: "#/admin/risk-accounts",
   audit: "#/admin/audit/events",
   auditAccounts: "#/admin/audit/accounts",
   auditReplay: "#/admin/audit/replay",
@@ -23,7 +22,6 @@ export const routes = {
 export const protectedRoutes = [
   routes.monitor,
   routes.alerts,
-  routes.riskAccounts,
   routes.audit,
   routes.auditAccounts,
   routes.auditReplay,

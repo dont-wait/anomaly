@@ -9,8 +9,10 @@ import (
 
 type RiskTransactionContext struct {
 	TransactionID        string     `json:"transactionId"`
+	SourceAccountID      string     `json:"sourceAccountId"`
 	SourceAccountNo      string     `json:"sourceAccountNo"`
 	SourceAccountName    string     `json:"sourceAccountName"`
+	DestinationAccountID string     `json:"destinationAccountId"`
 	DestinationAccountNo string     `json:"destinationAccountNo"`
 	DestinationName      string     `json:"destinationName"`
 	Amount               int64      `json:"amount"`
@@ -49,8 +51,10 @@ func (r *TransferRepository) FindRiskTransactionContexts(ctx context.Context, tr
 		}
 		contexts[transfer.ID] = RiskTransactionContext{
 			TransactionID:        transfer.ID,
+			SourceAccountID:      transfer.Source.AccountID.Hex(),
 			SourceAccountNo:      transfer.Source.AccountNo,
 			SourceAccountName:    transfer.Source.Name,
+			DestinationAccountID: transfer.Destination.AccountID.Hex(),
 			DestinationAccountNo: transfer.Destination.AccountNo,
 			DestinationName:      transfer.Destination.Name,
 			Amount:               transfer.Amount,

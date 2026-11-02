@@ -56,11 +56,6 @@ const navigationGroups: NavigationGroup[] = [
         icon: faTriangleExclamation,
         badge: "38",
       },
-      {
-        label: "Tài khoản rủi ro",
-        route: routes.riskAccounts,
-        icon: faChartLine,
-      },
     ],
   },
   {

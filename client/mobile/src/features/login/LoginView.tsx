@@ -8,6 +8,7 @@ import {
   faQrcode,
   faShieldHalved,
   faUserShield,
+  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { Button, Input } from "@/shared/ui";
 import logoUrl from "@/assets/logo.png";
@@ -27,6 +28,8 @@ export function LoginView() {
     isBusy,
     isSubmitting,
     formError,
+    accountLocked,
+    dismissAccountLocked,
     handleSubmit,
     signOut,
   } = useLoginForm();
@@ -286,6 +289,41 @@ export function LoginView() {
           </div>
         </div>
       </main>
+      {accountLocked && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="account-locked-title"
+        >
+          <section className="w-full max-w-md rounded-3xl bg-surface-container-lowest p-7 text-center shadow-2xl">
+            <div className="mx-auto grid h-24 w-24 place-items-center rounded-full bg-error-container text-error">
+              <FontAwesomeIcon
+                icon={faXmark}
+                className="text-6xl"
+                aria-hidden="true"
+              />
+            </div>
+            <h2
+              id="account-locked-title"
+              className="mt-6 text-xl font-bold text-on-surface"
+            >
+              Tài khoản đã bị khóa
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-on-surface-variant">
+              Tài khoản của bạn đã bị khóa. Vui lòng liên hệ bộ phận Chăm sóc
+              khách hàng để được hỗ trợ.
+            </p>
+            <Button
+              type="button"
+              className="mt-6 w-full"
+              onClick={dismissAccountLocked}
+            >
+              Đóng
+            </Button>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

@@ -36,8 +36,8 @@ describe("AdminShell", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: /Tài khoản rủi ro/ }),
-    ).toBeTruthy();
+      screen.queryByRole("button", { name: /Tài khoản rủi ro/ }),
+    ).toBeNull();
     expect(screen.getByRole("button", { name: /Replay Console/ })).toBeTruthy();
     expect(
       screen.getByRole("button", { name: /Thẩm định hồ sơ/ }),
