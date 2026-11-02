@@ -460,66 +460,122 @@ export function AlertsPage() {
               <h3 className="text-[13px] font-semibold text-(--admin-text)">
                 Quản lý tài khoản
               </h3>
-              <div className="mt-2 grid gap-2">
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busy || !selected.transaction?.sourceAccountId}
-                    onClick={() =>
-                      void changeAccountStatus(
-                        selected.transaction?.sourceAccountId,
-                        "locked",
-                      )
-                    }
-                    className="flex h-9 items-center gap-2 rounded-sm bg-(--admin-danger) px-3 text-[12px] font-semibold text-white disabled:opacity-50"
-                  >
-                    <FontAwesomeIcon icon={faLock} /> Khóa nguồn
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || !selected.transaction?.sourceAccountId}
-                    onClick={() =>
-                      void changeAccountStatus(
-                        selected.transaction?.sourceAccountId,
-                        "active",
-                      )
-                    }
-                    className={`${surface} flex h-9 items-center gap-2 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) disabled:opacity-50`}
-                  >
-                    <FontAwesomeIcon icon={faLockOpen} /> Mở nguồn
-                  </button>
+              <div className="mt-3 grid gap-3">
+                <div
+                  className={`${surface} rounded-sm border border-(--admin-border) p-3`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p
+                        className={`${mono} text-[10px] uppercase tracking-[0.06em] text-(--admin-text-muted)`}
+                      >
+                        Tài khoản nguồn
+                      </p>
+                      <p className="mt-1 truncate text-[12px] font-semibold text-(--admin-text)">
+                        {selected.transaction?.sourceAccountName ||
+                          "Chưa xác định"}
+                      </p>
+                      <p
+                        className={`${mono} mt-0.5 truncate text-[11px] text-(--admin-primary)`}
+                      >
+                        {selected.transaction?.sourceAccountNo || "—"}
+                      </p>
+                    </div>
+                    <FontAwesomeIcon
+                      icon={faLock}
+                      className="mt-1 text-(--admin-text-muted)"
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={busy || !selected.transaction?.sourceAccountId}
+                      onClick={() =>
+                        void changeAccountStatus(
+                          selected.transaction?.sourceAccountId,
+                          "locked",
+                        )
+                      }
+                      className="flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-(--admin-danger) px-2 text-[12px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <FontAwesomeIcon icon={faLock} aria-hidden="true" /> Khóa
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !selected.transaction?.sourceAccountId}
+                      onClick={() =>
+                        void changeAccountStatus(
+                          selected.transaction?.sourceAccountId,
+                          "active",
+                        )
+                      }
+                      className={`${surface} flex h-9 w-full items-center justify-center gap-2 rounded-sm border border-(--admin-border) px-2 text-[12px] font-semibold text-(--admin-text) transition-colors hover:border-(--admin-primary) hover:bg-(--admin-surface-hover) disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      <FontAwesomeIcon icon={faLockOpen} aria-hidden="true" />{" "}
+                      Mở khóa
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={
-                      busy || !selected.transaction?.destinationAccountId
-                    }
-                    onClick={() =>
-                      void changeAccountStatus(
-                        selected.transaction?.destinationAccountId,
-                        "locked",
-                      )
-                    }
-                    className="flex h-9 items-center gap-2 rounded-sm bg-(--admin-danger) px-3 text-[12px] font-semibold text-white disabled:opacity-50"
-                  >
-                    <FontAwesomeIcon icon={faLock} /> Khóa đích
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      busy || !selected.transaction?.destinationAccountId
-                    }
-                    onClick={() =>
-                      void changeAccountStatus(
-                        selected.transaction?.destinationAccountId,
-                        "active",
-                      )
-                    }
-                    className={`${surface} flex h-9 items-center gap-2 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) disabled:opacity-50`}
-                  >
-                    <FontAwesomeIcon icon={faLockOpen} /> Mở đích
-                  </button>
+                <div
+                  className={`${surface} rounded-sm border border-(--admin-border) p-3`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p
+                        className={`${mono} text-[10px] uppercase tracking-[0.06em] text-(--admin-text-muted)`}
+                      >
+                        Tài khoản đích
+                      </p>
+                      <p className="mt-1 truncate text-[12px] font-semibold text-(--admin-text)">
+                        {selected.transaction?.destinationName ||
+                          "Chưa xác định"}
+                      </p>
+                      <p
+                        className={`${mono} mt-0.5 truncate text-[11px] text-(--admin-primary)`}
+                      >
+                        {selected.transaction?.destinationAccountNo || "—"}
+                      </p>
+                    </div>
+                    <FontAwesomeIcon
+                      icon={faLock}
+                      className="mt-1 text-(--admin-text-muted)"
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={
+                        busy || !selected.transaction?.destinationAccountId
+                      }
+                      onClick={() =>
+                        void changeAccountStatus(
+                          selected.transaction?.destinationAccountId,
+                          "locked",
+                        )
+                      }
+                      className="flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-(--admin-danger) px-2 text-[12px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <FontAwesomeIcon icon={faLock} aria-hidden="true" /> Khóa
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        busy || !selected.transaction?.destinationAccountId
+                      }
+                      onClick={() =>
+                        void changeAccountStatus(
+                          selected.transaction?.destinationAccountId,
+                          "active",
+                        )
+                      }
+                      className={`${surface} flex h-9 w-full items-center justify-center gap-2 rounded-sm border border-(--admin-border) px-2 text-[12px] font-semibold text-(--admin-text) transition-colors hover:border-(--admin-primary) hover:bg-(--admin-surface-hover) disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      <FontAwesomeIcon icon={faLockOpen} aria-hidden="true" />{" "}
+                      Mở khóa
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
