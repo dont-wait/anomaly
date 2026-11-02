@@ -17,6 +17,7 @@ import type {
 } from "@/features/monitor/model";
 
 type RiskFilter = "all" | "WARNING" | "BLOCK";
+const ALERTS_PAGE_SIZE = 10;
 
 const surface = "bg-(--admin-surface)";
 const subtle = "bg-(--admin-surface-subtle)";
@@ -50,12 +51,14 @@ export function AlertsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   function resetFilters() {
     setRange("7d");
     setLevel("all");
     setStatus("all");
     setQuery("");
+    setPage(1);
   }
 
   const refresh = async () => {
@@ -108,8 +111,19 @@ export function AlertsPage() {
             item.transaction?.sourceAccountNo,
             item.transaction?.destinationAccountNo,
           ].some((value) => value?.toLowerCase().includes(normalized)),
+      )
+      .sort(
+        (left, right) =>
+          Date.parse(right.receivedAt) - Date.parse(left.receivedAt),
       );
   }, [level, query, response, status]);
+
+  const totalPages = Math.max(1, Math.ceil(alerts.length / ALERTS_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const visibleAlerts = alerts.slice(
+    (currentPage - 1) * ALERTS_PAGE_SIZE,
+    currentPage * ALERTS_PAGE_SIZE,
+  );
 
   const changeAccountStatus = async (
     accountId: string | undefined,
@@ -155,7 +169,10 @@ export function AlertsPage() {
           <select
             id="alert-range"
             value={range}
-            onChange={(event) => setRange(event.target.value as TimeRange)}
+            onChange={(event) => {
+              setRange(event.target.value as TimeRange);
+              setPage(1);
+            }}
             className="h-10 min-w-0 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2.5 text-[12px] font-medium text-(--admin-text) outline-none transition-colors focus:border-(--admin-primary)"
           >
             <option value="24h">24 giờ gần nhất</option>
@@ -173,7 +190,10 @@ export function AlertsPage() {
               className="min-w-0 flex-1 bg-transparent text-[12px] text-(--admin-text) outline-none placeholder:text-(--admin-text-muted)"
               placeholder="Nhập mã giao dịch hoặc số tài khoản..."
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
             />
           </label>
           <label className="sr-only" htmlFor="alert-level">
@@ -183,7 +203,10 @@ export function AlertsPage() {
             id="alert-level"
             className="h-10 min-w-0 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2.5 text-[12px] text-(--admin-text) outline-none transition-colors focus:border-(--admin-primary)"
             value={level}
-            onChange={(event) => setLevel(event.target.value as RiskFilter)}
+            onChange={(event) => {
+              setLevel(event.target.value as RiskFilter);
+              setPage(1);
+            }}
           >
             <option value="all">Tất cả mức độ</option>
             <option value="WARNING">Cảnh báo</option>
@@ -196,7 +219,10 @@ export function AlertsPage() {
             id="alert-status"
             className="h-10 min-w-0 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2.5 text-[12px] text-(--admin-text) outline-none transition-colors focus:border-(--admin-primary)"
             value={status}
-            onChange={(event) => setStatus(event.target.value)}
+            onChange={(event) => {
+              setStatus(event.target.value);
+              setPage(1);
+            }}
           >
             <option value="all">Tất cả trạng thái</option>
             <option value="awaiting_otp">Chờ OTP</option>
@@ -242,7 +268,7 @@ export function AlertsPage() {
             </h2>
             <p className="mt-0.5 text-[11px] text-(--admin-text-muted)">
               {response
-                ? `${alerts.length} cảnh báo · ${range}`
+                ? `${alerts.length} cảnh báo · Trang ${currentPage}/${totalPages} · mới nhất trước`
                 : "Chưa tải dữ liệu"}
             </p>
           </div>
@@ -274,7 +300,7 @@ export function AlertsPage() {
               </tr>
             </thead>
             <tbody>
-              {alerts.map((item) => (
+              {visibleAlerts.map((item) => (
                 <tr
                   key={item.assessmentId}
                   className="h-11 cursor-pointer border-b border-(--admin-border-subtle) transition-colors hover:bg-(--admin-surface-hover)"
@@ -337,6 +363,33 @@ export function AlertsPage() {
         {!alerts.length && (
           <div className="grid min-h-48 place-items-center text-center text-[12px] text-(--admin-text-muted)">
             Không có cảnh báo phù hợp.
+          </div>
+        )}
+        {alerts.length > 0 && (
+          <div className="mt-3 flex items-center justify-center gap-3 pt-1">
+            <button
+              className={`${surface} h-8 rounded-sm border border-(--admin-border) px-3 text-[12px] text-(--admin-text) transition-colors hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`}
+              type="button"
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              disabled={currentPage === 1}
+            >
+              ← Trang trước
+            </button>
+            <span
+              className={`${mono} min-w-18 text-center text-[11px] text-(--admin-text-muted)`}
+            >
+              Trang {currentPage}/{totalPages}
+            </span>
+            <button
+              className={`${surface} h-8 rounded-sm border border-(--admin-border) px-3 text-[12px] text-(--admin-text) transition-colors hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`}
+              type="button"
+              onClick={() =>
+                setPage((value) => Math.min(totalPages, value + 1))
+              }
+              disabled={currentPage === totalPages}
+            >
+              Trang sau →
+            </button>
           </div>
         )}
       </section>
