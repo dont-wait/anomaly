@@ -118,6 +118,25 @@ func (r *AccountRepository) FindByID(ctx context.Context, id string) (*accountdo
 	return fromRecord(rec)
 }
 
+// FindByFinancialID resolves the financial account identifier embedded in
+// banking transactions/events back to the owning account document. Financial
+// IDs intentionally differ from accounts._id.
+func (r *AccountRepository) FindByFinancialID(ctx context.Context, id string) (*accountdomain.UserAccount, error) {
+	financialID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, nil
+	}
+	var rec accountRecord
+	err = r.col.FindOne(ctx, bson.M{"financial_id": financialID}).Decode(&rec)
+	if err != nil {
+		if err == mongodrv.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return fromRecord(rec)
+}
+
 func (r *AccountRepository) FindByEmail(ctx context.Context, email string) (*accountdomain.UserAccount, error) {
 	var rec accountRecord
 	err := r.col.FindOne(ctx, map[string]string{"email": email}).Decode(&rec)

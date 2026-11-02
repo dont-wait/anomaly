@@ -296,6 +296,10 @@ type accountStatusRequest struct {
 	Status string `json:"status"`
 }
 
+type financialAccountLookup interface {
+	FindByFinancialID(context.Context, string) (*accountdomain.UserAccount, error)
+}
+
 // UpdateAccountStatus allows an administrator to lock or unlock a customer
 // account. The persisted account status is checked by the login query, so a
 // locked account cannot establish a new session.
@@ -330,6 +334,11 @@ func (h *Handler) UpdateAccountStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	account, err := h.profileRepo.FindByID(r.Context(), targetID)
+	if err == nil && account == nil {
+		if lookup, ok := h.profileRepo.(financialAccountLookup); ok {
+			account, err = lookup.FindByFinancialID(r.Context(), targetID)
+		}
+	}
 	if err != nil || account == nil {
 		if err == nil {
 			err = accountdomain.ErrAccountNotFound
