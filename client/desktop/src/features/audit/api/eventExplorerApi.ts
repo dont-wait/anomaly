@@ -53,6 +53,8 @@ export async function getEventExplorer(options: EventExplorerQuery): Promise<Eve
   if (!response.ok) {
     const message = response.status === 413
       ? "Phạm vi tìm kiếm quá rộng, hãy thêm bộ lọc."
+      : response.status === 404
+        ? "Không tìm thấy dữ liệu phù hợp."
       : response.status === 401 || response.status === 403
         ? "Phiên đăng nhập không có quyền tra cứu event."
         : "Không thể tải event.";

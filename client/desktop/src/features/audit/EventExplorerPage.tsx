@@ -117,6 +117,7 @@ export function EventExplorerPage() {
   const [error, setError] = useState("");
 
   const draftChanged = !sameQuery(appliedQuery, query);
+  const neutralError = error === "Dữ liệu event không hợp lệ" || error === "Không tìm thấy dữ liệu phù hợp." || error === "Không thể tải event.";
 
   async function loadPage(nextQuery: EventExplorerQuery, cursor: string | undefined, targetPage: number) {
     setLoading(true);
@@ -183,7 +184,7 @@ export function EventExplorerPage() {
             </div>
             <div className="flex shrink-0 gap-2"><button className="h-10 whitespace-nowrap rounded-sm border border-(--admin-primary-strong) bg-(--admin-primary) px-4 text-[12px] font-semibold text-white transition-colors hover:bg-(--admin-primary-strong) disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled={loading}>{loading ? "Đang tải..." : "Tìm kiếm"}</button><button className={`${surface} h-10 whitespace-nowrap rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) transition-colors hover:border-(--admin-primary) hover:bg-(--admin-surface-hover)`} type="button" onClick={reset}>Đặt lại</button></div>
         </form>
-        {error && <div className="mt-3 flex items-center gap-2 rounded-sm border border-(--admin-danger) bg-(--admin-danger-soft) px-3 py-2 text-[11px] text-(--admin-danger)" role="alert"><FontAwesomeIcon icon={faCircleExclamation} aria-hidden="true" />{error}</div>}
+        {error && <div className={`mt-3 flex items-center gap-2 rounded-sm border px-3 py-2 text-[11px] ${neutralError ? "border-(--admin-border) bg-(--admin-surface) text-(--admin-text-muted)" : "border-(--admin-danger) bg-(--admin-danger-soft) text-(--admin-danger)"}`} role={neutralError ? "status" : "alert"}><FontAwesomeIcon icon={faCircleExclamation} aria-hidden="true" />{error}</div>}
       </section>
 
       <section className={`${surface} rounded-(--admin-radius-md) border border-(--admin-border) p-3`}>

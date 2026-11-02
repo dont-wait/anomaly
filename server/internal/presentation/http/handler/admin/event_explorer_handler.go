@@ -389,6 +389,47 @@ func decodeEventExplorerCursor(raw string) (eventExplorerCursor, error) {
 }
 
 func (h *TimelineHandler) readEventExplorerPage(ctx context.Context, query eventExplorerQuery, cursor eventExplorerCursor) ([]eventExplorerItemDTO, string, bool, int, error) {
+	if query.TransactionID != "" || query.AccountID != "" {
+		return h.readEventExplorerSearchPage(ctx, query, cursor)
+	}
+	return h.readEventExplorerBrowsePage(ctx, query, cursor)
+}
+
+func (h *TimelineHandler) readEventExplorerSearchPage(ctx context.Context, query eventExplorerQuery, cursor eventExplorerCursor) ([]eventExplorerItemDTO, string, bool, int, error) {
+	items := make([]eventExplorerItemDTO, 0, query.Limit)
+	nextCursor := ""
+	currentCursor := cursor
+	totalScanned := 0
+	hasMore := false
+
+	for len(items) < query.Limit && totalScanned < eventExplorerMaxScan {
+		batchItems, batchCursor, batchHasMore, batchScanned, err := h.readEventExplorerBrowsePage(ctx, query, currentCursor)
+		if err != nil {
+			return nil, "", false, totalScanned, err
+		}
+		items = append(items, batchItems...)
+		totalScanned += batchScanned
+		nextCursor = batchCursor
+		hasMore = batchHasMore
+		if !batchHasMore || batchCursor == "" {
+			break
+		}
+		if totalScanned >= eventExplorerMaxScan {
+			break
+		}
+		currentCursor, err = decodeEventExplorerCursor(batchCursor)
+		if err != nil {
+			return nil, "", false, totalScanned, err
+		}
+	}
+
+	if !hasMore || nextCursor == "" {
+		return items, "", false, totalScanned, nil
+	}
+	return items, nextCursor, true, totalScanned, nil
+}
+
+func (h *TimelineHandler) readEventExplorerBrowsePage(ctx context.Context, query eventExplorerQuery, cursor eventExplorerCursor) ([]eventExplorerItemDTO, string, bool, int, error) {
 	if h == nil || h.client == nil {
 		return nil, "", false, 0, errors.New("event store is unavailable")
 	}
