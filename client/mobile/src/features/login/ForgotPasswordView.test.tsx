@@ -110,3 +110,17 @@ it("blocks resending during the cooldown", async () => {
   });
   expect(resend.disabled).toBe(true);
 });
+
+it("toggles each password field independently", async () => {
+  await reachConfirmStep();
+  const field = screen.getByLabelText<HTMLInputElement>("Mật khẩu mới");
+  const confirm = screen.getByLabelText<HTMLInputElement>(
+    "Xác nhận mật khẩu mới",
+  );
+  expect(field.type).toBe("password");
+  fireEvent.click(screen.getByRole("button", { name: "Hiện mật khẩu mới" }));
+  expect(field.type).toBe("text");
+  expect(confirm.type).toBe("password");
+  fireEvent.click(screen.getByRole("button", { name: "Ẩn mật khẩu mới" }));
+  expect(field.type).toBe("password");
+});

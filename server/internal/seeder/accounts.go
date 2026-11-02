@@ -84,7 +84,7 @@ func seedAccount(ctx context.Context, repo Repository, seed accountSeed) error {
 		return nil
 	}
 
-	register := commands.NewRegisterAccountCommandHandler(repo, repo)
+	register := commands.NewRegisterAccountCommandHandler(repo, repo).AllowSeedPasswords()
 	account, err := register.Handle(ctx, commands.RegisterAccountCommand{
 		IdempotencyKey: seed.IdempotencyKey,
 		Username:       seed.Username,

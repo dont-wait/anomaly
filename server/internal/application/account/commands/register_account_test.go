@@ -75,3 +75,29 @@ func TestRegistrationReplayAfterLostResponse(t *testing.T) {
 		t.Fatalf("Create calls = %d", repo.creates)
 	}
 }
+
+func TestRegistrationEnforcesPasswordPolicy(t *testing.T) {
+	cmd := RegisterAccountCommand{
+		IdempotencyKey: "b5b552a4-f8b7-43c3-855d-c2c7903a5af2",
+		Username:       "Example", Email: "example@example.com", CCCDNumber: "012345678901",
+		DOB:            time.Date(1995, 1, 1, 0, 0, 0, 0, time.UTC),
+		CCCDIssuedDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	for _, password := range []string{"Short1!", "nouppercase1!", "NoDigitsHere!", "NoSpecial123", "NOLOWERCASE1!"} {
+		repo := &registrationRepository{}
+		cmd.Password = password
+		_, err := NewRegisterAccountCommandHandler(repo, repo).Handle(context.Background(), cmd)
+		if !errors.Is(err, accountdomain.ErrWeakPassword) {
+			t.Errorf("%q: err = %v, want ErrWeakPassword", password, err)
+		}
+		if repo.creates != 0 {
+			t.Errorf("%q: account was created", password)
+		}
+	}
+
+	repo := &registrationRepository{}
+	cmd.Password = "admin12345"
+	if _, err := NewRegisterAccountCommandHandler(repo, repo).AllowSeedPasswords().Handle(context.Background(), cmd); err != nil {
+		t.Fatalf("seed password rejected: %v", err)
+	}
+}

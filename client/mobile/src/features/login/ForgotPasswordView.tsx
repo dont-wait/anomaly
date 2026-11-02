@@ -12,7 +12,7 @@ import {
 } from "@/features/registration/model";
 import { ApiError } from "@/shared/lib/http";
 import { toast } from "@/shared/notifications/toast";
-import { Button, Input } from "@/shared/ui";
+import { Button, Input, PasswordInput } from "@/shared/ui";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const OTP_PATTERN = new RegExp(`^\\d{${OTP_LENGTH}}$`);
@@ -153,17 +153,15 @@ export function ForgotPasswordView() {
               disabled={busy}
               onChange={(event) => setOtp(event.target.value)}
             />
-            <Input
+            <PasswordInput
               label="Mật khẩu mới"
-              type="password"
               autoComplete="new-password"
               value={newPassword}
               disabled={busy}
               onChange={(event) => setNewPassword(event.target.value)}
             />
-            <Input
+            <PasswordInput
               label="Xác nhận mật khẩu mới"
-              type="password"
               autoComplete="new-password"
               value={confirmPassword}
               disabled={busy}
@@ -171,8 +169,8 @@ export function ForgotPasswordView() {
             />
             {mismatch && <ResetError message="Mật khẩu xác nhận không khớp." />}
             <p className="text-xs text-on-surface-variant">
-              Mật khẩu mới cần 8–72 ký tự, có chữ hoa, chữ thường, số và ký tự
-              đặc biệt. Sau khi đặt lại, mọi phiên đăng nhập sẽ hết hiệu lực.
+              Mật khẩu mới cần ít nhất 8 ký tự, có chữ hoa, chữ thường, số và ký
+              tự đặc biệt. Sau khi đặt lại, mọi phiên đăng nhập sẽ hết hiệu lực.
             </p>
             {error && !mismatch && <ResetError message={error} />}
             <Button type="submit" disabled={busy || !canConfirm}>

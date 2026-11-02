@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { faArrowLeft } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAuth } from "@/features/auth/useAuth";
@@ -9,7 +9,7 @@ import {
 import type { ProfileMedia } from "@/features/auth/api/profile";
 import { isAcceptedNewPassword } from "@/features/registration/model";
 import { ApiError } from "@/shared/lib/http";
-import { FileSourcePicker, SelectSheet } from "@/shared/ui";
+import { FileSourcePicker, PasswordToggle, SelectSheet } from "@/shared/ui";
 import { PROVINCES } from "./provinces";
 import type { ProfileChangeInput } from "@/features/auth/api/profile";
 import {
@@ -150,6 +150,46 @@ function ProfileInput({
       />
       {error && <span className="profile-field-error">{error}</span>}
     </label>
+  );
+}
+
+function ProfilePasswordInput({
+  label,
+  value,
+  onChange,
+  autoComplete,
+  error,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: "current-password" | "new-password";
+  error?: string;
+}) {
+  const id = useId();
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="profile-field">
+      <label htmlFor={id}>{label}</label>
+      <div className="profile-password">
+        <input
+          id={id}
+          className="profile-input"
+          type={visible ? "text" : "password"}
+          autoComplete={autoComplete}
+          value={value}
+          aria-invalid={Boolean(error)}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <PasswordToggle
+          label={label}
+          visible={visible}
+          onToggle={() => setVisible(!visible)}
+          className="profile-password-toggle"
+        />
+      </div>
+      {error && <span className="profile-field-error">{error}</span>}
+    </div>
   );
 }
 
@@ -453,9 +493,8 @@ export function ChangeEmailPanel({ onBack }: PanelProps) {
             value={newEmail}
             onChange={setNewEmail}
           />
-          <ProfileInput
+          <ProfilePasswordInput
             label="Mật khẩu hiện tại"
-            type="password"
             autoComplete="current-password"
             value={currentPassword}
             onChange={setCurrentPassword}
@@ -502,30 +541,27 @@ export function ChangePasswordPanel({ onBack }: PanelProps) {
 
   return (
     <PanelShell title="Đổi mật khẩu" onBack={onBack} busy={busy} error={error}>
-      <ProfileInput
+      <ProfilePasswordInput
         label="Mật khẩu hiện tại"
-        type="password"
         autoComplete="current-password"
         value={currentPassword}
         onChange={setCurrentPassword}
       />
-      <ProfileInput
+      <ProfilePasswordInput
         label="Mật khẩu mới"
-        type="password"
         autoComplete="new-password"
         value={newPassword}
         onChange={setNewPassword}
       />
-      <ProfileInput
+      <ProfilePasswordInput
         label="Xác nhận mật khẩu mới"
-        type="password"
         autoComplete="new-password"
         value={confirmPassword}
         onChange={setConfirmPassword}
         error={mismatch ? "Mật khẩu xác nhận không khớp." : undefined}
       />
       <p className="profile-note">
-        Mật khẩu mới cần 8–72 ký tự, có chữ hoa, chữ thường, số và ký tự
+        Mật khẩu mới cần ít nhất 8 ký tự, có chữ hoa, chữ thường, số và ký tự
         đặc biệt. Sau khi đổi, mọi phiên đăng nhập sẽ hết hiệu lực và bạn cần
         đăng nhập lại.
       </p>

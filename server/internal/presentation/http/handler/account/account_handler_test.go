@@ -109,7 +109,7 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 		zerolog.Nop(),
 	)
 
-	register := request(t, http.MethodPost, `{
+	weak := request(t, http.MethodPost, `{
 		"username":"alice",
 		"cccdNumber":"001234567890",
 		"phone": "0912345678", "addressLine": "12 Nguyen Trai", "provinceCode": "HCM", "issuedPlace": "Cuc CSQLHC", "permanentAddress": "Ha Noi",
@@ -117,6 +117,19 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 		"dob":"2000-01-01T00:00:00Z",
 		"email":"alice@example.com",
 		"password":"password123"
+	}`, handler.Register)
+	if weak.Code != http.StatusBadRequest || !strings.Contains(weak.Body.String(), "WEAK_PASSWORD") {
+		t.Fatalf("weak register = %d %s, want 400 WEAK_PASSWORD", weak.Code, weak.Body.String())
+	}
+
+	register := request(t, http.MethodPost, `{
+		"username":"alice",
+		"cccdNumber":"001234567890",
+		"phone": "0912345678", "addressLine": "12 Nguyen Trai", "provinceCode": "HCM", "issuedPlace": "Cuc CSQLHC", "permanentAddress": "Ha Noi",
+		"cccdIssuedDate":"2020-01-01T00:00:00Z",
+		"dob":"2000-01-01T00:00:00Z",
+		"email":"alice@example.com",
+		"password":"Password123!"
 	}`, handler.Register)
 	if register.Code != http.StatusCreated {
 		t.Fatalf("register status = %d, want 201", register.Code)
@@ -137,7 +150,7 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 		t.Fatalf("register data = %#v, want KYC expiry", registered.Data)
 	}
 
-	login := request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"password123"}`, handler.Login)
+	login := request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"Password123!"}`, handler.Login)
 	if login.Code != http.StatusForbidden {
 		t.Fatalf("unverified login status = %d, want 403", login.Code)
 	}
@@ -146,7 +159,7 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	if kycRequired.Errors[0].Code != httpx.ErrorCodeKYCRequired {
 		t.Fatalf("login code = %q, want KYC_REQUIRED", kycRequired.Errors[0].Code)
 	}
-	session := request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"password123"}`, handler.StartKYCSession)
+	session := request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"Password123!"}`, handler.StartKYCSession)
 	if session.Code != http.StatusOK {
 		t.Fatalf("KYC session status = %d, want 200", session.Code)
 	}
@@ -156,11 +169,11 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	}
 	alice, _ := repo.FindByCCCDNumber(context.Background(), "001234567890")
 	alice.Customer.KYCStatus = accountdomain.KYCStatusVerified
-	verifiedSession := request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"password123"}`, handler.StartKYCSession)
+	verifiedSession := request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"Password123!"}`, handler.StartKYCSession)
 	if verifiedSession.Code != http.StatusForbidden {
 		t.Fatalf("verified KYC session status = %d, want 403", verifiedSession.Code)
 	}
-	login = request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"password123"}`, handler.Login)
+	login = request(t, http.MethodPost, `{"cccdNumber":"001234567890","password":"Password123!"}`, handler.Login)
 	loggedIn := decodeSuccess[map[string]any](t, login)
 	token := loggedIn.Data["token"].(string)
 	accountID := user["id"].(string)
@@ -172,7 +185,7 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 		"cccdIssuedDate":"2020-01-01T00:00:00Z",
 		"dob":"1990-01-01T00:00:00Z",
 		"email":"admin@example.com",
-		"password":"adminpass123"
+		"password":"Adminpass123!"
 	}`, handler.Register)
 	if adminRegister.Code != http.StatusCreated {
 		t.Fatalf("admin register status = %d, want 201", adminRegister.Code)
@@ -186,7 +199,7 @@ func TestAccountHandlersUseResponseEnvelope(t *testing.T) {
 	if err := repo.Save(context.Background(), adminAccount); err != nil {
 		t.Fatalf("save admin role: %v", err)
 	}
-	adminLogin := request(t, http.MethodPost, `{"cccdNumber":"009876543210","password":"adminpass123"}`, handler.Login)
+	adminLogin := request(t, http.MethodPost, `{"cccdNumber":"009876543210","password":"Adminpass123!"}`, handler.Login)
 	if adminLogin.Code != http.StatusOK {
 		t.Fatalf("admin login status = %d, want 200", adminLogin.Code)
 	}
@@ -282,7 +295,7 @@ func TestVerifiedRegistrationReplayDoesNotMintKYCToken(t *testing.T) {
 		"username":"replay-user","cccdNumber":"111222333444",
 		"phone": "0912345678", "addressLine": "12 Nguyen Trai", "provinceCode": "HCM", "issuedPlace": "Cuc CSQLHC", "permanentAddress": "Ha Noi",
 		"cccdIssuedDate":"2020-01-01T00:00:00Z","dob":"1990-01-01T00:00:00Z",
-		"email":"replay@example.com","password":"password123"
+		"email":"replay@example.com","password":"Password123!"
 	}`
 	first := request(t, http.MethodPost, body, handler.Register)
 	if first.Code != http.StatusCreated {

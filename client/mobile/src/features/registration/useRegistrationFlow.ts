@@ -3,7 +3,12 @@ import { HTTP_STATUS } from "@/shared/constants/httpStatus";
 import { ApiError, requestApi } from "@/shared/lib/http";
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import { navigate, routes } from "@/app/routes";
-import { stages, passwordRules, OTP_LENGTH, type Screen } from "./model";
+import {
+  stages,
+  isAcceptedNewPassword,
+  OTP_LENGTH,
+  type Screen,
+} from "./model";
 import {
   completeKyc,
   registerAccount,
@@ -380,7 +385,7 @@ export function useRegistrationFlow() {
   }
   async function register() {
     if (operation.current) return;
-    if (!passwordRules(password).every(Boolean) || password !== confirm) {
+    if (!isAcceptedNewPassword(password) || password !== confirm) {
       setError("Vui lòng kiểm tra lại mật khẩu.");
       return;
     }

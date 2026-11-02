@@ -59,7 +59,9 @@ describe("registrationError", () => {
           { code: "WEAK_PASSWORD", detail: "password is too short" },
         ]),
       ),
-    ).toBe("Mật khẩu phải có ít nhất 8 ký tự.");
+    ).toBe(
+      "Mật khẩu cần ít nhất 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt.",
+    );
   });
 
   it("maps invalid authentication codes to a KYC session message", () => {
