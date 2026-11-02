@@ -4,7 +4,7 @@ import hmac
 import json
 import math
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from .contracts import Prediction
@@ -14,15 +14,17 @@ TIMESTAMP_FIELDS = ("occurred_at", "scored_at")
 
 
 def _go_timestamp(name, value):
-    """Match how Go re-marshals a decoded UTC time.Time: RFC3339Nano without trailing zeros."""
-    if not isinstance(value, str) or not re.fullmatch(
-        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z", value
-    ):
-        raise ValueError(f"{name} must be an RFC3339 UTC timestamp")
-    datetime.fromisoformat(value[:19] + "+00:00")
-    if "." in value:
-        value = value[:-1].rstrip("0").rstrip(".") + "Z"
-    return value
+    """Normalize to UTC RFC3339Nano without trailing zeros, as Go marshals a UTC time.Time."""
+    match = isinstance(value, str) and re.fullmatch(
+        r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})", value
+    )
+    if not match:
+        raise ValueError(f"{name} must be an RFC3339 timestamp")
+    base, fraction, offset = match.groups()
+    offset = "+00:00" if offset == "Z" else offset
+    moment = datetime.fromisoformat(base + offset).astimezone(timezone.utc)
+    fraction = (fraction or "").rstrip("0").rstrip(".")
+    return moment.strftime("%Y-%m-%dT%H:%M:%S") + fraction + "Z"
 
 
 def _go_json(value):

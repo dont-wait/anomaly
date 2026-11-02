@@ -44,9 +44,18 @@ def test_missing_metadata_cannot_be_signed(field):
         sign_risk_event(event, "secret")
 
 
-def test_non_utc_timestamp_cannot_be_signed():
-    with pytest.raises(ValueError, match="occurred_at"):
-        sign_risk_event({**assessment(), "occurred_at": "2026-10-19T17:30:00+07:00"}, "secret")
+def test_offset_timestamp_is_normalized_to_utc_before_signing():
+    signed = sign_risk_event(
+        {**assessment(), "occurred_at": "2026-10-19T17:30:00.123456700+07:00"}, "secret"
+    )
+    assert signed["occurred_at"] == "2026-10-19T10:30:00.1234567Z"
+    assert signed == sign_risk_event(signed, "secret")
+
+
+@pytest.mark.parametrize("value", ["2026-10-19T10:30:00", "2026-10-19T10:30:00+25:00", "nope"])
+def test_invalid_timestamp_cannot_be_signed(value):
+    with pytest.raises(ValueError):
+        sign_risk_event({**assessment(), "occurred_at": value}, "secret")
 
 
 def test_changed_payload_or_key_fails_signature_comparison():
