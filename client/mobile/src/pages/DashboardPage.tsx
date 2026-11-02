@@ -193,6 +193,7 @@ const DashboardPage = () => {
           actions={quickActions}
           onSelect={(action) => {
             if (action.icon === "transfer") navigate(routes.transfer);
+            if (action.icon === "qr") navigate(routes.myQr);
             if (action.icon === "savings") navigate(routes.savings);
             if (action.id === "qa_more") setMoreServicesOpen(true);
           }}
@@ -240,7 +241,7 @@ const DashboardPage = () => {
           if (id === "savings") navigate(routes.savings);
           if (id === "profile") setProfileSidebarOpen(true);
         }}
-        onQrScan={() => console.log("TODO: mở màn hình quét QR")}
+        onQrScan={() => navigate(routes.qrScan)}
       />
 
       <ProfileSidebar

@@ -681,6 +681,7 @@ export default function SavingsLivePage() {
           </main>
           <BottomNav
             active={profileOpen ? "profile" : "savings"}
+            onQrScan={() => navigate(routes.qrScan)}
             onChange={(id) => {
               if (id === "home") navigate(routes.dashboard);
               if (id === "profile" && auth) setProfileOpen(true);

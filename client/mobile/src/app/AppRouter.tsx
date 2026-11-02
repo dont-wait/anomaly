@@ -8,6 +8,7 @@ import TransferPage from "@/pages/TransferPage";
 import TransactionHistoryPage from "@/pages/TransactionHistoryPage";
 import TransactionDetailPage from "@/pages/TransactionDetailPage";
 import LoanRegisterPage from "@/pages/LoanRegisterPage";
+import QrPage from "@/pages/QrPage";
 import SavingsLivePage from "@/features/savings/SavingsLivePage";
 import LoanApplicationsPage from "@/pages/LoanApplicationsPage";
 import LoanContractsPage from "@/pages/LoanContractsPage";
@@ -17,6 +18,7 @@ import {
   parseTransactionId,
   parseLoanApplicationId,
   parseLoanContractId,
+  parseTransferAccount,
   routes,
 } from "./routes";
 
@@ -92,6 +94,10 @@ export function AppRouter() {
     );
   }
 
+  const transferAccount = parseTransferAccount(hash);
+  if (transferAccount)
+    return <TransferPage initialAccountNo={transferAccount} />;
+
   const transactionId = parseTransactionId(hash);
   if (transactionId) {
     return <TransactionDetailPage transactionId={transactionId} />;
@@ -108,6 +114,10 @@ export function AppRouter() {
       return <DashboardPage />;
     case routes.transfer:
       return <TransferPage />;
+    case routes.qrScan:
+      return <QrPage tab="scan" />;
+    case routes.myQr:
+      return <QrPage tab="mine" />;
     case routes.transactions:
       return <TransactionHistoryPage />;
     case routes.loanRegister:

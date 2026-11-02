@@ -2,7 +2,7 @@ import { navigate, routes } from "@/app/routes";
 import { useAuth } from "@/features/auth/useAuth";
 import { TransferFlow } from "@/features/transfer";
 
-const TransferPage = () => {
+const TransferPage = ({ initialAccountNo }: { initialAccountNo?: string }) => {
   const { user, token, logout, refreshProfile } = useAuth();
 
   if (!user || !token) {
@@ -17,6 +17,7 @@ const TransferPage = () => {
     <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-linear-to-b from-secondary-container/40 to-surface-container-lowest">
       <TransferFlow
         token={token}
+        initialAccountNo={initialAccountNo}
         source={{
           accountNo: user.accountNo,
           ownerName: user.fullName || user.username,

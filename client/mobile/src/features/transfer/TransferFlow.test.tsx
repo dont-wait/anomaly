@@ -471,3 +471,44 @@ it("shows a retry action when recent recipients fail", async () => {
   await screen.findByText("Chưa có người nhận gần đây.");
   expect(recentCalls).toBe(2);
 });
+
+it("prefills a scanned account and shows the server's recipient name", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+    String(input).includes(`accountNo=${recipient.accountNo}`)
+      ? json(recipient)
+      : json({ items: [] }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  render(
+    <TransferFlow
+      token={token}
+      source={source}
+      initialAccountNo={recipient.accountNo}
+      onExit={vi.fn()}
+      onViewHistory={vi.fn()}
+    />,
+  );
+  expect(await screen.findByDisplayValue(recipient.name)).toBeTruthy();
+  expect(screen.getByDisplayValue(recipient.accountNo)).toBeTruthy();
+});
+
+it("refuses a scanned QR of the customer's own account", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json({ items: [] })),
+  );
+  render(
+    <TransferFlow
+      token={token}
+      source={source}
+      initialAccountNo={source.accountNo}
+      onExit={vi.fn()}
+      onViewHistory={vi.fn()}
+    />,
+  );
+  expect(
+    await screen.findByText(
+      "Không thể chuyển tiền đến chính tài khoản của bạn.",
+    ),
+  ).toBeTruthy();
+});

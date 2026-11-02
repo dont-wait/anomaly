@@ -93,12 +93,13 @@ export function useTransferFlow(
   initialSource: SourceAccount,
   token: string,
   onUnauthorized?: () => void,
+  initialAccountNo = "",
 ) {
   const [balance, setBalance] = useState(initialSource.balance);
   const source = { ...initialSource, balance };
   const defaultNote = `${source.ownerName.toUpperCase()} chuyen tien`;
 
-  const [accountNo, setAccountNoValue] = useState("");
+  const [accountNo, setAccountNoValue] = useState(initialAccountNo);
   const [lookup, setLookup] = useState<LookupState>({ status: "idle" });
   const [amount, setAmountValue] = useState(0);
   const [amountTouched, setAmountTouched] = useState(false);
@@ -160,6 +161,19 @@ export function useTransferFlow(
       });
     }
   };
+
+  // Số tài khoản từ QR chỉ được điền sẵn: người dùng vẫn thấy tên do server trả về
+  // và tự xác nhận trước khi chuyển.
+  const initialLookup = useRef(initialAccountNo);
+  useEffect(() => {
+    if (!initialLookup.current) return;
+    lookupTimer.current = setTimeout(
+      () => void runLookup(initialLookup.current),
+      0,
+    );
+    return () => clearTimeout(lookupTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ tra cứu một lần khi mở màn.
+  }, []);
 
   const scheduleLookup = (rawAccountNo: string) => {
     clearTimeout(lookupTimer.current);

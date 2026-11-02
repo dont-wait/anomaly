@@ -1,10 +1,17 @@
-import { BillIcon, MoreIcon, SavingsIcon, TransferIcon } from "@/shared/icons";
+import {
+  BillIcon,
+  MoreIcon,
+  QrIcon,
+  SavingsIcon,
+  TransferIcon,
+} from "@/shared/icons";
 import type { QuickAction } from "@/features/dashboard/model/types";
 
 type IconComponent = (props: { className?: string }) => React.JSX.Element;
 
 const ICONS: Record<QuickAction["icon"], IconComponent> = {
   transfer: TransferIcon,
+  qr: QrIcon,
   bill: BillIcon,
   savings: SavingsIcon,
   more: MoreIcon,
@@ -12,6 +19,7 @@ const ICONS: Record<QuickAction["icon"], IconComponent> = {
 
 const ICON_COLOR: Record<QuickAction["icon"], string> = {
   transfer: "bg-secondary/15 text-secondary",
+  qr: "bg-secondary/15 text-secondary",
   bill: "bg-secondary/15 text-secondary",
   savings: "bg-secondary/15 text-secondary",
   more: "bg-gray-100 text-gray-500",
@@ -22,10 +30,10 @@ interface QuickActionsProps {
   onSelect?: (action: QuickAction) => void;
 }
 
-/** Hàng icon chức năng nhanh: Chuyển tiền, Hóa đơn, Tiết kiệm, Xem thêm. */
+/** Hàng icon chức năng nhanh: Chuyển tiền, QR của tôi, Hóa đơn, Tiết kiệm, Xem thêm. */
 export const QuickActions = ({ actions, onSelect }: QuickActionsProps) => {
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-5 gap-2">
       {actions.map((action) => {
         const Icon = ICONS[action.icon];
         return (
