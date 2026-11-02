@@ -5,6 +5,7 @@ package eventstore_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -379,6 +380,32 @@ func TestSavingsHTTPProjectionFullFlow(t *testing.T) {
 		if err != nil || count != map[string]int64{"savings_deposit": 2, "savings_withdrawal": 1}[tc.kind] {
 			t.Fatalf("ledger count %s=%d error=%v", tc.kind, count, err)
 		}
+	}
+
+	// A row shown in the history list must open, for its owner only.
+	ownerAccount, err := bank.AccountObjectID(ctx, ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	feed, err := bank.GetFeed(ctx, ownerAccount, withdrawn.TransactionID)
+	if err != nil || feed.Type != "savings" || feed.Direction != "IN" || feed.Amount != withdrawn.TotalPayout {
+		t.Fatalf("savings feed detail = %+v/%v", feed, err)
+	}
+	if _, err := bank.GetFeed(ctx, bson.NewObjectID(), withdrawn.TransactionID); !errors.Is(err, mongorepo.ErrTransactionAccountNotFound) {
+		t.Fatalf("foreign savings feed detail error = %v", err)
+	}
+	// Transfers stay canonical: a projected row alone must not open.
+	var transferRow bson.M
+	if err := db.Collection("account_transaction_feed").FindOne(ctx, bson.M{"transaction_id": withdrawn.TransactionID}).Decode(&transferRow); err != nil {
+		t.Fatal(err)
+	}
+	delete(transferRow, "_id")
+	transferRow["transaction_id"], transferRow["type"] = uuid.NewString(), "transfer"
+	if _, err := db.Collection("account_transaction_feed").InsertOne(ctx, transferRow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bank.GetFeed(ctx, ownerAccount, transferRow["transaction_id"].(string)); !errors.Is(err, mongorepo.ErrTransactionAccountNotFound) {
+		t.Fatalf("projected transfer feed detail error = %v", err)
 	}
 
 	// Cache outage is observable, but must not hide a committed settled record.

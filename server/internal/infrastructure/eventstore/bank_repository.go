@@ -803,8 +803,11 @@ func (r *BankRepository) GetFeed(ctx context.Context, accountID bson.ObjectID, i
 		return mongorepo.FeedDocument{}, err
 	}
 	state, ok := s.Transfers[id]
+	if !ok {
+		return r.nonTransferFeed(ctx, accountID, id)
+	}
 	tx := state.Tx
-	if !ok || (tx.Source.AccountID != accountID && tx.Destination.AccountID != accountID) || (tx.Status != "success" && tx.Status != "failed" && tx.Status != "cancelled") || ((tx.Status == "cancelled" || tx.Status == "failed") && tx.Source.AccountID != accountID) {
+	if (tx.Source.AccountID != accountID && tx.Destination.AccountID != accountID) || (tx.Status != "success" && tx.Status != "failed" && tx.Status != "cancelled") || ((tx.Status == "cancelled" || tx.Status == "failed") && tx.Source.AccountID != accountID) {
 		return mongorepo.FeedDocument{}, mongorepo.ErrTransactionAccountNotFound
 	}
 	feed := mongorepo.FeedDocument{AccountID: accountID, TransactionID: id, Direction: "OUT", Type: tx.Type, Amount: tx.Amount, Fee: tx.Fee, Status: tx.Status, Note: tx.Note, Reference: tx.Reference, OccurredAt: state.Event.OccurredAt}
@@ -815,6 +818,21 @@ func (r *BankRepository) GetFeed(ctx context.Context, accountID bson.ObjectID, i
 		feed.Counterparty.AccountNo, feed.Counterparty.Name, feed.Counterparty.BankCode = tx.Source.AccountNo, tx.Source.Name, "ANOMALY"
 	}
 	return feed, nil
+}
+
+// nonTransferFeed serves savings and loan rows, which the canonical state does
+// not index by transaction. Transfers keep their canonical status check, so a
+// projected row can never stand in for one.
+func (r *BankRepository) nonTransferFeed(ctx context.Context, accountID bson.ObjectID, id string) (mongorepo.FeedDocument, error) {
+	row, err := r.TransferRepository.GetFeed(ctx, accountID, id)
+	if err != nil {
+		return mongorepo.FeedDocument{}, err
+	}
+	switch row.Type {
+	case "savings", "loan_disbursement", "loan_repayment":
+		return row, nil
+	}
+	return mongorepo.FeedDocument{}, mongorepo.ErrTransactionAccountNotFound
 }
 
 // Only the opt-in development seeder calls this; production transfers cannot
