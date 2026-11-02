@@ -148,6 +148,7 @@ export function AccountStatusConfirmation({
                 spellCheck={false}
                 value={confirmation}
                 disabled={busy}
+                placeholder="Nhập OK để xác nhận"
                 onChange={(event) => setConfirmation(event.target.value)}
                 className="h-10 w-full rounded-sm border border-(--admin-border) bg-(--admin-background) px-3 text-[12px] text-(--admin-text) outline-none focus:border-(--admin-primary) disabled:opacity-50"
               />
