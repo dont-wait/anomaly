@@ -31,6 +31,24 @@ func RegisterRoutes(
 		Response:        httpx.SuccessResponse[AuthResponse]{},
 		FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden},
 	})
+	router.HandleFunc("POST /api/auth/password-reset/request", h.RequestPasswordReset, openapi.Operation{
+		ID:              "requestPasswordReset",
+		Summary:         "Send a password reset code",
+		Description:     "Always returns the same response. A code is emailed only when the CCCD and email belong to the same customer.",
+		Tags:            []string{"Auth"},
+		Request:         passwordResetStartRequest{},
+		Response:        httpx.SuccessResponse[map[string]bool]{},
+		FailureStatuses: []int{http.StatusBadRequest, http.StatusServiceUnavailable},
+	})
+	router.HandleFunc("POST /api/auth/password-reset/confirm", h.ConfirmPasswordReset, openapi.Operation{
+		ID:              "confirmPasswordReset",
+		Summary:         "Set a new password with a reset code",
+		Description:     "Invalidates every existing token for the account.",
+		Tags:            []string{"Auth"},
+		Request:         passwordResetConfirmRequest{},
+		Response:        httpx.SuccessResponse[map[string]bool]{},
+		FailureStatuses: []int{http.StatusBadRequest, http.StatusConflict, http.StatusTooManyRequests, http.StatusServiceUnavailable},
+	})
 	router.HandleFunc("POST /api/kyc/session", h.StartKYCSession, openapi.Operation{
 		ID:              "createKYCSession",
 		Summary:         "Resume KYC with account credentials",

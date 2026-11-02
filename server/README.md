@@ -354,6 +354,14 @@ never submit storage keys. `POST /api/kyc/session` validates CCCD/password and
 issues a fresh KYC token only while the account remains unverified. Normal login
 returns `403 KYC_REQUIRED` for unverified accounts.
 
+Password recovery has two public endpoints. `POST /api/auth/password-reset/request`
+takes `cccdNumber` and `email`, always returns the same response, and emails a
+code only when both belong to the same customer; staff accounts cannot use it.
+`POST /api/auth/password-reset/confirm` takes `cccdNumber`, `otp` and `newPassword`.
+Every code failure returns the same `400`, and failures are throttled per CCCD
+and per source with the `PASSWORD_ATTEMPT_*` limits. A successful reset
+invalidates all existing tokens and emails a notice. Delivery needs working SMTP.
+
 `KYC_SERVICE_URL` defaults to `http://localhost:8090` for local execution. The
 Compose app service defaults it to `http://anomaly-kyc-service:8090`.
 

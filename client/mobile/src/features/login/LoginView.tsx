@@ -145,7 +145,7 @@ export function LoginView() {
                     </label>
                     <a
                       className="text-xs sm:text-label-sm text-secondary hover:underline cursor-pointer"
-                      href="#"
+                      href={routes.forgotPassword}
                       style={{ color: "#9e5e9e" }}
                     >
                       Quên mật khẩu?

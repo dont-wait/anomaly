@@ -33,10 +33,11 @@ type otpEmailData struct {
 type OTPEmailPurpose string
 
 const (
-	OTPEmailAccount      OTPEmailPurpose = "account"
-	OTPEmailTransfer     OTPEmailPurpose = "transfer"
-	OTPEmailLoanContract OTPEmailPurpose = "loan_contract"
-	OTPEmailChange       OTPEmailPurpose = "email_change"
+	OTPEmailAccount       OTPEmailPurpose = "account"
+	OTPEmailTransfer      OTPEmailPurpose = "transfer"
+	OTPEmailLoanContract  OTPEmailPurpose = "loan_contract"
+	OTPEmailChange        OTPEmailPurpose = "email_change"
+	OTPEmailPasswordReset OTPEmailPurpose = "password_reset"
 )
 
 type otpEmailCopy struct {
@@ -67,6 +68,15 @@ func otpEmailCopyFor(purpose OTPEmailPurpose) (otpEmailCopy, error) {
 			introVI:  "Đây là mã OTP để xác nhận dùng email này cho tài khoản. Nếu bạn không yêu cầu, hãy bỏ qua email này:",
 			titleEN:  "Confirm your email change",
 			introEN:  "Your OTP to confirm this email for your account. If this was not you, ignore this email:",
+		}, nil
+	case OTPEmailPasswordReset:
+		return otpEmailCopy{
+			headerVI: "Đặt lại mật khẩu",
+			headerEN: "Password reset",
+			titleVI:  "Đặt lại mật khẩu của bạn",
+			introVI:  "Đây là mã OTP để đặt lại mật khẩu. Nếu bạn không yêu cầu, hãy bỏ qua email này:",
+			titleEN:  "Reset your password",
+			introEN:  "Your OTP to reset your password. If this was not you, ignore this email:",
 		}, nil
 	case OTPEmailTransfer:
 		return otpEmailCopy{

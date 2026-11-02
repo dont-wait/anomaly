@@ -7,7 +7,7 @@ import {
   requestProfileChange,
 } from "@/features/auth/api/profileMutations";
 import type { ProfileMedia } from "@/features/auth/api/profile";
-import { passwordRules } from "@/features/registration/model";
+import { isAcceptedNewPassword } from "@/features/registration/model";
 import { ApiError } from "@/shared/lib/http";
 import { FileSourcePicker, SelectSheet } from "@/shared/ui";
 import { PROVINCES } from "./provinces";
@@ -486,7 +486,7 @@ export function ChangePasswordPanel({ onBack }: PanelProps) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const strong = passwordRules(newPassword).every(Boolean);
+  const strong = isAcceptedNewPassword(newPassword);
   const mismatch = confirmPassword !== "" && confirmPassword !== newPassword;
 
   const submit = async () => {
@@ -525,7 +525,7 @@ export function ChangePasswordPanel({ onBack }: PanelProps) {
         error={mismatch ? "Mật khẩu xác nhận không khớp." : undefined}
       />
       <p className="profile-note">
-        Mật khẩu mới cần ít nhất 8 ký tự, có chữ hoa, chữ thường, số và ký tự
+        Mật khẩu mới cần 8–72 ký tự, có chữ hoa, chữ thường, số và ký tự
         đặc biệt. Sau khi đổi, mọi phiên đăng nhập sẽ hết hiệu lực và bạn cần
         đăng nhập lại.
       </p>

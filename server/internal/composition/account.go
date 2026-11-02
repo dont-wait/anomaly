@@ -69,4 +69,11 @@ func AttachProfileSecurity(h *handleraccount.Handler, repo commands.AccountRepos
 		cfg.PasswordAttemptWindow,
 		logger,
 	)
+	h.WithPasswordReset(commands.NewPasswordResetHandler(
+		repo,
+		otp.NewPasswordResetOTPStore(rdb, sender),
+		otp.NewPasswordResetAttemptLimiter(rdb, cfg.PasswordAttemptLimit, cfg.PasswordSourceAttemptLimit, cfg.PasswordAttemptWindow),
+		otp.NewPasswordResetNotifier(sender, logger),
+		logger,
+	))
 }

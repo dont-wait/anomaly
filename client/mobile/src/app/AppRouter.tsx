@@ -1,7 +1,7 @@
 import { AUTH_STATUS } from "@/features/auth/authStatus";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useAuth } from "@/features/auth/useAuth";
-import { LoginPage } from "@/pages/LoginPage";
+import { ForgotPasswordPage, LoginPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
 import DashboardPage from "@/pages/DashboardPage";
 import TransferPage from "@/pages/TransferPage";
@@ -118,6 +118,8 @@ export function AppRouter() {
       return <LoanApplicationsRoute />;
     case routes.loanContracts:
       return <LoanContractsPage />;
+    case routes.forgotPassword:
+      return <ForgotPasswordPage />;
     case routes.register:
       return <RegisterPage />;
     default:

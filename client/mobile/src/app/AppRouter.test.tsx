@@ -123,6 +123,13 @@ it("keeps the CCCD login submission when returning from registration", async () 
   await screen.findByRole("heading", { name: "Giao dịch gần đây" });
 });
 
+it("opens password recovery from login without signing in", async () => {
+  renderRouter();
+  fireEvent.click(screen.getByRole("link", { name: "Quên mật khẩu?" }));
+  await screen.findByRole("heading", { name: "Quên mật khẩu" });
+  expect(window.location.hash).toBe(routes.forgotPassword);
+});
+
 it("stays on login when authentication fails", async () => {
   vi.mocked(auth.login).mockRejectedValueOnce(new Error("Đăng nhập thất bại"));
   window.history.replaceState(null, "", routes.login);

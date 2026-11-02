@@ -69,6 +69,28 @@ redis.call('PEXPIRE', KEYS[2], ttl)
 return {1, tonumber(ARGV[2]) - attempts, 0}
 `)
 
+// otpRedeemScript compares and deletes a challenge in one step, leaving no
+// authorization behind. Returns expired=0, invalid=1, redeemed=2, exceeded=3.
+var otpRedeemScript = redis.NewScript(`
+local stored = redis.call('GET', KEYS[1])
+if not stored then
+	return 0
+end
+
+if stored == ARGV[1] then
+	redis.call('DEL', KEYS[1], KEYS[2])
+	return 2
+end
+
+local attempts = redis.call('INCR', KEYS[2])
+if attempts >= tonumber(ARGV[2]) then
+	redis.call('DEL', KEYS[1], KEYS[2])
+	return 3
+end
+redis.call('PEXPIRE', KEYS[2], redis.call('PTTL', KEYS[1]))
+return 1
+`)
+
 type TransferMailSender interface {
 	Send(context.Context, maildomain.MailMessage) error
 }
@@ -190,6 +212,31 @@ func (s *TransferOTPStore) VerifyWithState(ctx context.Context, transferID, code
 		return verification, ErrTransferOTPExceeded
 	default:
 		return TransferOTPVerification{}, fmt.Errorf("unexpected transfer OTP verification result: %d", result[0])
+	}
+}
+
+// Redeem verifies a code and spends the challenge atomically, for flows that do
+// not need Verify's retryable authorization.
+func (s *TransferOTPStore) Redeem(ctx context.Context, id, code string) error {
+	// As in VerifyWithState, malformed codes consume an attempt like wrong ones.
+	if err := otpdomain.ValidateCode(code); err != nil {
+		code = ""
+	}
+	status, err := otpRedeemScript.Run(ctx, s.rdb, []string{s.otpKey(id), s.attemptsKey(id)}, code, transferOTPAttempts).Int64()
+	if err != nil {
+		return err
+	}
+	switch status {
+	case 0:
+		return ErrTransferOTPExpired
+	case 1:
+		return ErrTransferOTPInvalid
+	case 2:
+		return nil
+	case 3:
+		return ErrTransferOTPExceeded
+	default:
+		return fmt.Errorf("unexpected OTP redeem result: %d", status)
 	}
 }
 
