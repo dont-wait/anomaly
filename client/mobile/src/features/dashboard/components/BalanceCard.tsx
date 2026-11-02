@@ -25,7 +25,7 @@ export const BalanceCard = ({
   onRefresh,
   isRefreshing,
 }: BalanceCardProps) => {
-  const [isVisible, setIsVisible] = useState(true);
+  const [isVisible, setIsVisible] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
 
   const copyAccountNumber = async () => {

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AuthContext, type AuthContextValue } from "@/features/auth/authContext";
 import { AUTH_STATUS } from "@/features/auth/authStatus";
@@ -89,12 +89,18 @@ afterEach(() => cleanup());
 function mount() {
   return render(<AuthContext.Provider value={auth}><SavingsLivePage /></AuthContext.Provider>);
 }
+function chooseAmountAndTerm() {
+  fireEvent.click(screen.getByRole("button", { name: "10 triệu" }));
+  fireEvent.click(screen.getByRole("button", { name: /Tiếp tục/ }));
+  fireEvent.click(screen.getByRole("radio", { name: /^6 tháng/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Tiếp tục/ }));
+}
+
 async function startOpening() {
   mount();
   await screen.findByText("#TK-REAL-1");
   fireEvent.click(screen.getByRole("button", { name: /Gửi tiết kiệm mới/ }));
-  fireEvent.change(screen.getByRole("combobox", { name: "Kỳ hạn gửi" }), { target: { value: "6" } });
-  fireEvent.click(screen.getByRole("button", { name: /Tiếp tục/ }));
+  chooseAmountAndTerm();
   await screen.findByRole("heading", { name: "Xác nhận gửi tiết kiệm" });
   expect(screen.getByRole("checkbox")).toHaveProperty("disabled", true);
   fireEvent.click(screen.getByRole("button", { name: /Xem phiếu đăng ký & điều khoản/ }));
@@ -111,25 +117,33 @@ it("loads real contracts and never displays Stitch mock contracts on authenticat
   expect(listSavingsContracts).toHaveBeenCalledWith("jwt", undefined, expect.anything());
 });
 
-it("restores the original one-screen amount, term and projected-interest layout", async () => {
+it("opens step by step, with quick amounts limited to what the customer can deposit", async () => {
   mount();
   await screen.findByText("#TK-REAL-1");
   fireEvent.click(screen.getByRole("button", { name: /Gửi tiết kiệm mới/ }));
 
-  expect(screen.getByRole("heading", { name: "Tiết kiệm có kỳ hạn" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Số tiền gửi" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Chọn kỳ hạn" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Ước tính lợi nhuận" })).toBeTruthy();
-  expect(screen.getByLabelText("Nhập số tiền (VND)")).toHaveProperty("value", "10000000");
-  expect(screen.getByText("Số dư thực tế")).toBeTruthy();
-  const term = screen.getByRole("combobox", { name: "Kỳ hạn gửi" });
-  expect(term).toBeTruthy();
-  // The default term (12 months) is not in this API fixture: force a valid selection.
-  expect(screen.getByRole("button", { name: /Tiếp tục/ })).toHaveProperty("disabled", true);
+  expect(screen.getByText("Bước 1/3")).toBeTruthy();
+  expect(screen.queryByRole("radiogroup", { name: "Kỳ hạn gửi" })).toBeNull();
+  const next = () => screen.getByRole("button", { name: /Tiếp tục/ });
+  const amount = screen.getByLabelText("Số tiền gửi");
+  expect(amount).toHaveProperty("value", "");
+  expect(next()).toHaveProperty("disabled", true);
 
-  fireEvent.change(term, { target: { value: "6" } });
+  fireEvent.change(amount, { target: { value: "5" } });
+  expect(within(screen.getByRole("group", { name: "Gợi ý số tiền gửi" })).getByRole("button", { name: "5.000.000" })).toBeTruthy();
+  expect(next()).toHaveProperty("disabled", true);
+
+  fireEvent.click(screen.getByRole("button", { name: "10 triệu" }));
+  expect(screen.getByLabelText("Số tiền gửi")).toHaveProperty("value", "10.000.000");
+  expect(screen.queryByRole("group", { name: "Gợi ý số tiền gửi" })).toBeNull();
+  fireEvent.click(next());
+
+  expect(screen.getByText("Bước 2/3")).toBeTruthy();
+  // The default term (12 months) is not in this API fixture: force a valid selection.
+  expect(next()).toHaveProperty("disabled", true);
+  fireEvent.click(screen.getByRole("radio", { name: /^6 tháng/ }));
   expect(screen.getByText("240.000 VND")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: /Tiếp tục/ }));
+  fireEvent.click(next());
   expect(await screen.findByRole("heading", { name: "Xác nhận gửi tiết kiệm" })).toBeTruthy();
   expect(createSavingsQuote).toHaveBeenCalledWith("jwt", {
     packageId: "savings_standard", sourceAccountId: "account-1",
@@ -189,8 +203,7 @@ it("prevents opening unless the customer reviews product terms and consents", as
   mount();
   await screen.findByText("#TK-REAL-1");
   fireEvent.click(screen.getByRole("button", { name: /Gửi tiết kiệm mới/ }));
-  fireEvent.change(screen.getByRole("combobox", { name: "Kỳ hạn gửi" }), { target: { value: "6" } });
-  fireEvent.click(screen.getByRole("button", { name: /Tiếp tục/ }));
+  chooseAmountAndTerm();
   await screen.findByRole("heading", { name: "Xác nhận gửi tiết kiệm" });
   expect(screen.getByRole("checkbox")).toHaveProperty("disabled", true);
   expect(screen.getByRole("button", { name: /Xác nhận gửi/ })).toHaveProperty("disabled", true);

@@ -48,8 +48,9 @@
   font-size: 12px;
 }
 .savings-logo {
-  max-width: 86px;
-  height: 39px;
+  flex-shrink: 0;
+  max-width: 132px;
+  height: 52px;
   object-fit: contain;
 }
 .savings-content {
@@ -424,11 +425,17 @@
   margin-top: 13px;
 }
 .savings-amount-chips button {
-  font-size: 12px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
   color: #00236f;
   background: #eaedff;
-  border-radius: 20px;
-  padding: 7px 10px;
+  border-radius: 22px;
+  padding: 7px 14px;
+}
+.savings-amount-chips button[aria-pressed="true"] {
+  color: #fff;
+  background: #00236f;
 }
 .savings-panel select {
   width: 100%;

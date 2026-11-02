@@ -12,7 +12,8 @@ export type TransactionKind =
   | "savings"
   | "salary"
   // Banking projection emits this kind directly; keep icon and label maps in sync.
-  | "loan_disbursement";
+  | "loan_disbursement"
+  | "loan_repayment";
 
 export interface Counterparty {
   name: string;

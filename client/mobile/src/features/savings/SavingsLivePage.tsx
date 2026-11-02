@@ -7,7 +7,8 @@ import { navigate, routes } from "@/app/routes";
 import { ArrowLeftIcon, ChevronRightIcon, SavingsIcon } from "@/shared/icons";
 import { BottomNav } from "@/shared/layout/BottomNav";
 import { Logo } from "@/shared/layout/Logo";
-import { Pagination } from "@/shared/ui";
+import { MoneyInput } from "@/features/loans/components/MoneyInput";
+import { ChoiceList, Pagination, StepForm } from "@/shared/ui";
 import {
   createSavingsQuote, createSavingsWithdrawalQuote, describeSavingsError,
   getSavingsContract, getSavingsHistory, getSavingsReceipt, getSavingsTerms, listSavingsContracts, listSavingsPackages,
@@ -34,6 +35,8 @@ type Screen =
   | "withdraw-preview"
   | "withdraw-success";
 type Filter = "all" | SavingsStatus;
+
+const QUICK_AMOUNTS = [1_000_000, 5_000_000, 10_000_000, 50_000_000];
 
 const labels: Record<SavingsStatus, string> = {
   active: "Đang gửi",
@@ -224,7 +227,10 @@ export default function SavingsLivePage() {
   const [savingsPage, setSavingsPage] = useState(1);
   const [selectedId, setSelectedId] = useState("");
   useEffect(() => { activeContext.current = { token, actor, selectedId }; }, [token, actor, selectedId]);
-  const [amountText, setAmountText] = useState("10000000");
+  const [amountText, setAmountText] = useState("");
+  const [openStep, setOpenStep] = useState<"amount" | "term">("amount");
+  // Đổi key để MoneyInput bỏ gợi ý theo số đang gõ khi khách chọn mức nhanh.
+  const [quickPicks, setQuickPicks] = useState(0);
   const [termMonths, setTermMonths] = useState(12);
   const [accepted, setAccepted] = useState(false);
   const [draft, setDraft] = useState<SavingsDraft | null>(null);
@@ -330,6 +336,9 @@ export default function SavingsLivePage() {
     amount >= minDeposit && amount <= balance &&
     terms.some((option) => option.termMonths === termMonths) &&
     !busy && !pending && !storageBlocked;
+  const amountValid = Boolean(savingsPackage && sourceAccountId) && Number.isSafeInteger(amount) &&
+    amount >= minDeposit && amount <= balance && !pending && !storageBlocked;
+  const quickAmounts = QUICK_AMOUNTS.filter((value) => value >= minDeposit && value <= balance);
 
   const showContract = async (id: string) => {
     if (!token || busy) return;
@@ -357,6 +366,8 @@ export default function SavingsLivePage() {
     setFormError(null);
     setErrorMessage(null);
     setOpenQuote(null);
+    setAmountText("");
+    setOpenStep("amount");
     setScreen("open");
   };
   const previewOpen = async (months: number) => {
@@ -691,102 +702,95 @@ export default function SavingsLivePage() {
       ) : null}
 
       {screen === "open" && (
-        <>
-          <Head title="Mở sổ tiết kiệm" onBack={() => setScreen("list")} />
-          <main className="savings-content savings-open-content">
-            <section className="savings-banner" aria-label="Sản phẩm tiết kiệm">
-              <span className="savings-overline">TÍCH LŨY</span>
-              <h2>Tiết kiệm có kỳ hạn</h2>
-              <p>Lãi suất cố định, an tâm với kế hoạch tương lai.</p>
-            </section>
-
-            <div className="savings-open-group">
-              <div className="savings-section-title">
-                <h2>Tài khoản trích tiền</h2>
-                <span>Khả dụng</span>
-              </div>
-              <Section>
-                <Line label="Tài khoản thanh toán" value={sourceLabel} />
-                <Line label="Số dư thực tế" value={formatVnd(balance)} />
-              </Section>
-            </div>
-
-            <div className="savings-open-group">
-              <div className="savings-section-title">
-                <h2>Số tiền gửi</h2>
-                <span>Từ {formatVnd(minDeposit)}</span>
-              </div>
-              <Section>
-                <label className="savings-open-field-label" htmlFor="savings-live-amount">
-                  Nhập số tiền (VND)
-                </label>
-                <input
-                  id="savings-live-amount"
-                  className="savings-amount-input"
-                  type="text"
-                  inputMode="numeric"
-                  value={amountText}
-                  onChange={(event) => {
-                    setAmountText(event.target.value.replace(/\D/g, ""));
-                    setFormError(null);
-                  }}
-                />
-                <div className="savings-amount-chips">
-                  {[1_000_000, 5_000_000, 10_000_000].map((value) => (
+        <StepForm
+          title="Mở sổ tiết kiệm"
+          stepId={openStep}
+          stepNumber={openStep === "amount" ? 1 : 2}
+          stepCount={3}
+          heading={openStep === "amount" ? "Bạn muốn gửi bao nhiêu?" : "Bạn muốn gửi trong bao lâu?"}
+          hint={openStep === "amount" ? `Tối thiểu ${formatVnd(minDeposit)}` : "Lãi suất cố định trong suốt kỳ hạn."}
+          canContinue={openStep === "amount" ? amountValid : canOpen}
+          busy={busy}
+          onBack={() => {
+            if (busy) return;
+            if (openStep === "term") setOpenStep("amount");
+            else setScreen("list");
+          }}
+          onNext={() => {
+            setFormError(null);
+            if (openStep === "amount") setOpenStep("term");
+            else void previewOpen(termMonths);
+          }}
+        >
+          {openStep === "amount" && (
+            <>
+              <MoneyInput
+                key={quickPicks}
+                label="Số tiền gửi"
+                size="lg"
+                value={Number.isFinite(amount) ? amount : 0}
+                suggestMin={minDeposit}
+                suggestMax={balance}
+                error={amount > balance ? "Số tiền vượt số dư khả dụng." : undefined}
+                onChange={(value) => {
+                  setAmountText(value > 0 ? String(value) : "");
+                  setFormError(null);
+                }}
+              />
+              {quickAmounts.length > 0 && (
+                <div className="savings-amount-chips" role="group" aria-label="Chọn nhanh số tiền">
+                  {quickAmounts.map((value) => (
                     <button
                       type="button"
                       key={value}
+                      aria-pressed={amount === value}
                       onClick={() => {
                         setAmountText(String(value));
+                        setQuickPicks((count) => count + 1);
                         setFormError(null);
                       }}
                     >
-                      {formatVnd(value)}
+                      {value / 1_000_000} triệu
                     </button>
                   ))}
                 </div>
-                {amount > balance && <p role="alert" className="savings-error">Số tiền vượt số dư khả dụng.</p>}
-              </Section>
-            </div>
-
-            <div className="savings-open-group">
-              <div className="savings-section-title">
-                <h2>Chọn kỳ hạn</h2>
-                <span>Lãi suất cố định</span>
-              </div>
+              )}
               <Section>
-                <label className="savings-open-field-label" htmlFor="savings-live-term">Kỳ hạn gửi</label>
-                <select
-                  id="savings-live-term"
-                  value={chosenTerm ? String(termMonths) : ""}
-                  onChange={(event) => {
-                    setTermMonths(Number(event.target.value));
-                    setFormError(null);
-                  }}
-                >
-                  {!chosenTerm && <option value="" disabled>Chọn kỳ hạn</option>}
-                  {terms.map((option) => (
-                    <option key={option.termMonths} value={option.termMonths}>
-                      {option.termMonths} tháng – {option.annualInterestRate}%/năm
-                    </option>
-                  ))}
-                </select>
-                {terms.length === 0 && <p role="status" className="savings-hint">Chưa có kỳ hạn gửi khả dụng.</p>}
+                <Line label="Tài khoản trích tiền" value={sourceLabel} />
+                <Line label="Số dư khả dụng" value={formatVnd(balance)} />
               </Section>
-            </div>
-
-            <Section className="savings-summary">
-              <h3>Ước tính lợi nhuận</h3>
-              <Line label="Tiền gốc" value={Number.isSafeInteger(amount) && amount > 0 ? formatVnd(amount) : "—"} />
-              <Line label="Lãi suất năm" value={chosenTerm ? `${chosenTerm.annualInterestRate}%` : "—"} />
-              <Line label="Tiền lãi dự kiến" value={estimatedInterest === null ? "—" : formatVnd(estimatedInterest)} />
-              <p className="savings-open-estimate-note">Số tiền tham khảo. Lãi thực tế được xác định tại bước xác nhận.</p>
-            </Section>
-
-            {formError && <p role="alert" className="savings-error">{formError}</p>}
-            <Button disabled={!canOpen} onClick={() => void previewOpen(termMonths)}>Tiếp tục →</Button>
-          </main>
-        </>
+            </>
+          )}
+          {openStep === "term" && (
+            <>
+              <ChoiceList
+                label="Kỳ hạn gửi"
+                value={chosenTerm ? String(termMonths) : ""}
+                options={terms.map((option) => ({
+                  value: String(option.termMonths),
+                  label: `${option.termMonths} tháng`,
+                  description: `Lãi suất ${option.annualInterestRate}%/năm`,
+                }))}
+                onChoose={(value) => {
+                  setTermMonths(Number(value));
+                  setFormError(null);
+                }}
+                onConfirm={() => {
+                  if (!busy) void previewOpen(termMonths);
+                }}
+              />
+              {terms.length === 0 && <p role="status" className="savings-hint">Chưa có kỳ hạn gửi khả dụng.</p>}
+              <Section className="savings-summary">
+                <h3>Ước tính lợi nhuận</h3>
+                <Line label="Tiền gốc" value={formatVnd(amount)} />
+                <Line label="Lãi suất năm" value={chosenTerm ? `${chosenTerm.annualInterestRate}%` : "—"} />
+                <Line label="Tiền lãi dự kiến" value={estimatedInterest === null ? "—" : formatVnd(estimatedInterest)} />
+                <p className="savings-open-estimate-note">Số tiền tham khảo. Lãi thực tế được xác định tại bước xác nhận.</p>
+              </Section>
+            </>
+          )}
+          {formError && <p role="alert" className="savings-error">{formError}</p>}
+        </StepForm>
       )}
 
       {screen === "open-preview" && draft && (
