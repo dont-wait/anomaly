@@ -43,8 +43,15 @@ export const protectedRoutes = [
 
 export type ProtectedRoute = (typeof protectedRoutes)[number];
 
-export function isProtectedRoute(value: string): value is ProtectedRoute {
-  return (protectedRoutes as readonly string[]).includes(value);
+export function protectedRouteFromHash(value: string): ProtectedRoute | null {
+  const path = value.split("?", 1)[0];
+  return (protectedRoutes as readonly string[]).includes(path)
+    ? (path as ProtectedRoute)
+    : null;
+}
+
+export function isProtectedRoute(value: string): boolean {
+  return protectedRouteFromHash(value) !== null;
 }
 
 export function navigate(to: string) {

@@ -30,12 +30,12 @@ func NewRouterWithSavings(mux *http.ServeMux, accountHandler *account.Handler, m
 	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, savingsHandler, nil, nil, loanHandlers...)
 }
 
-// NewRouterWithAdminMonitor adds admin monitoring and the audit timeline.
+// NewRouterWithAdminMonitor adds admin monitoring, the audit timeline and event explorer.
 func NewRouterWithAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, adminMonitorHandler *admin.MonitorHandler, timelineHandler *admin.TimelineHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
 	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, nil, adminMonitorHandler, timelineHandler, loanHandlers...)
 }
 
-// NewRouterWithSavingsAndAdminMonitor enables Savings, admin monitoring and the audit timeline together.
+// NewRouterWithSavingsAndAdminMonitor enables Savings, admin monitoring, the audit timeline and event explorer together.
 func NewRouterWithSavingsAndAdminMonitor(mux *http.ServeMux, accountHandler *account.Handler, mediaHandler *media.Handler, otpHandler *otp.Handler, transactionHandler *transaction.Handler, tokenSvc queries.TokenService, swaggerEnabled bool, savingsHandler *savings.Handler, adminMonitorHandler *admin.MonitorHandler, timelineHandler *admin.TimelineHandler, loanHandlers ...*loan.Handler) *http.ServeMux {
 	return newRouter(mux, accountHandler, mediaHandler, otpHandler, transactionHandler, tokenSvc, swaggerEnabled, savingsHandler, adminMonitorHandler, timelineHandler, loanHandlers...)
 }
