@@ -8,7 +8,7 @@ import TransferPage from "@/pages/TransferPage";
 import TransactionHistoryPage from "@/pages/TransactionHistoryPage";
 import TransactionDetailPage from "@/pages/TransactionDetailPage";
 import LoanRegisterPage from "@/pages/LoanRegisterPage";
-import SavingsPage from "@/features/savings/SavingsPage";
+import SavingsLivePage from "@/features/savings/SavingsLivePage";
 import LoanApplicationsPage from "@/pages/LoanApplicationsPage";
 import LoanContractsPage from "@/pages/LoanContractsPage";
 import type { LoanApplication } from "@/features/loans/api";
@@ -113,7 +113,7 @@ export function AppRouter() {
     case routes.loanRegister:
       return <LoanRegisterPage />;
     case routes.savings:
-      return <SavingsPage />;
+      return <SavingsLivePage />;
     case routes.loanApplications:
       return <LoanApplicationsRoute />;
     case routes.loanContracts:

@@ -28,6 +28,10 @@ func (h *Handler) actor(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, operation string, err error) {
 	switch {
+	case errors.Is(err, savingscommands.ErrTermsChanged):
+		replyError(w, 409, "SAVINGS_TERMS_CHANGED", "please review and accept current savings terms")
+	case errors.Is(err, savingscommands.ErrTermsUnavailable):
+		replyError(w, 503, "SAVINGS_TERMS_UNAVAILABLE", "savings terms temporarily unavailable")
 	case errors.Is(err, savingscommands.ErrConfirmationRequired):
 		replyError(w, 400, "CONFIRMATION_REQUIRED", "confirmation required")
 

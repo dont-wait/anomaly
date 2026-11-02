@@ -1,5 +1,5 @@
-/** Savings UI-only models. No network or banking write is performed by this feature. */
-export type SavingsStatus = "active" | "matured" | "settled";
+/** Shared savings view models for the preview and authenticated API screens. */
+export type SavingsStatus = "active" | "matured" | "settled" | "locked";
 
 export interface SavingsContract {
   id: string;

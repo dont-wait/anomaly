@@ -1,0 +1,17 @@
+[
+  {
+    "delete": "savings_terms",
+    "deletes": [
+      {
+        "q": {
+          "_id": "savings-standard-v1"
+        },
+        "limit": 1
+      }
+    ]
+  },
+  {
+    "dropIndexes": "savings_terms",
+    "index": "uniq_active_savings_terms"
+  }
+]

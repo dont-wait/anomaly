@@ -36,6 +36,7 @@ const labels: Record<SavingsStatus, string> = {
   active: "Đang gửi",
   matured: "Đã đáo hạn",
   settled: "Đã tất toán",
+  locked: "Tạm khóa",
 };
 
 function Button({
