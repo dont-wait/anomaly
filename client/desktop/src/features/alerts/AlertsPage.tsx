@@ -53,6 +53,15 @@ export function AlertsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [accountStatuses, setAccountStatuses] = useState<
+    Record<string, "active" | "locked">
+  >({});
+  const sourceStatus =
+    accountStatuses[selected?.transaction?.sourceAccountId || ""] ??
+    selected?.transaction?.sourceAccountStatus;
+  const destinationStatus =
+    accountStatuses[selected?.transaction?.destinationAccountId || ""] ??
+    selected?.transaction?.destinationAccountStatus;
   const [pendingAction, setPendingAction] = useState<{
     accountId: string;
     accountNo?: string;
@@ -531,7 +540,11 @@ export function AlertsPage() {
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      disabled={busy || !selected.transaction?.sourceAccountId}
+                      disabled={
+                        busy ||
+                        !selected.transaction?.sourceAccountId ||
+                        sourceStatus === "locked"
+                      }
                       onClick={() =>
                         void changeAccountStatus(
                           selected.transaction?.sourceAccountId,
@@ -545,7 +558,11 @@ export function AlertsPage() {
                     </button>
                     <button
                       type="button"
-                      disabled={busy || !selected.transaction?.sourceAccountId}
+                      disabled={
+                        busy ||
+                        !selected.transaction?.sourceAccountId ||
+                        sourceStatus === "active"
+                      }
                       onClick={() =>
                         void changeAccountStatus(
                           selected.transaction?.sourceAccountId,
@@ -590,7 +607,9 @@ export function AlertsPage() {
                     <button
                       type="button"
                       disabled={
-                        busy || !selected.transaction?.destinationAccountId
+                        busy ||
+                        !selected.transaction?.destinationAccountId ||
+                        destinationStatus === "locked"
                       }
                       onClick={() =>
                         void changeAccountStatus(
@@ -606,7 +625,9 @@ export function AlertsPage() {
                     <button
                       type="button"
                       disabled={
-                        busy || !selected.transaction?.destinationAccountId
+                        busy ||
+                        !selected.transaction?.destinationAccountId ||
+                        destinationStatus === "active"
                       }
                       onClick={() =>
                         void changeAccountStatus(
@@ -638,6 +659,10 @@ export function AlertsPage() {
               pendingAction.status,
               pendingAction.accountNo,
             );
+            setAccountStatuses((current) => ({
+              ...current,
+              [pendingAction.accountId]: pendingAction.status,
+            }));
             setActionMessage(
               pendingAction.status === "locked"
                 ? "Đã khóa tài khoản."

@@ -17,9 +17,11 @@ export interface RiskAssessment {
 export interface RiskTransactionContext {
   transactionId: string;
   sourceAccountId?: string;
+  sourceAccountStatus?: string;
   sourceAccountNo: string;
   sourceAccountName: string;
   destinationAccountId?: string;
+  destinationAccountStatus?: string;
   destinationAccountNo: string;
   destinationName: string;
   amount: number;
