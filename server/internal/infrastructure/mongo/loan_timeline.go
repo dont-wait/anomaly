@@ -17,21 +17,22 @@ import (
 const loanTimelineCollection = "loan_account_timeline"
 
 var loanEventSummaries = map[string]string{
-	"LoanApplicationCreated":   "Hồ sơ vay được tạo",
-	"LoanDocumentAdded":        "Hồ sơ vay được bổ sung chứng từ",
-	"LoanDocumentReviewed":     "Chứng từ vay được duyệt",
-	"LoanApplicationDeleted":   "Hồ sơ vay chưa gửi bị xóa",
-	"LoanApplicationSubmitted": "Hồ sơ vay được gửi",
-	"LoanReviewStarted":        "Bắt đầu thẩm định khoản vay",
-	"LoanApplicationAssessed":  "Khoản vay được thẩm định",
-	"LoanApplicationApproved":  "Hồ sơ vay được phê duyệt",
-	"LoanApplicationRejected":  "Hồ sơ vay bị từ chối",
-	"LoanOfferIssued":          "Đề nghị khoản vay được phát hành",
-	"LoanOfferAccepted":        "Đề nghị khoản vay được chấp nhận",
-	"LoanOfferRejected":        "Đề nghị khoản vay bị từ chối",
-	"LoanContractConfirmed":    "Hợp đồng vay được xác nhận",
-	"LoanDisbursementPrepared": "Khoản vay được chuẩn bị giải ngân",
-	"LoanDisbursed":            "Khoản vay được giải ngân",
+	"LoanApplicationCreated":        "Hồ sơ vay được tạo",
+	"LoanDocumentAdded":             "Hồ sơ vay được bổ sung chứng từ",
+	"LoanDocumentReviewed":          "Chứng từ vay được duyệt",
+	"LoanApplicationDeleted":        "Hồ sơ vay chưa gửi bị xóa",
+	"LoanApplicationSubmitted":      "Hồ sơ vay được gửi",
+	"LoanReviewStarted":             "Bắt đầu thẩm định khoản vay",
+	"LoanApplicationAssessed":       "Khoản vay được thẩm định",
+	"LoanApplicationApproved":       "Hồ sơ vay được phê duyệt",
+	"LoanApplicationRejected":       "Hồ sơ vay bị từ chối",
+	"LoanApplicationReviewRejected": "Hồ sơ vay bị từ chối khi thẩm định",
+	"LoanOfferIssued":               "Đề nghị khoản vay được phát hành",
+	"LoanOfferAccepted":             "Đề nghị khoản vay được chấp nhận",
+	"LoanOfferRejected":             "Đề nghị khoản vay bị từ chối",
+	"LoanContractConfirmed":         "Hợp đồng vay được xác nhận",
+	"LoanDisbursementPrepared":      "Khoản vay được chuẩn bị giải ngân",
+	"LoanDisbursed":                 "Khoản vay được giải ngân",
 }
 
 func (m *LoanReadModel) EnsureLoanTimelineIndexes(ctx context.Context) error {

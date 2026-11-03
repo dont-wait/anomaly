@@ -2,7 +2,7 @@
 
 - `POST /api/loans` checks the same active, unique package data as pre-application quote **before** appending `LoanApplicationCreated`.
 - Retries with the same idempotency key and same request return an already-created application before consulting the current package configuration.
-- `loan_packages.package_code` has a unique index, installed at API startup. If an existing database contains duplicate `package_code` values, **API startup fails**; reconcile those documents manually before deploying. Do not silently delete rows or arbitrarily select a winner.
+- `loan_packages` is versioned: `(package_code, version)` is unique, with at most one `ACTIVE` and one `DRAFT` per code, installed at API startup. If an existing database contains duplicate `package_code` values without versions, **API startup fails**; reconcile those documents manually before deploying. Do not silently delete rows or arbitrarily select a winner. Packages are managed at `#/admin/loan-packages`; see `specs/quan-ly-goi-admin.md`.
 - Status is normalized on read, including `Active`/`ACTIVE`/`active`; new seed/configuration should write `ACTIVE` or `INACTIVE` consistently.
 - Legacy already-disbursed contracts with a retired/missing product retain the source package code instead of linking to an unrelated document. The existing contract interest rate is not recalculated.
 - Mongo package reads are bounded by a 5-second context deadline; no result is returned as an empty catalog after a timeout.

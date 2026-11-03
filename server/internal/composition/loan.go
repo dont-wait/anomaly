@@ -66,6 +66,7 @@ func NewLoanHandler(
 			repo,
 			access,
 		),
+		RejectReview:  &commands.RejectLoanReviewCommandHandler{Repo: repo, Authorizer: access},
 		Offer:         &commands.LoanOfferCommandHandler{Repo: repo, Authorizer: access, Evidence: evidence},
 		ContractEmail: access,
 		Disburse: &commands.DisburseLoanCommandHandler{

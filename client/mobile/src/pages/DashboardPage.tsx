@@ -173,7 +173,7 @@ const DashboardPage = () => {
         onProfileClick={() => setProfileSidebarOpen(true)}
       />
 
-      <main className="flex-1 space-y-6 overflow-y-auto px-4 py-5">
+      <main className="flex-1 space-y-6 overflow-y-auto px-4 pt-5 pb-28">
         <div className="flex items-center gap-2">
           <Avatar name={account.ownerName} size={40} />
           <p className="text-sm text-gray-500">
@@ -193,6 +193,7 @@ const DashboardPage = () => {
           actions={quickActions}
           onSelect={(action) => {
             if (action.icon === "transfer") navigate(routes.transfer);
+            if (action.icon === "qr") navigate(routes.myQr);
             if (action.icon === "savings") navigate(routes.savings);
             if (action.id === "qa_more") setMoreServicesOpen(true);
           }}
@@ -237,10 +238,11 @@ const DashboardPage = () => {
       <BottomNav
         active={profileSidebarOpen ? "profile" : "home"}
         onChange={(id) => {
+          if (id === "card") navigate(routes.cards);
           if (id === "savings") navigate(routes.savings);
           if (id === "profile") setProfileSidebarOpen(true);
         }}
-        onQrScan={() => console.log("TODO: mở màn hình quét QR")}
+        onQrScan={() => navigate(routes.qrScan)}
       />
 
       <ProfileSidebar

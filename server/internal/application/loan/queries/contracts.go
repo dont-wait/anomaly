@@ -26,6 +26,7 @@ type ContractSummary struct {
 	LoanNo               string    `json:"loanNo"`
 	ApplicationID        string    `json:"applicationId"`
 	LoanPackageID        string    `json:"loanPackageId"`
+	LoanPackageVersion   int       `json:"loanPackageVersion"`
 	Principal            int64     `json:"principal"`
 	OutstandingPrincipal int64     `json:"outstandingPrincipal"`
 	AnnualInterestRate   string    `json:"annualInterestRate"`
@@ -45,6 +46,7 @@ type ContractDetail struct {
 	LoanNo               string        `json:"loanNo"`
 	ApplicationID        string        `json:"applicationId"`
 	LoanPackageID        string        `json:"loanPackageId"`
+	LoanPackageVersion   int           `json:"loanPackageVersion"`
 	Principal            int64         `json:"principal"`
 	OutstandingPrincipal int64         `json:"outstandingPrincipal"`
 	AnnualInterestRate   string        `json:"annualInterestRate"`

@@ -1,0 +1,31 @@
+[
+  {
+    "update": "loan_packages",
+    "updates": [
+      {
+        "q": { "package_code": "PERSONAL_UNSECURED_SALARY" },
+        "u": {
+          "$setOnInsert": {
+            "package_code": "PERSONAL_UNSECURED_SALARY",
+            "version": 1,
+            "status": "ACTIVE",
+            "name": "Vay tín chấp theo lương",
+            "description": "",
+            "min_amount": { "$numberLong": "1000000" },
+            "max_amount": { "$numberLong": "500000000" },
+            "term_options": [
+              { "months": 6 },
+              { "months": 12 },
+              { "months": 24 },
+              { "months": 36 },
+              { "months": 48 },
+              { "months": 60 }
+            ],
+            "created_by": "migration-000019"
+          }
+        },
+        "upsert": true
+      }
+    ]
+  }
+]

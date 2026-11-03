@@ -456,3 +456,71 @@ describe("LoanApplicationsPage", () => {
     ).toBeTruthy();
   });
 });
+
+describe("rejected documents and decisions", () => {
+  const rejectedDoc = {
+    documentId: "d1",
+    type: "IDENTITY_FRONT" as const,
+    verificationStatus: "rejected",
+    rejectionReason: "Ảnh mờ",
+    uploadedAt: "2026-10-30T00:00:00Z",
+    mimeType: "image/jpeg",
+    sizeBytes: 2048,
+  };
+
+  it("shows the reason and lets the customer replace a rejected document during review", async () => {
+    vi.mocked(getLoan).mockResolvedValue({
+      ...baseApplication,
+      status: "under_review",
+      documents: [rejectedDoc],
+    });
+    render(<LoanApplicationsPage applicationId="app-1" />);
+    expect(await screen.findByText(/Ảnh mờ/)).toBeTruthy();
+    expect(screen.getByText(/Vui lòng tải lại/)).toBeTruthy();
+  });
+
+  it("does not offer replacement once the application is assessed", async () => {
+    vi.mocked(getLoan).mockResolvedValue({
+      ...baseApplication,
+      status: "under_review",
+      assessedAt: "2026-11-01T00:00:00Z",
+      documents: [rejectedDoc],
+    });
+    render(<LoanApplicationsPage applicationId="app-1" />);
+    expect(await screen.findByText(/Lý do: Ảnh mờ/)).toBeTruthy();
+    expect(screen.queryByText(/Vui lòng tải lại/)).toBeNull();
+  });
+
+  it("shows why the application was rejected", async () => {
+    vi.mocked(getLoan).mockResolvedValue({
+      ...baseApplication,
+      status: "rejected",
+      manualDecisionReason: "Thu nhập không đủ",
+    });
+    render(<LoanApplicationsPage applicationId="app-1" />);
+    expect(await screen.findByText(/Thu nhập không đủ/)).toBeTruthy();
+  });
+});
+
+describe("offer expiry", () => {
+  it("hides the actions once the offer has expired", async () => {
+    const offer: LoanOffer = {
+      status: "issued",
+      amount: 1,
+      annualRateBps: 1600,
+      termMonths: 12,
+      issuedAt: "2020-01-01T00:00:00Z",
+      expiresAt: "2020-01-08T00:00:00Z",
+    };
+    vi.mocked(getLoan).mockResolvedValue({
+      ...baseApplication,
+      status: "approved",
+      offer,
+    });
+    render(<LoanApplicationsPage applicationId="app-1" />);
+    expect(await screen.findByText(/Đề nghị vay đã hết hạn/)).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Chấp nhận đề nghị" }),
+    ).toBeNull();
+  });
+});

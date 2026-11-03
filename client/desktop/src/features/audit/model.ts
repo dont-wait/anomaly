@@ -34,7 +34,8 @@ export interface TimelineResponse {
   hasMore: boolean;
 }
 
-export type EventExplorerCategory = "all" | "account" | "transfer" | "otp" | "login" | "loan" | "other";
+export type EventExplorerCategory =
+  "all" | "account" | "transfer" | "otp" | "login" | "loan" | "other";
 
 export interface EventExplorerListItem {
   eventId: string;

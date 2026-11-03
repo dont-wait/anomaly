@@ -115,7 +115,8 @@ func (h *CreateLoanApplicationCommandHandler) Handle(
 	if h.PackagePolicy == nil {
 		return nil, fmt.Errorf("loan package policy unavailable: not configured")
 	}
-	if err := h.PackagePolicy.ValidateLoanPackage(ctx, cmd.LoanPackageID, cmd.RequestedAmount, cmd.TermMonths); err != nil {
+	packageVersion, err := h.PackagePolicy.ValidateLoanPackage(ctx, cmd.LoanPackageID, cmd.RequestedAmount, cmd.TermMonths)
+	if err != nil {
 		return nil, fmt.Errorf("loan package is not eligible: %w", err)
 	}
 
@@ -132,6 +133,7 @@ func (h *CreateLoanApplicationCommandHandler) Handle(
 	if err != nil {
 		return nil, err
 	}
+	app.LoanPackageVersion = packageVersion
 	if cmd.Declared != nil {
 		if err := cmd.Declared.Validate(); err != nil {
 			return nil, err

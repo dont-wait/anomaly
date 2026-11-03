@@ -213,18 +213,19 @@ func TestContractInvalidAndLocked(t *testing.T) {
 	}
 }
 
-func TestContractRejectsUnapprovedTermRateAtOpening(t *testing.T) {
-	for _, tc := range []struct {
-		months int
-		bps    int64
-	}{
-		{3, 900}, {3, 520}, {12, 450}, {60, 10000},
-	} {
+func TestContractRejectsRateOutsideBoundsAtOpening(t *testing.T) {
+	for _, bps := range []int64{0, -1, 10_001} {
 		p := testContractParams()
-		p.TermMonths, p.AnnualRateBps = tc.months, tc.bps
+		p.AnnualRateBps = bps
 		if _, err := NewContract(p); !errors.Is(err, ErrInvalidInterestRate) {
-			t.Fatalf("accepted term=%d rate=%d: %v", tc.months, tc.bps, err)
+			t.Fatalf("accepted rate=%d: %v", bps, err)
 		}
+	}
+	// Lãi đang bán đến từ catalog, không còn phải trùng bảng seed.
+	published := testContractParams()
+	published.AnnualRateBps = 525
+	if c, err := NewContract(published); err != nil || c.AnnualRateBps != 525 {
+		t.Fatalf("published rate rejected: %v", err)
 	}
 	p := testContractParams()
 	p.TermMonths = 4

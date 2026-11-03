@@ -143,5 +143,6 @@ type LoanManualDecisionAuthorizer interface {
 // LoanPackagePolicyValidator checks the currently active, authoritative
 // package before the first LoanApplicationCreated event is written.
 type LoanPackagePolicyValidator interface {
-	ValidateLoanPackage(ctx context.Context, packageCode string, amount int64, termMonths int) error
+	// ValidateLoanPackage returns the active package version the request matched.
+	ValidateLoanPackage(ctx context.Context, packageCode string, amount int64, termMonths int) (int, error)
 }

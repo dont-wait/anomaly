@@ -157,32 +157,47 @@ func TestLoanRepaymentAllSupportedTerms(
 	}
 }
 
-// Test khong cho tra truoc hoac sau ngay den han.
-func TestLoanRepaymentRejectsEarlyAndLatePayments(
+// Test khong cho tra truoc han.
+func TestLoanRepaymentRejectsEarlyPayment(
 	t *testing.T,
 ) {
 	loan := newDisbursedRepayment(t, 12)
 
 	first := onDueDay(loan.Schedule[0])
 
-	for _, at := range []time.Time{
-		first.Add(-24 * time.Hour),
-		first.Add(24 * time.Hour),
-	} {
-		_, err := loan.RecordInstallmentPayment(1, at)
-
-		if !errors.Is(err, ErrInstallmentNotDue) {
-			t.Fatalf(
-				"expected wrong day rejection, got %v",
-				err,
-			)
-		}
+	_, err := loan.RecordInstallmentPayment(1, first.Add(-24*time.Hour))
+	if !errors.Is(err, ErrInstallmentNotDue) {
+		t.Fatalf("expected early rejection, got %v", err)
 	}
 
 	if loan.PaidInstallments != 0 ||
 		loan.OutstandingPrincipal != loan.Principal {
-
 		t.Fatal("invalid attempt modified loan")
+	}
+}
+
+// Lo mot ky khong duoc lam khoan vay ket vinh vien.
+func TestLoanRepaymentAcceptsOverdueInstallmentsInOrder(
+	t *testing.T,
+) {
+	loan := newDisbursedRepayment(t, 12)
+
+	// Da qua han ca ky 1 va ky 2.
+	late := onDueDay(loan.Schedule[1]).Add(24 * time.Hour)
+
+	for no := 1; no <= 2; no++ {
+		item, err := loan.RecordInstallmentPayment(no, late)
+		if err != nil {
+			t.Fatalf("installment %d: %v", no, err)
+		}
+		if item.InstallmentNo != no || item.TotalPayment != loan.Schedule[no-1].TotalPayment {
+			t.Fatalf("installment %d amount changed: %+v", no, item)
+		}
+	}
+
+	// Ky 3 chua den han nen van bi chan.
+	if _, err := loan.RecordInstallmentPayment(3, late); !errors.Is(err, ErrInstallmentNotDue) {
+		t.Fatalf("expected next installment not due, got %v", err)
 	}
 }
 

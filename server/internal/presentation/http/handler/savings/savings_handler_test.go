@@ -69,7 +69,7 @@ func newTestRouter() (*http.ServeMux, *httpQuotes) {
 		} else {
 			label = map[int]string{3: "3 tháng", 6: "6 tháng", 9: "9 tháng"}[t.Months]
 		}
-		terms = append(terms, savingsqueries.TermOption{TermMonths: t.Months, TermLabel: label, AnnualInterestRate: savingsqueries.RateString(t.AnnualRateBps)})
+		terms = append(terms, savingsqueries.TermOption{TermMonths: t.Months, TermLabel: label, AnnualInterestRate: savingsqueries.RateString(t.AnnualRateBps), AnnualRateBps: t.AnnualRateBps})
 	}
 	store := &httpQuotes{}
 	h := &Handler{Terms: savingsTermsStub{snapshot: TermsSnapshot{

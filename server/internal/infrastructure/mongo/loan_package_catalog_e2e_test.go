@@ -69,7 +69,7 @@ func TestLoanPackageCatalogMongoE2E(t *testing.T) {
 		{"PERSONAL_UNSECURED_SALARY", 50_000_000, 36, false},
 		{"OLD_PACKAGE", 50_000_000, 12, false},
 	} {
-		err := catalog.ValidateLoanPackage(ctx, tc.code, tc.amount, tc.term)
+		_, err := catalog.ValidateLoanPackage(ctx, tc.code, tc.amount, tc.term)
 		if (err == nil) != tc.valid {
 			t.Fatalf("policy %v got err %v", tc, err)
 		}
@@ -106,7 +106,7 @@ func TestLoanCatalogRejectsDuplicateCodesMongoE2E(t *testing.T) {
 	if _, err := db.Collection("loan_packages").InsertOne(ctx, doc); err != nil {
 		t.Fatal(err)
 	}
-	inactive := bson.M{"package_code": "PERSONAL_UNSECURED_SALARY", "status": "INACTIVE", "name": "old", "min_amount": int64(1), "max_amount": int64(90000000), "term_options": bson.A{bson.M{"months": 12}}}
+	inactive := bson.M{"package_code": "PERSONAL_UNSECURED_SALARY", "status": "ACTIVE", "name": "old", "min_amount": int64(1), "max_amount": int64(90000000), "term_options": bson.A{bson.M{"months": 12}}}
 	if _, err := db.Collection("loan_packages").InsertOne(ctx, inactive); err != nil {
 		t.Fatal(err)
 	}

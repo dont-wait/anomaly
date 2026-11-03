@@ -98,11 +98,7 @@ func (r *BankRepository) OpenSavings(ctx context.Context, in journal.SavingsOpen
 		if !ownedByCustomer(s.Accounts, in.ActorID, in.SourceAccountID) || actor == nil || actor.Status != account.AccountStatusActive || owner == nil || owner.CustomerId != in.CustomerID || owner.Status != account.AccountStatusActive || owner.Type != account.AccountTypePayment || owner.Currency != account.CurrencyVND {
 			return nil, nil, ErrSavingsSourceUnavailable
 		}
-		approved, rateErr := savings.AnnualRateBpsForTerm(in.TermMonths)
-		if rateErr != nil || approved != in.AnnualRateBps {
-			return nil, nil, savings.ErrInvalidInterestRate
-		}
-		if in.PackageID != "savings_standard" {
+		if strings.TrimSpace(in.PackageID) == "" {
 			return nil, nil, savings.ErrInvalidContract
 		}
 		if in.Principal < savings.MinimumDepositVND {
@@ -110,7 +106,7 @@ func (r *BankRepository) OpenSavings(ctx context.Context, in journal.SavingsOpen
 		}
 		id := journal.EventID(key, "savings-contract")
 		no := "SV" + strings.ToUpper(strings.ReplaceAll(id, "-", ""))[:18]
-		c, err := savings.NewContract(savings.OpenContractParams{ID: id, SavingsNo: no, CustomerID: owner.CustomerId, PackageID: in.PackageID, SourceAccountID: owner.Id, Principal: in.Principal, TermMonths: in.TermMonths, AnnualRateBps: in.AnnualRateBps, OpenedAt: now})
+		c, err := savings.NewContract(savings.OpenContractParams{ID: id, SavingsNo: no, CustomerID: owner.CustomerId, PackageID: in.PackageID, PackageVersion: in.PackageVersion, AcceptedTermsVersion: in.AcceptedTermsVersion, SourceAccountID: owner.Id, Principal: in.Principal, TermMonths: in.TermMonths, AnnualRateBps: in.AnnualRateBps, OpenedAt: now})
 		if err != nil {
 			return nil, nil, err
 		}

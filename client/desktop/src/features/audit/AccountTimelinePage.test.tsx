@@ -58,7 +58,9 @@ describe("AccountTimelinePage", () => {
     window.location.hash = "#/admin/audit/accounts?account=ACC-0001";
     render(<AccountTimelinePage />);
 
-    expect((screen.getByPlaceholderText(/Account ID/i) as HTMLInputElement).value).toBe("ACC-0001");
+    expect(
+      (screen.getByPlaceholderText(/Account ID/i) as HTMLInputElement).value,
+    ).toBe("ACC-0001");
   });
 
   it("searches by account and renders the grouped timeline", async () => {

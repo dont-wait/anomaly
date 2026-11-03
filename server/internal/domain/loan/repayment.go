@@ -40,7 +40,7 @@ var (
 		"invalid repayment date",
 	)
 	ErrInstallmentNotDue = errors.New(
-		"installment is not due today",
+		"installment is not due yet",
 	)
 	ErrInstallmentAlreadyPaid = errors.New(
 		"installment has already been paid",
@@ -146,7 +146,7 @@ func NewLoanRepaymentFromDisbursed(
 }
 
 // DueInstallment tra ve ky thanh toan tiep theo
-// neu ngay hien tai trung voi ngay den han.
+// neu ngay hien tai da den hoac da qua ngay den han.
 //
 // So sanh theo ngay Viet Nam (UTC+7).
 // DueDate duoc luu theo ngay UTC tu lich EMI.
@@ -192,13 +192,12 @@ func (r *LoanRepayment) DueInstallment(
 	year, month, day := at.In(vn).Date()
 	dueYear, dueMonth, dueDay := item.DueDate.UTC().Date()
 
-	// Chi cho phep thanh toan dung ngay den han.
-	// Product se nhac truoc 5 ngay va nhac lai trong ngay den han;
-	// MVP khong ho tro tra truoc/tra tre.
-	if year != dueYear ||
-		month != dueMonth ||
-		day != dueDay {
-
+	// Khong cho tra truoc han. Ky qua han van tra duoc dung so tien da chot,
+	// neu khong khoan vay se ket vinh vien vi cac ky phai tra theo thu tu.
+	// Chinh sach phat qua han chua duoc chot nen chua tinh phi.
+	today := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+	dueOn := time.Date(dueYear, dueMonth, dueDay, 0, 0, 0, 0, time.UTC)
+	if today.Before(dueOn) {
 		return RepaymentScheduleItem{},
 			ErrInstallmentNotDue
 	}

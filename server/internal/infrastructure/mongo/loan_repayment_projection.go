@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 
 	loandomain "github.com/dont-wait/anomaly/internal/domain/loan"
 	journal "github.com/dont-wait/anomaly/internal/domain/transaction"
@@ -214,12 +215,12 @@ func (m *LoanReadModel) SaveLoanContract(
 			return lookupErr
 		}
 	} else {
-		packageRow, err = catalog.uniquePackageByCode(ctx, a.LoanPackageId)
+		packageRow, err = catalog.activePackageByCode(ctx, a.LoanPackageId)
 		if err != nil {
 			return err
 		}
 	}
-	if packageRow != nil && normalizePackageStatus(packageRow.Status) == "ACTIVE" {
+	if packageRow != nil && strings.EqualFold(strings.TrimSpace(packageRow.Status), "ACTIVE") {
 		appDoc["loan_package_id"] = packageRow.ID
 	} else {
 		// Preserve the source code for contracts whose product was retired or

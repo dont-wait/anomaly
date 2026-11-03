@@ -65,6 +65,7 @@ const inputClass = (invalid: boolean) =>
 interface TransferFlowProps {
   token: string;
   source: SourceAccount;
+  initialAccountNo?: string;
   onUnauthorized?: () => void;
   onExit: () => void;
   onViewHistory: () => void;
@@ -74,11 +75,12 @@ interface TransferFlowProps {
 export function TransferFlow({
   token,
   source,
+  initialAccountNo,
   onUnauthorized,
   onExit,
   onViewHistory,
 }: TransferFlowProps) {
-  const flow = useTransferFlow(source, token, onUnauthorized);
+  const flow = useTransferFlow(source, token, onUnauthorized, initialAccountNo);
   const { lookup, amountError } = flow;
   const accountError = lookup.status === "error" ? lookup.message : "";
   const [contactsOpen, setContactsOpen] = useState(false);

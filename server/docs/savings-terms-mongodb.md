@@ -42,18 +42,15 @@ db.savings_terms.find(
 
 ## Sửa điều khoản sau này
 
-- **Không** chỉnh văn bản trong file Go. Chuẩn bị văn bản đã được nhóm duyệt,
-  tạo tài liệu mới trong `savings_terms` với `_id` và `version` mới, ban đầu `INACTIVE`.
-- Kiểm tra nội dung trước khi xuất bản. Chỉ đổi `ACTIVE` theo quy trình phát hành
-  kiểm soát, ưu tiên transaction MongoDB trên replica set (hạ phiên bản cũ
-  xuống `INACTIVE` và bật phiên bản mới trong cùng transaction).
+- **Không** chỉnh văn bản trong file Go. Dùng tab Điều khoản ở `#/admin/savings-packages`
+  (xem `specs/quan-ly-goi-admin.md`): lưu bản nháp rồi phát hành. Lệnh phát hành hạ
+  bản cũ xuống `INACTIVE` và bật bản mới trong cùng transaction.
 - Không xóa bản cũ: giữ để phục vụ đối chiếu nội dung từng phiên bản.
-- Các thay đổi về tiền, kỳ hạn, lãi suất, tính lãi, hoặc thời điểm đáo hạn **không**
-  được thực hiện bằng cách sửa collection này. Chúng do Savings Domain / quote
-  và hợp đồng quyết định; chỉ sửa nội dung mô tả thống nhất với chính sách đã duyệt.
-- Việc lưu bằng chứng khách hàng chấp thuận **phiên bản điều khoản cụ thể vào từng hợp đồng**
-  chưa nằm trong patch này; cần thiết kế EventStore schema và migration riêng trước
-  khi khẳng định đáp ứng yêu cầu chứng từ pháp lý.
+- Kỳ hạn, lãi suất và mức gửi tối thiểu được đổi qua phiên bản gói, không qua collection
+  này. Công thức tính lãi và thời điểm đáo hạn do Savings Domain quyết định. Chỉ sửa
+  nội dung mô tả cho thống nhất với gói đang bán.
+- Hợp đồng mở từ bản này lưu `AcceptedTermsVersion` trong sự kiện `SavingsOpened`.
+  Hợp đồng cũ không có trường này.
 
 Migration `down` xóa riêng document seed theo `_id` và bỏ unique index,
 **không xóa** collection hoặc hợp đồng/số dư. Chỉ rollback có kiểm soát.

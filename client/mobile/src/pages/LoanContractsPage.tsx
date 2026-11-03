@@ -314,6 +314,7 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
               {schedule.items?.map((item) => {
                 const paid = item.status === "paid";
                 const next = item.installmentNo === schedule.nextInstallmentNo;
+                const overdue = item.status === "overdue";
                 return (
                   <div
                     key={item.installmentNo}
@@ -333,8 +334,20 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
                           {vnd(item.totalDue)}
                         </p>
                         <StatusChip
-                          tone={paid ? "success" : next ? "active" : "muted"}
-                          label={next ? "Kỳ tới" : statusLabel(item.status)}
+                          tone={
+                            paid
+                              ? "success"
+                              : overdue
+                                ? "danger"
+                                : next
+                                  ? "active"
+                                  : "muted"
+                          }
+                          label={
+                            next && !overdue
+                              ? "Kỳ tới"
+                              : statusLabel(item.status)
+                          }
                         />
                       </div>
                     </div>
@@ -369,8 +382,8 @@ export default function LoanContractsPage({ loanId }: { loanId?: string }) {
             schedule.nextInstallmentNo > 0 && (
               <Panel title="Thanh toán kỳ tới hạn">
                 <p className="text-xs">
-                  Chỉ cho phép trả đủ một kỳ đúng ngày đến hạn (theo giờ Việt
-                  Nam). Hiện chưa hỗ trợ trả sớm hoặc trả trễ.
+                  Trả đủ một kỳ từ ngày đến hạn (theo giờ Việt Nam), kể cả khi
+                  đã quá hạn. Hiện chưa hỗ trợ trả trước hạn.
                 </p>
                 <p className="text-xs">
                   Trừ tiền từ tài khoản thanh toán{" "}

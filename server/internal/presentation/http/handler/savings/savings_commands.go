@@ -28,6 +28,8 @@ func (h *Handler) actor(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, operation string, err error) {
 	switch {
+	case errors.Is(err, savingsqueries.ErrPackageRetired):
+		replyError(w, 409, "SAVINGS_PACKAGE_RETIRED", "savings package is no longer on sale")
 	case errors.Is(err, savingscommands.ErrTermsChanged):
 		replyError(w, 409, "SAVINGS_TERMS_CHANGED", "please review and accept current savings terms")
 	case errors.Is(err, savingscommands.ErrTermsUnavailable):

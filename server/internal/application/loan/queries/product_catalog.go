@@ -8,6 +8,7 @@ import (
 // LoanPackage chứa thông tin gói vay hiển thị cho khách hàng.
 type LoanPackage struct {
 	PackageCode string `json:"packageCode"`
+	Version     int    `json:"version"`
 	Name        string `json:"name"`
 	MinAmount   int64  `json:"minAmount"`
 	MaxAmount   int64  `json:"maxAmount"`

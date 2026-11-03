@@ -54,7 +54,6 @@ const navigationGroups: NavigationGroup[] = [
         label: "Cảnh báo",
         route: routes.alerts,
         icon: faTriangleExclamation,
-        badge: "38",
       },
     ],
   },
@@ -77,19 +76,43 @@ const navigationGroups: NavigationGroup[] = [
         label: "Thẩm định hồ sơ",
         route: routes.loanApplications,
         icon: faFileInvoiceDollar,
-        badge: "5",
       },
       {
         label: "Gói vay",
         route: routes.loanPackages,
         icon: faMoneyBillTransfer,
       },
+      {
+        label: "Hợp đồng vay",
+        route: routes.loanContracts,
+        icon: faFileInvoiceDollar,
+      },
+      {
+        label: "Khoản vay quá hạn",
+        route: routes.overdueLoans,
+        icon: faClockRotateLeft,
+      },
+    ],
+  },
+  {
+    label: "TIẾT KIỆM",
+    items: [
+      {
+        label: "Gói tiết kiệm",
+        route: routes.savingsPackages,
+        icon: faMoneyBillTransfer,
+      },
+      {
+        label: "Sổ tiết kiệm",
+        route: routes.savingsContracts,
+        icon: faFileInvoiceDollar,
+      },
     ],
   },
   {
     label: "ĐỊNH DANH",
     items: [
-      { label: "Duyệt KYC", route: routes.kyc, icon: faIdCard, badge: "8" },
+      { label: "Duyệt KYC", route: routes.kyc, icon: faIdCard },
       {
         label: "Duyệt thông tin",
         route: routes.profileChanges,

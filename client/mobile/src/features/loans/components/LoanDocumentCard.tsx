@@ -59,6 +59,7 @@ interface LoanDocumentCardProps {
   /** Bản hợp lệ đã tải; bản bị từ chối được truyền qua `rejected`. */
   document?: LoanDocument;
   rejected: boolean;
+  rejectionReason?: string;
   disabled: boolean;
   uploading: boolean;
   onSelect: (file: File) => void;
@@ -110,6 +111,11 @@ export function LoanDocumentRow({
             <span>Gửi {uploadedAt.toLocaleDateString("vi-VN")}</span>
           )}
         </p>
+        {document.rejectionReason && (
+          <p className="mt-1 text-xs text-red-700">
+            Lý do: {document.rejectionReason}
+          </p>
+        )}
       </div>
       <button
         type="button"
@@ -127,6 +133,7 @@ export function LoanDocumentCard({
   type,
   document,
   rejected,
+  rejectionReason,
   disabled,
   uploading,
   onSelect,
@@ -155,7 +162,8 @@ export function LoanDocumentCard({
       {rejected && (
         <p className="rounded-xl bg-red-50 p-2 text-xs text-red-700">
           <FontAwesomeIcon icon={faTriangleExclamation} className="mr-1.5" />
-          Giấy tờ trước chưa đạt. Vui lòng tải lại.
+          Giấy tờ trước chưa đạt{rejectionReason ? `: ${rejectionReason}` : ""}.
+          Vui lòng tải lại.
         </p>
       )}
       {uploading ? (

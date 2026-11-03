@@ -131,6 +131,7 @@ type Handler struct {
 	AttachProfile  *commands.AttachProfileDocumentsCommandHandler
 	Assess         *commands.AssessLoanApplicationCommandHandler
 	Decide         *commands.ManualLoanDecisionCommandHandler
+	RejectReview   *commands.RejectLoanReviewCommandHandler
 	Disburse       *commands.DisburseLoanCommandHandler
 	Offer          *commands.LoanOfferCommandHandler
 	ContractOTP    ContractOTPService
@@ -409,6 +410,16 @@ func RegisterRoutes(
 		"attestPersonalLoanEvidence",
 	)
 	auth(
+		"GET /api/loans/{applicationId}/evidence",
+		h.getEvidence,
+		"getPersonalLoanEvidence",
+	)
+	auth(
+		"POST /api/loans/{applicationId}/reject-review",
+		h.rejectReview,
+		"rejectPersonalLoanDuringReview",
+	)
+	auth(
 		"POST /api/loans/{applicationId}/assess",
 		h.assess,
 		"assessPersonalLoan",
@@ -491,6 +502,15 @@ func serviceError(
 	}
 
 	msg := err.Error()
+	// Thiếu đối soát là lỗi nghiệp vụ, không để lọt xuống nhánh "failed" = 503.
+	if errors.Is(err, domain.ErrLoanOfferExpired) {
+		httpx.WriteJSON(w, http.StatusGone, map[string]string{"code": "LOAN_OFFER_EXPIRED", "error": msg})
+		return
+	}
+	if errors.Is(err, domain.ErrLoanEvidenceMissing) {
+		fail(w, http.StatusUnprocessableEntity, msg)
+		return
+	}
 	// gRPC status codes are typed; names such as "Unavailable" are not
 	// reliably detected by case-sensitive error-text matching.
 	if st, ok := status.FromError(err); ok {
@@ -572,6 +592,19 @@ func (h *Handler) application(
 	return a, nil
 }
 
+// staffApplication đọc hồ sơ cho thao tác nghiệp vụ. Nhân viên không được xử lý
+// hồ sơ của chính mình, kể cả khi có quyền admin.
+func (h *Handler) staffApplication(r *http.Request) (*domain.Application, error) {
+	a, err := h.application(r, false)
+	if err != nil {
+		return nil, err
+	}
+	if actor, _, _ := claims(r); a.CustomerId == actor {
+		return nil, fmt.Errorf("unauthorized: staff cannot process their own loan")
+	}
+	return a, nil
+}
+
 func (h *Handler) admin(r *http.Request) error {
 	actor, role, ok := claims(r)
 
@@ -616,7 +649,8 @@ func (h *Handler) create(
 		return
 	}
 
-	if req.LoanPackageID != "PERSONAL_UNSECURED_SALARY" {
+	// Gói có hợp lệ và đang bán hay không do catalog quyết định trong command.
+	if strings.TrimSpace(req.LoanPackageID) == "" {
 		fail(w, 422, "unsupported loan package")
 		return
 	}
@@ -690,7 +724,7 @@ func (h *Handler) list(
 
 	scope := "owner:" + actor
 	if adminAll {
-		scope = "all"
+		scope = "all:" + query.Get("status")
 	}
 
 	var after loanListCursor
@@ -728,7 +762,22 @@ func (h *Handler) list(
 		err     error
 	)
 
-	if adminAll {
+	statuses, statusErr := adminStatusFilter(query.Get("status"))
+	if statusErr != nil {
+		fail(w, 400, statusErr.Error())
+		return
+	}
+	filtered, canFilter := any(h.List).(loanStatusPageReader)
+
+	if adminAll && len(statuses) > 0 && canFilter {
+		items, hasMore, err = filtered.ListAllPageByStatus(
+			r.Context(),
+			statuses,
+			limit,
+			after.CreatedAt,
+			after.ID,
+		)
+	} else if adminAll {
 		items, hasMore, err = pager.ListAllPage(
 			r.Context(),
 			limit,
@@ -783,6 +832,30 @@ func (h *Handler) list(
 	)
 }
 
+type loanStatusPageReader interface {
+	ListAllPageByStatus(context.Context, []string, int, time.Time, string) ([]*domain.Application, bool, error)
+}
+
+func adminStatusFilter(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	statuses := strings.Split(raw, ",")
+	for _, value := range statuses {
+		switch domain.ApplicationStatus(value) {
+		case domain.ApplicationStatusDraft,
+			domain.ApplicationStatusSubmitted,
+			domain.ApplicationStatusUnderReview,
+			domain.ApplicationStatusApproved,
+			domain.ApplicationStatusRejected,
+			domain.ApplicationStatusDisbursed:
+		default:
+			return nil, errors.New("invalid status filter")
+		}
+	}
+	return statuses, nil
+}
+
 func validDocumentType(t string) bool {
 	switch t {
 	case "IDENTITY_FRONT",
@@ -825,8 +898,9 @@ func (h *Handler) upload(
 		return
 	}
 
-	if a.Status != domain.ApplicationStatusDraft {
-		fail(w, 409, "loan is not draft")
+	if a.Status != domain.ApplicationStatusDraft &&
+		a.Status != domain.ApplicationStatusUnderReview {
+		fail(w, 409, "loan does not accept documents")
 		return
 	}
 
@@ -845,6 +919,11 @@ func (h *Handler) upload(
 
 	if !validDocumentType(docType) {
 		fail(w, 422, "invalid loan document type")
+		return
+	}
+
+	if !a.CanAddDocument(docType) {
+		fail(w, 409, "loan does not accept this document")
 		return
 	}
 
@@ -1061,7 +1140,7 @@ func (h *Handler) reviewDocument(
 		serviceError(w, err)
 		return
 	}
-	a, err := h.application(r, false)
+	a, err := h.staffApplication(r)
 	if err != nil {
 		serviceError(w, err)
 		return
@@ -1103,7 +1182,7 @@ func (h *Handler) review(
 		return
 	}
 
-	a, err := h.application(r, false)
+	a, err := h.staffApplication(r)
 	if err != nil {
 		serviceError(w, err)
 		return
@@ -1136,7 +1215,7 @@ func (h *Handler) attest(
 		return
 	}
 
-	a, err := h.application(r, false)
+	a, err := h.staffApplication(r)
 	if err != nil {
 		serviceError(w, err)
 		return
@@ -1208,8 +1287,8 @@ func (h *Handler) attest(
 	httpx.WriteJSON(w, 201, e)
 }
 
-// POST /api/loans/{applicationId}/assess
-func (h *Handler) assess(
+// GET /api/loans/{applicationId}/evidence
+func (h *Handler) getEvidence(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
@@ -1221,6 +1300,79 @@ func (h *Handler) assess(
 	a, err := h.application(r, false)
 	if err != nil {
 		serviceError(w, err)
+		return
+	}
+
+	e, err := h.Evidence.Find(r.Context(), a.Id)
+	if err != nil {
+		if errors.Is(err, mongodrv.ErrNoDocuments) {
+			fail(w, 404, "loan evidence not available")
+		} else {
+			fail(w, 503, "loan evidence service unavailable")
+		}
+		return
+	}
+
+	httpx.WriteJSON(w, 200, e)
+}
+
+// POST /api/loans/{applicationId}/reject-review
+func (h *Handler) rejectReview(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if err := h.admin(r); err != nil {
+		serviceError(w, err)
+		return
+	}
+
+	a, err := h.staffApplication(r)
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		fail(w, 400, "invalid rejection JSON")
+		return
+	}
+
+	actor, _, _ := claims(r)
+	result, err := h.RejectReview.Handle(r.Context(), a.Id, actor, req.Reason)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidApplicationStatus) {
+			fail(w, 409, "loan application cannot be rejected in this state")
+			return
+		}
+		serviceError(w, err)
+		return
+	}
+
+	httpx.WriteJSON(w, 200, result)
+}
+
+// POST /api/loans/{applicationId}/assess
+func (h *Handler) assess(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if err := h.admin(r); err != nil {
+		serviceError(w, err)
+		return
+	}
+
+	a, err := h.staffApplication(r)
+	if err != nil {
+		serviceError(w, err)
+		return
+	}
+
+	// Chứng từ có thể bị đổi kết quả sau khi lưu đối soát.
+	if a.Status == domain.ApplicationStatusUnderReview && !a.AllDocumentsVerified() {
+		fail(w, 422, "all loan documents must be verified first")
 		return
 	}
 
@@ -1251,7 +1403,7 @@ func (h *Handler) decide(
 		return
 	}
 
-	a, err := h.application(r, false)
+	a, err := h.staffApplication(r)
 	if err != nil {
 		serviceError(w, err)
 		return
@@ -1382,7 +1534,7 @@ func (h *Handler) disburse(
 		return
 	}
 
-	a, err := h.application(r, false)
+	a, err := h.staffApplication(r)
 	if err != nil {
 		serviceError(w, err)
 		return

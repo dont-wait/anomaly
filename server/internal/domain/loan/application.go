@@ -68,11 +68,10 @@ func (a *Application) AllDocumentsVerified() bool {
 	if a == nil {
 		return false
 	}
+	// Bản tải sau thay thế bản trước, nên chỉ xét bản mới nhất của mỗi loại.
 	verified := make(map[string]bool, len(a.Documents))
 	for _, document := range a.Documents {
-		if document.VerificationStatus == DocumentVerified {
-			verified[document.Type] = true
-		}
+		verified[document.Type] = document.VerificationStatus == DocumentVerified
 	}
 	for _, documentType := range requiredDocumentTypes {
 		if !verified[documentType] {
@@ -103,6 +102,7 @@ type Application struct {
 	ApplicationNo          string                  `json:"applicationNo"`
 	CustomerId             string                  `json:"customerId"`
 	LoanPackageId          string                  `json:"loanPackageId"`
+	LoanPackageVersion     int                     `json:"loanPackageVersion,omitempty"`
 	DisbursementAccountId  string                  `json:"disbursementAccountId"`
 	RequestedAmount        int64                   `json:"requestedAmount"`
 	TermMonths             int                     `json:"termMonths"`
@@ -187,14 +187,35 @@ func NewDraftApplication(
 	return application, nil
 }
 
+// CanAddDocument cho biết khách có được nộp chứng từ loại này không: khi hồ sơ
+// còn nháp, hoặc khi đang thẩm định, chưa chấm điểm và bản mới nhất bị từ chối.
+func (a *Application) CanAddDocument(documentType string) bool {
+	if a == nil {
+		return false
+	}
+	switch a.Status {
+	case ApplicationStatusDraft:
+		return true
+	case ApplicationStatusUnderReview:
+		if a.AssessedAt != nil {
+			return false
+		}
+		for i := len(a.Documents) - 1; i >= 0; i-- {
+			if a.Documents[i].Type == documentType {
+				return a.Documents[i].VerificationStatus == DocumentRejected
+			}
+		}
+	}
+	return false
+}
+
 func (a *Application) AddDocument(document ApplicationDocument) error {
 	// Kiểm tra hồ sơ tồn tại.
 	if a == nil {
 		return fmt.Errorf("loan application is nil")
 	}
 
-	// Chỉ cho phép thêm chứng từ khi hồ sơ đang là bản nháp.
-	if a.Status != ApplicationStatusDraft {
+	if !a.CanAddDocument(document.Type) {
 		return ErrInvalidApplicationStatus
 	}
 
@@ -492,6 +513,35 @@ func (a *Application) ApplyManualDecision(
 		a.RejectedAt = &now
 	}
 
+	return nil
+}
+
+// RejectDuringReview từ chối hồ sơ trước khi chấm điểm, ví dụ khi chứng từ không
+// thể bổ sung. Sau khi đã chấm điểm thì phải đi theo quyết định thủ công.
+func (a *Application) RejectDuringReview(
+	reviewerID, reason string,
+	at time.Time,
+) error {
+	if a == nil {
+		return fmt.Errorf("loan application is nil")
+	}
+	if a.Status != ApplicationStatusUnderReview || a.AssessedAt != nil {
+		return ErrInvalidApplicationStatus
+	}
+	reviewerID = strings.TrimSpace(reviewerID)
+	reason = strings.TrimSpace(reason)
+	if reviewerID == "" || at.IsZero() {
+		return fmt.Errorf("reviewer and time are required")
+	}
+	if reason == "" || len([]rune(reason)) > maxDocumentRejectionReason {
+		return fmt.Errorf("invalid rejection reason")
+	}
+	a.Status = ApplicationStatusRejected
+	a.ManualReviewerId = reviewerID
+	a.ManualDecisionReason = reason
+	a.ManualDecidedAt = &at
+	a.RejectedAt = &at
+	a.UpdatedAt = at
 	return nil
 }
 

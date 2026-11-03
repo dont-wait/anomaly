@@ -9,7 +9,11 @@ var (
 	ErrLoanOfferUnavailable     = errors.New("loan offer is not available")
 	ErrLoanOfferNotAccepted     = errors.New("loan offer has not been accepted")
 	ErrLoanContractNotConfirmed = errors.New("loan contract has not been confirmed")
+	ErrLoanOfferExpired         = errors.New("loan offer has expired")
 )
+
+// LoanOfferValidity là thời gian khách phản hồi đề nghị và xác nhận hợp đồng.
+const LoanOfferValidity = 7 * 24 * time.Hour
 
 type LoanOfferStatus string
 
@@ -26,6 +30,7 @@ type LoanOffer struct {
 	TermMonths         int             `json:"termMonths"`
 	Status             LoanOfferStatus `json:"status"`
 	IssuedAt           time.Time       `json:"issuedAt"`
+	ExpiresAt          *time.Time      `json:"expiresAt,omitempty"`
 	AcceptedAt         *time.Time      `json:"acceptedAt,omitempty"`
 	RejectedAt         *time.Time      `json:"rejectedAt,omitempty"`
 	ConfirmedAt        *time.Time      `json:"confirmedAt,omitempty"`
@@ -43,9 +48,17 @@ func (a *Application) IssueOffer(at time.Time, rate int64) error {
 	if _, err := CalculateRepaymentSchedule(a.RequestedAmount, rate, a.TermMonths, at); err != nil {
 		return err
 	}
-	a.Offer = &LoanOffer{Amount: a.RequestedAmount, AnnualRateBps: rate, TermMonths: a.TermMonths, Status: LoanOfferIssued, IssuedAt: at}
+	expiresAt := at.Add(LoanOfferValidity)
+	a.Offer = &LoanOffer{Amount: a.RequestedAmount, AnnualRateBps: rate, TermMonths: a.TermMonths, Status: LoanOfferIssued, IssuedAt: at, ExpiresAt: &expiresAt}
 	a.UpdatedAt = at
 	return nil
+}
+
+// Expired chỉ dùng cho lệnh mới, không dùng khi replay, nên sự kiện cũ vẫn hợp lệ
+// dù được ghi sau thời hạn. Hợp đồng đã xác nhận không còn hết hạn.
+func (o *LoanOffer) Expired(at time.Time) bool {
+	return o != nil && o.Status != LoanOfferConfirmed && o.Status != LoanOfferRejected &&
+		o.ExpiresAt != nil && !at.Before(*o.ExpiresAt)
 }
 
 func (a *Application) AcceptOffer(at time.Time) error {

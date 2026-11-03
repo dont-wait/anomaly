@@ -22,4 +22,8 @@ var (
 	ErrInvalidApplicationStatus = errors.New(
 		"invalid loan application status",
 	)
+
+	ErrLoanEvidenceMissing = errors.New(
+		"loan has no independently attested evidence",
+	)
 )

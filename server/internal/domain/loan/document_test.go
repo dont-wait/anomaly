@@ -184,3 +184,79 @@ func TestAddDocument_NilApplication(t *testing.T) {
 		t.Fatal("expected error for nil application")
 	}
 }
+
+func underReviewWithRejected(t *testing.T) *Application {
+	t.Helper()
+	app := newTestApplication(t)
+	app.Status = ApplicationStatusUnderReview
+	doc := validTestDocument()
+	doc.VerificationStatus = DocumentRejected
+	app.Documents = []ApplicationDocument{doc}
+	return app
+}
+
+func TestAddDocument_ReplacesRejectedDuringReview(t *testing.T) {
+	app := underReviewWithRejected(t)
+	replacement := validTestDocument()
+	replacement.DocumentId = "doc_002"
+
+	if err := app.AddDocument(replacement); err != nil {
+		t.Fatalf("expected replacement, got %v", err)
+	}
+	// Bản thay thế đang chờ duyệt nên loại này không nộp thêm được nữa.
+	again := validTestDocument()
+	again.DocumentId = "doc_003"
+	if err := app.AddDocument(again); !errors.Is(err, ErrInvalidApplicationStatus) {
+		t.Fatalf("expected rejection of second upload, got %v", err)
+	}
+}
+
+func TestAddDocument_DuringReviewOnlyForRejectedType(t *testing.T) {
+	app := underReviewWithRejected(t)
+	other := validTestDocument()
+	other.DocumentId = "doc_002"
+	other.Type = "VNEID_PERSONAL"
+	if err := app.AddDocument(other); !errors.Is(err, ErrInvalidApplicationStatus) {
+		t.Fatalf("expected rejection for another type, got %v", err)
+	}
+
+	assessed := underReviewWithRejected(t)
+	now := assessed.CreatedAt
+	assessed.AssessedAt = &now
+	replacement := validTestDocument()
+	replacement.DocumentId = "doc_002"
+	if err := assessed.AddDocument(replacement); !errors.Is(err, ErrInvalidApplicationStatus) {
+		t.Fatalf("expected rejection after assessment, got %v", err)
+	}
+}
+
+func TestAllDocumentsVerified_UsesLatestOfEachType(t *testing.T) {
+	app := newTestApplication(t)
+	for _, documentType := range requiredDocumentTypes {
+		app.Documents = append(app.Documents, ApplicationDocument{Type: documentType, VerificationStatus: DocumentVerified})
+	}
+	if !app.AllDocumentsVerified() {
+		t.Fatal("expected verified")
+	}
+	app.Documents = append(app.Documents, ApplicationDocument{Type: requiredDocumentTypes[0], VerificationStatus: "pending"})
+	if app.AllDocumentsVerified() {
+		t.Fatal("a newer pending document must win over the older verified one")
+	}
+}
+
+func TestRejectDuringReview(t *testing.T) {
+	app := underReviewWithRejected(t)
+	at := app.CreatedAt
+	if err := app.RejectDuringReview("admin", " ", at); err == nil {
+		t.Fatal("expected a reason to be required")
+	}
+	if err := app.RejectDuringReview("admin", "Không bổ sung được", at); err != nil {
+		t.Fatal(err)
+	}
+	if app.Status != ApplicationStatusRejected || app.ManualDecisionReason != "Không bổ sung được" || app.RejectedAt == nil {
+		t.Fatalf("app = %+v", app)
+	}
+	if err := app.RejectDuringReview("admin", "lại", at); !errors.Is(err, ErrInvalidApplicationStatus) {
+		t.Fatalf("expected status error, got %v", err)
+	}
+}

@@ -6,7 +6,9 @@ export const percentBps = (bps: number) =>
 export const explainLoanError = (error: unknown) => {
   if (error instanceof ApiError) {
     if (error.hasCode("INSTALLMENT_NOT_DUE"))
-      return "Chưa đến ngày thanh toán. Ngân hàng chỉ hỗ trợ trả đúng ngày đến hạn.";
+      return "Chưa đến ngày thanh toán. Ngân hàng chưa hỗ trợ trả trước hạn.";
+    if (error.hasCode("LOAN_OFFER_EXPIRED"))
+      return "Đề nghị vay đã hết hạn. Vui lòng tạo hồ sơ mới nếu vẫn có nhu cầu.";
     if (error.hasCode("INVALID_INSTALLMENT_ORDER"))
       return "Phải thanh toán các kỳ theo đúng thứ tự.";
     if (error.hasCode("QUOTE_EXPIRED"))
@@ -92,6 +94,8 @@ const STATUS_LABELS: Record<string, string> = {
   active: "Đang vay",
   completed: "Đã tất toán",
   upcoming: "Chưa đến hạn",
+  due: "Đến hạn hôm nay",
+  overdue: "Quá hạn",
   paid: "Đã thanh toán",
   success: "Thành công",
   succeeded: "Thành công",

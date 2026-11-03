@@ -85,6 +85,7 @@ export interface LoanDocument {
   documentId: string;
   type: DocumentType;
   verificationStatus: string;
+  rejectionReason?: string;
   uploadedAt: string;
   mimeType: string;
   sizeBytes: number;
@@ -102,6 +103,7 @@ export interface LoanOffer {
   annualRateBps: number;
   termMonths: number;
   issuedAt: string;
+  expiresAt?: string;
   acceptedAt?: string;
   confirmedAt?: string;
 }
@@ -122,6 +124,8 @@ export interface LoanApplication {
   documents: LoanDocument[];
   assessmentDecision?: string;
   assessmentScore?: number;
+  assessedAt?: string | null;
+  manualDecisionReason?: string;
   annualRateBps?: number;
   createdAt: string;
   offer?: LoanOffer;

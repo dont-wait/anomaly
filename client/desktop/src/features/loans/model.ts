@@ -22,6 +22,7 @@ export interface LoanOffer {
   annualRateBps: number;
   termMonths: number;
   issuedAt: string;
+  expiresAt?: string;
   acceptedAt?: string;
   confirmedAt?: string;
 }
@@ -31,6 +32,7 @@ export interface LoanApplication {
   applicationNo: string;
   customerId?: string;
   loanPackageId: string;
+  loanPackageVersion?: number;
   disbursementAccountId: string;
   requestedAmount: number;
   termMonths: number;
@@ -40,6 +42,7 @@ export interface LoanApplication {
   assessmentScore?: number;
   assessmentReasons?: string[];
   assessedAt?: string | null;
+  manualDecisionReason?: string;
   declared?: {
     monthlyIncome: number;
     existingMonthlyDebt: number;
@@ -69,6 +72,8 @@ export interface VerifiedEvidenceInput {
   documentsVerified: boolean;
   sources: string[];
 }
+
+export type SavedEvidence = VerifiedEvidenceInput;
 
 export interface LoanCustomer {
   id: string;

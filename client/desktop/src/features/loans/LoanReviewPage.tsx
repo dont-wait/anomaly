@@ -23,11 +23,15 @@ import {
   downloadLoanDocument,
   getLoan,
   getLoanCustomer,
+  getLoanEvidence,
   issueLoanOffer,
   listLoans,
+  LoansApiError,
+  rejectLoanReview,
   reviewLoanDocument,
   startLoanReview,
 } from "./api/loansApi";
+import { AppliedPackage } from "@/features/products/AppliedPackage";
 import {
   assessmentLabels,
   assessmentReasonLabel,
@@ -109,6 +113,15 @@ function Notice({
   );
 }
 
+const offerExpired = (application: LoanApplication) => {
+  const offer = application.offer;
+  return (
+    !!offer?.expiresAt &&
+    (offer.status === "issued" || offer.status === "accepted") &&
+    Date.now() >= Date.parse(offer.expiresAt)
+  );
+};
+
 function statusClass(status: string): string {
   if (status === "approved" || status === "disbursed")
     return "border-(--admin-success) bg-(--admin-success-soft) text-(--admin-success)";
@@ -120,6 +133,19 @@ function statusClass(status: string): string {
 }
 
 type TabId = "review" | "documents" | "customer";
+
+// Mặc định chỉ hiện hồ sơ còn việc phải làm.
+const QUEUE_NEEDS_ACTION = "submitted,under_review,approved";
+const QUEUE_FILTERS = [
+  { value: QUEUE_NEEDS_ACTION, label: "Cần xử lý" },
+  { value: "submitted", label: "Chờ duyệt" },
+  { value: "under_review", label: "Đang thẩm định" },
+  { value: "approved", label: "Đã duyệt" },
+  { value: "disbursed", label: "Đã giải ngân" },
+  { value: "rejected", label: "Từ chối" },
+  { value: "draft", label: "Bản nháp của khách" },
+  { value: "", label: "Tất cả" },
+];
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: "review", label: "Thẩm định" },
@@ -135,6 +161,10 @@ const formatDate = (value?: string) => {
   const date = new Date(value ?? "");
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("vi-VN");
 };
+
+// Khách có thể nộp lại chứng từ bị từ chối; bản nộp sau thay thế bản trước.
+const latestDocument = (documents: LoanDocument[], type: string) =>
+  [...documents].reverse().find((doc) => doc.type === type);
 
 function documentStatusClass(status: string): string {
   if (status === "verified")
@@ -355,8 +385,9 @@ function DocumentsTab({
   const [saving, setSaving] = useState(false);
   const canReview = application.status === "under_review";
   const closePreview = useCallback(() => setPreviewId(null), []);
-  const verified = documents.filter(
-    (doc) => doc.verificationStatus === "verified",
+  const verified = DOCUMENT_TYPES.filter(
+    (type) =>
+      latestDocument(documents, type)?.verificationStatus === "verified",
   ).length;
   const previewed = documents.find((doc) => doc.documentId === previewId);
 
@@ -407,7 +438,7 @@ function DocumentsTab({
         {!canReview && " Chỉ duyệt được khi hồ sơ đang thẩm định."}
       </p>
       {Object.entries(documentLabels).map(([type, label]) => {
-        const doc = documents.find((item) => item.type === type);
+        const doc = latestDocument(documents, type);
         return (
           <div
             key={type}
@@ -489,16 +520,7 @@ function DocumentsTab({
   );
 }
 
-function CustomerTab({
-  application,
-  all,
-  onOpen,
-}: {
-  application: LoanApplication;
-  all: LoanApplication[];
-  onOpen: (application: LoanApplication) => void;
-}) {
-  const accountId = application.customerId ?? application.disbursementAccountId;
+export function CustomerSummary({ accountId }: { accountId: string }) {
   const [result, setResult] = useState<{
     id: string;
     customer?: LoanCustomer;
@@ -522,11 +544,6 @@ function CustomerTab({
 
   const current = result?.id === accountId ? result : null;
   const customer = current?.customer;
-  const others = all.filter(
-    (item) =>
-      item.id !== application.id &&
-      (item.customerId ?? item.disbursementAccountId) === accountId,
-  );
 
   if (!current) {
     return (
@@ -537,23 +554,44 @@ function CustomerTab({
   }
   if (!customer) return <Notice message={current.error ?? ""} error />;
   return (
+    <dl className="grid grid-cols-2 gap-3 text-[12px]">
+      {[
+        ["Khách hàng", customer.username],
+        ["Email", customer.email],
+        ["Tài khoản", `•••• ${customer.accountNo.slice(-4)}`],
+        ["Số dư", vnd(customer.amount)],
+        ["Định danh", customer.isVerify ? "Đã xác minh" : "Chưa xác minh"],
+      ].map(([label, value]) => (
+        <div key={label}>
+          <dt className="text-[11px] text-(--admin-text-muted)">{label}</dt>
+          <dd className="mt-0.5 font-semibold break-words text-(--admin-text)">
+            {value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function CustomerTab({
+  application,
+  all,
+  onOpen,
+}: {
+  application: LoanApplication;
+  all: LoanApplication[];
+  onOpen: (application: LoanApplication) => void;
+}) {
+  const accountId = application.customerId ?? application.disbursementAccountId;
+  const others = all.filter(
+    (item) =>
+      item.id !== application.id &&
+      (item.customerId ?? item.disbursementAccountId) === accountId,
+  );
+
+  return (
     <div className="grid gap-3">
-      <dl className="grid grid-cols-2 gap-3 text-[12px]">
-        {[
-          ["Khách hàng", customer.username],
-          ["Email", customer.email],
-          ["Tài khoản", `•••• ${customer.accountNo.slice(-4)}`],
-          ["Số dư", vnd(customer.amount)],
-          ["Định danh", customer.isVerify ? "Đã xác minh" : "Chưa xác minh"],
-        ].map(([label, value]) => (
-          <div key={label}>
-            <dt className="text-[11px] text-(--admin-text-muted)">{label}</dt>
-            <dd className="mt-0.5 font-semibold break-words text-(--admin-text)">
-              {value}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <CustomerSummary accountId={accountId} />
       <div className="grid gap-1.5 border-t border-(--admin-border) pt-3">
         <h3 className="text-[12px] font-semibold text-(--admin-text)">
           Hồ sơ khác của khách ({others.length})
@@ -585,14 +623,19 @@ export function LoanReviewPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [detail, setDetail] = useState<LoanApplication | null>(null);
-  const [income, setIncome] = useState(0);
+  const [salaries, setSalaries] = useState<[number, number, number]>([0, 0, 0]);
   const [region, setRegion] = useState("KV01");
   const [debt, setDebt] = useState(0);
   const [insurance, setInsurance] = useState(0);
   const [history, setHistory] = useState("");
-  const [verified, setVerified] = useState(false);
+  const [financialVerified, setFinancialVerified] = useState(false);
+  const [insuranceVerified, setInsuranceVerified] = useState(false);
+  const [historyVerified, setHistoryVerified] = useState(false);
+  const [evidenceSaved, setEvidenceSaved] = useState(false);
   const [reason, setReason] = useState("");
+  const selectedRef = useRef("");
   const [tab, setTab] = useState<TabId>("review");
+  const [queueFilter, setQueueFilter] = useState(QUEUE_NEEDS_ACTION);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -605,7 +648,11 @@ export function LoanReviewPage() {
       await action();
       setMessage(success);
       const id = selectedId.trim();
-      if (id) setDetail(await getLoan(id));
+      if (id) {
+        const fresh = await getLoan(id);
+        if (selectedRef.current === id) setDetail(fresh);
+        setItems((old) => old.map((item) => (item.id === id ? fresh : item)));
+      }
     } catch (error) {
       setError(explainLoanError(error));
     } finally {
@@ -613,12 +660,15 @@ export function LoanReviewPage() {
     }
   };
 
-  const loadList = async (append: boolean) => {
+  const loadList = async (append: boolean, status = queueFilter) => {
     setBusy(true);
     setError("");
     setMessage("");
     try {
-      const page = await listLoans(append ? (cursor ?? undefined) : undefined);
+      const page = await listLoans(
+        append ? (cursor ?? undefined) : undefined,
+        status,
+      );
       setItems((old) => {
         if (!append) return page.items;
         const seen = new Set(old.map((item) => item.id));
@@ -640,33 +690,78 @@ export function LoanReviewPage() {
 
   // Điền sẵn số khách khai để đối chiếu; phần chưa khai thì admin phải tự nhập.
   const selectApplication = (item: LoanApplication) => {
+    const income = item.declared?.monthlyIncome ?? 0;
+    selectedRef.current = item.id;
     setSelectedId(item.id);
     setDetail(item);
     setTab("review");
-    setIncome(item.declared?.monthlyIncome ?? 0);
+    setError("");
+    setMessage("");
+    setSalaries([income, income, income]);
     setDebt(item.declared?.existingMonthlyDebt ?? 0);
     setRegion(item.declared?.regionCode ?? "KV01");
     setInsurance(0);
     setHistory("");
-    setVerified(false);
+    setFinancialVerified(false);
+    setInsuranceVerified(false);
+    setHistoryVerified(false);
+    setEvidenceSaved(false);
+    // Lý do thuộc về từng hồ sơ; giữ lại sẽ ghi nhầm vào quyết định của hồ sơ khác.
+    setReason("");
+
+    // Danh sách đọc từ projection có thể trễ; trạng thái thao tác lấy từ bản gốc.
+    getLoan(item.id)
+      .then((fresh) => {
+        if (selectedRef.current !== item.id) return;
+        setDetail(fresh);
+        setItems((old) => old.map((row) => (row.id === item.id ? fresh : row)));
+      })
+      .catch((failure: unknown) => {
+        if (selectedRef.current === item.id)
+          setError(explainLoanError(failure));
+      });
+    if (item.status !== "under_review") return;
+    getLoanEvidence(item.id)
+      .then((saved) => {
+        if (selectedRef.current !== item.id) return;
+        setSalaries(saved.monthlySalaries);
+        setRegion(saved.regionCode);
+        setDebt(saved.existingMonthlyDebt);
+        setInsurance(saved.insuranceMonths);
+        setHistory(saved.repaymentHistory);
+        setFinancialVerified(saved.financialDataVerified);
+        setInsuranceVerified(saved.insuranceVerified);
+        setHistoryVerified(saved.historyVerified);
+        setEvidenceSaved(true);
+      })
+      .catch((failure: unknown) => {
+        // 404 nghĩa là chưa đối soát, là trạng thái bình thường.
+        if (
+          selectedRef.current === item.id &&
+          !(failure instanceof LoansApiError && failure.status === 404)
+        )
+          setError(explainLoanError(failure));
+      });
   };
-  const documentsReady = DOCUMENT_TYPES.every((type) =>
-    (detail?.documents ?? []).some(
-      (doc) => doc.type === type && doc.verificationStatus === "verified",
-    ),
+  const documentsReady = DOCUMENT_TYPES.every(
+    (type) =>
+      latestDocument(detail?.documents ?? [], type)?.verificationStatus ===
+      "verified",
   );
+  const allVerified =
+    financialVerified && insuranceVerified && historyVerified && documentsReady;
   const assessed = !!detail?.assessedAt;
 
   const evidence: VerifiedEvidenceInput = {
-    monthlySalaries: [income, income, income],
+    monthlySalaries: salaries,
     regionCode: region,
     existingMonthlyDebt: debt,
     insuranceMonths: insurance,
     repaymentHistory: history,
-    insuranceVerified: verified,
-    historyVerified: verified,
-    financialDataVerified: verified,
-    documentsVerified: verified,
+    insuranceVerified,
+    historyVerified,
+    financialDataVerified: financialVerified,
+    documentsVerified: documentsReady,
     // Backend yêu cầu ít nhất 3 nguồn: dẫn chiếu tới các chứng từ admin đã đối chiếu.
     sources: (detail?.documents ?? []).map(
       (doc) => `loan-document:${doc.documentId}`,
@@ -710,6 +805,24 @@ export function LoanReviewPage() {
               Làm mới
             </Button>
           </div>
+
+          <label className={fieldLabel}>
+            Lọc hồ sơ
+            <select
+              className={fieldInput}
+              value={queueFilter}
+              onChange={(event) => {
+                setQueueFilter(event.target.value);
+                void loadList(false, event.target.value);
+              }}
+            >
+              {QUEUE_FILTERS.map((filter) => (
+                <option key={filter.label} value={filter.value}>
+                  {filter.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {items.length === 0 ? (
             <p className="rounded-sm border border-dashed border-(--admin-border) px-3 py-6 text-center text-[11px] text-(--admin-text-muted)">
@@ -787,6 +900,11 @@ export function LoanReviewPage() {
                 >
                   {detail.applicationNo}
                 </p>
+                <AppliedPackage
+                  kind="loan"
+                  code={detail.loanPackageId}
+                  version={detail.loanPackageVersion}
+                />
               </div>
               <span
                 className={`rounded-sm border px-2 py-1 text-[11px] ${statusClass(detail.status)}`}
@@ -914,25 +1032,31 @@ export function LoanReviewPage() {
                     {!assessed && (
                       <>
                         <div className="grid gap-3 md:grid-cols-2">
-                          <label className={fieldLabel}>
-                            Lương mỗi tháng đã đối chiếu
-                            <input
-                              className={fieldInput}
-                              inputMode="numeric"
-                              value={
-                                income
-                                  ? new Intl.NumberFormat("vi-VN").format(
-                                      income,
-                                    )
-                                  : ""
-                              }
-                              onChange={(event) =>
-                                setIncome(
-                                  Number(event.target.value.replace(/\D/g, "")),
-                                )
-                              }
-                            />
-                          </label>
+                          {salaries.map((salary, index) => (
+                            <label key={index} className={fieldLabel}>
+                              Lương tháng {index + 1} theo sao kê
+                              <input
+                                className={fieldInput}
+                                inputMode="numeric"
+                                value={
+                                  salary
+                                    ? new Intl.NumberFormat("vi-VN").format(
+                                        salary,
+                                      )
+                                    : ""
+                                }
+                                onChange={(event) => {
+                                  const next: [number, number, number] = [
+                                    ...salaries,
+                                  ];
+                                  next[index] = Number(
+                                    event.target.value.replace(/\D/g, ""),
+                                  );
+                                  setSalaries(next);
+                                }}
+                              />
+                            </label>
+                          ))}
                           <label className={fieldLabel}>
                             Khu vực
                             <select
@@ -995,18 +1119,42 @@ export function LoanReviewPage() {
                           </label>
                         </div>
 
-                        <label className="flex items-start gap-2 text-[11px] leading-4 text-(--admin-text-muted)">
-                          <input
-                            className="mt-0.5"
-                            type="checkbox"
-                            checked={verified}
-                            onChange={(event) =>
-                              setVerified(event.target.checked)
-                            }
-                          />
-                          Tôi đã đối chiếu thu nhập, bảo hiểm, lịch sử trả nợ và
-                          chứng từ của khách.
-                        </label>
+                        <div className="grid gap-1.5">
+                          {(
+                            [
+                              [
+                                "Đã đối chiếu thu nhập và nghĩa vụ nợ",
+                                financialVerified,
+                                setFinancialVerified,
+                              ],
+                              [
+                                "Đã đối chiếu thời gian đóng BHXH",
+                                insuranceVerified,
+                                setInsuranceVerified,
+                              ],
+                              [
+                                "Đã đối chiếu lịch sử trả nợ",
+                                historyVerified,
+                                setHistoryVerified,
+                              ],
+                            ] as const
+                          ).map(([label, checked, setChecked]) => (
+                            <label
+                              key={label}
+                              className="flex items-start gap-2 text-[11px] leading-4 text-(--admin-text-muted)"
+                            >
+                              <input
+                                className="mt-0.5"
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(event) =>
+                                  setChecked(event.target.checked)
+                                }
+                              />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
 
                         {!documentsReady && (
                           <p className="text-[11px] text-(--admin-warning)">
@@ -1018,23 +1166,22 @@ export function LoanReviewPage() {
                           <Button
                             disabled={
                               busy ||
-                              !verified ||
-                              !documentsReady ||
-                              income <= 0 ||
+                              !allVerified ||
+                              salaries.some((salary) => salary <= 0) ||
                               !history
                             }
                             onClick={() => {
-                              void run(
-                                () => attestLoanEvidence(detail.id, evidence),
-                                "Đã lưu kết quả đối soát. Tiếp theo: chấm điểm.",
-                              );
+                              void run(async () => {
+                                await attestLoanEvidence(detail.id, evidence);
+                                setEvidenceSaved(true);
+                              }, "Đã lưu kết quả đối soát. Tiếp theo: chấm điểm.");
                             }}
                           >
                             Lưu kết quả đối soát
                           </Button>
                           <Button
                             variant="secondary"
-                            disabled={busy}
+                            disabled={busy || !evidenceSaved || !documentsReady}
                             onClick={() => {
                               void run(
                                 () => assessLoan(detail.id),
@@ -1048,13 +1195,33 @@ export function LoanReviewPage() {
                       </>
                     )}
                     <label className={fieldLabel}>
-                      Lý do quyết định thủ công
+                      {assessed ? "Lý do quyết định thủ công" : "Lý do từ chối"}{" "}
+                      (khách hàng sẽ thấy)
                       <textarea
                         className={`${fieldInput} h-20 py-2`}
                         value={reason}
                         onChange={(event) => setReason(event.target.value)}
                       />
                     </label>
+
+                    {!assessed && (
+                      <div>
+                        <Button
+                          variant="danger"
+                          disabled={busy || !reason.trim()}
+                          onClick={() => {
+                            if (window.confirm("Từ chối hồ sơ vay này?"))
+                              void run(
+                                () =>
+                                  rejectLoanReview(detail.id, reason.trim()),
+                                "Đã từ chối hồ sơ.",
+                              );
+                          }}
+                        >
+                          Từ chối hồ sơ
+                        </Button>
+                      </div>
+                    )}
 
                     {detail.assessmentDecision === "manual_review" && (
                       <div className="flex flex-wrap gap-2">
@@ -1095,6 +1262,21 @@ export function LoanReviewPage() {
                       </div>
                     )}
                   </div>
+                )}
+
+                {detail.status === "rejected" &&
+                  detail.manualDecisionReason && (
+                    <p className="text-[11px] text-(--admin-text-muted)">
+                      Lý do từ chối: {detail.manualDecisionReason}
+                    </p>
+                  )}
+
+                {detail.status === "approved" &&
+                  detail.offer?.status === "rejected" && (
+                    <Notice message="Khách đã từ chối đề nghị. Hồ sơ này đã kết thúc; khách cần tạo hồ sơ mới nếu muốn vay." />
+                  )}
+                {detail.status === "approved" && offerExpired(detail) && (
+                  <Notice message="Đề nghị đã hết hạn trước khi khách xác nhận. Hồ sơ này đã kết thúc; khách cần tạo hồ sơ mới nếu muốn vay." />
                 )}
 
                 {detail.status === "approved" && (

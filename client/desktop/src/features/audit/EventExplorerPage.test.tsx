@@ -1,6 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EventExplorerPage } from "./EventExplorerPage";
-import { getEventExplorer, getEventExplorerDetail } from "./api/eventExplorerApi";
+import {
+  getEventExplorer,
+  getEventExplorerDetail,
+} from "./api/eventExplorerApi";
 
 vi.mock("./api/eventExplorerApi", () => ({
   EventExplorerApiError: class EventExplorerApiError extends Error {},
@@ -45,25 +48,50 @@ describe("EventExplorerPage", () => {
   it("searches, paginates and opens event details", async () => {
     vi.mocked(getEventExplorer)
       .mockResolvedValueOnce(response)
-      .mockResolvedValueOnce({ ...response, nextCursor: undefined, hasMore: false, scanComplete: true });
+      .mockResolvedValueOnce({
+        ...response,
+        nextCursor: undefined,
+        hasMore: false,
+        scanComplete: true,
+      });
     vi.mocked(getEventExplorerDetail).mockResolvedValue(response.items[0]);
     render(<EventExplorerPage />);
 
-    fireEvent.change(screen.getByPlaceholderText(/Nhập mã giao dịch hoặc số tài khoản/i), { target: { value: "tx-1" } });
+    fireEvent.change(
+      screen.getByPlaceholderText(/Nhập mã giao dịch hoặc số tài khoản/i),
+      { target: { value: "tx-1" } },
+    );
     fireEvent.click(screen.getByRole("button", { name: "Tìm kiếm" }));
 
     expect(await screen.findByText("Chuyển tiền thành công")).toBeTruthy();
-    expect(getEventExplorer).toHaveBeenCalledWith(expect.objectContaining({ searchType: "transactionId", search: "tx-1", limit: 20 }));
+    expect(getEventExplorer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchType: "transactionId",
+        search: "tx-1",
+        limit: 20,
+      }),
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: /Chuyển tiền thành công/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Chuyển tiền thành công/i }),
+    );
     expect(screen.getByRole("dialog", { name: "Chi tiết event" })).toBeTruthy();
-    expect(getEventExplorerDetail).toHaveBeenCalledWith(expect.objectContaining({ eventId: "event-1" }));
-    await waitFor(() => expect(screen.getByText("Số tiền: 500.000 VND")).toBeTruthy());
+    expect(getEventExplorerDetail).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: "event-1" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Số tiền: 500.000 VND")).toBeTruthy(),
+    );
     fireEvent.click(screen.getByText("Thông tin kỹ thuật"));
     expect(screen.getByText("event-1")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Đóng chi tiết" }));
     fireEvent.click(screen.getByRole("button", { name: "Trang sau →" }));
-    await waitFor(() => expect(getEventExplorer).toHaveBeenNthCalledWith(2, expect.objectContaining({ cursor: "cursor-1" })));
+    await waitFor(() =>
+      expect(getEventExplorer).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ cursor: "cursor-1" }),
+      ),
+    );
   });
 });

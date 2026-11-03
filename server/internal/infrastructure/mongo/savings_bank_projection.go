@@ -69,7 +69,7 @@ func savingsContractRow(c savingsdomain.Contract, m journal.SavingsMovement, seq
 	if c.ID == "" || sequence <= 0 || c.Status == savingsdomain.ContractSettled && c.Settlement == nil || c.Status != savingsdomain.ContractSettled && c.Settlement != nil {
 		return nil, fmt.Errorf("inconsistent savings contract projection")
 	}
-	row := bson.M{"_id": c.ID, "savings_no": c.SavingsNo, "customer_id": c.CustomerID, "package_id": c.PackageID, "source_account_id": c.SourceAccountID, "principal": c.Principal, "term_months": c.TermMonths, "annual_rate_bps": c.AnnualRateBps, "opened_at": c.OpenedAt, "maturity_at": c.MaturityAt, "status": c.Status, "opening_quote_id": m.OpeningQuoteID, "opening_idempotency_key": m.OpeningKey, "updated_at": at, "financial_revision": sequence}
+	row := bson.M{"_id": c.ID, "savings_no": c.SavingsNo, "customer_id": c.CustomerID, "package_id": c.PackageID, "package_version": c.PackageVersion, "accepted_terms_version": c.AcceptedTermsVersion, "source_account_id": c.SourceAccountID, "principal": c.Principal, "term_months": c.TermMonths, "annual_rate_bps": c.AnnualRateBps, "opened_at": c.OpenedAt, "maturity_at": c.MaturityAt, "status": c.Status, "opening_quote_id": m.OpeningQuoteID, "opening_idempotency_key": m.OpeningKey, "updated_at": at, "financial_revision": sequence}
 	if c.Settlement != nil {
 		row["settlement"] = bson.M{"transaction_id": c.Settlement.TransactionID, "interest_amount": c.Settlement.InterestAmount, "total_amount": c.Settlement.TotalAmount, "settled_at": c.Settlement.SettledAt}
 	}

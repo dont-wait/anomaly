@@ -4,6 +4,9 @@ export const routes = {
   forgotPassword: "#/forgot-password",
   dashboard: "#/dashboard",
   transfer: "#/transfer",
+  cards: "#/cards",
+  qrScan: "#/qr/scan",
+  myQr: "#/qr/mine",
   transactions: "#/transactions",
   loanRegister: "#/loan/register",
   savings: "#/savings",
@@ -39,7 +42,20 @@ export type AppRoute =
   | (typeof routes)[keyof typeof routes]
   | TransactionDetailRoute
   | ReturnType<typeof loanApplication>
-  | ReturnType<typeof loanContract>;
+  | ReturnType<typeof loanContract>
+  | ReturnType<typeof transferToAccount>;
+
+const TRANSFER_ACCOUNT_PREFIX = `${routes.transfer}/`;
+
+/** Mở màn chuyển tiền đã điền sẵn số tài khoản, vd sau khi quét QR. */
+export const transferToAccount = (accountNo: string) =>
+  `${TRANSFER_ACCOUNT_PREFIX}${accountNo}` as const;
+
+export function parseTransferAccount(hash: string): string | null {
+  if (!hash.startsWith(TRANSFER_ACCOUNT_PREFIX)) return null;
+  const accountNo = hash.slice(TRANSFER_ACCOUNT_PREFIX.length);
+  return /^\d{6,19}$/.test(accountNo) ? accountNo : null;
+}
 
 export const transactionDetailRoute = (id: string): TransactionDetailRoute =>
   `${routes.transactions}/${encodeURIComponent(id)}`;
@@ -60,6 +76,9 @@ export function parseTransactionId(hash: string): string | null {
 const PROTECTED_ROUTES: readonly string[] = [
   routes.dashboard,
   routes.transfer,
+  routes.cards,
+  routes.qrScan,
+  routes.myQr,
   routes.transactions,
   routes.loanRegister,
   routes.savings,
@@ -70,6 +89,7 @@ const PROTECTED_ROUTES: readonly string[] = [
 export const isProtectedRoute = (hash: string) =>
   PROTECTED_ROUTES.includes(hash) ||
   parseTransactionId(hash) !== null ||
+  parseTransferAccount(hash) !== null ||
   parseLoanApplicationId(hash) !== null ||
   parseLoanContractId(hash) !== null;
 
