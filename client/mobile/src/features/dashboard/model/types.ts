@@ -29,7 +29,7 @@ export interface Account {
 export interface QuickAction {
   id: string;
   label: string;
-  icon: "transfer" | "topup" | "bill" | "savings" | "more";
+  icon: "transfer" | "bill" | "savings" | "more";
   href?: string;
 }
 

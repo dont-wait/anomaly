@@ -56,3 +56,19 @@ it.each(["denied", "unavailable"])(
     ).toBeTruthy();
   },
 );
+
+it("hides the balance until the customer reveals it", () => {
+  render(
+    <BalanceCard
+      account={{ ...mockAccount, balance: 1_234_567, currency: "₫" }}
+      onRefresh={vi.fn()}
+      isRefreshing={false}
+    />,
+  );
+
+  expect(screen.queryByText("1.234.567₫")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Hiện số dư" }));
+  expect(screen.getByText("1.234.567₫")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Ẩn số dư" }));
+  expect(screen.queryByText("1.234.567₫")).toBeNull();
+});

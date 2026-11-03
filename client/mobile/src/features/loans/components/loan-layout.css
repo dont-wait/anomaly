@@ -59,7 +59,6 @@
   display: flex;
   min-height: 72px;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   padding: 10px 15px;
   border-bottom: 1px solid #e2e7ff;
@@ -68,21 +67,30 @@
 }
 
 .loan-header h1 {
+  min-width: 0;
+  flex: 1;
   color: #00236f;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 750;
   line-height: 1.5;
-  text-align: right;
 }
 
-.loan-home-link {
+.loan-back {
+  display: grid;
   flex-shrink: 0;
-  border-radius: 20px;
-  padding: 8px 11px;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
   color: #00236f;
   background: #eaedff;
-  font-size: 12px;
-  font-weight: 700;
+}
+
+.loan-logo {
+  flex-shrink: 0;
+  max-width: 132px;
+  height: 52px;
+  object-fit: contain;
 }
 
 .loan-nav {

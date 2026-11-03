@@ -19,6 +19,7 @@ const KIND_ICON: Record<TransactionRecord["kind"], IconComponent> = {
   savings: SavingsIcon,
   salary: TrendUpIcon,
   loan_disbursement: ArrowDownLeftIcon,
+  loan_repayment: BillIcon,
 };
 
 interface TransactionIconProps {

@@ -23,12 +23,20 @@ interface TransactionDto extends Omit<
   };
 }
 
+const BANK_NAME = "Ngân hàng Anomaly";
+// Tiền gửi và khoản vay giao dịch trực tiếp với ngân hàng, không có người nhận/gửi.
+const BANK_KINDS: ReadonlySet<TransactionRecord["kind"]> = new Set([
+  "savings",
+  "loan_disbursement",
+  "loan_repayment",
+]);
+
 function toRecord(dto: TransactionDto): TransactionRecord {
   return {
     ...dto,
     createdAt: new Date(dto.createdAt),
     counterparty: {
-      name: dto.counterparty.name,
+      name: BANK_KINDS.has(dto.kind) ? BANK_NAME : dto.counterparty.name,
       accountNo: dto.counterparty.accountNo,
       bank: dto.counterparty.bank ?? dto.counterparty.bankCode,
     },

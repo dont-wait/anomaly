@@ -1,4 +1,4 @@
-import { faArrowLeft, faPlus } from "@fortawesome/free-solid-svg-icons";
+import { faPlus } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   useEffect,
@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { navigate, routes } from "@/app/routes";
+import { ArrowLeftIcon } from "@/shared/icons";
+import { Logo } from "@/shared/layout/Logo";
 import "./loan-layout.css";
 
 const FOCUSABLE =
@@ -93,13 +95,14 @@ export function LoanLayout({
         <header className="loan-header">
           <button
             type="button"
+            aria-label="Trang chủ"
             onClick={() => navigate(routes.dashboard)}
-            className="loan-home-link"
+            className="loan-back"
           >
-            <FontAwesomeIcon icon={faArrowLeft} className="mr-1.5" />
-            Trang chủ
+            <ArrowLeftIcon className="h-5 w-5" />
           </button>
           <h1 id={titleId}>{title}</h1>
+          <Logo className="loan-logo" />
         </header>
         <nav className="loan-nav" aria-label="Điều hướng vay vốn">
           <div className="loan-nav-tabs">
