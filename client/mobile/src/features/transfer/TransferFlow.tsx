@@ -80,12 +80,7 @@ export function TransferFlow({
   onExit,
   onViewHistory,
 }: TransferFlowProps) {
-  const flow = useTransferFlow(
-    source,
-    token,
-    onUnauthorized,
-    initialAccountNo,
-  );
+  const flow = useTransferFlow(source, token, onUnauthorized, initialAccountNo);
   const { lookup, amountError } = flow;
   const accountError = lookup.status === "error" ? lookup.message : "";
   const [contactsOpen, setContactsOpen] = useState(false);

@@ -21,7 +21,11 @@ const PAGE_LIMIT = 20;
 function accountQueryFromHash(): string {
   const queryStart = window.location.hash.indexOf("?");
   if (queryStart < 0) return "";
-  return new URLSearchParams(window.location.hash.slice(queryStart + 1)).get("account") || "";
+  return (
+    new URLSearchParams(window.location.hash.slice(queryStart + 1)).get(
+      "account",
+    ) || ""
+  );
 }
 
 type AppliedTimelineQuery = {
