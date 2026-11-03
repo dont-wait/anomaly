@@ -16,6 +16,7 @@ import {
   type HandledFilter,
 } from "./api/alertsApi";
 import { AccountStatusConfirmation } from "./AccountStatusConfirmation";
+import { AlertHandlingConfirmation } from "./AlertHandlingConfirmation";
 import type {
   MonitorDashboardResponse,
   RiskAssessment,
@@ -74,6 +75,7 @@ export function AlertsPage() {
     accountNo?: string;
     status: "active" | "locked";
   } | null>(null);
+  const [pendingHandled, setPendingHandled] = useState<boolean | null>(null);
 
   function resetFilters() {
     setRange("7d");
@@ -169,10 +171,6 @@ export function AlertsPage() {
     assessment: RiskAssessment,
     handled: boolean,
   ) => {
-    const action = handled
-      ? "đánh dấu cảnh báo này đã xử lý"
-      : "hoàn tác trạng thái đã xử lý của cảnh báo này";
-    if (!window.confirm(`Bạn có chắc muốn ${action}?`)) return;
     setBusy(true);
     setActionMessage(null);
     try {
@@ -607,9 +605,7 @@ export function AlertsPage() {
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() =>
-                    void changeHandled(selected, !selected.handled)
-                  }
+                  onClick={() => setPendingHandled(!selected.handled)}
                   className={`${selected.handled ? surface : "bg-(--admin-primary) text-white"} h-9 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold transition-colors hover:border-(--admin-primary) hover:bg-(--admin-surface-hover) disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   {selected.handled ? "Hoàn tác xử lý" : "Đánh dấu đã xử lý"}
@@ -780,6 +776,13 @@ export function AlertsPage() {
                 : "Đã mở khóa tài khoản.",
             );
           }}
+        />
+      )}
+      {pendingHandled !== null && selected && (
+        <AlertHandlingConfirmation
+          handled={pendingHandled}
+          onCancel={() => setPendingHandled(null)}
+          onConfirm={() => changeHandled(selected, pendingHandled)}
         />
       )}
     </div>
