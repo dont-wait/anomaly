@@ -21,7 +21,7 @@
               { "months": 48 },
               { "months": 60 }
             ],
-            "created_by": "migration-000017"
+            "created_by": "migration-000019"
           }
         },
         "upsert": true

@@ -81,7 +81,7 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 	if err := read.EnsureIndexes(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// Gói vay đến từ migration 000017, giống môi trường thật.
+	// Gói vay đến từ migration 000019, giống môi trường thật.
 	catalog := mongorepo.NewLoanPackageCatalog(mongoClient, db.Name())
 	if err := catalog.EnsureIndexes(ctx); err != nil {
 		t.Fatal(err)

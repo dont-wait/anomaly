@@ -86,7 +86,7 @@ Bản ghi audit nằm ở collection mới `product_catalog_audit`: `{package_ty
 Việc chuyển đổi chia làm hai phần:
 
 - **Khi API khởi động** (`EnsureCatalogIndexes`, chạy lại an toàn): gán `version: 1` và chuẩn hóa `status` cho bản ghi cũ, bỏ unique index `package_code_1`, tạo các index mới. Phần này nằm trong code vì collection có thể chưa tồn tại khi migration chạy, và lệnh `dropIndexes` sẽ lỗi trên collection chưa có.
-- **Migration `000017`**: seed `PERSONAL_UNSECURED_SALARY` bằng `$setOnInsert` để production có gói vay. Mức hạn mức theo Q4.
+- **Migration `000019`**: seed `PERSONAL_UNSECURED_SALARY` bằng `$setOnInsert` để production có gói vay. Mức hạn mức theo Q4.
 
 Thứ tự triển khai: dừng toàn bộ API và projector cũ, chạy migration, rồi bật bản mới. API cũ khởi động lại sẽ tạo lại unique index trên `package_code`, và lệnh này thất bại nếu đã có nhiều phiên bản. Projector phải lên cùng lúc: bản cũ từ chối sự kiện trả nợ quá hạn và sự kiện `LoanApplicationReviewRejected`.
 
@@ -248,7 +248,7 @@ Mức độ: **Cao** là kẹt nghiệp vụ hoặc có thể gây mất khả n
 
 **F-04.** Đặt lại `reason` trong `selectApplication`. Chuyển trạng thái form theo hồ sơ được chọn và thêm test cho trường hợp này.
 
-**F-05.** Giải quyết bằng migration `000017` (mục 3.3).
+**F-05.** Giải quyết bằng migration `000019` (mục 3.3).
 
 ## 9. Thứ tự triển khai
 
