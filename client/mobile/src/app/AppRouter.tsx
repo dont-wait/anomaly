@@ -8,6 +8,7 @@ import TransferPage from "@/pages/TransferPage";
 import TransactionHistoryPage from "@/pages/TransactionHistoryPage";
 import TransactionDetailPage from "@/pages/TransactionDetailPage";
 import LoanRegisterPage from "@/pages/LoanRegisterPage";
+import CardsPage from "@/features/cards/CardsPage";
 import QrPage from "@/pages/QrPage";
 import SavingsLivePage from "@/features/savings/SavingsLivePage";
 import LoanApplicationsPage from "@/pages/LoanApplicationsPage";
@@ -114,6 +115,8 @@ export function AppRouter() {
       return <DashboardPage />;
     case routes.transfer:
       return <TransferPage />;
+    case routes.cards:
+      return <CardsPage />;
     case routes.qrScan:
       return <QrPage tab="scan" />;
     case routes.myQr:

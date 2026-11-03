@@ -4,6 +4,7 @@ export const routes = {
   forgotPassword: "#/forgot-password",
   dashboard: "#/dashboard",
   transfer: "#/transfer",
+  cards: "#/cards",
   qrScan: "#/qr/scan",
   myQr: "#/qr/mine",
   transactions: "#/transactions",
@@ -75,6 +76,7 @@ export function parseTransactionId(hash: string): string | null {
 const PROTECTED_ROUTES: readonly string[] = [
   routes.dashboard,
   routes.transfer,
+  routes.cards,
   routes.qrScan,
   routes.myQr,
   routes.transactions,
