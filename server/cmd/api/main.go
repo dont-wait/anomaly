@@ -295,9 +295,10 @@ func main() {
 		rdb,
 	)
 
-	// An invalid savings catalog must fail CLOSED for savings without making
-	// unrelated account, transfer and loan APIs unavailable. Operators must
-	// repair the catalog and restart this instance before enabling Savings.
+	// An invalid savings catalog must stop NEW savings without making unrelated
+	// APIs unavailable. Withdrawals and receipts do not depend on the catalog
+	// and stay up, so customers can always reach matured money; opening still
+	// fails closed because it revalidates the catalog through the quote service.
 	savingsCatalog := mongo.NewSavingsPackageCatalog(mongoClient, config.MongoConfig.MongoDBName)
 	savingsRead := mongo.NewSavingsRead(mongoClient, config.MongoConfig.MongoDBName)
 	savingsHandler := composition.NewSavingsHandler(savingsCatalog, bank, rdb, savingsRead)
@@ -310,16 +311,19 @@ func main() {
 		go mongo.NewSavingsMaturityWorker(mongoClient, config.MongoConfig.MongoDBName, bank).Run(ctx)
 	}
 	if err := savingsCatalog.EnsureSeeded(ctx); err != nil {
-		logger.Error().Err(err).Msg("savings catalog unavailable; savings APIs disabled (banking APIs remain up)")
+		logger.Error().Err(err).Msg("savings catalog unavailable; new savings disabled (withdrawals remain up)")
 		savingsHandler.Service = nil
-		savingsHandler.Commands = nil
 	}
 
 	mux := netHTTP.NewServeMux()
-	mux = presentation.NewRouterWithSavingsAndAdminMonitor(
+	catalogHandler := composition.NewCatalogHandler(mongoClient, config.MongoConfig.MongoDBName, loanRead, savingsRead)
+	if err := catalogHandler.Store.EnsureIndexes(ctx); err != nil {
+		logger.Fatal().Err(err).Msg("ensure product catalog indexes")
+	}
+	mux = presentation.NewRouterWithProducts(
 		mux, accountHandler, mediaHandler, otpHandler, transactionHandler,
 		tokenSvc, config.DocsConfig.SwaggerEnabled,
-		savingsHandler, adminMonitorHandler, adminTimelineHandler, loanHandler,
+		savingsHandler, adminMonitorHandler, adminTimelineHandler, catalogHandler.HTTP, loanHandler,
 	)
 
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
