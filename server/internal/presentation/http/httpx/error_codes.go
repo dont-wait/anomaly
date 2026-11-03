@@ -27,6 +27,7 @@ const (
 	ErrorCodeInvalidDate            ErrorCode = "INVALID_DATE"
 	ErrorCodeUserAlreadyExists      ErrorCode = "USER_ALREADY_EXISTS"
 	ErrorCodeInvalidCredentials     ErrorCode = "INVALID_CREDENTIALS"
+	ErrorCodeAccountLocked          ErrorCode = "ACCOUNT_LOCKED"
 	ErrorCodeKYCRequired            ErrorCode = "KYC_REQUIRED"
 	ErrorCodeAccountAlreadyVerified ErrorCode = "ACCOUNT_ALREADY_VERIFIED"
 	ErrorCodeInvalidVerifyPayload   ErrorCode = "INVALID_VERIFY_PAYLOAD"

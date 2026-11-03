@@ -10,6 +10,7 @@ import { EventExplorerPage } from "@/features/audit/EventExplorerPage";
 import { LoanReviewPage } from "@/features/loans/LoanReviewPage";
 import { ProfileChangesPage } from "@/features/profileChanges/ProfileChangesPage";
 import { MonitorPage } from "@/features/monitor/MonitorPage";
+import { AlertsPage } from "@/features/alerts/AlertsPage";
 import {
   navigate,
   protectedRouteFromHash,
@@ -57,6 +58,7 @@ function PlaceholderPage({ route }: { route: ProtectedRoute }) {
 function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const isMonitor = route === routes.monitor;
+  const isAlerts = route === routes.alerts;
   const isAccountTimeline = route === routes.auditAccounts;
   const isEventExplorer = route === routes.audit;
   const isLoanReview = route === routes.loanApplications;
@@ -99,6 +101,8 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
     <AdminShell currentRoute={route} user={profile}>
       {isMonitor ? (
         <MonitorPage />
+      ) : isAlerts ? (
+        <AlertsPage />
       ) : isAccountTimeline ? (
         <AccountTimelinePage />
       ) : isEventExplorer ? (

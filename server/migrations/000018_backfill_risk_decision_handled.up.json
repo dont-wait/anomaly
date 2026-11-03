@@ -1,0 +1,12 @@
+[
+  {
+    "update": "risk_decisions",
+    "updates": [
+      {
+        "q": { "handled": { "$exists": false } },
+        "u": { "$set": { "handled": false } },
+        "multi": true
+      }
+    ]
+  }
+]

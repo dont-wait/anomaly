@@ -13,6 +13,7 @@ var (
 	ErrInvalidDate            = errors.New("invalid or missing date")
 	ErrUserAlreadyExists      = errors.New("user already exists")
 	ErrInvalidCredentials     = errors.New("invalid credentials")
+	ErrAccountLocked          = errors.New("account is locked")
 	ErrKYCRequired            = errors.New("KYC verification required")
 	ErrAccountAlreadyVerified = errors.New("account is already verified")
 	ErrInvalidVerifyPayload   = errors.New("all identity URLs are required")

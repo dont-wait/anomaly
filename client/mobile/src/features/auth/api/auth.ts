@@ -113,6 +113,9 @@ export async function createKycSession(
 
 export function toLoginError(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.hasCode("ACCOUNT_LOCKED")) {
+      return "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ bộ phận Chăm sóc khách hàng để được hỗ trợ.";
+    }
     if (error.hasCode("INVALID_CREDENTIALS")) {
       return "Số CCCD hoặc mật khẩu không đúng.";
     }

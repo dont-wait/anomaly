@@ -11,13 +11,20 @@ export interface RiskAssessment {
   modelVersion: string;
   featureVersion: string;
   receivedAt: string;
+  handled?: boolean;
+  handledAt?: string;
+  handledBy?: string;
   transaction: RiskTransactionContext | null;
 }
 
 export interface RiskTransactionContext {
   transactionId: string;
+  sourceAccountId?: string;
+  sourceAccountStatus?: string;
   sourceAccountNo: string;
   sourceAccountName: string;
+  destinationAccountId?: string;
+  destinationAccountStatus?: string;
   destinationAccountNo: string;
   destinationName: string;
   amount: number;

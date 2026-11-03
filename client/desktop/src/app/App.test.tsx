@@ -125,7 +125,7 @@ describe("App admin route", () => {
     render(<App />);
 
     expect(
-      await screen.findByText("Màn hình đang được triển khai"),
+      await screen.findByRole("heading", { name: "Cảnh báo" }),
     ).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Menu admin" })).toBeTruthy();
   });

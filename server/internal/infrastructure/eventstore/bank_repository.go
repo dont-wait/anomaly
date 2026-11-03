@@ -487,6 +487,32 @@ func (r *BankRepository) FindByID(ctx context.Context, id string) (*accountdomai
 	return s.account(id)
 }
 
+// FindByFinancialID resolves the ledger identifier carried by transfer events
+// to the canonical account aggregate. Auth/admin writes must use its public ID.
+func (r *BankRepository) FindByFinancialID(ctx context.Context, id string) (*accountdomain.UserAccount, error) {
+	s, err := r.load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.accountByFinancialID(id)
+}
+
+func (s *bankState) accountByFinancialID(id string) (*accountdomain.UserAccount, error) {
+	for accountID := range s.Accounts {
+		if financialID(accountID).Hex() == id {
+			return s.account(accountID)
+		}
+	}
+	return nil, nil
+}
+
+func (r *BankRepository) FindByAccountNo(ctx context.Context, accountNo string) (*accountdomain.UserAccount, error) {
+	if accountNo == "" {
+		return nil, nil
+	}
+	return r.findAccount(ctx, func(a *accountdomain.UserAccount) bool { return a.AccountNo == accountNo })
+}
+
 func (s *bankState) account(id string) (*accountdomain.UserAccount, error) {
 	a := s.Accounts[id]
 	if a == nil {

@@ -169,6 +169,11 @@ func RegisterRoutes(
 		FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 		Auth:            true,
 	})
+	router.Handle("PATCH /api/admin/accounts/{id}/status", adminOnly(http.HandlerFunc(h.UpdateAccountStatus)), openapi.Operation{
+		ID: "updateAccountStatus", Summary: "Lock or unlock a customer account", Tags: []string{"Accounts"},
+		Request: accountStatusRequest{}, Response: httpx.SuccessResponse[map[string]string]{},
+		FailureStatuses: []int{400, 401, 403, 404, 500, 503}, Auth: true,
+	})
 	router.Handle("GET /api/accounts/by-email/{email}",
 		middleware.RequireAuth(tokenSvc)(http.HandlerFunc(h.GetByEmail)), openapi.Operation{
 			ID:              "getAccountByEmail",

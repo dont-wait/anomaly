@@ -86,9 +86,10 @@ async function fetchWithTimeout(
 export async function getMonitorDashboard(
   range: TimeRange,
   signal?: AbortSignal,
+  handled: "unhandled" | "handled" | "all" = "all",
 ): Promise<MonitorDashboardResponse> {
   const response = await fetchWithTimeout(
-    `${API_BASE_URL}/api/admin/monitor?range=${range}`,
+    `${API_BASE_URL}/api/admin/monitor?range=${range}&handled=${handled}`,
     {
       headers: authHeaders(),
       signal,

@@ -21,8 +21,12 @@ const (
 	EmailOTPExpired               = "EmailOTPExpired"
 	EmailOTPAttemptsExceeded      = "EmailOTPAttemptsExceeded"
 
-	LoginSucceeded = "LoginSucceeded"
-	LoginFailed    = "LoginFailed"
+	LoginSucceeded         = "LoginSucceeded"
+	LoginFailed            = "LoginFailed"
+	AccountLocked          = "AccountLocked"
+	AccountUnlocked        = "AccountUnlocked"
+	RiskAssessmentHandled  = "RiskAssessmentHandled"
+	RiskAssessmentReopened = "RiskAssessmentReopened"
 )
 
 // Event is an immutable, non-financial audit record. Secrets are deliberately
@@ -40,6 +44,7 @@ type Event struct {
 	TransactionID string    `json:"transactionId,omitempty"`
 	ChallengeID   string    `json:"challengeId,omitempty"`
 	ReasonCode    string    `json:"reasonCode,omitempty"`
+	Reason        string    `json:"reason,omitempty"`
 	AttemptsLeft  *int      `json:"attemptsLeft,omitempty"`
 	EmailHash     string    `json:"emailHash,omitempty"`
 }
