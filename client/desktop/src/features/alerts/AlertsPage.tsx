@@ -13,7 +13,6 @@ import {
   getMonitorDashboard,
   updateAccountStatus,
   updateAssessmentHandled,
-  type HandledFilter,
 } from "./api/alertsApi";
 import { AccountStatusConfirmation } from "./AccountStatusConfirmation";
 import { AlertHandlingConfirmation } from "./AlertHandlingConfirmation";
@@ -49,9 +48,6 @@ function money(value: number, currency: string) {
 export function AlertsPage() {
   const [range, setRange] = useState<TimeRange>("7d");
   const [level, setLevel] = useState<RiskFilter>("all");
-  const [status, setStatus] = useState("all");
-  const [handledFilter, setHandledFilter] =
-    useState<HandledFilter>("unhandled");
   const [query, setQuery] = useState("");
   const [response, setResponse] = useState<MonitorDashboardResponse | null>(
     null,
@@ -80,8 +76,6 @@ export function AlertsPage() {
   function resetFilters() {
     setRange("7d");
     setLevel("all");
-    setStatus("all");
-    setHandledFilter("unhandled");
     setQuery("");
     setPage(1);
   }
@@ -90,7 +84,7 @@ export function AlertsPage() {
     setBusy(true);
     setError(null);
     try {
-      setResponse(await getMonitorDashboard(range, handledFilter));
+      setResponse(await getMonitorDashboard(range, "unhandled"));
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Không thể tải cảnh báo.",
@@ -102,7 +96,7 @@ export function AlertsPage() {
 
   useEffect(() => {
     let active = true;
-    getMonitorDashboard(range, handledFilter)
+    getMonitorDashboard(range, "unhandled")
       .then((nextResponse) => {
         if (active) setResponse(nextResponse);
       })
@@ -118,7 +112,7 @@ export function AlertsPage() {
     return () => {
       active = false;
     };
-  }, [range, handledFilter]);
+  }, [range]);
 
   const alerts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -126,15 +120,7 @@ export function AlertsPage() {
       .filter(
         (item) => item.riskLevel === "WARNING" || item.riskLevel === "BLOCK",
       )
-      .filter(
-        (item) =>
-          handledFilter === "all" ||
-          (handledFilter === "handled"
-            ? item.handled === true
-            : item.handled !== true),
-      )
       .filter((item) => level === "all" || item.riskLevel === level)
-      .filter((item) => status === "all" || item.transaction?.status === status)
       .filter(
         (item) =>
           !normalized ||
@@ -148,7 +134,7 @@ export function AlertsPage() {
         (left, right) =>
           Date.parse(right.receivedAt) - Date.parse(left.receivedAt),
       );
-  }, [handledFilter, level, query, response, status]);
+  }, [level, query, response]);
 
   const totalPages = Math.max(1, Math.ceil(alerts.length / ALERTS_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -230,7 +216,7 @@ export function AlertsPage() {
           </h1>
         </div>
         <form
-          className="mt-4 grid w-full gap-2 lg:grid-cols-[150px_minmax(280px,2fr)_150px_160px_150px_auto]"
+          className="mt-4 grid w-full gap-2 lg:grid-cols-[150px_minmax(280px,2fr)_150px_auto]"
           onSubmit={(event) => event.preventDefault()}
         >
           <label className="sr-only" htmlFor="alert-range">
@@ -248,22 +234,6 @@ export function AlertsPage() {
             <option value="24h">24 giờ gần nhất</option>
             <option value="7d">7 ngày gần nhất</option>
             <option value="30d">30 ngày gần nhất</option>
-          </select>
-          <label className="sr-only" htmlFor="alert-handled">
-            Trạng thái xử lý
-          </label>
-          <select
-            id="alert-handled"
-            className="h-10 min-w-0 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2.5 text-[12px] text-(--admin-text) outline-none transition-colors focus:border-(--admin-primary)"
-            value={handledFilter}
-            onChange={(event) => {
-              setHandledFilter(event.target.value as HandledFilter);
-              setPage(1);
-            }}
-          >
-            <option value="unhandled">Chưa xử lý</option>
-            <option value="handled">Đã xử lý</option>
-            <option value="all">Tất cả cảnh báo</option>
           </select>
           <label className="flex h-10 min-w-0 items-center gap-2 rounded-sm border border-(--admin-border) bg-(--admin-background) px-3 transition-colors focus-within:border-(--admin-primary) focus-within:shadow-(--admin-focus-ring)">
             <FontAwesomeIcon
@@ -297,24 +267,6 @@ export function AlertsPage() {
             <option value="all">Tất cả mức độ</option>
             <option value="WARNING">Cảnh báo</option>
             <option value="BLOCK">Chặn</option>
-          </select>
-          <label className="sr-only" htmlFor="alert-status">
-            Trạng thái giao dịch
-          </label>
-          <select
-            id="alert-status"
-            className="h-10 min-w-0 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2.5 text-[12px] text-(--admin-text) outline-none transition-colors focus:border-(--admin-primary)"
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="all">Tất cả trạng thái</option>
-            <option value="awaiting_otp">Chờ OTP</option>
-            <option value="success">Đã hoàn tất</option>
-            <option value="failed">Bị từ chối</option>
-            <option value="cancelled">Đã huỷ</option>
           </select>
           <div className="flex shrink-0 gap-2">
             <button
