@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,10 +12,12 @@ import (
 
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
 	"github.com/dont-wait/anomaly/internal/application/riskstream"
+	"github.com/dont-wait/anomaly/internal/domain/audit"
 	"github.com/dont-wait/anomaly/internal/domain/riskassessment"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
+	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 type MonitorHandler struct {
@@ -22,6 +25,12 @@ type MonitorHandler struct {
 	hub          *riskstream.Hub
 	transactions transactionContextLookup
 	currentAdmin func(context.Context, string) bool
+	audit        audit.Recorder
+}
+
+func (h *MonitorHandler) WithAudit(recorder audit.Recorder) *MonitorHandler {
+	h.audit = recorder
+	return h
 }
 
 type transactionContextLookup interface {
@@ -53,6 +62,9 @@ type riskAssessmentDTO struct {
 	ModelVersion   string                 `json:"modelVersion"`
 	FeatureVersion string                 `json:"featureVersion"`
 	ReceivedAt     time.Time              `json:"receivedAt"`
+	Handled        bool                   `json:"handled"`
+	HandledAt      *time.Time             `json:"handledAt,omitempty"`
+	HandledBy      string                 `json:"handledBy,omitempty"`
 	Transaction    *transactionContextDTO `json:"transaction"`
 	Cursor         int64                  `json:"-"`
 }
@@ -126,6 +138,13 @@ func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc 
 		Parameters: []openapi.Parameter{{Name: "range", In: "query", Type: "string", Example: "24h"}},
 		Response:   monitorResponse{}, FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 	})
+	admin("PATCH /api/admin/risk-assessments/{id}/handled", handler.UpdateHandled, openapi.Operation{
+		ID: "updateRiskAssessmentHandled", Summary: "Mark a risk assessment handled or reopen it",
+		Request: struct {
+			Handled bool `json:"handled"`
+		}{}, Response: map[string]any{},
+		FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError},
+	})
 	admin("GET /api/admin/monitor/stream", handler.Stream, openapi.Operation{
 		ID: "adminMonitorStream", Summary: "Stream risk assessments to the admin monitor",
 		ResponseContentType: "text/event-stream", FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
@@ -151,7 +170,20 @@ func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not load risk assessments", http.StatusInternalServerError)
 		return
 	}
-	recent, err := h.repository.ListRecent(queryCtx, from, now, 50)
+	var handled *bool
+	switch r.URL.Query().Get("handled") {
+	case "", "all":
+	case "true", "handled":
+		value := true
+		handled = &value
+	case "false", "unhandled":
+		value := false
+		handled = &value
+	default:
+		http.Error(w, "handled must be all, handled, or unhandled", http.StatusBadRequest)
+		return
+	}
+	recent, err := h.repository.ListRecentByHandled(queryCtx, from, now, 50, handled)
 	if err != nil {
 		http.Error(w, "could not load recent risk assessments", http.StatusInternalServerError)
 		return
@@ -167,6 +199,42 @@ func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		return
 	}
+}
+
+func (h *MonitorHandler) UpdateHandled(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var request struct {
+		Handled bool `json:"handled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid handled payload", http.StatusBadRequest)
+		return
+	}
+	id := r.PathValue("id")
+	if err := h.repository.SetHandled(r.Context(), id, request.Handled, claims.UserID); err != nil {
+		if errors.Is(err, mongodrv.ErrNoDocuments) {
+			http.Error(w, "risk assessment not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "could not update risk assessment", http.StatusInternalServerError)
+		return
+	}
+	if h.audit != nil {
+		eventType := audit.RiskAssessmentReopened
+		if request.Handled {
+			eventType = audit.RiskAssessmentHandled
+		}
+		event := audit.NewEvent(eventType, "", time.Now().UTC())
+		event.ActorID = claims.UserID
+		event.ReasonCode = id
+		_ = h.audit.Record(r.Context(), event)
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"assessmentId": id, "handled": request.Handled})
 }
 
 func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
@@ -362,7 +430,7 @@ func (h *MonitorHandler) enrichAssessment(ctx context.Context, item riskassessme
 }
 
 func (h *MonitorHandler) assessmentDTO(item riskassessment.Assessment, transaction mongorepo.RiskTransactionContext) riskAssessmentDTO {
-	dto := riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, RiskLevel: item.RiskLevel, Decision: item.Decision, Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt, Cursor: item.Cursor}
+	dto := riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, RiskLevel: item.RiskLevel, Decision: item.Decision, Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt, Handled: item.Handled, HandledAt: item.HandledAt, HandledBy: item.HandledBy, Cursor: item.Cursor}
 	if transaction.TransactionID != "" {
 		dto.Transaction = &transactionContextDTO{TransactionID: transaction.TransactionID, SourceAccountID: transaction.SourceAccountID, SourceAccountNo: transaction.SourceAccountNo, SourceAccountName: transaction.SourceAccountName, DestinationAccountID: transaction.DestinationAccountID, DestinationAccountNo: transaction.DestinationAccountNo, DestinationName: transaction.DestinationName, Amount: transaction.Amount, Fee: transaction.Fee, Currency: transaction.Currency, Channel: transaction.Channel, Status: transaction.Status, CreatedAt: transaction.CreatedAt, OTPExpiresAt: transaction.OTPExpiresAt, OTPVerifiedAt: transaction.OTPVerifiedAt, CompletedAt: transaction.CompletedAt, FailedAt: transaction.FailedAt, CancelledAt: transaction.CancelledAt}
 	}

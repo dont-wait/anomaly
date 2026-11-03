@@ -21,10 +21,12 @@ const (
 	EmailOTPExpired               = "EmailOTPExpired"
 	EmailOTPAttemptsExceeded      = "EmailOTPAttemptsExceeded"
 
-	LoginSucceeded  = "LoginSucceeded"
-	LoginFailed     = "LoginFailed"
-	AccountLocked   = "AccountLocked"
-	AccountUnlocked = "AccountUnlocked"
+	LoginSucceeded         = "LoginSucceeded"
+	LoginFailed            = "LoginFailed"
+	AccountLocked          = "AccountLocked"
+	AccountUnlocked        = "AccountUnlocked"
+	RiskAssessmentHandled  = "RiskAssessmentHandled"
+	RiskAssessmentReopened = "RiskAssessmentReopened"
 )
 
 // Event is an immutable, non-financial audit record. Secrets are deliberately

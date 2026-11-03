@@ -228,7 +228,7 @@ func main() {
 	accountHandler := composition.NewAccountHandlerWithKYC(bank, tokenSvc, kyc.NewClient(config.KYCConfig.ServiceURL, config.KYCConfig.ServiceToken).WithPOCBypass(config.KYCConfig.POCBypass), mediaRepo, *logger, auditRepository)
 	tokenSvc.WithVersionLookup(bank)
 	composition.AttachProfileSecurity(accountHandler, bank, rdb, config.SMTPConfig, config.AuthConfig, *logger)
-	adminMonitorHandler := adminhandler.NewMonitorHandler(riskAssessments, riskHub, transferRepository, accountHandler.IsCurrentAdmin)
+	adminMonitorHandler := adminhandler.NewMonitorHandler(riskAssessments, riskHub, transferRepository, accountHandler.IsCurrentAdmin).WithAudit(auditRepository)
 	accountHandler.WithRealtime(&kyc.RealtimeStore{DB: rdb, Policy: kyc.Policy{
 		MaxAttempts: config.KYCConfig.MaxAttempts, Window: config.KYCConfig.AttemptWindow, AttemptTTL: config.KYCConfig.AttemptTTL,
 		MaxConcurrent: config.KYCConfig.MaxConcurrentAttempts, StartsPerMinute: config.KYCConfig.StartsPerMinute,

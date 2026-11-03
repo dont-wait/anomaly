@@ -294,15 +294,27 @@ func (r *RiskAssessmentRepository) List(ctx context.Context, from, to time.Time,
 }
 
 func (r *RiskAssessmentRepository) ListRecent(ctx context.Context, from, to time.Time, limit int64) ([]riskassessment.Assessment, error) {
+	return r.ListRecentByHandled(ctx, from, to, limit, nil)
+}
+
+func (r *RiskAssessmentRepository) ListRecentByHandled(ctx context.Context, from, to time.Time, limit int64, handled *bool) ([]riskassessment.Assessment, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	if limit > 100 {
 		limit = 100
 	}
-	cursor, err := r.collection.Find(ctx, bson.M{
+	filter := bson.M{
 		"received_at": bson.M{"$gte": from, "$lt": to},
-	}, options.Find().SetSort(bson.D{{Key: "cursor", Value: -1}, {Key: "received_at", Value: -1}, {Key: "_id", Value: -1}}).SetLimit(limit))
+	}
+	if handled == nil {
+		// no status filter
+	} else if *handled {
+		filter["handled"] = true
+	} else {
+		filter["handled"] = bson.M{"$ne": true}
+	}
+	cursor, err := r.collection.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "cursor", Value: -1}, {Key: "received_at", Value: -1}, {Key: "_id", Value: -1}}).SetLimit(limit))
 	if err != nil {
 		return nil, err
 	}
@@ -322,6 +334,31 @@ func (r *RiskAssessmentRepository) ListRecent(ctx context.Context, from, to time
 		items[left], items[right] = items[right], items[left]
 	}
 	return items, nil
+}
+
+func (r *RiskAssessmentRepository) SetHandled(ctx context.Context, id string, handled bool, adminID string) error {
+	if id == "" || adminID == "" {
+		return errors.New("assessment id and admin id are required")
+	}
+	if handled {
+		now := time.Now().UTC()
+		result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"handled": true, "handled_at": now, "handled_by": adminID}})
+		if err != nil {
+			return err
+		}
+		if result.MatchedCount == 0 {
+			return mongodrv.ErrNoDocuments
+		}
+		return nil
+	}
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"handled": false}, "$unset": bson.M{"handled_at": "", "handled_by": ""}})
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return mongodrv.ErrNoDocuments
+	}
+	return nil
 }
 
 func (r *RiskAssessmentRepository) Summarize(ctx context.Context, from, to time.Time) (RiskAssessmentSummary, error) {

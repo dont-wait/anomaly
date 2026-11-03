@@ -11,6 +11,9 @@ export interface RiskAssessment {
   modelVersion: string;
   featureVersion: string;
   receivedAt: string;
+  handled?: boolean;
+  handledAt?: string;
+  handledBy?: string;
   transaction: RiskTransactionContext | null;
 }
 
