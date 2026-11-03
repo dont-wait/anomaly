@@ -8,6 +8,11 @@ import { AdminShell } from "@/components/layout/AdminShell";
 import { AccountTimelinePage } from "@/features/audit/AccountTimelinePage";
 import { EventExplorerPage } from "@/features/audit/EventExplorerPage";
 import { LoanReviewPage } from "@/features/loans/LoanReviewPage";
+import {
+  LoanContractsAdminPage,
+  SavingsContractsPage,
+} from "@/features/products/ContractsPages";
+import { PackagesPage } from "@/features/products/PackagesPage";
 import { ProfileChangesPage } from "@/features/profileChanges/ProfileChangesPage";
 import { MonitorPage } from "@/features/monitor/MonitorPage";
 import {
@@ -105,6 +110,16 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
         <EventExplorerPage />
       ) : isLoanReview ? (
         <LoanReviewPage />
+      ) : route === routes.loanPackages ? (
+        <PackagesPage key="loan" kind="loan" />
+      ) : route === routes.savingsPackages ? (
+        <PackagesPage key="savings" kind="savings" />
+      ) : route === routes.loanContracts ? (
+        <LoanContractsAdminPage key="contracts" />
+      ) : route === routes.overdueLoans ? (
+        <LoanContractsAdminPage key="overdue" overdue />
+      ) : route === routes.savingsContracts ? (
+        <SavingsContractsPage />
       ) : route === routes.profileChanges ? (
         <ProfileChangesPage />
       ) : (

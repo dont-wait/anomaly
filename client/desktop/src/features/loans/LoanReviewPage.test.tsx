@@ -13,6 +13,9 @@ import {
   getLoan,
   downloadLoanDocument,
   getLoanCustomer,
+  getLoanEvidence,
+  LoansApiError,
+  rejectLoanReview,
   reviewLoanDocument,
   listLoans,
   startLoanReview,
@@ -26,6 +29,8 @@ vi.mock("./api/loansApi", async (importOriginal) => {
     listLoans: vi.fn(),
     getLoan: vi.fn(),
     getLoanCustomer: vi.fn(),
+    getLoanEvidence: vi.fn(),
+    rejectLoanReview: vi.fn(),
     reviewLoanDocument: vi.fn(),
     downloadLoanDocument: vi.fn(),
     startLoanReview: vi.fn(),
@@ -76,6 +81,10 @@ const declared = {
   regionCode: "KV02",
   purpose: "Mua xe",
 };
+const tickAllVerifications = () =>
+  screen
+    .getAllByRole("checkbox")
+    .forEach((checkbox) => fireEvent.click(checkbox));
 const chooseHistory = () =>
   fireEvent.change(screen.getByLabelText("Lịch sử trả nợ"), {
     target: { value: "previously_late" },
@@ -89,7 +98,14 @@ describe("LoanReviewPage", () => {
     vi.mocked(attestLoanEvidence).mockReset();
     vi.mocked(decideLoan).mockReset();
     vi.mocked(disburseLoan).mockReset();
-    vi.mocked(getLoan).mockResolvedValue(underReview);
+    // Mặc định bản gốc trùng với danh sách; test riêng sẽ ghi đè khi cần lệch.
+    vi.mocked(getLoan).mockImplementation(async (id) => {
+      const listed = await vi.mocked(listLoans)();
+      return listed.items.find((item) => item.id === id) ?? underReview;
+    });
+    vi.mocked(getLoanEvidence).mockRejectedValue(
+      new LoansApiError("not found", 404),
+    );
     vi.mocked(listLoans).mockResolvedValue({ items: [], nextCursor: null });
   });
 
@@ -119,7 +135,11 @@ describe("LoanReviewPage", () => {
 
     expect(await screen.findByText("APP-002")).toBeTruthy();
     await waitFor(() =>
-      expect(listLoans).toHaveBeenNthCalledWith(2, "cursor-1"),
+      expect(listLoans).toHaveBeenNthCalledWith(
+        2,
+        "cursor-1",
+        "submitted,under_review,approved",
+      ),
     );
     expect(screen.getAllByText("APP-001")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Xem thêm hồ sơ" })).toBeNull();
@@ -277,7 +297,7 @@ describe("LoanReviewPage", () => {
     render(<LoanReviewPage />);
     fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
     chooseHistory();
-    fireEvent.click(screen.getByRole("checkbox"));
+    tickAllVerifications();
     fireEvent.click(
       screen.getByRole("button", { name: "Lưu kết quả đối soát" }),
     );
@@ -316,7 +336,7 @@ describe("LoanReviewPage", () => {
     render(<LoanReviewPage />);
     fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
     chooseHistory();
-    fireEvent.click(screen.getByRole("checkbox"));
+    tickAllVerifications();
     expect(
       screen.getByRole<HTMLButtonElement>("button", {
         name: "Lưu kết quả đối soát",
@@ -366,7 +386,7 @@ describe("LoanReviewPage", () => {
     }) as HTMLButtonElement;
     expect(evidenceButton.disabled).toBe(true);
 
-    fireEvent.click(screen.getByRole("checkbox"));
+    tickAllVerifications();
     expect(evidenceButton.disabled).toBe(false);
     fireEvent.click(evidenceButton);
 
@@ -386,19 +406,206 @@ describe("LoanReviewPage", () => {
     ).toBeTruthy();
   });
 
+  it("clears the decision reason when switching applications", async () => {
+    vi.mocked(listLoans).mockResolvedValue({
+      items: [
+        { ...underReview, assessmentDecision: "manual_review" },
+        {
+          ...underReview,
+          id: "app-2",
+          applicationNo: "APP-002",
+          assessmentDecision: "manual_review",
+        },
+      ],
+      nextCursor: null,
+    });
+    render(<LoanReviewPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    fireEvent.change(screen.getByLabelText(/Lý do/), {
+      target: { value: "Lý do của hồ sơ 1" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /APP-002/ }));
+
+    expect((screen.getByLabelText(/Lý do/) as HTMLTextAreaElement).value).toBe(
+      "",
+    );
+  });
+
+  it("uses the authoritative application over the stale list row", async () => {
+    vi.mocked(listLoans).mockResolvedValue({
+      items: [{ ...underReview, status: "approved" }],
+      nextCursor: null,
+    });
+    vi.mocked(getLoan).mockResolvedValue({
+      ...underReview,
+      status: "approved",
+      offer: {
+        status: "confirmed",
+        amount: 1,
+        annualRateBps: 1,
+        termMonths: 12,
+        issuedAt: "2026-11-01T00:00:00Z",
+      },
+    });
+    render(<LoanReviewPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    expect(
+      await screen.findByRole("button", { name: "Giải ngân" }),
+    ).toBeTruthy();
+  });
+
+  it("restores saved evidence and only allows assessing after it exists", async () => {
+    vi.mocked(listLoans).mockResolvedValue({
+      items: [{ ...underReview, documents: reviewedDocuments }],
+      nextCursor: null,
+    });
+    render(<LoanReviewPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Chấm điểm" })
+        .disabled,
+    ).toBe(true);
+    await waitFor(() => expect(getLoanEvidence).toHaveBeenCalledWith("app-1"));
+
+    vi.mocked(getLoanEvidence).mockResolvedValue({
+      monthlySalaries: [10_000_000, 11_000_000, 12_000_000],
+      regionCode: "KV03",
+      existingMonthlyDebt: 0,
+      insuranceMonths: 24,
+      repaymentHistory: "on_time",
+      insuranceVerified: true,
+      historyVerified: true,
+      financialDataVerified: true,
+      documentsVerified: true,
+      sources: [],
+    });
+    fireEvent.click(screen.getByRole("button", { name: /APP-001/ }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole<HTMLButtonElement>("button", { name: "Chấm điểm" })
+          .disabled,
+      ).toBe(false),
+    );
+    expect(
+      (screen.getByLabelText(/Lương tháng 3/) as HTMLInputElement).value,
+    ).toBe("12.000.000");
+  });
+
+  it("shows the customer's replacement instead of the rejected document", async () => {
+    vi.mocked(listLoans).mockResolvedValue({
+      items: [
+        {
+          ...underReview,
+          documents: [
+            {
+              documentId: "old",
+              type: "IDENTITY_FRONT",
+              verificationStatus: "rejected",
+              rejectionReason: "Ảnh mờ",
+              uploadedAt: "2026-10-30T00:00:00Z",
+              mimeType: "image/jpeg",
+              sizeBytes: 2048,
+            },
+            {
+              documentId: "new",
+              type: "IDENTITY_FRONT",
+              verificationStatus: "pending",
+              uploadedAt: "2026-10-31T00:00:00Z",
+              mimeType: "image/jpeg",
+              sizeBytes: 2048,
+            },
+          ],
+        },
+      ],
+      nextCursor: null,
+    });
+    render(<LoanReviewPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Chứng từ/ }));
+    expect(screen.getByText("Chờ xác minh")).toBeTruthy();
+    expect(screen.queryByText(/Ảnh mờ/)).toBeNull();
+  });
+
+  it("rejects an application before assessment with a reason", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(rejectLoanReview).mockResolvedValue({
+      ...underReview,
+      status: "rejected",
+    });
+    vi.mocked(listLoans).mockResolvedValue({
+      items: [underReview],
+      nextCursor: null,
+    });
+    render(<LoanReviewPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    const reject = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Từ chối hồ sơ",
+    });
+    expect(reject.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Lý do từ chối/), {
+      target: { value: "Chứng từ giả" },
+    });
+    fireEvent.click(reject);
+    await waitFor(() =>
+      expect(rejectLoanReview).toHaveBeenCalledWith("app-1", "Chứng từ giả"),
+    );
+  });
+
+  it("reloads the queue when the status filter changes", async () => {
+    vi.mocked(listLoans).mockResolvedValue({ items: [], nextCursor: null });
+    render(<LoanReviewPage />);
+    await screen.findByText("Chưa có hồ sơ nào.");
+    fireEvent.change(screen.getByLabelText("Lọc hồ sơ"), {
+      target: { value: "rejected" },
+    });
+    await waitFor(() =>
+      expect(listLoans).toHaveBeenLastCalledWith(undefined, "rejected"),
+    );
+  });
+
+  it("says when the customer's offer has expired", async () => {
+    vi.mocked(listLoans).mockResolvedValue({
+      items: [
+        {
+          ...underReview,
+          status: "approved",
+          offer: {
+            status: "issued",
+            amount: 1,
+            annualRateBps: 1,
+            termMonths: 12,
+            issuedAt: "2020-01-01T00:00:00Z",
+            expiresAt: "2020-01-08T00:00:00Z",
+          },
+        },
+      ],
+      nextCursor: null,
+    });
+    render(<LoanReviewPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
+    expect(await screen.findByText(/Đề nghị đã hết hạn/)).toBeTruthy();
+  });
+
   it("submits a manual approval decision", async () => {
     vi.mocked(decideLoan).mockResolvedValue({
       ...underReview,
       status: "approved",
     });
     vi.mocked(listLoans).mockResolvedValue({
-      items: [{ ...underReview, assessmentDecision: "manual_review" }],
+      items: [
+        {
+          ...underReview,
+          assessedAt: "2026-11-01T00:00:00Z",
+          assessmentDecision: "manual_review",
+        },
+      ],
       nextCursor: null,
     });
 
     render(<LoanReviewPage />);
     fireEvent.click(await screen.findByRole("button", { name: /APP-001/ }));
-    fireEvent.change(screen.getByLabelText("Lý do quyết định thủ công"), {
+    fireEvent.change(screen.getByLabelText(/Lý do quyết định thủ công/), {
       target: { value: "Đã đối chiếu đủ chứng từ" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Phê duyệt thủ công" }));

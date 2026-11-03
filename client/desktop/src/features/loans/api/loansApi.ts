@@ -7,6 +7,7 @@ import type {
   LoanApplication,
   LoanOffer,
   LoanPage,
+  SavedEvidence,
   VerifiedEvidenceInput,
 } from "../model";
 
@@ -155,9 +156,13 @@ export async function downloadLoanDocument(
   return response.blob();
 }
 
-export function listLoans(cursor?: string): Promise<LoanPage<LoanApplication>> {
+export function listLoans(
+  cursor?: string,
+  status?: string,
+): Promise<LoanPage<LoanApplication>> {
   const query = new URLSearchParams({ limit: "20", all: "true" });
   if (cursor) query.set("cursor", cursor);
+  if (status) query.set("status", status);
   return request<LoanPage<LoanApplication>>(`${ROOT}?${query.toString()}`);
 }
 
@@ -188,6 +193,20 @@ export function attestLoanEvidence(
   return request<unknown>(`${PATH(id)}/evidence`, {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export function getLoanEvidence(id: string): Promise<SavedEvidence> {
+  return request<SavedEvidence>(`${PATH(id)}/evidence`);
+}
+
+export function rejectLoanReview(
+  id: string,
+  reason: string,
+): Promise<LoanApplication> {
+  return request<LoanApplication>(`${PATH(id)}/reject-review`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
   });
 }
 
