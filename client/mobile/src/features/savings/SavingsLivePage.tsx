@@ -1,4 +1,11 @@
-import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { AuthContext } from "@/features/auth/authContext";
 import { ApiError } from "@/shared/lib/http";
 import { getInfo, type AuthUser } from "@/features/auth/api/profile";
@@ -10,19 +17,37 @@ import { Logo } from "@/shared/layout/Logo";
 import { MoneyInput } from "@/features/loans/components/MoneyInput";
 import { ChoiceList, Pagination, StepForm } from "@/shared/ui";
 import {
-  createSavingsQuote, createSavingsWithdrawalQuote, describeSavingsError,
-  getSavingsContract, getSavingsHistory, getSavingsReceipt, getSavingsTerms, listSavingsContracts, listSavingsPackages,
-  mayBeCommitted, openSavingsContract, withdrawSavings,
-  type SavingsOpenResult, type SavingsPackage, type SavingsQuote,
-  type SavingsHistoryItem, type SavingsRecord, type SavingsReceipt, type SavingsTermsSnapshot, type SavingsWithdrawalQuote,
+  createSavingsQuote,
+  createSavingsWithdrawalQuote,
+  describeSavingsError,
+  getSavingsContract,
+  getSavingsHistory,
+  getSavingsReceipt,
+  getSavingsTerms,
+  listSavingsContracts,
+  listSavingsNotifications,
+  listSavingsPackages,
+  mayBeCommitted,
+  openSavingsContract,
+  withdrawSavings,
+  type SavingsOpenResult,
+  type SavingsPackage,
+  type SavingsQuote,
+  type SavingsHistoryItem,
+  type SavingsRecord,
+  type SavingsReceipt,
+  type SavingsTermsSnapshot,
+  type SavingsWithdrawalQuote,
   type SavingsWithdrawResult,
+  type SavingsNotice,
 } from "./api";
-import { clearPending, loadPending, savePending, type PendingSavingsCommand } from "./pending";
 import {
-  formatDate,
-  formatVnd,
-  parseAmount,
-} from "./utils/format";
+  clearPending,
+  loadPending,
+  savePending,
+  type PendingSavingsCommand,
+} from "./pending";
+import { formatDate, formatVnd, parseAmount } from "./utils/format";
 import type { SavingsContract, SavingsDraft, SavingsStatus } from "./model";
 import "./savings.css";
 
@@ -140,12 +165,21 @@ function SuccessMark() {
 }
 
 /** Never expose the internal account UUID as a bank account number in the UI. */
-function paymentAccountLabel(accountId: string, currentId: string, accountNo?: string): string {
-  if (accountId === currentId && accountNo) return `•••• ${accountNo.replace(/\s/g, "").slice(-4)}`;
+function paymentAccountLabel(
+  accountId: string,
+  currentId: string,
+  accountNo?: string,
+): string {
+  if (accountId === currentId && accountNo)
+    return `•••• ${accountNo.replace(/\s/g, "").slice(-4)}`;
   return "Tài khoản thanh toán đã xác thực";
 }
 
-function TermsDialog({ terms, onClose, onReviewed }: {
+function TermsDialog({
+  terms,
+  onClose,
+  onReviewed,
+}: {
   terms: SavingsTermsSnapshot;
   onClose: () => void;
   onReviewed: () => void;
@@ -157,11 +191,15 @@ function TermsDialog({ terms, onClose, onReviewed }: {
         aria-modal="true"
         aria-labelledby="savings-terms-title"
         className="savings-terms-dialog"
-        onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onClose();
+        }}
       >
         <div className="savings-terms-header">
           <h2 id="savings-terms-title">{terms.title}</h2>
-          <button type="button" aria-label="Đóng điều khoản" onClick={onClose}>×</button>
+          <button type="button" aria-label="Đóng điều khoản" onClick={onClose}>
+            ×
+          </button>
         </div>
         <div className="savings-terms-body">
           <p>{terms.introduction}</p>
@@ -173,8 +211,16 @@ function TermsDialog({ terms, onClose, onReviewed }: {
           ))}
         </div>
         <div className="savings-terms-footer">
-          <button type="button" className="savings-button" onClick={onReviewed}>Tôi đã đọc và hiểu</button>
-          <button type="button" className="savings-button savings-button-secondary" onClick={onClose}>Đóng</button>
+          <button type="button" className="savings-button" onClick={onReviewed}>
+            Tôi đã đọc và hiểu
+          </button>
+          <button
+            type="button"
+            className="savings-button savings-button-secondary"
+            onClick={onClose}
+          >
+            Đóng
+          </button>
         </div>
       </section>
     </div>
@@ -183,16 +229,33 @@ function TermsDialog({ terms, onClose, onReviewed }: {
 
 const SAVINGS_PAGE_SIZE = 5;
 
+/** Phần trăm thời gian đã qua của kỳ gửi, không phải số tiền. */
+function termProgress(item: SavingsContract, now = Date.now()): string {
+  if (item.status !== "active") return "100%";
+  const start = Date.parse(item.openedAt);
+  const span = Date.parse(item.maturityAt) - start;
+  if (!(span > 0)) return "0%";
+  return `${Math.min(100, Math.max(0, ((now - start) / span) * 100)).toFixed(0)}%`;
+}
+
 /** Convert the authoritative server record into the Stitch view model. */
 function mapSavingsRecord(record: SavingsRecord): SavingsContract {
   const rate = Number(record.annualInterestRate);
   // Preview amounts on an un-settled contract are estimates only, never payout authority.
-  const days = (Date.parse(record.maturityAt) - Date.parse(record.openedAt)) / 86_400_000;
-  const estimatedInterest = Math.round(record.principal * rate * days / 36_500);
+  const days =
+    (Date.parse(record.maturityAt) - Date.parse(record.openedAt)) / 86_400_000;
+  const estimatedInterest = Math.round(
+    (record.principal * rate * days) / 36_500,
+  );
   return {
-    id: record.savingsId, number: record.savingsNo, principal: record.principal,
-    termMonths: record.termMonths, annualRate: rate, openedAt: record.openedAt,
-    maturityAt: record.maturityAt, status: record.status,
+    id: record.savingsId,
+    number: record.savingsNo,
+    principal: record.principal,
+    termMonths: record.termMonths,
+    annualRate: rate,
+    openedAt: record.openedAt,
+    maturityAt: record.maturityAt,
+    status: record.status,
     sourceAccount: record.sourceAccountId,
     interest: record.settlement?.interestAmount ?? estimatedInterest,
     settledAt: record.settlement?.settledAt,
@@ -208,6 +271,8 @@ export default function SavingsLivePage() {
   const [screen, setScreen] = useState<Screen>("list");
   const [contracts, setContracts] = useState<SavingsContract[]>([]);
   const [packages, setPackages] = useState<SavingsPackage[]>([]);
+  const [packageId, setPackageId] = useState("");
+  const [notices, setNotices] = useState<SavingsNotice[]>([]);
   const [account, setAccount] = useState<AuthUser | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -215,18 +280,26 @@ export default function SavingsLivePage() {
   const commandInFlight = useRef(false);
   const activeContext = useRef({ token, actor, selectedId: "" });
   const commandsGeneration = useRef(0);
-  const latestWrite = useRef<{ id: string; status: SavingsStatus } | null>(null);
+  const latestWrite = useRef<{ id: string; status: SavingsStatus } | null>(
+    null,
+  );
   const [summaryStale, setSummaryStale] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingSavingsCommand | null>(() => {
-    try { return actor ? loadPending(actor) : null; } catch { return null; }
+    try {
+      return actor ? loadPending(actor) : null;
+    } catch {
+      return null;
+    }
   });
   const [storageBlocked, setStorageBlocked] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [savingsPage, setSavingsPage] = useState(1);
   const [selectedId, setSelectedId] = useState("");
-  useEffect(() => { activeContext.current = { token, actor, selectedId }; }, [token, actor, selectedId]);
+  useEffect(() => {
+    activeContext.current = { token, actor, selectedId };
+  }, [token, actor, selectedId]);
   const [amountText, setAmountText] = useState("");
   const [openStep, setOpenStep] = useState<"amount" | "term">("amount");
   // Đổi key để MoneyInput bỏ gợi ý theo số đang gõ khi khách chọn mức nhanh.
@@ -235,42 +308,68 @@ export default function SavingsLivePage() {
   const [accepted, setAccepted] = useState(false);
   const [draft, setDraft] = useState<SavingsDraft | null>(null);
   const [openQuote, setOpenQuote] = useState<SavingsQuote | null>(null);
-  const [productTerms, setProductTerms] = useState<SavingsTermsSnapshot | null>(null);
+  const [productTerms, setProductTerms] = useState<SavingsTermsSnapshot | null>(
+    null,
+  );
   const [termsVisible, setTermsVisible] = useState(false);
   const [termsReviewed, setTermsReviewed] = useState(false);
   const [history, setHistory] = useState<SavingsHistoryItem[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [withdrawQuote, setWithdrawQuote] = useState<SavingsWithdrawalQuote | null>(null);
+  const [withdrawQuote, setWithdrawQuote] =
+    useState<SavingsWithdrawalQuote | null>(null);
   const [receipt, setReceipt] = useState<SavingsReceipt | null>(null);
-  const [lastWithdrawal, setLastWithdrawal] = useState<SavingsWithdrawResult | null>(null);
+  const [lastWithdrawal, setLastWithdrawal] =
+    useState<SavingsWithdrawResult | null>(null);
   const [withdrawAccepted, setWithdrawAccepted] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const refreshContracts = useCallback(async (replace = true, cursor?: string) => {
-    if (!token || !actor) return;
-    const generation = commandsGeneration.current;
-    const page = await listSavingsContracts(token, cursor);
-    if (activeContext.current.token !== token || activeContext.current.actor !== actor) return;
-    const stale = commandsGeneration.current !== generation;
-    setContracts((current) => {
-      const incoming = (page.items ?? []).map(mapSavingsRecord);
-      if (replace) {
-        // Never erase a more recent successful write while the read model catches up.
-        if (stale) {
-          return [...current, ...incoming.filter((c) => !current.some((v) => v.id === c.id))];
+  const refreshContracts = useCallback(
+    async (replace = true, cursor?: string) => {
+      if (!token || !actor) return;
+      const generation = commandsGeneration.current;
+      const page = await listSavingsContracts(token, cursor);
+      if (
+        activeContext.current.token !== token ||
+        activeContext.current.actor !== actor
+      )
+        return;
+      const stale = commandsGeneration.current !== generation;
+      setContracts((current) => {
+        const incoming = (page.items ?? []).map(mapSavingsRecord);
+        if (replace) {
+          // Never erase a more recent successful write while the read model catches up.
+          if (stale) {
+            return [
+              ...current,
+              ...incoming.filter((c) => !current.some((v) => v.id === c.id)),
+            ];
+          }
+          return incoming;
         }
-        return incoming;
+        return [
+          ...current,
+          ...incoming.filter((c) => !current.some((v) => v.id === c.id)),
+        ];
+      });
+      if (commandsGeneration.current === generation)
+        setNextCursor(page.nextCursor);
+      if (
+        replace &&
+        !page.nextCursor &&
+        latestWrite.current &&
+        (page.items ?? []).some(
+          (item) =>
+            item.savingsId === latestWrite.current?.id &&
+            item.status === latestWrite.current.status,
+        )
+      ) {
+        setSummaryStale(false);
       }
-      return [...current, ...incoming.filter((c) => !current.some((v) => v.id === c.id))];
-    });
-    if (commandsGeneration.current === generation) setNextCursor(page.nextCursor);
-    if (replace && !page.nextCursor && latestWrite.current &&
-      (page.items ?? []).some((item) => item.savingsId === latestWrite.current?.id && item.status === latestWrite.current.status)) {
-      setSummaryStale(false);
-    }
-    if (replace) setSavingsPage(1);
-  }, [token, actor]);
+      if (replace) setSavingsPage(1);
+    },
+    [token, actor],
+  );
 
   useEffect(() => {
     if (!token || !actor) return;
@@ -289,23 +388,42 @@ export default function SavingsLivePage() {
         const latest = commandsGeneration.current === generation;
         setContracts((current) => {
           const incoming = (page.items ?? []).map(mapSavingsRecord);
-          return latest ? incoming :
-            [...current, ...incoming.filter((c) => !current.some((v) => v.id === c.id))];
+          return latest
+            ? incoming
+            : [
+                ...current,
+                ...incoming.filter((c) => !current.some((v) => v.id === c.id)),
+              ];
         });
-        if (commandsGeneration.current === generation) setNextCursor(page.nextCursor);
+        if (commandsGeneration.current === generation)
+          setNextCursor(page.nextCursor);
       }),
     ]).then((results) => {
       if (controller.signal.aborted) return;
       const failed = results.find((result) => result.status === "rejected");
-      setErrorMessage(failed?.status === "rejected" ? describeSavingsError(failed.reason) : null);
+      setErrorMessage(
+        failed?.status === "rejected"
+          ? describeSavingsError(failed.reason)
+          : null,
+      );
       setLoading(false);
     });
+    // Thông báo chỉ là tiện ích: lỗi ở đây không được che dữ liệu sổ.
+    void listSavingsNotifications(token, controller.signal)
+      .then((page) => {
+        if (!controller.signal.aborted) setNotices(page.items ?? []);
+      })
+      .catch(() => {});
     void Promise.resolve().then(() => {
       if (controller.signal.aborted) return;
-      try { setPending(loadPending(actor)); setStorageBlocked(false); }
-      catch {
+      try {
+        setPending(loadPending(actor));
+        setStorageBlocked(false);
+      } catch {
         setStorageBlocked(true);
-        setErrorMessage("Không thể kiểm tra yêu cầu giao dịch trước đó. Tạm khóa giao dịch để tránh trùng tiền.");
+        setErrorMessage(
+          "Không thể kiểm tra yêu cầu giao dịch trước đó. Tạm khóa giao dịch để tránh trùng tiền.",
+        );
       }
     });
     return () => controller.abort();
@@ -313,32 +431,56 @@ export default function SavingsLivePage() {
 
   const selected = contracts.find((c) => c.id === selectedId) ?? null;
   const summaryIncomplete = Boolean(nextCursor) || summaryStale;
-  const principalTotal = contracts.filter((c) => c.status !== "settled")
+  const principalTotal = contracts
+    .filter((c) => c.status !== "settled")
     .reduce((sum, c) => sum + c.principal, 0);
-  const projectedInterest = contracts.filter((c) => c.status !== "settled")
+  const projectedInterest = contracts
+    .filter((c) => c.status !== "settled")
     .reduce((sum, c) => sum + c.interest, 0);
   const count = (status: Filter) =>
     contracts.filter((c) => status === "all" || c.status === status).length;
-  const visible = contracts.filter((c) => filter === "all" || c.status === filter);
+  const visible = contracts.filter(
+    (c) => filter === "all" || c.status === filter,
+  );
   const amount = parseAmount(amountText);
-  const savingsPackage = packages.find((item) => item.packageId === "savings_standard");
+  const savingsPackage =
+    packages.find((item) => item.packageId === packageId) ?? packages[0];
   const terms = savingsPackage?.termOptions ?? [];
   const chosenTerm = terms.find((option) => option.termMonths === termMonths);
   // This is a visual estimate only. The final amount comes from the server quote.
-  const estimatedInterest = chosenTerm && Number.isSafeInteger(amount) && amount > 0
-    ? Math.round(amount * Number(chosenTerm.annualInterestRate) * termMonths / 1_200)
-    : null;
+  const estimatedInterest =
+    chosenTerm && Number.isSafeInteger(amount) && amount > 0
+      ? Math.round(
+          (amount * Number(chosenTerm.annualInterestRate) * termMonths) / 1_200,
+        )
+      : null;
   const minDeposit = savingsPackage?.minimumDeposit ?? 1_000_000;
   const balance = account?.amount ?? 0;
   const sourceAccountId = account?.id ?? "";
-  const sourceLabel = paymentAccountLabel(sourceAccountId, sourceAccountId, account?.accountNo);
-  const canOpen = Boolean(savingsPackage && sourceAccountId) && Number.isSafeInteger(amount) &&
-    amount >= minDeposit && amount <= balance &&
+  const sourceLabel = paymentAccountLabel(
+    sourceAccountId,
+    sourceAccountId,
+    account?.accountNo,
+  );
+  const canOpen =
+    Boolean(savingsPackage && sourceAccountId) &&
+    Number.isSafeInteger(amount) &&
+    amount >= minDeposit &&
+    amount <= balance &&
     terms.some((option) => option.termMonths === termMonths) &&
-    !busy && !pending && !storageBlocked;
-  const amountValid = Boolean(savingsPackage && sourceAccountId) && Number.isSafeInteger(amount) &&
-    amount >= minDeposit && amount <= balance && !pending && !storageBlocked;
-  const quickAmounts = QUICK_AMOUNTS.filter((value) => value >= minDeposit && value <= balance);
+    !busy &&
+    !pending &&
+    !storageBlocked;
+  const amountValid =
+    Boolean(savingsPackage && sourceAccountId) &&
+    Number.isSafeInteger(amount) &&
+    amount >= minDeposit &&
+    amount <= balance &&
+    !pending &&
+    !storageBlocked;
+  const quickAmounts = QUICK_AMOUNTS.filter(
+    (value) => value >= minDeposit && value <= balance,
+  );
 
   const showContract = async (id: string) => {
     if (!token || busy) return;
@@ -346,19 +488,35 @@ export default function SavingsLivePage() {
     setErrorMessage(null);
     try {
       const detail = await getSavingsContract(token, id);
-      if (activeContext.current.token !== token || activeContext.current.actor !== actor) return;
-      setContracts((current) => current.map((item) => item.id === id ? mapSavingsRecord(detail) : item));
+      if (
+        activeContext.current.token !== token ||
+        activeContext.current.actor !== actor
+      )
+        return;
+      setContracts((current) =>
+        current.map((item) =>
+          item.id === id ? mapSavingsRecord(detail) : item,
+        ),
+      );
       setSelectedId(id);
       setReceipt(null);
       setHistoryLoading(false);
       setHistory(null);
       setHistoryError(null);
       setScreen("detail");
-    } catch (error) { setErrorMessage(describeSavingsError(error)); }
-    finally { setBusy(false); }
+    } catch (error) {
+      setErrorMessage(describeSavingsError(error));
+    } finally {
+      setBusy(false);
+    }
   };
   const startOpen = () => {
-    if (pending || storageBlocked) { setErrorMessage("Không thể tạo yêu cầu mới khi còn yêu cầu giao dịch chưa xác định hoặc lưu trữ không khả dụng."); return; }
+    if (pending || storageBlocked) {
+      setErrorMessage(
+        "Không thể tạo yêu cầu mới khi còn yêu cầu giao dịch chưa xác định hoặc lưu trữ không khả dụng.",
+      );
+      return;
+    }
     setAccepted(false);
     setProductTerms(null);
     setTermsVisible(false);
@@ -377,17 +535,21 @@ export default function SavingsLivePage() {
     try {
       // Load the server-owned product conditions before starting the 5-minute quote TTL.
       const conditions = await getSavingsTerms(token);
-      if (!conditions.version || !conditions.sections?.length) throw new Error("Điều kiện tiết kiệm chưa sẵn sàng.");
+      if (!conditions.version || !conditions.sections?.length)
+        throw new Error("Điều kiện tiết kiệm chưa sẵn sàng.");
       const quote = await createSavingsQuote(token, {
-        packageId: savingsPackage.packageId, sourceAccountId,
-        amount, termMonths: months,
+        packageId: savingsPackage.packageId,
+        sourceAccountId,
+        amount,
+        termMonths: months,
       });
       setProductTerms(conditions);
       setTermsVisible(false);
       setTermsReviewed(false);
       setOpenQuote(quote);
       setDraft({
-        amount: quote.principal, termMonths: quote.termMonths,
+        amount: quote.principal,
+        termMonths: quote.termMonths,
         annualRate: Number(quote.annualInterestRate),
         openedAt: new Date().toISOString(),
         maturityAt: quote.expectedMaturityDate,
@@ -395,8 +557,11 @@ export default function SavingsLivePage() {
       });
       setAccepted(false);
       setScreen("open-preview");
-    } catch (error) { setFormError(describeSavingsError(error)); }
-    finally { setBusy(false); }
+    } catch (error) {
+      setFormError(describeSavingsError(error));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const keepPending = (operation: PendingSavingsCommand): boolean => {
@@ -406,7 +571,9 @@ export default function SavingsLivePage() {
       return true;
     } catch {
       setStorageBlocked(true);
-      setErrorMessage("Không thể lưu an toàn yêu cầu giao dịch. Không thực hiện chuyển tiền.");
+      setErrorMessage(
+        "Không thể lưu an toàn yêu cầu giao dịch. Không thực hiện chuyển tiền.",
+      );
       return false;
     }
   };
@@ -418,31 +585,49 @@ export default function SavingsLivePage() {
     } catch {
       // Success is authoritative, but a stale pending key must not enable another write.
       setStorageBlocked(true);
-      setErrorMessage("Giao dịch đã hoàn thành. Bộ nhớ thiết bị chưa thể đồng bộ; không tạo yêu cầu mới.");
+      setErrorMessage(
+        "Giao dịch đã hoàn thành. Bộ nhớ thiết bị chưa thể đồng bộ; không tạo yêu cầu mới.",
+      );
     }
   };
   const applyOpened = (result: SavingsOpenResult) => {
     const rate = Number(result.annualInterestRate);
-    const days = (Date.parse(result.maturityAt) - Date.parse(result.openedAt)) / 86_400_000;
-    const estimated = Math.round(result.principal * rate * days / 36_500);
+    const days =
+      (Date.parse(result.maturityAt) - Date.parse(result.openedAt)) /
+      86_400_000;
+    const estimated = Math.round((result.principal * rate * days) / 36_500);
     const item: SavingsContract = {
-      id: result.savingsId, number: result.savingsNo,
-      principal: result.principal, termMonths: result.termMonths,
-      annualRate: rate, openedAt: result.openedAt, maturityAt: result.maturityAt,
-      sourceAccount: result.sourceAccountId, status: result.status,
+      id: result.savingsId,
+      number: result.savingsNo,
+      principal: result.principal,
+      termMonths: result.termMonths,
+      annualRate: rate,
+      openedAt: result.openedAt,
+      maturityAt: result.maturityAt,
+      sourceAccount: result.sourceAccountId,
+      status: result.status,
       interest: estimated,
     };
     commandsGeneration.current += 1;
     latestWrite.current = { id: result.savingsId, status: result.status };
     setSummaryStale(true);
     setNextCursor(null); // Old cursors are invalid after a bank write.
-    setContracts((current) => [item, ...current.filter((c) => c.id !== item.id)]);
+    setContracts((current) => [
+      item,
+      ...current.filter((c) => c.id !== item.id),
+    ]);
     setSelectedId(item.id);
     clearConfirmed();
     setScreen("open-success");
-    void getInfo(token).then((profile) => {
-      if (activeContext.current.token === token && activeContext.current.actor === actor) setAccount(profile);
-    }).catch(() => {});
+    void getInfo(token)
+      .then((profile) => {
+        if (
+          activeContext.current.token === token &&
+          activeContext.current.actor === actor
+        )
+          setAccount(profile);
+      })
+      .catch(() => {});
   };
   const applyWithdrawn = (result: SavingsWithdrawResult) => {
     commandsGeneration.current += 1;
@@ -450,16 +635,30 @@ export default function SavingsLivePage() {
     setSummaryStale(true);
     setNextCursor(null);
     setLastWithdrawal(result);
-    setContracts((current) => current.map((item) => item.id === result.savingsId ? {
-      ...item, status: "settled" as const, interest: result.interestAmount,
-      settledAt: result.settledAt,
-    } : item));
+    setContracts((current) =>
+      current.map((item) =>
+        item.id === result.savingsId
+          ? {
+              ...item,
+              status: "settled" as const,
+              interest: result.interestAmount,
+              settledAt: result.settledAt,
+            }
+          : item,
+      ),
+    );
     setSelectedId(result.savingsId);
     clearConfirmed();
     setScreen("withdraw-success");
-    void getInfo(token).then((profile) => {
-      if (activeContext.current.token === token && activeContext.current.actor === actor) setAccount(profile);
-    }).catch(() => {});
+    void getInfo(token)
+      .then((profile) => {
+        if (
+          activeContext.current.token === token &&
+          activeContext.current.actor === actor
+        )
+          setAccount(profile);
+      })
+      .catch(() => {});
   };
   const runOperation = async (operation: PendingSavingsCommand) => {
     if (commandInFlight.current || !token) return;
@@ -473,13 +672,24 @@ export default function SavingsLivePage() {
     }
     try {
       if (operation.kind === "open") {
-        const result = await openSavingsContract(token, {
-          quoteId: operation.quoteId, sourceAccountId: operation.sourceAccountId,
-          acceptedTermsVersion: operation.acceptedTermsVersion, confirm: true,
-        }, operation.key);
+        const result = await openSavingsContract(
+          token,
+          {
+            quoteId: operation.quoteId,
+            sourceAccountId: operation.sourceAccountId,
+            acceptedTermsVersion: operation.acceptedTermsVersion,
+            confirm: true,
+          },
+          operation.key,
+        );
         applyOpened(result);
       } else {
-        const result = await withdrawSavings(token, operation.savingsId, operation.quoteId, operation.key);
+        const result = await withdrawSavings(
+          token,
+          operation.savingsId,
+          operation.quoteId,
+          operation.key,
+        );
         applyWithdrawn(result);
       }
     } catch (error) {
@@ -495,17 +705,37 @@ export default function SavingsLivePage() {
         try {
           clearPending(actor);
           setPending(null);
-        } catch { setStorageBlocked(true); }
+        } catch {
+          setStorageBlocked(true);
+        }
       }
-    } finally { setBusy(false); commandInFlight.current = false; }
+    } finally {
+      setBusy(false);
+      commandInFlight.current = false;
+    }
   };
   const confirmOpen = () => {
-    if (!termsReviewed || !productTerms || !accepted || !openQuote || !sourceAccountId || pending || storageBlocked) return;
-    void runOperation({ kind: "open", key: crypto.randomUUID(), quoteId: openQuote.quoteId,
-      sourceAccountId, acceptedTermsVersion: productTerms.version });
+    if (
+      !termsReviewed ||
+      !productTerms ||
+      !accepted ||
+      !openQuote ||
+      !sourceAccountId ||
+      pending ||
+      storageBlocked
+    )
+      return;
+    void runOperation({
+      kind: "open",
+      key: crypto.randomUUID(),
+      quoteId: openQuote.quoteId,
+      sourceAccountId,
+      acceptedTermsVersion: productTerms.version,
+    });
   };
   const beginWithdraw = async () => {
-    if (!selected || selected.status !== "matured" || pending || busy || !token) return;
+    if (!selected || selected.status !== "matured" || pending || busy || !token)
+      return;
     setBusy(true);
     setErrorMessage(null);
     try {
@@ -514,12 +744,28 @@ export default function SavingsLivePage() {
       setWithdrawQuote(quote);
       setWithdrawAccepted(false);
       setScreen("withdraw-preview");
-    } catch (error) { setErrorMessage(describeSavingsError(error)); }
-    finally { setBusy(false); }
+    } catch (error) {
+      setErrorMessage(describeSavingsError(error));
+    } finally {
+      setBusy(false);
+    }
   };
   const confirmWithdraw = () => {
-    if (!withdrawAccepted || !selected || selected.status !== "matured" || !withdrawQuote || pending || storageBlocked) return;
-    void runOperation({ kind: "withdraw", key: crypto.randomUUID(), quoteId: withdrawQuote.quoteId, savingsId: selected.id });
+    if (
+      !withdrawAccepted ||
+      !selected ||
+      selected.status !== "matured" ||
+      !withdrawQuote ||
+      pending ||
+      storageBlocked
+    )
+      return;
+    void runOperation({
+      kind: "withdraw",
+      key: crypto.randomUUID(),
+      quoteId: withdrawQuote.quoteId,
+      savingsId: selected.id,
+    });
   };
   const loadHistory = async () => {
     if (!selected || !token || historyLoading) return;
@@ -529,35 +775,79 @@ export default function SavingsLivePage() {
     setHistoryError(null);
     try {
       const response = await getSavingsHistory(token, requestedId);
-      if (activeContext.current.token === token && activeContext.current.actor === requestedActor &&
-        activeContext.current.selectedId === requestedId) setHistory(response.items ?? []);
+      if (
+        activeContext.current.token === token &&
+        activeContext.current.actor === requestedActor &&
+        activeContext.current.selectedId === requestedId
+      )
+        setHistory(response.items ?? []);
     } catch (error) {
-      if (activeContext.current.selectedId === requestedId) setHistoryError(describeSavingsError(error));
-    } finally { if (activeContext.current.selectedId === requestedId) setHistoryLoading(false); }
+      if (activeContext.current.selectedId === requestedId)
+        setHistoryError(describeSavingsError(error));
+    } finally {
+      if (activeContext.current.selectedId === requestedId)
+        setHistoryLoading(false);
+    }
   };
   const showReceipt = async () => {
-    const id = lastWithdrawal?.savingsId ?? selected?.id;
+    const id = selected?.id ?? lastWithdrawal?.savingsId;
     if (!id || !token || busy) return;
     setBusy(true);
     setErrorMessage(null);
     try {
       const [data, detail] = await Promise.all([
-        getSavingsReceipt(token, id), getSavingsContract(token, id),
+        getSavingsReceipt(token, id),
+        getSavingsContract(token, id),
       ]);
-      setContracts((current) => [mapSavingsRecord(detail), ...current.filter((item) => item.id !== id)]);
+      setContracts((current) => [
+        mapSavingsRecord(detail),
+        ...current.filter((item) => item.id !== id),
+      ]);
       setSelectedId(id);
       setReceipt(data);
       setScreen("detail");
-    } catch (error) { setErrorMessage(describeSavingsError(error)); }
-    finally { setBusy(false); }
+    } catch (error) {
+      setErrorMessage(describeSavingsError(error));
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <div className="savings-shell" aria-busy={busy}>
-      {(errorMessage || !auth || !token) && <div className="savings-live-banner" role="alert">{errorMessage || "Vui lòng đăng nhập để xem sổ tiết kiệm thật."}</div>}
-      {busy && <div className="savings-live-banner" role="status">Đang xử lý yêu cầu với ngân hàng…</div>}
-      {pending && <div className="savings-live-banner" role="status">Yêu cầu giao dịch gần nhất đang được xác minh. Vui lòng không tạo giao dịch mới. <button type="button" disabled={busy} onClick={() => void runOperation(pending)}>Kiểm tra lại yêu cầu</button></div>}
-      {storageBlocked && <div className="savings-live-banner" role="alert">Lưu trữ giao dịch không khả dụng. Không thể thực hiện giao dịch mới trên thiết bị này.</div>}
-      {loading && <div className="savings-live-banner" role="status">Đang tải thông tin tiết kiệm…</div>}
+      {(errorMessage || !auth || !token) && (
+        <div className="savings-live-banner" role="alert">
+          {errorMessage || "Vui lòng đăng nhập để xem sổ tiết kiệm thật."}
+        </div>
+      )}
+      {busy && (
+        <div className="savings-live-banner" role="status">
+          Đang xử lý yêu cầu với ngân hàng…
+        </div>
+      )}
+      {pending && (
+        <div className="savings-live-banner" role="status">
+          Yêu cầu giao dịch gần nhất đang được xác minh. Vui lòng không tạo giao
+          dịch mới.{" "}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void runOperation(pending)}
+          >
+            Kiểm tra lại yêu cầu
+          </button>
+        </div>
+      )}
+      {storageBlocked && (
+        <div className="savings-live-banner" role="alert">
+          Lưu trữ giao dịch không khả dụng. Không thể thực hiện giao dịch mới
+          trên thiết bị này.
+        </div>
+      )}
+      {loading && (
+        <div className="savings-live-banner" role="status">
+          Đang tải thông tin tiết kiệm…
+        </div>
+      )}
       {screen === "list" ? (
         <>
           <Head
@@ -565,7 +855,7 @@ export default function SavingsLivePage() {
             subtitle="Tích lũy hôm nay, vững vàng tương lai"
             onBack={() => navigate(routes.dashboard)}
           />
-          <main className="savings-content">
+          <main className="savings-content savings-content-with-nav">
             <section className="savings-hero">
               <div className="savings-hero-top">
                 <span className="savings-hero-eyebrow">
@@ -577,26 +867,80 @@ export default function SavingsLivePage() {
                 {summaryIncomplete ? "—" : formatVnd(principalTotal)}
               </strong>
               <p>
-                {summaryIncomplete ? "Danh sách cần đồng bộ để tổng hợp đầy đủ" :
-                  `${count("active") + count("matured") + count("locked")} sổ tiết kiệm chưa tất toán`}
+                {summaryIncomplete
+                  ? "Danh sách cần đồng bộ để tổng hợp đầy đủ"
+                  : `${count("active") + count("matured") + count("locked")} sổ tiết kiệm chưa tất toán`}
               </p>
               <div className="savings-hero-metrics">
                 <span>
-                  Đang gửi <b>{summaryIncomplete ? "—" : `${count("active")} sổ`}</b>
+                  Đang gửi{" "}
+                  <b>{summaryIncomplete ? "—" : `${count("active")} sổ`}</b>
                 </span>
                 <span>
-                  Lãi ước tính (tham khảo) <b>{summaryIncomplete ? "—" : `+${formatVnd(projectedInterest)}`}</b>
+                  Lãi ước tính (tham khảo){" "}
+                  <b>
+                    {summaryIncomplete
+                      ? "—"
+                      : `+${formatVnd(projectedInterest)}`}
+                  </b>
                 </span>
               </div>
             </section>
-            <Button onClick={startOpen} disabled={loading || busy || !savingsPackage || !account || !!pending}>&nbsp; Gửi tiết kiệm mới</Button>
-            <Button secondary disabled={busy || loading} onClick={() => { setBusy(true); void refreshContracts().catch((error: unknown) => setErrorMessage(describeSavingsError(error))).finally(() => setBusy(false)); }}>Làm mới danh sách sổ</Button>
+            {!loading && !errorMessage && !savingsPackage && (
+              <div className="savings-live-banner" role="status">
+                Sản phẩm đang tạm ngừng mở sổ mới. Sổ đang có vẫn hoạt động bình
+                thường.
+              </div>
+            )}
+            <Button
+              onClick={startOpen}
+              disabled={
+                loading || busy || !savingsPackage || !account || !!pending
+              }
+            >
+              &nbsp; Gửi tiết kiệm mới
+            </Button>
+            <Button
+              secondary
+              disabled={busy || loading}
+              onClick={() => {
+                setBusy(true);
+                void refreshContracts()
+                  .catch((error: unknown) =>
+                    setErrorMessage(describeSavingsError(error)),
+                  )
+                  .finally(() => setBusy(false));
+              }}
+            >
+              Làm mới danh sách sổ
+            </Button>
+            {notices
+              .filter(
+                (notice) =>
+                  notice.canWithdraw &&
+                  contracts.find((c) => c.id === notice.savingsId)?.status !==
+                    "settled",
+              )
+              .map((notice) => (
+                <button
+                  type="button"
+                  key={notice.id}
+                  className="savings-live-banner"
+                  onClick={() => void showContract(notice.savingsId)}
+                >
+                  Sổ #{notice.savingsNo} đã đến hạn từ{" "}
+                  {formatDate(notice.maturityAt)}. Bấm để rút gốc và lãi.
+                </button>
+              ))}
             <div className="savings-section-title">
               <h2>Sổ tiết kiệm của bạn</h2>
-              <span>{contracts.length} hợp đồng {nextCursor ? "(đã tải, còn trang sau)" : ""}</span>
+              <span>
+                {contracts.length} hợp đồng{" "}
+                {nextCursor ? "(đã tải, còn trang sau)" : ""}
+              </span>
             </div>
             <div className="savings-filters" aria-label="Lọc sổ tiết kiệm">
-              {(["all", "active", "matured", "locked", "settled"] as const).map((key) => (
+              {(["all", "active", "matured", "settled"] as const).map((key) => (
                 <button
                   key={key}
                   type="button"
@@ -650,7 +994,7 @@ export default function SavingsLivePage() {
                     <div className="savings-progress">
                       <span
                         style={{
-                          width: item.status === "active" ? "35%" : "100%",
+                          width: termProgress(item),
                         }}
                       />
                     </div>
@@ -671,7 +1015,22 @@ export default function SavingsLivePage() {
                   </button>
                 ))}
             </div>
-            {nextCursor && <Button secondary disabled={busy} onClick={() => { setBusy(true); void refreshContracts(false, nextCursor).catch((error: unknown) => setErrorMessage(describeSavingsError(error))).finally(() => setBusy(false)); }}>Tải thêm sổ tiết kiệm</Button>}
+            {nextCursor && (
+              <Button
+                secondary
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true);
+                  void refreshContracts(false, nextCursor)
+                    .catch((error: unknown) =>
+                      setErrorMessage(describeSavingsError(error)),
+                    )
+                    .finally(() => setBusy(false));
+                }}
+              >
+                Tải thêm sổ tiết kiệm
+              </Button>
+            )}
             <Pagination
               page={savingsPage}
               pageCount={Math.ceil(visible.length / SAVINGS_PAGE_SIZE)}
@@ -684,6 +1043,7 @@ export default function SavingsLivePage() {
             onQrScan={() => navigate(routes.qrScan)}
             onChange={(id) => {
               if (id === "home") navigate(routes.dashboard);
+              if (id === "card") navigate(routes.cards);
               if (id === "profile" && auth) setProfileOpen(true);
             }}
           />
@@ -708,8 +1068,16 @@ export default function SavingsLivePage() {
           stepId={openStep}
           stepNumber={openStep === "amount" ? 1 : 2}
           stepCount={3}
-          heading={openStep === "amount" ? "Bạn muốn gửi bao nhiêu?" : "Bạn muốn gửi trong bao lâu?"}
-          hint={openStep === "amount" ? `Tối thiểu ${formatVnd(minDeposit)}` : "Lãi suất cố định trong suốt kỳ hạn."}
+          heading={
+            openStep === "amount"
+              ? "Bạn muốn gửi bao nhiêu?"
+              : "Bạn muốn gửi trong bao lâu?"
+          }
+          hint={
+            openStep === "amount"
+              ? `Tối thiểu ${formatVnd(minDeposit)}`
+              : "Lãi suất cố định trong suốt kỳ hạn."
+          }
           canContinue={openStep === "amount" ? amountValid : canOpen}
           busy={busy}
           onBack={() => {
@@ -725,6 +1093,22 @@ export default function SavingsLivePage() {
         >
           {openStep === "amount" && (
             <>
+              {packages.length > 1 && (
+                <ChoiceList
+                  label="Gói tiết kiệm"
+                  value={savingsPackage?.packageId ?? ""}
+                  options={packages.map((item) => ({
+                    value: item.packageId,
+                    label: item.name,
+                    description: `Từ ${formatVnd(item.minimumDeposit)}`,
+                  }))}
+                  onChoose={(value) => {
+                    setPackageId(value);
+                    setFormError(null);
+                  }}
+                  onConfirm={() => undefined}
+                />
+              )}
               <MoneyInput
                 key={quickPicks}
                 label="Số tiền gửi"
@@ -732,14 +1116,20 @@ export default function SavingsLivePage() {
                 value={Number.isFinite(amount) ? amount : 0}
                 suggestMin={minDeposit}
                 suggestMax={balance}
-                error={amount > balance ? "Số tiền vượt số dư khả dụng." : undefined}
+                error={
+                  amount > balance ? "Số tiền vượt số dư khả dụng." : undefined
+                }
                 onChange={(value) => {
                   setAmountText(value > 0 ? String(value) : "");
                   setFormError(null);
                 }}
               />
               {quickAmounts.length > 0 && (
-                <div className="savings-amount-chips" role="group" aria-label="Chọn nhanh số tiền">
+                <div
+                  className="savings-amount-chips"
+                  role="group"
+                  aria-label="Chọn nhanh số tiền"
+                >
                   {quickAmounts.map((value) => (
                     <button
                       type="button"
@@ -780,17 +1170,38 @@ export default function SavingsLivePage() {
                   if (!busy) void previewOpen(termMonths);
                 }}
               />
-              {terms.length === 0 && <p role="status" className="savings-hint">Chưa có kỳ hạn gửi khả dụng.</p>}
+              {terms.length === 0 && (
+                <p role="status" className="savings-hint">
+                  Chưa có kỳ hạn gửi khả dụng.
+                </p>
+              )}
               <Section className="savings-summary">
                 <h3>Ước tính lợi nhuận</h3>
                 <Line label="Tiền gốc" value={formatVnd(amount)} />
-                <Line label="Lãi suất năm" value={chosenTerm ? `${chosenTerm.annualInterestRate}%` : "—"} />
-                <Line label="Tiền lãi dự kiến" value={estimatedInterest === null ? "—" : formatVnd(estimatedInterest)} />
-                <p className="savings-open-estimate-note">Số tiền tham khảo. Lãi thực tế được xác định tại bước xác nhận.</p>
+                <Line
+                  label="Lãi suất năm"
+                  value={chosenTerm ? `${chosenTerm.annualInterestRate}%` : "—"}
+                />
+                <Line
+                  label="Tiền lãi dự kiến"
+                  value={
+                    estimatedInterest === null
+                      ? "—"
+                      : formatVnd(estimatedInterest)
+                  }
+                />
+                <p className="savings-open-estimate-note">
+                  Số tiền tham khảo. Lãi thực tế được xác định tại bước xác
+                  nhận.
+                </p>
               </Section>
             </>
           )}
-          {formError && <p role="alert" className="savings-error">{formError}</p>}
+          {formError && (
+            <p role="alert" className="savings-error">
+              {formError}
+            </p>
+          )}
         </StepForm>
       )}
 
@@ -832,21 +1243,38 @@ export default function SavingsLivePage() {
             <Section className="savings-info">
               <h3>Lưu ý quan trọng</h3>
               <p>
-                Tiền lãi hiển thị là số tiền dự kiến theo kỳ hạn đã chọn.
-                Sổ được tất toán toàn bộ từ ngày đáo hạn; không rút trước hạn hoặc rút một phần. Thông tin dự tính có hiệu lực trong 5 phút.
+                Tiền lãi hiển thị là số tiền dự kiến theo kỳ hạn đã chọn. Sổ
+                được tất toán toàn bộ từ ngày đáo hạn; không rút trước hạn hoặc
+                rút một phần. Thông tin dự tính có hiệu lực trong 5 phút.
               </p>
             </Section>
             <Section className="savings-info">
               <h3>Phiếu đăng ký và điều kiện sản phẩm</h3>
-              <Line label="Chủ tài khoản" value={account?.fullName || account?.username || "Đã xác thực"} />
+              <Line
+                label="Chủ tài khoản"
+                value={account?.fullName || account?.username || "Đã xác thực"}
+              />
               <Line label="Tài khoản trích tiền" value={sourceLabel} />
               <Line label="Số tiền đăng ký" value={formatVnd(draft.amount)} />
-              <Line label="Kỳ hạn và lãi suất" value={`${draft.termMonths} tháng · ${draft.annualRate}%/năm`} />
-              <p>Vui lòng kiểm tra thông tin đăng ký. Hợp đồng tiết kiệm được ghi nhận khi giao dịch mở sổ hoàn tất.</p>
-              <button type="button" className="savings-terms-link" disabled={!productTerms} onClick={() => setTermsVisible(true)}>
+              <Line
+                label="Kỳ hạn và lãi suất"
+                value={`${draft.termMonths} tháng · ${draft.annualRate}%/năm`}
+              />
+              <p>
+                Vui lòng kiểm tra thông tin đăng ký. Hợp đồng tiết kiệm được ghi
+                nhận khi giao dịch mở sổ hoàn tất.
+              </p>
+              <button
+                type="button"
+                className="savings-terms-link"
+                disabled={!productTerms}
+                onClick={() => setTermsVisible(true)}
+              >
                 Xem phiếu đăng ký & điều khoản tiết kiệm
               </button>
-              {termsReviewed && <p role="status">Đã đọc điều kiện gửi tiết kiệm.</p>}
+              {termsReviewed && (
+                <p role="status">Đã đọc điều kiện gửi tiết kiệm.</p>
+              )}
             </Section>
             <label className="savings-checkbox">
               <input
@@ -855,17 +1283,31 @@ export default function SavingsLivePage() {
                 disabled={!termsReviewed || !productTerms}
                 onChange={(e) => setAccepted(e.target.checked)}
               />{" "}
-              Tôi đã xem và đồng ý với điều kiện sản phẩm và thông tin gửi tiết kiệm ở trên.
+              Tôi đã xem và đồng ý với điều kiện sản phẩm và thông tin gửi tiết
+              kiệm ở trên.
             </label>
-            <Button onClick={confirmOpen} disabled={!accepted || !termsReviewed || !productTerms || busy || !!pending}>
+            <Button
+              onClick={confirmOpen}
+              disabled={
+                !accepted ||
+                !termsReviewed ||
+                !productTerms ||
+                busy ||
+                !!pending
+              }
+            >
               Xác nhận gửi {formatVnd(draft.amount)}
             </Button>
           </main>
           {termsVisible && productTerms && (
-            <TermsDialog terms={productTerms} onClose={() => setTermsVisible(false)} onReviewed={() => {
-              setTermsReviewed(true);
-              setTermsVisible(false);
-            }} />
+            <TermsDialog
+              terms={productTerms}
+              onClose={() => setTermsVisible(false)}
+              onReviewed={() => {
+                setTermsReviewed(true);
+                setTermsVisible(false);
+              }}
+            />
           )}
         </>
       )}
@@ -880,7 +1322,8 @@ export default function SavingsLivePage() {
             <SuccessMark />
             <h2 className="savings-success-title">Gửi tiết kiệm thành công!</h2>
             <p className="savings-center savings-muted">
-              Sổ tiết kiệm đã được mở thành công. Thông tin hợp đồng được cập nhật trong danh sách sổ của bạn.
+              Sổ tiết kiệm đã được mở thành công. Thông tin hợp đồng được cập
+              nhật trong danh sách sổ của bạn.
             </p>
             <section className="savings-amount-hero">
               <span>Số tiền gửi</span>
@@ -939,7 +1382,7 @@ export default function SavingsLivePage() {
               <div className="savings-progress">
                 <span
                   style={{
-                    width: selected.status === "active" ? "35%" : "100%",
+                    width: termProgress(selected),
                   }}
                 />
               </div>
@@ -950,12 +1393,17 @@ export default function SavingsLivePage() {
                   ? "Sổ đang trong kỳ hạn gửi."
                   : selected.status === "matured"
                     ? "Sổ đã đến hạn, có thể xem trước tất toán."
-                    : selected.status === "locked" ? "Sổ hiện đang tạm khóa." : "Sổ đã tất toán."}
+                    : selected.status === "locked"
+                      ? "Sổ hiện đang tạm khóa."
+                      : "Sổ đã tất toán."}
               </p>
             </Section>
             <Section>
               <h3>Bảng chi tiết thanh toán</h3>
-              <p className="savings-hint">Tiền lãi dự kiến theo thông tin sổ; số tiền thực nhận được xác định khi tất toán.</p>
+              <p className="savings-hint">
+                Tiền lãi dự kiến theo thông tin sổ; số tiền thực nhận được xác
+                định khi tất toán.
+              </p>
               <Line
                 label="Tổng gốc ban đầu"
                 value={formatVnd(selected.principal)}
@@ -969,36 +1417,90 @@ export default function SavingsLivePage() {
                 strong
                 value={formatVnd(selected.principal + selected.interest)}
               />
-              <Line label="Tài khoản nhận" value={paymentAccountLabel(selected.sourceAccount, sourceAccountId, account?.accountNo)} />
-              {receipt && <>
-                <Line label="Mã giao dịch tất toán" value={receipt.settlement.transactionId} />
-                <Line label="Tổng tiền biên nhận" value={formatVnd(receipt.settlement.totalAmount)} />
-              </>}
+              <Line
+                label="Tài khoản nhận"
+                value={paymentAccountLabel(
+                  selected.sourceAccount,
+                  sourceAccountId,
+                  account?.accountNo,
+                )}
+              />
+              {receipt && (
+                <>
+                  <Line
+                    label="Mã giao dịch tất toán"
+                    value={receipt.settlement.transactionId}
+                  />
+                  <Line
+                    label="Tổng tiền biên nhận"
+                    value={formatVnd(receipt.settlement.totalAmount)}
+                  />
+                </>
+              )}
             </Section>
             <Section>
               <h3>Thông tin hợp đồng tiết kiệm</h3>
               <Line label="Mã sổ / hợp đồng" value={selected.number} />
               <Line label="Số tiền gửi" value={formatVnd(selected.principal)} />
               <Line label="Kỳ hạn" value={`${selected.termMonths} tháng`} />
-              <Line label="Lãi suất tại ngày mở" value={`${selected.annualRate}%/năm`} />
-              <Line label="Ngày hiệu lực" value={formatDate(selected.openedAt)} />
-              <Line label="Ngày đáo hạn" value={formatDate(selected.maturityAt)} />
-              <Line label="Tài khoản trích tiền" value={paymentAccountLabel(selected.sourceAccount, sourceAccountId, account?.accountNo)} />
+              <Line
+                label="Lãi suất tại ngày mở"
+                value={`${selected.annualRate}%/năm`}
+              />
+              <Line
+                label="Ngày hiệu lực"
+                value={formatDate(selected.openedAt)}
+              />
+              <Line
+                label="Ngày đáo hạn"
+                value={formatDate(selected.maturityAt)}
+              />
+              <Line
+                label="Tài khoản trích tiền"
+                value={paymentAccountLabel(
+                  selected.sourceAccount,
+                  sourceAccountId,
+                  account?.accountNo,
+                )}
+              />
             </Section>
             <Section>
               <h3>Lịch sử giao dịch của sổ</h3>
-              <Button secondary disabled={historyLoading} onClick={() => void loadHistory()}>
-                {historyLoading ? "Đang tải lịch sử…" : history ? "Tải lại lịch sử" : "Xem lịch sử giao dịch"}
+              <Button
+                secondary
+                disabled={historyLoading}
+                onClick={() => void loadHistory()}
+              >
+                {historyLoading
+                  ? "Đang tải lịch sử…"
+                  : history
+                    ? "Tải lại lịch sử"
+                    : "Xem lịch sử giao dịch"}
               </Button>
-              {historyError && <p className="savings-error" role="alert">{historyError}</p>}
-              {history && history.length === 0 && <p className="savings-muted">Chưa có lịch sử giao dịch để hiển thị. Vui lòng thử tải lại.</p>}
+              {historyError && (
+                <p className="savings-error" role="alert">
+                  {historyError}
+                </p>
+              )}
+              {history && history.length === 0 && (
+                <p className="savings-muted">
+                  Chưa có lịch sử giao dịch để hiển thị. Vui lòng thử tải lại.
+                </p>
+              )}
               {history?.map((entry) => (
                 <div key={entry.transactionId} className="savings-history-row">
                   <div>
-                    <strong>{entry.direction.toLowerCase() === "debit" ? "Trích tiền mở sổ" : "Hoàn gốc và lãi"}</strong>
+                    <strong>
+                      {entry.direction.toLowerCase() === "debit"
+                        ? "Trích tiền mở sổ"
+                        : "Hoàn gốc và lãi"}
+                    </strong>
                     <small>{formatDate(entry.createdAt)}</small>
                   </div>
-                  <strong>{entry.direction.toLowerCase() === "debit" ? "−" : "+"}{formatVnd(entry.amount)}</strong>
+                  <strong>
+                    {entry.direction.toLowerCase() === "debit" ? "−" : "+"}
+                    {formatVnd(entry.amount)}
+                  </strong>
                 </div>
               ))}
             </Section>
@@ -1010,7 +1512,9 @@ export default function SavingsLivePage() {
               </p>
             </Section>
             {selected.status === "matured" ? (
-              <Button disabled={busy || !!pending} onClick={() => void beginWithdraw()}
+              <Button
+                disabled={busy || !!pending}
+                onClick={() => void beginWithdraw()}
               >
                 Rút tiền tiết kiệm
               </Button>
@@ -1019,7 +1523,18 @@ export default function SavingsLivePage() {
                 {" "}
                 {selected.status === "settled"
                   ? "Đã tất toán"
-                  : selected.status === "locked" ? "Sổ đang tạm khóa" : "Chưa đến ngày đáo hạn"}{" "}
+                  : selected.status === "locked"
+                    ? "Sổ đang tạm khóa"
+                    : "Chưa đến ngày đáo hạn"}{" "}
+              </Button>
+            )}
+            {selected.status === "settled" && !receipt && (
+              <Button
+                secondary
+                disabled={busy}
+                onClick={() => void showReceipt()}
+              >
+                Xem biên nhận
               </Button>
             )}
             <Button secondary onClick={() => setScreen("list")}>
@@ -1065,13 +1580,21 @@ export default function SavingsLivePage() {
               <Section className="savings-account">
                 <h3>Tài khoản nhận tiền</h3>
                 <p>Tài khoản thanh toán</p>
-                <strong>{paymentAccountLabel(withdrawQuote?.destinationAccountId ?? selected.sourceAccount, sourceAccountId, account?.accountNo)}</strong>
+                <strong>
+                  {paymentAccountLabel(
+                    withdrawQuote?.destinationAccountId ??
+                      selected.sourceAccount,
+                    sourceAccountId,
+                    account?.accountNo,
+                  )}
+                </strong>
               </Section>
               <Section className="savings-info">
                 <h3>Thông tin quan trọng</h3>
                 <p>
-                  Bạn chỉ có thể tất toán toàn bộ sổ từ ngày đáo hạn.
-                  Thông tin kỳ hạn, tài khoản nhận và số tiền được kiểm tra lại khi xác nhận.
+                  Bạn chỉ có thể tất toán toàn bộ sổ từ ngày đáo hạn. Thông tin
+                  kỳ hạn, tài khoản nhận và số tiền được kiểm tra lại khi xác
+                  nhận.
                 </p>
               </Section>
               <label className="savings-checkbox">
@@ -1080,9 +1603,15 @@ export default function SavingsLivePage() {
                   checked={withdrawAccepted}
                   onChange={(e) => setWithdrawAccepted(e.target.checked)}
                 />{" "}
-                Tôi đồng ý tất toán toàn bộ sổ và nhận gốc, lãi về tài khoản thanh toán nguồn.
+                Tôi đồng ý tất toán toàn bộ sổ và nhận gốc, lãi về tài khoản
+                thanh toán nguồn.
               </label>
-              <Button onClick={confirmWithdraw} disabled={!withdrawAccepted || busy || !!pending || !withdrawQuote}>
+              <Button
+                onClick={confirmWithdraw}
+                disabled={
+                  !withdrawAccepted || busy || !!pending || !withdrawQuote
+                }
+              >
                 Xác nhận rút tiền
               </Button>
             </main>
@@ -1090,60 +1619,65 @@ export default function SavingsLivePage() {
         )}
 
       {screen === "withdraw-success" && lastWithdrawal && (
-          <>
-            <Head
-              title="Kết quả rút tiết kiệm"
-              onBack={() => setScreen("list")}
-            />
-            <main className="savings-content">
-              <SuccessMark />
-              <h2 className="savings-success-title">
-                Rút tiết kiệm thành công!
-              </h2>
-              <p className="savings-center savings-muted">
-                Sổ tiết kiệm đã được tất toán. Tiền gốc và lãi đã được ghi có vào tài khoản thanh toán nguồn.
-              </p>
-              <section className="savings-amount-hero">
-                <span>Tổng tiền tất toán</span>
-                <strong>
-                  {formatVnd(lastWithdrawal.totalPayout)}
-                </strong>
-              </section>
-              <Section>
-                <h3>Thông tin tất toán</h3>
-                <Line label="Mã sổ" value={lastWithdrawal.savingsNo} />
-                <Line label="Trạng thái" value={<Badge status="settled" />} />
-                <Line label="Tổng gốc" value={formatVnd(lastWithdrawal.principal)} />
-                <Line
-                  label="Tiền lãi"
-                  value={`+${formatVnd(lastWithdrawal.interestAmount)}`}
-                />
-                <Line
-                  label="Tổng tiền nhận"
-                  strong
-                  value={formatVnd(lastWithdrawal.totalPayout)}
-                />
-                <Line label="Tài khoản nhận" value={paymentAccountLabel(lastWithdrawal.destinationAccountId, sourceAccountId, account?.accountNo)} />
-                <Line
-                  label="Thời điểm"
-                  value={formatDate(
-                    lastWithdrawal.settledAt,
-                  )}
-                />
-              </Section>
-              <Button onClick={() => void showReceipt()}>Xem biên nhận</Button>
-              <Button
-                secondary
-                onClick={() => {
-                  setFilter("all");
-                  setScreen("list");
-                }}
-              >
-                Về trang tiết kiệm
-              </Button>
-            </main>
-          </>
-        )}
+        <>
+          <Head
+            title="Kết quả rút tiết kiệm"
+            onBack={() => setScreen("list")}
+          />
+          <main className="savings-content">
+            <SuccessMark />
+            <h2 className="savings-success-title">Rút tiết kiệm thành công!</h2>
+            <p className="savings-center savings-muted">
+              Sổ tiết kiệm đã được tất toán. Tiền gốc và lãi đã được ghi có vào
+              tài khoản thanh toán nguồn.
+            </p>
+            <section className="savings-amount-hero">
+              <span>Tổng tiền tất toán</span>
+              <strong>{formatVnd(lastWithdrawal.totalPayout)}</strong>
+            </section>
+            <Section>
+              <h3>Thông tin tất toán</h3>
+              <Line label="Mã sổ" value={lastWithdrawal.savingsNo} />
+              <Line label="Trạng thái" value={<Badge status="settled" />} />
+              <Line
+                label="Tổng gốc"
+                value={formatVnd(lastWithdrawal.principal)}
+              />
+              <Line
+                label="Tiền lãi"
+                value={`+${formatVnd(lastWithdrawal.interestAmount)}`}
+              />
+              <Line
+                label="Tổng tiền nhận"
+                strong
+                value={formatVnd(lastWithdrawal.totalPayout)}
+              />
+              <Line
+                label="Tài khoản nhận"
+                value={paymentAccountLabel(
+                  lastWithdrawal.destinationAccountId,
+                  sourceAccountId,
+                  account?.accountNo,
+                )}
+              />
+              <Line
+                label="Thời điểm"
+                value={formatDate(lastWithdrawal.settledAt)}
+              />
+            </Section>
+            <Button onClick={() => void showReceipt()}>Xem biên nhận</Button>
+            <Button
+              secondary
+              onClick={() => {
+                setFilter("all");
+                setScreen("list");
+              }}
+            >
+              Về trang tiết kiệm
+            </Button>
+          </main>
+        </>
+      )}
     </div>
   );
 }

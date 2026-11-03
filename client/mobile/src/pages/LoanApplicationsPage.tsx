@@ -75,6 +75,15 @@ const missingDocumentTypes = (application: LoanApplication) =>
       ),
   );
 
+// Bản nộp sau thay thế bản trước, nên chỉ xét bản mới nhất của mỗi loại.
+const latestDocuments = (application: LoanApplication) =>
+  documentTypes.flatMap((type) => {
+    const latest = [...(application.documents ?? [])]
+      .reverse()
+      .find((doc) => doc.type === type);
+    return latest ? [latest] : [];
+  });
+
 type DocumentState = "complete" | "needsUpdate" | "pending";
 
 /** Chỉ đầy đủ khi cả 7 loại đã được duyệt; đã gửi đủ nhưng chưa duyệt thì đang chờ. */
@@ -144,6 +153,8 @@ export default function LoanApplicationsPage({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploadingType, setUploadingType] = useState<DocumentType | null>(null);
+  // Mốc thời gian lúc mở màn hình; máy chủ mới là bên quyết định khi xác nhận.
+  const [openedAt] = useState(() => Date.now());
 
   const refresh = useCallback(async () => {
     if (!token) return;
@@ -290,7 +301,12 @@ export default function LoanApplicationsPage({
     await run(async () => {
       // CCCD đến từ KYC nên nộp thẳng vào hồ sơ. Loại khác lưu vào profile để
       // dùng lại cho hồ sơ sau, rồi chụp một bản vào hồ sơ này.
-      if (PROFILE_DOCUMENT_TYPES.includes(type)) {
+      // Bản nộp lại khi đang thẩm định đi thẳng vào hồ sơ: máy chủ chỉ chụp từ
+      // profile khi hồ sơ còn nháp.
+      if (
+        PROFILE_DOCUMENT_TYPES.includes(type) ||
+        application?.status !== "draft"
+      ) {
         await uploadLoanDocument(token, applicationId, type, file);
         return;
       }
@@ -316,6 +332,12 @@ export default function LoanApplicationsPage({
     }
   };
   const missingDocuments = application ? missingDocumentTypes(application) : [];
+  const offerExpired =
+    !!offer?.expiresAt &&
+    (offer.status === "issued" || offer.status === "accepted") &&
+    openedAt >= Date.parse(offer.expiresAt);
+  const canReplaceDocuments =
+    application?.status === "under_review" && !application.assessedAt;
   return (
     <LoanLayout
       title={applicationId ? "Chi tiết hồ sơ vay" : "Danh sách hồ sơ vay"}
@@ -516,15 +538,49 @@ export default function LoanApplicationsPage({
                   <Panel title="Chứng từ đã gửi">
                     <DocumentSummary application={application} />
                     {documentState(application) !== "complete" &&
-                      application.documents?.map((doc) => (
-                        <LoanDocumentRow
-                          key={doc.documentId}
-                          document={doc}
-                          onDownload={(id) => void download(id)}
-                        />
-                      ))}
+                      latestDocuments(application).map((doc) =>
+                        doc.verificationStatus === "rejected" &&
+                        canReplaceDocuments ? (
+                          <LoanDocumentCard
+                            key={doc.documentId}
+                            type={doc.type}
+                            rejected
+                            rejectionReason={doc.rejectionReason}
+                            disabled={busy}
+                            uploading={uploadingType === doc.type}
+                            onSelect={(file) => {
+                              setUploadingType(doc.type);
+                              void upload(doc.type, file).finally(() =>
+                                setUploadingType(null),
+                              );
+                            }}
+                            onDownload={(id) => void download(id)}
+                          />
+                        ) : (
+                          <LoanDocumentRow
+                            key={doc.documentId}
+                            document={doc}
+                            onDownload={(id) => void download(id)}
+                          />
+                        ),
+                      )}
                   </Panel>
                 )}
+              {application.status === "rejected" && (
+                <Panel title="Kết quả thẩm định">
+                  <Notice
+                    error
+                    message={
+                      application.manualDecisionReason
+                        ? `Hồ sơ không được duyệt. Lý do: ${application.manualDecisionReason}`
+                        : "Hồ sơ không đạt điều kiện vay theo chính sách hiện tại."
+                    }
+                  />
+                  <p className="text-xs text-on-surface-variant">
+                    Bạn có thể tạo hồ sơ mới khi đã đủ điều kiện.
+                  </p>
+                </Panel>
+              )}
               {application.status === "under_review" && (
                 <Panel title="Kết quả sau thẩm định">
                   <Action
@@ -578,7 +634,25 @@ export default function LoanApplicationsPage({
                         Lãi suất hợp đồng đề xuất:{" "}
                         <strong>{percentBps(offer.annualRateBps)}</strong>
                       </p>
-                      {offer.status === "issued" && (
+                      {offerExpired && (
+                        <Notice
+                          error
+                          message="Đề nghị vay đã hết hạn. Vui lòng tạo hồ sơ mới nếu vẫn có nhu cầu."
+                        />
+                      )}
+                      {!offerExpired &&
+                        offer.expiresAt &&
+                        offer.status !== "confirmed" &&
+                        offer.status !== "rejected" && (
+                          <p className="text-xs text-on-surface-variant">
+                            Đề nghị có hiệu lực đến{" "}
+                            {new Date(offer.expiresAt).toLocaleDateString(
+                              "vi-VN",
+                            )}
+                            .
+                          </p>
+                        )}
+                      {!offerExpired && offer.status === "issued" && (
                         <>
                           <Action
                             disabled={busy}
@@ -624,7 +698,7 @@ export default function LoanApplicationsPage({
                           </Action>
                         </>
                       )}
-                      {offer.status === "accepted" && (
+                      {!offerExpired && offer.status === "accepted" && (
                         <>
                           <Action
                             disabled={busy}
