@@ -349,9 +349,9 @@ type createLoanPackagePolicyStub struct {
 	calls int
 }
 
-func (p *createLoanPackagePolicyStub) ValidateLoanPackage(_ context.Context, _ string, _ int64, _ int) error {
+func (p *createLoanPackagePolicyStub) ValidateLoanPackage(_ context.Context, _ string, _ int64, _ int) (int, error) {
 	p.calls++
-	return p.err
+	return 3, p.err
 }
 
 func newCreateTestHandler(repo LoanApplicationRepository, validator LoanApplicantValidator) *CreateLoanApplicationCommandHandler {

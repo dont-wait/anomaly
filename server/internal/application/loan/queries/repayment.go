@@ -27,7 +27,7 @@ var (
 		"invalid loan repayment query",
 	)
 	ErrInstallmentNotDue = errors.New(
-		"installment is not due today",
+		"installment is not due yet",
 	)
 	ErrInstallmentAlreadyPaid = errors.New(
 		"installment already paid",
@@ -338,14 +338,15 @@ func (s *RepaymentQueryService) Payment(
 	return result, err
 }
 
-// So sanh dung ngay den han theo gio Viet Nam.
-func dueOnDate(
+// Da den hoac da qua ngay den han theo gio Viet Nam.
+// Ngay dang YYYY-MM-DD nen so sanh chuoi dung thu tu thoi gian.
+func dueReached(
 	dueDate string,
 	at time.Time,
 ) bool {
 	vn := timeutil.VietnamLocation
 
-	return at.In(vn).Format("2006-01-02") ==
+	return at.In(vn).Format("2006-01-02") >=
 		dueDate
 }
 
@@ -397,7 +398,7 @@ func (s *RepaymentQueryService) Quote(
 			ErrInstallmentAlreadyPaid
 	}
 
-	if !dueOnDate(item.DueDate, s.now()) {
+	if !dueReached(item.DueDate, s.now()) {
 		return Quote{},
 			ErrInstallmentNotDue
 	}

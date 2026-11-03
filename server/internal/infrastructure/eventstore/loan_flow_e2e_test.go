@@ -81,14 +81,7 @@ func TestPersonalLoanHTTPE2E(t *testing.T) {
 	if err := read.EnsureIndexes(ctx); err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.Collection("loan_packages").InsertOne(ctx, bson.M{
-		"package_code": "PERSONAL_UNSECURED_SALARY", "name": "Vay tín chấp theo lương",
-		"status": "ACTIVE", "min_amount": int64(1_000_000), "max_amount": int64(500_000_000),
-		"term_options": bson.A{bson.M{"months": 6}, bson.M{"months": 12}, bson.M{"months": 24}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Gói vay đến từ migration 000017, giống môi trường thật.
 	catalog := mongorepo.NewLoanPackageCatalog(mongoClient, db.Name())
 	if err := catalog.EnsureIndexes(ctx); err != nil {
 		t.Fatal(err)

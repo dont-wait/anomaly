@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	savingsqueries "github.com/dont-wait/anomaly/internal/application/savings/queries"
@@ -158,4 +159,68 @@ func (r *SavingsRead) Notifications(ctx context.Context, customer string, limit 
 		return nil, err
 	}
 	return items, nil
+}
+
+// AdminList đọc sổ của mọi khách, cùng thứ tự với danh sách của khách.
+func (r *SavingsRead) AdminList(ctx context.Context, f savingsqueries.AdminSavingsFilter, limit int, cursor *savingsqueries.SavingsCursor, now time.Time) ([]savingsqueries.SavingsContract, error) {
+	filter := bson.M{}
+	switch f.Status {
+	case "active":
+		filter["status"] = bson.M{"$in": bson.A{"active", "matured"}}
+		filter["maturity_at"] = bson.M{"$gt": now}
+	case "matured":
+		filter["status"] = bson.M{"$in": bson.A{"active", "matured"}}
+		filter["maturity_at"] = bson.M{"$lte": now}
+	case "settled":
+		filter["status"] = "settled"
+	}
+	if f.PackageID != "" {
+		filter["package_id"] = f.PackageID
+	}
+	if f.CustomerID != "" {
+		filter["customer_id"] = f.CustomerID
+	}
+	if f.Query != "" {
+		// Chỉ so khớp đầu mã sổ, không nhận regex từ người dùng.
+		filter["savings_no"] = bson.M{"$regex": "^" + regexp.QuoteMeta(f.Query)}
+	}
+	opened := bson.M{}
+	if !f.From.IsZero() {
+		opened["$gte"] = f.From
+	}
+	if !f.To.IsZero() {
+		opened["$lte"] = f.To
+	}
+	if len(opened) > 0 {
+		filter["opened_at"] = opened
+	}
+	if cursor != nil {
+		filter["$or"] = bson.A{
+			bson.M{"opened_at": bson.M{"$lt": cursor.OpenedAt}},
+			bson.M{"opened_at": cursor.OpenedAt, "_id": bson.M{"$lt": cursor.ID}},
+		}
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "opened_at", Value: -1}, {Key: "_id", Value: -1}}).SetLimit(int64(limit))
+	cur, err := r.db.Collection("savings_contracts").Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var rows []savingsqueries.SavingsContract
+	if err := cur.All(ctx, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *SavingsRead) AdminDetail(ctx context.Context, id string) (*savingsqueries.SavingsContract, error) {
+	var row savingsqueries.SavingsContract
+	err := r.db.Collection("savings_contracts").FindOne(ctx, bson.M{"_id": id}).Decode(&row)
+	if errors.Is(err, mongodrv.ErrNoDocuments) {
+		return nil, savingsqueries.ErrContractNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
 }

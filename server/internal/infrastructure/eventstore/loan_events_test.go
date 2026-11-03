@@ -1020,3 +1020,32 @@ func TestReplayLoanApplicationDeletedOnlyFromDraft(t *testing.T) {
 		t.Fatalf("status = %s", draft.Status)
 	}
 }
+
+func TestReplayDocumentReplacementAndReviewRejection(t *testing.T) {
+	app, base := prepareLoanReviewReplay(t)
+	rejected := app.Documents[0]
+	mustReplayLoanEvent(t, app, EventLoanDocumentReviewed, map[string]any{
+		"documentId": rejected.DocumentId, "decision": "rejected", "reason": "Ảnh mờ",
+		"reviewerId": "admin", "reviewedAt": base.Add(time.Hour),
+	})
+	replacement := rejected
+	replacement.DocumentId = "replacement"
+	replacement.VerificationStatus = "pending"
+	replacement.UploadedAt = base.Add(2 * time.Hour)
+	replacement.RejectionReason = ""
+	mustReplayLoanEvent(t, app, EventLoanDocumentAdded, map[string]any{
+		"document": replacement, "updatedAt": base.Add(2 * time.Hour),
+	})
+	last := app.Documents[len(app.Documents)-1]
+	if last.DocumentId != "replacement" || last.VerificationStatus != "pending" {
+		t.Fatalf("replacement = %#v", last)
+	}
+
+	at := base.Add(3 * time.Hour)
+	mustReplayLoanEvent(t, app, EventLoanReviewRejected, map[string]any{
+		"decidedAt": at, "updatedAt": at, "manualReviewerId": "admin", "manualDecisionReason": "Không bổ sung được",
+	})
+	if app.Status != loandomain.ApplicationStatusRejected || app.ManualDecisionReason != "Không bổ sung được" {
+		t.Fatalf("app = %#v", app)
+	}
+}

@@ -323,6 +323,7 @@ func (r *LoanRepository) AppendBatch(
 			EventLoanApplicationAssessed,
 			EventLoanApplicationApproved,
 			EventLoanApplicationRejected,
+			EventLoanReviewRejected,
 			EventLoanDisbursementPrepared,
 			EventLoanOfferIssued,
 			EventLoanOfferAccepted,

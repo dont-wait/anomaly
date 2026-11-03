@@ -99,6 +99,9 @@ func (h *LoanOfferCommandHandler) transition(ctx context.Context, id, owner stri
 			}
 		}
 	}
+	if kind != "reject" && a.Offer.Expired(time.Now().UTC()) {
+		return nil, loan.ErrLoanOfferExpired
+	}
 	preview := *a
 	if a.Offer != nil {
 		offer := *a.Offer

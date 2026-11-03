@@ -145,6 +145,8 @@ func mapSchedule(
 
 		if status == "upcoming" && due == today {
 			status = "due"
+		} else if status == "upcoming" && due < today {
+			status = "overdue"
 		}
 
 		items = append(

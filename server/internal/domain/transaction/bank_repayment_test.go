@@ -75,3 +75,22 @@ func TestLoanInstallmentPaymentJournal(t *testing.T) {
 		t.Fatal("invalid loan payment accepted")
 	}
 }
+
+func TestLoanInstallmentPaymentAllowsLateRejectsEarly(t *testing.T) {
+	due := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	tx := LoanInstallmentTransactionID("loan", 1)
+	base := LoanInstallmentPayment{
+		PaymentID: EventID(tx, "payment"), TransactionID: tx, LoanID: "loan", CustomerID: "customer", AccountID: "account",
+		InstallmentNo: 1, PrincipalAmount: 90, InterestAmount: 10, Amount: 100, DueDate: due,
+	}
+	late := base
+	late.PaidAt = due.AddDate(0, 0, 5)
+	if err := late.Validate(); err != nil {
+		t.Fatalf("late payment must replay: %v", err)
+	}
+	early := base
+	early.PaidAt = due.AddDate(0, 0, -5)
+	if err := early.Validate(); err == nil {
+		t.Fatal("early payment must be rejected")
+	}
+}

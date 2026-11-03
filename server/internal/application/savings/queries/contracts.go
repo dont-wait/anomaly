@@ -35,6 +35,7 @@ type SavingsContract struct {
 	CustomerID                   string                 `json:"-" bson:"customer_id"`
 	SourceAccountID              string                 `json:"sourceAccountId" bson:"source_account_id"`
 	PackageID                    string                 `json:"packageId" bson:"package_id"`
+	PackageVersion               int                    `json:"packageVersion" bson:"package_version"`
 	Principal                    int64                  `json:"principal" bson:"principal"`
 	TermMonths                   int                    `json:"termMonths" bson:"term_months"`
 	AnnualRateBps                int64                  `json:"-" bson:"annual_rate_bps"`
@@ -395,4 +396,118 @@ func (s *SavingsReadService) Notifications(ctx context.Context, actor string, li
 		items = []SavingsNotice{}
 	}
 	return SavingsNotices{Items: items}, nil
+}
+
+// AdminSavingsFilter lọc sổ của mọi khách. Rỗng nghĩa là không lọc.
+type AdminSavingsFilter struct {
+	Status     string
+	PackageID  string
+	CustomerID string
+	Query      string
+	From       time.Time
+	To         time.Time
+}
+
+// AdminSavingsContract thêm mã khách, trường mà API của khách cố ý ẩn.
+type AdminSavingsContract struct {
+	SavingsContract
+	AdminCustomerID string `json:"customerId"`
+}
+
+type AdminSavingsPage struct {
+	Items               []AdminSavingsContract `json:"items"`
+	NextCursor          *string                `json:"nextCursor"`
+	EventualConsistency bool                   `json:"eventualConsistency"`
+}
+
+type AdminSavingsDetail struct {
+	AdminSavingsContract
+	History []SavingsHistoryItem `json:"history"`
+}
+
+type AdminSavingsStore interface {
+	AdminList(context.Context, AdminSavingsFilter, int, *SavingsCursor, time.Time) ([]SavingsContract, error)
+	AdminDetail(context.Context, string) (*SavingsContract, error)
+	History(context.Context, string, string) ([]SavingsHistoryItem, error)
+}
+
+// AdminSavingsService chỉ đọc từ projection; không dùng để quyết định về tiền.
+type AdminSavingsService struct {
+	Store AdminSavingsStore
+	Now   func() time.Time
+}
+
+func (s *AdminSavingsService) now() time.Time {
+	if s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
+func (s *AdminSavingsService) List(ctx context.Context, filter AdminSavingsFilter, limit int, cursor string) (AdminSavingsPage, error) {
+	switch filter.Status {
+	case "", "all", "active", "matured", "settled":
+	default:
+		return AdminSavingsPage{}, ErrInvalidRead
+	}
+	if limit == 0 {
+		limit = 20
+	}
+	if s == nil || s.Store == nil || limit < 1 || limit > 50 {
+		return AdminSavingsPage{}, ErrInvalidRead
+	}
+	asOf := s.now()
+	var after *SavingsCursor
+	if cursor != "" {
+		decoded, err := DecodeSavingsCursor(cursor)
+		if err != nil || decoded.Status != filter.Status {
+			return AdminSavingsPage{}, ErrInvalidRead
+		}
+		after, asOf = &decoded, decoded.AsOf
+	}
+	rows, err := s.Store.AdminList(ctx, filter, limit+1, after, asOf)
+	if err != nil {
+		return AdminSavingsPage{}, err
+	}
+	page := AdminSavingsPage{Items: []AdminSavingsContract{}, EventualConsistency: true}
+	more := len(rows) > limit
+	if more {
+		rows = rows[:limit]
+	}
+	for i := range rows {
+		if err := rows[i].normalize(asOf); err != nil {
+			return AdminSavingsPage{}, err
+		}
+		page.Items = append(page.Items, AdminSavingsContract{SavingsContract: rows[i], AdminCustomerID: rows[i].CustomerID})
+	}
+	if more {
+		last := rows[len(rows)-1]
+		encoded := EncodeSavingsCursor(SavingsCursor{OpenedAt: last.OpenedAt, ID: last.SavingsID, Revision: 1, Status: filter.Status, AsOf: asOf})
+		page.NextCursor = &encoded
+	}
+	return page, nil
+}
+
+func (s *AdminSavingsService) Detail(ctx context.Context, id string) (AdminSavingsDetail, error) {
+	if s == nil || s.Store == nil || strings.TrimSpace(id) == "" {
+		return AdminSavingsDetail{}, ErrInvalidRead
+	}
+	row, err := s.Store.AdminDetail(ctx, id)
+	if err != nil {
+		return AdminSavingsDetail{}, err
+	}
+	if err := row.normalize(s.now()); err != nil {
+		return AdminSavingsDetail{}, err
+	}
+	history, err := s.Store.History(ctx, row.CustomerID, id)
+	if err != nil {
+		return AdminSavingsDetail{}, err
+	}
+	if history == nil {
+		history = []SavingsHistoryItem{}
+	}
+	return AdminSavingsDetail{
+		AdminSavingsContract: AdminSavingsContract{SavingsContract: *row, AdminCustomerID: row.CustomerID},
+		History:              history,
+	}, nil
 }

@@ -40,7 +40,7 @@ func (h *Handler) issueOffer(w http.ResponseWriter, r *http.Request) {
 		serviceError(w, err)
 		return
 	}
-	a, err := h.application(r, false)
+	a, err := h.staffApplication(r)
 	if err != nil {
 		serviceError(w, err)
 		return

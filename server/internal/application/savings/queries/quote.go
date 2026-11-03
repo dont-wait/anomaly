@@ -16,6 +16,7 @@ const StandardPackageID = "savings_standard"
 
 var (
 	ErrPackageUnavailable = errors.New("savings package not found or inactive")
+	ErrPackageRetired     = errors.New("savings package is no longer on sale")
 	ErrInvalidAmount      = errors.New("invalid savings amount")
 	ErrMinimumDeposit     = errors.New("amount is below minimum deposit")
 	ErrInvalidSource      = errors.New("invalid or non-owned payment account")
@@ -29,10 +30,12 @@ type TermOption struct {
 	TermMonths         int    `json:"termMonths"`
 	TermLabel          string `json:"termLabel"`
 	AnnualInterestRate string `json:"annualInterestRate"`
+	AnnualRateBps      int64  `json:"-"`
 }
 
 type Package struct {
 	PackageID      string       `json:"packageId"`
+	Version        int          `json:"version"`
 	Name           string       `json:"name"`
 	Currency       string       `json:"currency"`
 	TermOptions    []TermOption `json:"termOptions"`
@@ -56,6 +59,7 @@ type Quote struct {
 	ActorID         string    `json:"actorId"`
 	CustomerID      string    `json:"customerId"`
 	PackageID       string    `json:"packageId"`
+	PackageVersion  int       `json:"packageVersion"`
 	SourceAccountID string    `json:"sourceAccountId"`
 	Principal       int64     `json:"principal"`
 	TermMonths      int       `json:"termMonths"`
@@ -96,7 +100,11 @@ type Service struct {
 	Now      func() time.Time
 }
 
+// RateString formats basis points without losing the second decimal.
 func RateString(bps int64) string {
+	if bps%10 != 0 {
+		return fmt.Sprintf("%d.%02d", bps/100, bps%100)
+	}
 	return fmt.Sprintf("%d.%d", bps/100, (bps%100)/10)
 }
 
@@ -107,32 +115,36 @@ func termLabel(months int) string {
 	return fmt.Sprintf("%d tháng", months)
 }
 
-// ValidateCatalog fails closed if stored Mongo policy and approved domain policy
-// diverge; the quote must never use a term/rate the domain won't accept.
+// ValidateCatalog fails closed on malformed catalog data. An empty list is valid:
+// the package has been retired and nothing is on sale.
 func ValidateCatalog(items []Package) error {
 	return ValidateCatalogAt(items, time.Now().UTC())
 }
 
 // ValidateCatalogAt evaluates product eligibility at a single authoritative clock instant.
 func ValidateCatalogAt(items []Package, now time.Time) error {
-	if len(items) != 1 {
-		return ErrPackageUnavailable
-	}
-	p := items[0]
-	if p.PackageID != StandardPackageID || strings.TrimSpace(p.Name) == "" || p.Currency != "VND" || p.MinimumDeposit != savings.MinimumDepositVND || (p.EffectiveAt.IsZero() || p.EffectiveAt.After(now)) {
-		return ErrPackageUnavailable
-	}
-	approved := savings.CurrentTermRates()
-	if len(p.TermOptions) != len(approved) {
-		return ErrPackageUnavailable
-	}
-	for i, rate := range approved {
-		t := p.TermOptions[i]
-		if t.TermMonths != rate.Months || t.AnnualInterestRate != RateString(rate.AnnualRateBps) || t.TermLabel != termLabel(rate.Months) {
+	seen := map[string]bool{}
+	for _, p := range items {
+		if seen[p.PackageID] || strings.TrimSpace(p.PackageID) == "" || strings.TrimSpace(p.Name) == "" || p.Currency != "VND" || p.MinimumDeposit < savings.MinimumDepositVND || p.EffectiveAt.IsZero() || p.EffectiveAt.After(now) || len(p.TermOptions) == 0 {
 			return ErrPackageUnavailable
+		}
+		seen[p.PackageID] = true
+		for _, t := range p.TermOptions {
+			if !savings.IsSupportedTerm(t.TermMonths) || t.AnnualRateBps <= 0 || t.AnnualRateBps > 10_000 || t.AnnualInterestRate != RateString(t.AnnualRateBps) || t.TermLabel != termLabel(t.TermMonths) {
+				return ErrPackageUnavailable
+			}
 		}
 	}
 	return nil
+}
+
+func findPackage(items []Package, id string) (Package, bool) {
+	for _, p := range items {
+		if p.PackageID == id {
+			return p, true
+		}
+	}
+	return Package{}, false
 }
 
 func (s *Service) now() time.Time {
@@ -169,15 +181,31 @@ func (s *Service) CreateQuote(ctx context.Context, actorID string, in CreateQuot
 		}
 		return QuoteResponse{}, ErrMinimumDeposit
 	}
-	if _, err := savings.AnnualRateBpsForTerm(in.TermMonths); err != nil {
-		return QuoteResponse{}, err
+	if !savings.IsSupportedTerm(in.TermMonths) {
+		return QuoteResponse{}, savings.ErrUnsupportedTerm
 	}
 	items, err := s.ListPackages(ctx)
 	if err != nil {
 		return QuoteResponse{}, err
 	}
-	if in.PackageID != items[0].PackageID {
+	if len(items) == 0 {
+		return QuoteResponse{}, ErrPackageRetired
+	}
+	chosen, found := findPackage(items, in.PackageID)
+	if !found {
 		return QuoteResponse{}, ErrPackageUnavailable
+	}
+	if in.Amount < chosen.MinimumDeposit {
+		return QuoteResponse{}, ErrMinimumDeposit
+	}
+	var rate int64
+	for _, term := range chosen.TermOptions {
+		if term.TermMonths == in.TermMonths {
+			rate = term.AnnualRateBps
+		}
+	}
+	if rate == 0 {
+		return QuoteResponse{}, savings.ErrUnsupportedTerm
 	}
 	actor, err := s.Accounts.FindByID(ctx, actorID)
 	if err != nil {
@@ -207,14 +235,13 @@ func (s *Service) CreateQuote(ctx context.Context, actorID string, in CreateQuot
 	if err != nil {
 		return QuoteResponse{}, err
 	}
-	rate, _ := savings.AnnualRateBpsForTerm(in.TermMonths)
 	interest, total, err := savings.CalculateMaturityPayout(in.Amount, rate, now, maturity)
 	if err != nil {
 		return QuoteResponse{}, err
 	}
 	q := Quote{
 		ID: uuid.NewString(), ActorID: actorID, CustomerID: ownerAccount.CustomerId,
-		PackageID: in.PackageID, SourceAccountID: ownerAccount.Id, Principal: in.Amount,
+		PackageID: in.PackageID, PackageVersion: chosen.Version, SourceAccountID: ownerAccount.Id, Principal: in.Amount,
 		TermMonths: in.TermMonths, AnnualRateBps: rate, QuotedAt: now,
 		ExpiresAt: now.Add(savings.QuoteTTL),
 	}
@@ -253,16 +280,21 @@ func (s *Service) LoadValidQuote(ctx context.Context, actorID, quoteID string) (
 	if q.ActorID != actorID || q.ID != quoteID || q.CustomerID == "" || q.SourceAccountID == "" || q.Principal < savings.MinimumDepositVND {
 		return Quote{}, ErrQuoteInvalid
 	}
-	rate, err := savings.AnnualRateBpsForTerm(q.TermMonths)
-	if err != nil || rate != q.AnnualRateBps {
+	// A live quote keeps the rate it showed even if a newer version was
+	// published meanwhile; retiring the package stops it immediately.
+	if !savings.IsSupportedTerm(q.TermMonths) || q.AnnualRateBps <= 0 || q.AnnualRateBps > 10_000 {
 		return Quote{}, ErrQuoteInvalid
 	}
 	items, err := s.ListPackages(ctx)
 	if err != nil {
 		return Quote{}, err
 	}
-	if q.PackageID != items[0].PackageID {
-		return Quote{}, ErrQuoteInvalid
+	if len(items) == 0 {
+		return Quote{}, ErrPackageRetired
+	}
+	// Báo giá chỉ được tạo cho gói đang bán, nên không còn gói nghĩa là vừa ngừng bán.
+	if _, found := findPackage(items, q.PackageID); !found {
+		return Quote{}, ErrPackageRetired
 	}
 	return q, nil
 }

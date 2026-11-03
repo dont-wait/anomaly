@@ -445,6 +445,17 @@ func (m *LoanReadModel) ListAllPage(
 	)
 }
 
+// ListAllPageByStatus phục vụ hàng đợi admin lọc theo trạng thái.
+func (m *LoanReadModel) ListAllPageByStatus(
+	ctx context.Context,
+	statuses []string,
+	limit int,
+	afterTime time.Time,
+	afterID string,
+) ([]*loan.Application, bool, error) {
+	return m.listPage(ctx, bson.M{"status": bson.M{"$in": statuses}}, limit, afterTime, afterID)
+}
+
 func (m *LoanReadModel) listPage(
 	ctx context.Context,
 	filter bson.M,

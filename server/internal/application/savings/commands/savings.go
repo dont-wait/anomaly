@@ -168,7 +168,7 @@ func (s *Service) Open(ctx context.Context, actor, key string, in OpenInput) (Op
 	if q.SourceAccountID != in.SourceAccountID {
 		return OpenResponse{}, savingsqueries.ErrInvalidSource
 	}
-	m, err := s.Bank.OpenSavings(ctx, journal.SavingsOpenInput{ActorID: actor, QuoteID: q.ID, PackageID: q.PackageID, SourceAccountID: q.SourceAccountID, CustomerID: q.CustomerID, IdempotencyKey: key, Principal: q.Principal, TermMonths: q.TermMonths, AnnualRateBps: q.AnnualRateBps, ExpiresAt: q.ExpiresAt})
+	m, err := s.Bank.OpenSavings(ctx, journal.SavingsOpenInput{ActorID: actor, QuoteID: q.ID, PackageID: q.PackageID, PackageVersion: q.PackageVersion, AcceptedTermsVersion: currentTerms.Version, SourceAccountID: q.SourceAccountID, CustomerID: q.CustomerID, IdempotencyKey: key, Principal: q.Principal, TermMonths: q.TermMonths, AnnualRateBps: q.AnnualRateBps, ExpiresAt: q.ExpiresAt})
 	if err != nil {
 		return OpenResponse{}, err
 	}

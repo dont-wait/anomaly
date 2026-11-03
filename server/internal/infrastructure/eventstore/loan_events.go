@@ -25,6 +25,7 @@ const (
 	EventLoanApplicationAssessed  = "LoanApplicationAssessed"
 	EventLoanApplicationApproved  = "LoanApplicationApproved"
 	EventLoanApplicationRejected  = "LoanApplicationRejected"
+	EventLoanReviewRejected       = "LoanApplicationReviewRejected"
 	EventLoanDisbursementPrepared = "LoanDisbursementPrepared"
 	EventLoanOfferIssued          = "LoanOfferIssued"
 	EventLoanOfferAccepted        = "LoanOfferAccepted"
@@ -315,6 +316,17 @@ func applyLoanEvent(
 		app.AssessedBy = p.AssessedBy
 		// Chỉ ghi nhận kết quả đánh giá.
 		// Chưa chuyển sang approved hoặc rejected.
+
+	case EventLoanReviewRejected:
+		var p loanDecisionPayload
+		if err := json.Unmarshal(data, &p); err != nil {
+			return err
+		}
+		if err := app.RejectDuringReview(
+			p.ManualReviewerId, p.ManualDecisionReason, p.DecidedAt,
+		); err != nil {
+			return fmt.Errorf("invalid loan review rejection: %w", err)
+		}
 
 	case EventLoanApplicationApproved,
 		EventLoanApplicationRejected:

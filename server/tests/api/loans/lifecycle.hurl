@@ -158,7 +158,7 @@ GET {{base_url}}/api/loans/{{loan_id}}/documents/{{document_id}}
 Authorization: Bearer {{customer_token}}
 HTTP 200
 [Asserts]
-header "Content-Type" == "application/octet-stream"
+header "Content-Type" == "application/pdf"
 header "X-Content-Type-Options" == "nosniff"
 sha256 toHex == "{{document_sha256}}"
 

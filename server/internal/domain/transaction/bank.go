@@ -85,8 +85,11 @@ func (p LoanInstallmentPayment) Validate() error {
 	y, m, d := p.PaidAt.In(vn).Date()
 	dy, dm, dd := p.DueDate.UTC().Date()
 
-	if y != dy || m != dm || d != dd {
-		return fmt.Errorf("loan installment paid outside due date")
+	// Ky qua han van hop le; chi tu choi thanh toan truoc han.
+	paidOn := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	dueOn := time.Date(dy, dm, dd, 0, 0, 0, 0, time.UTC)
+	if paidOn.Before(dueOn) {
+		return fmt.Errorf("loan installment paid before due date")
 	}
 
 	return nil

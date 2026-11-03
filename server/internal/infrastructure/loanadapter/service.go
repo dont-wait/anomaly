@@ -199,10 +199,7 @@ func (p *AssessmentProvider) BuildAssessmentInput(
 	)
 	if err != nil {
 		if errors.Is(err, mongodrv.ErrNoDocuments) {
-			return loandomain.LoanAssessmentInput{},
-				fmt.Errorf(
-					"loan has no independently attested evidence",
-				)
+			return loandomain.LoanAssessmentInput{}, loandomain.ErrLoanEvidenceMissing
 		}
 
 		return loandomain.LoanAssessmentInput{}, err

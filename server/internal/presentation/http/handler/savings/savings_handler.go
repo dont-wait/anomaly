@@ -44,6 +44,9 @@ func (h *Handler) packages(w http.ResponseWriter, r *http.Request) {
 		replyError(w, http.StatusServiceUnavailable, "SAVINGS_UNAVAILABLE", "savings catalog unavailable")
 		return
 	}
+	if items == nil {
+		items = []savingsqueries.Package{}
+	}
 	httpx.WriteJSON(w, http.StatusOK, struct {
 		Items []savingsqueries.Package `json:"items"`
 	}{Items: items})
@@ -73,6 +76,8 @@ func (h *Handler) quote(w http.ResponseWriter, r *http.Request) {
 			replyError(w, http.StatusUnprocessableEntity, "BELOW_MINIMUM_DEPOSIT", "minimum deposit is 1000000 VND")
 		case errors.Is(err, savingsdomain.ErrUnsupportedTerm):
 			replyError(w, http.StatusBadRequest, "UNSUPPORTED_TERM", "unsupported savings term")
+		case errors.Is(err, savingsqueries.ErrPackageRetired):
+			replyError(w, http.StatusConflict, "SAVINGS_PACKAGE_RETIRED", "savings package is no longer on sale")
 		case errors.Is(err, savingsqueries.ErrPackageUnavailable):
 			replyError(w, http.StatusNotFound, "SAVINGS_PACKAGE_NOT_FOUND", "savings package is not available")
 		case errors.Is(err, savingsqueries.ErrInvalidSource):

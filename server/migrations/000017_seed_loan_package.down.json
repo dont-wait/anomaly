@@ -1,0 +1,11 @@
+[
+  {
+    "delete": "loan_packages",
+    "deletes": [
+      {
+        "q": { "package_code": "PERSONAL_UNSECURED_SALARY", "created_by": "migration-000017", "version": 1 },
+        "limit": 1
+      }
+    ]
+  }
+]
