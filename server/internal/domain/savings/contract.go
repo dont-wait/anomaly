@@ -26,18 +26,21 @@ type Settlement struct {
 // The annual rate is a snapshot of the rate chosen at opening, not a lookup
 // against the latest product policy when the customer later withdraws.
 type Contract struct {
-	ID              string
-	SavingsNo       string
-	CustomerID      string
-	PackageID       string
-	SourceAccountID string
-	Principal       int64
-	TermMonths      int
-	AnnualRateBps   int64
-	OpenedAt        time.Time
-	MaturityAt      time.Time
-	Status          ContractStatus
-	Settlement      *Settlement
+	ID         string
+	SavingsNo  string
+	CustomerID string
+	PackageID  string
+	// PackageVersion and AcceptedTermsVersion are zero values on older events.
+	PackageVersion       int    `json:",omitempty"`
+	AcceptedTermsVersion string `json:",omitempty"`
+	SourceAccountID      string
+	Principal            int64
+	TermMonths           int
+	AnnualRateBps        int64
+	OpenedAt             time.Time
+	MaturityAt           time.Time
+	Status               ContractStatus
+	Settlement           *Settlement
 	// Revision is the authoritative EventStoreDB stream revision loaded by the
 	// repository. Settlement must be claimed with a compare-and-swap against
 	// this revision BEFORE any account credit is attempted.
@@ -45,15 +48,17 @@ type Contract struct {
 }
 
 type OpenContractParams struct {
-	ID              string
-	SavingsNo       string
-	CustomerID      string
-	PackageID       string
-	SourceAccountID string
-	Principal       int64
-	TermMonths      int
-	AnnualRateBps   int64
-	OpenedAt        time.Time
+	ID                   string
+	SavingsNo            string
+	CustomerID           string
+	PackageID            string
+	PackageVersion       int
+	AcceptedTermsVersion string
+	SourceAccountID      string
+	Principal            int64
+	TermMonths           int
+	AnnualRateBps        int64
+	OpenedAt             time.Time
 }
 
 // NewContract validates domain data but DOES NOT debit funds or persist it.
@@ -68,15 +73,9 @@ func NewContract(p OpenContractParams) (*Contract, error) {
 	if err := ValidateDeposit(p.Principal, p.TermMonths); err != nil {
 		return nil, err
 	}
-	// GĐ1 opens contracts only at an approved term/rate combination.
-	// Preserve that validated rate as a snapshot for all future payouts.
-	// In GĐ2/GĐ3 the catalogue/quote authority must validate the offered
-	// policy version before constructing the contract.
-	approvedRate, err := AnnualRateBpsForTerm(p.TermMonths)
-	if err != nil {
-		return nil, err
-	}
-	if p.AnnualRateBps != approvedRate {
+	// The quote carries the rate of the catalog version the customer saw. It is
+	// preserved as a snapshot for all future payouts.
+	if p.AnnualRateBps <= 0 || p.AnnualRateBps > 10_000 {
 		return nil, ErrInvalidInterestRate
 	}
 	maturity, err := CalculateMaturityAt(p.OpenedAt, p.TermMonths)
@@ -88,7 +87,8 @@ func NewContract(p OpenContractParams) (*Contract, error) {
 	}
 	return &Contract{
 		ID: p.ID, SavingsNo: p.SavingsNo, CustomerID: p.CustomerID,
-		PackageID: p.PackageID, SourceAccountID: p.SourceAccountID,
+		PackageID: p.PackageID, PackageVersion: p.PackageVersion,
+		AcceptedTermsVersion: p.AcceptedTermsVersion, SourceAccountID: p.SourceAccountID,
 		Principal: p.Principal, TermMonths: p.TermMonths,
 		AnnualRateBps: p.AnnualRateBps, OpenedAt: p.OpenedAt,
 		MaturityAt: maturity, Status: ContractActive,

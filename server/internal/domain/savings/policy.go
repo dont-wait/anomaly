@@ -17,9 +17,8 @@ type TermRate struct {
 	AnnualRateBps int64
 }
 
-// approvedTermRates is the single authoritative rate table in the GĐ1
-// simulated savings policy. The package catalog/quote in GĐ2 must use this
-// list rather than maintain a second independent rate lookup.
+// approvedTermRates seeds the first catalog version and lists the terms the
+// product supports. Rates on sale come from the published catalog version.
 var approvedTermRates = [...]TermRate{
 	{Months: 3, AnnualRateBps: 450},
 	{Months: 6, AnnualRateBps: 480},
@@ -35,6 +34,13 @@ func CurrentTermRates() []TermRate {
 	return append([]TermRate(nil), approvedTermRates[:]...)
 }
 
+// IsSupportedTerm reports whether a term can be offered at all.
+func IsSupportedTerm(months int) bool {
+	_, err := AnnualRateBpsForTerm(months)
+	return err == nil
+}
+
+// AnnualRateBpsForTerm returns the seed rate of a term, not the rate on sale.
 func AnnualRateBpsForTerm(months int) (int64, error) {
 	for _, term := range approvedTermRates {
 		if term.Months == months {

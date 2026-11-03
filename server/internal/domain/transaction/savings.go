@@ -15,6 +15,8 @@ const (
 
 type SavingsOpenInput struct {
 	ActorID, QuoteID, PackageID, SourceAccountID, CustomerID, IdempotencyKey string
+	PackageVersion                                                           int
+	AcceptedTermsVersion                                                     string
 	Principal                                                                int64
 	TermMonths                                                               int
 	AnnualRateBps                                                            int64
