@@ -121,6 +121,9 @@ type Assessment struct {
 	KafkaTopic     string     `json:"-" bson:"kafka_topic"`
 	KafkaPartition int        `json:"-" bson:"kafka_partition"`
 	KafkaOffset    int64      `json:"-" bson:"kafka_offset"`
+	Handled        bool       `json:"handled" bson:"handled,omitempty"`
+	HandledAt      *time.Time `json:"handledAt,omitempty" bson:"handled_at,omitempty"`
+	HandledBy      string     `json:"handledBy,omitempty" bson:"handled_by,omitempty"`
 }
 
 func NewAssessment(response ModelResponse, receivedAt time.Time, topic string, partition int, offset int64, id string) (Assessment, error) {

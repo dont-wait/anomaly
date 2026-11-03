@@ -111,3 +111,29 @@ func TestRiskDecisionCursorMigrationCreatesCursorIndex(t *testing.T) {
 		t.Fatalf("unexpected version 15 migration: %+v", commands)
 	}
 }
+
+func TestRiskDecisionHandledMigrationBackfillsOnlyMissingValues(t *testing.T) {
+	path := filepath.Join("../../migrations", "000018_backfill_risk_decision_handled.up.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var commands []struct {
+		Update  string `json:"update"`
+		Updates []struct {
+			Query    map[string]any `json:"q"`
+			Update   map[string]any `json:"u"`
+			Multiple bool           `json:"multi"`
+		} `json:"updates"`
+	}
+	if err := json.Unmarshal(body, &commands); err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 1 || commands[0].Update != "risk_decisions" || len(commands[0].Updates) != 1 {
+		t.Fatalf("unexpected version 18 migration: %+v", commands)
+	}
+	command := commands[0].Updates[0]
+	if command.Query["handled"] == nil || command.Update["$set"] == nil || !command.Multiple {
+		t.Fatalf("version 18 must backfill handled=false for all missing records: %+v", command)
+	}
+}

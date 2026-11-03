@@ -121,3 +121,17 @@ func TestLoginRecordsKYCRequiredFailureForKnownAccount(t *testing.T) {
 		t.Fatalf("audit events = %#v, want LoginFailed for account-id", recorder.events)
 	}
 }
+
+func TestLoginRejectsLockedAccount(t *testing.T) {
+	recorder := &loginAuditFake{}
+	account := newLoginAccount(t, true)
+	account.Status = accountdomain.AccountStatusLocked
+	handler := NewLoginQueryHandler(&loginRepositoryFake{account: account}, loginTokenFake{}).WithAudit(recorder)
+
+	if _, err := handler.Handle(context.Background(), LoginQuery{CCCDNumber: "cccd", Password: "password"}); !errors.Is(err, accountdomain.ErrAccountLocked) {
+		t.Fatalf("Handle() error = %v, want ErrAccountLocked", err)
+	}
+	if len(recorder.events) != 1 || recorder.events[0].Type != audit.LoginFailed || recorder.events[0].ReasonCode != "account_locked" {
+		t.Fatalf("audit events = %#v, want account_locked LoginFailed", recorder.events)
+	}
+}

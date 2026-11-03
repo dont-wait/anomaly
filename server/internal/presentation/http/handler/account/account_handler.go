@@ -133,6 +133,8 @@ func accountErrorStatus(err error) int {
 		return http.StatusServiceUnavailable
 	case errors.Is(err, accountdomain.ErrInvalidCredentials):
 		return http.StatusUnauthorized
+	case errors.Is(err, accountdomain.ErrAccountLocked):
+		return http.StatusForbidden
 	case errors.Is(err, accountdomain.ErrKYCRequired), errors.Is(err, accountdomain.ErrAccountAlreadyVerified):
 		return http.StatusForbidden
 	case errors.Is(err, accountdomain.ErrAccountNotFound):
@@ -172,6 +174,8 @@ func accountErrorCode(err error) httpx.ErrorCode {
 		return httpx.ErrorCodeRegistrationPending
 	case errors.Is(err, accountdomain.ErrInvalidCredentials):
 		return httpx.ErrorCodeInvalidCredentials
+	case errors.Is(err, accountdomain.ErrAccountLocked):
+		return httpx.ErrorCodeAccountLocked
 	case errors.Is(err, accountdomain.ErrKYCRequired):
 		return httpx.ErrorCodeKYCRequired
 	case errors.Is(err, accountdomain.ErrAccountAlreadyVerified):
@@ -286,6 +290,105 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 type loginRequest struct {
 	CCCDNumber string `json:"cccdNumber"`
 	Password   string `json:"password"`
+}
+
+type accountStatusRequest struct {
+	Status    string `json:"status"`
+	AccountNo string `json:"accountNo,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+type financialAccountLookup interface {
+	FindByFinancialID(context.Context, string) (*accountdomain.UserAccount, error)
+	FindByAccountNo(context.Context, string) (*accountdomain.UserAccount, error)
+}
+
+// UpdateAccountStatus allows an administrator to lock or unlock a customer
+// account. The persisted account status is checked by the login query, so a
+// locked account cannot establish a new session.
+func (h *Handler) UpdateAccountStatus(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims == nil {
+		httpx.WriteError(w, h.logger, middleware.ErrInvalidToken, func(error) int { return http.StatusUnauthorized })
+		return
+	}
+	if h.profileRepo == nil {
+		httpx.WriteError(w, h.logger, errors.New("account repository unavailable"), func(error) int { return http.StatusServiceUnavailable })
+		return
+	}
+	targetID := r.PathValue("id")
+	if targetID == claims.UserID {
+		httpx.WriteError(w, h.logger, errors.New("administrators cannot change their own account status"), func(error) int { return http.StatusForbidden })
+		return
+	}
+	var req accountStatusRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
+		return
+	}
+	var status accountdomain.AccountStatus
+	switch strings.ToLower(strings.TrimSpace(req.Status)) {
+	case string(accountdomain.AccountStatusActive):
+		status = accountdomain.AccountStatusActive
+	case string(accountdomain.AccountStatusLocked):
+		status = accountdomain.AccountStatusLocked
+	default:
+		httpx.WriteError(w, h.logger, errors.New("status must be active or locked"), func(error) int { return http.StatusBadRequest })
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if status == accountdomain.AccountStatusLocked && reason == "" {
+		httpx.WriteError(w, h.logger, errors.New("reason is required when locking an account"), func(error) int { return http.StatusBadRequest })
+		return
+	}
+	if len(reason) > 500 {
+		httpx.WriteError(w, h.logger, errors.New("reason must be at most 500 characters"), func(error) int { return http.StatusBadRequest })
+		return
+	}
+	account, err := h.profileRepo.FindByID(r.Context(), targetID)
+	if err == nil && account == nil {
+		if lookup, ok := h.profileRepo.(financialAccountLookup); ok {
+			account, err = lookup.FindByFinancialID(r.Context(), targetID)
+			if err == nil && account == nil {
+				account, err = lookup.FindByAccountNo(r.Context(), strings.TrimSpace(req.AccountNo))
+			}
+		}
+	}
+	if err != nil || account == nil {
+		if err == nil {
+			err = accountdomain.ErrAccountNotFound
+		}
+		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	if account.EffectiveRole() == accountdomain.AccountRoleAdmin {
+		httpx.WriteError(w, h.logger, errors.New("administrator account status cannot be changed"), func(error) int { return http.StatusForbidden })
+		return
+	}
+	if account.Status != status {
+		account.Status = status
+		account.Version++
+		account.UpdatedAt = time.Now().UTC()
+		if err := h.profileRepo.Save(r.Context(), account); err != nil {
+			httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+			return
+		}
+		if h.profileAudit != nil {
+			eventType := audit.AccountUnlocked
+			if status == accountdomain.AccountStatusLocked {
+				eventType = audit.AccountLocked
+			}
+			event := audit.NewEvent(eventType, "", time.Now().UTC())
+			event.AccountID = account.Id
+			event.ActorID = claims.UserID
+			event.ReasonCode = string(status)
+			event.Reason = reason
+			if err := h.profileAudit.Record(r.Context(), event); err != nil {
+				h.logger.Warn().Err(err).Msg("account status audit failed")
+			}
+		}
+	}
+	httpx.WriteSuccess(w, http.StatusOK, "Account status updated", map[string]string{"accountId": account.Id, "status": string(account.Status)})
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {

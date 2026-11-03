@@ -20,6 +20,7 @@ const (
 	CurrencyVND        Currency    = "VND"
 
 	AccountStatusActive  AccountStatus  = "active"
+	AccountStatusLocked  AccountStatus  = "locked"
 	CustomerStatusActive CustomerStatus = "active"
 
 	KYCStatusNotStarted KYCStatus = "not_started"

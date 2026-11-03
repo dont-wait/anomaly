@@ -129,6 +129,8 @@ function detailLines(item: TimelineItem, currency: string): string[] {
     lines.push(`Trạng thái: ${details.status}`);
   if (typeof details.reasonCode === "string")
     lines.push(`Lý do: ${details.reasonCode}`);
+  if (typeof details.reason === "string")
+    lines.push(`Lý do xử lý: ${details.reason}`);
   if (typeof details.cancellationReason === "string")
     lines.push(`Lý do hủy: ${details.cancellationReason}`);
   if (typeof details.attemptsLeft === "number")

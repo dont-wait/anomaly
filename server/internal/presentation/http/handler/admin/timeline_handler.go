@@ -272,6 +272,11 @@ func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *account
 		if bankingCandidate == nil && auditCandidate == nil && loanCandidate == nil {
 			break
 		}
+		if duplicateAccountStatusProjection(bankingCandidate, auditCandidate) {
+			positions.BankingRevision = int64Pointer(bankingCandidate.next)
+			bankingCandidate = nil
+			continue
+		}
 		selected := selectTimelineCandidate(bankingCandidate, auditCandidate, loanCandidate)
 		switch selected {
 		case bankingCandidate:
@@ -321,6 +326,31 @@ func (h *TimelineHandler) loadTimelinePage(ctx context.Context, account *account
 	positions.From = fromRaw
 	positions.To = toRaw
 	return items, encodeTimelineCursor(positions), true, nil
+}
+
+func duplicateAccountStatusProjection(banking, auditCandidate *timelineCandidate) bool {
+	if banking == nil || auditCandidate == nil || banking.item.Category != "account" || auditCandidate.item.Category != "account" {
+		return false
+	}
+	if banking.item.EventType != journal.ProfileUpdated && banking.item.EventType != journal.AccountUpdated {
+		return false
+	}
+	status, ok := banking.item.Details["status"].(string)
+	if !ok {
+		return false
+	}
+	auditStatus, ok := auditCandidate.item.Details["status"].(string)
+	if !ok || status != auditStatus {
+		return false
+	}
+	if auditCandidate.item.EventType != audit.AccountLocked && auditCandidate.item.EventType != audit.AccountUnlocked {
+		return false
+	}
+	delta := banking.item.OccurredAt.Sub(auditCandidate.item.OccurredAt)
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta <= 5*time.Second
 }
 
 func timelineCandidateAfter(left, right *timelineCandidate) bool {
@@ -495,6 +525,10 @@ func bankingTimelineItem(recorded timelineRecorded, accountID, financialID strin
 			return timelineItemDTO{}, false, nil
 		}
 		item.Category, item.Summary = "account", "Tài khoản được cập nhật"
+		item.Details["status"] = string(record.Account.Status)
+		if record.Account.Status == accountdomain.AccountStatusLocked {
+			item.Summary = "Tài khoản bị khóa"
+		}
 	case journal.BalanceSeeded:
 		if journal.FinancialAccountID(record.AccountID) != financialID {
 			return timelineItemDTO{}, false, nil
@@ -610,6 +644,10 @@ func auditTimelineItem(recorded timelineRecorded, event audit.Event) (timelineIt
 	category := ""
 	summary := ""
 	switch {
+	case event.Type == audit.AccountLocked:
+		category, summary = "account", "Tài khoản bị khóa"
+	case event.Type == audit.AccountUnlocked:
+		category, summary = "account", "Tài khoản được mở khóa"
 	case strings.HasPrefix(event.Type, "TransferOTP"):
 		category, summary = "otp", "OTP chuyển tiền được xác thực"
 	case strings.HasPrefix(event.Type, "EmailOTP"):
@@ -622,6 +660,12 @@ func auditTimelineItem(recorded timelineRecorded, event audit.Event) (timelineIt
 	item := timelineItemDTO{EventID: event.ID, EventType: event.Type, Category: category, OccurredAt: event.OccurredAt, SourceStream: recorded.StreamID, SourceRevision: recorded.Revision, AccountID: event.AccountID, ActorID: event.ActorID, TransactionID: event.TransactionID, Summary: summary, Details: map[string]any{}}
 	if event.ReasonCode != "" {
 		item.Details["reasonCode"] = event.ReasonCode
+	}
+	if event.Reason != "" {
+		item.Details["reason"] = event.Reason
+	}
+	if event.Type == audit.AccountLocked || event.Type == audit.AccountUnlocked {
+		item.Details["status"] = map[bool]string{true: "locked", false: "active"}[event.Type == audit.AccountLocked]
 	}
 	if event.AttemptsLeft != nil {
 		item.Details["attemptsLeft"] = *event.AttemptsLeft
