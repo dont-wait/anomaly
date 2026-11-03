@@ -22,7 +22,7 @@ import type {
   TimeRange,
 } from "@/features/monitor/model";
 
-type RiskFilter = "all" | "WARNING" | "BLOCK";
+type RiskFilter = "all" | "WARNING" | "BLOCK" | "HANDLED";
 const ALERTS_PAGE_SIZE = 10;
 
 const surface = "bg-(--admin-surface)";
@@ -84,7 +84,12 @@ export function AlertsPage() {
     setBusy(true);
     setError(null);
     try {
-      setResponse(await getMonitorDashboard(range, "unhandled"));
+      setResponse(
+        await getMonitorDashboard(
+          range,
+          level === "HANDLED" ? "handled" : "unhandled",
+        ),
+      );
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Không thể tải cảnh báo.",
@@ -96,7 +101,7 @@ export function AlertsPage() {
 
   useEffect(() => {
     let active = true;
-    getMonitorDashboard(range, "unhandled")
+    getMonitorDashboard(range, level === "HANDLED" ? "handled" : "unhandled")
       .then((nextResponse) => {
         if (active) setResponse(nextResponse);
       })
@@ -112,7 +117,7 @@ export function AlertsPage() {
     return () => {
       active = false;
     };
-  }, [range]);
+  }, [range, level]);
 
   const alerts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -120,7 +125,13 @@ export function AlertsPage() {
       .filter(
         (item) => item.riskLevel === "WARNING" || item.riskLevel === "BLOCK",
       )
-      .filter((item) => level === "all" || item.riskLevel === level)
+      .filter((item) =>
+        level === "HANDLED" ? item.handled === true : item.handled !== true,
+      )
+      .filter(
+        (item) =>
+          level === "all" || level === "HANDLED" || item.riskLevel === level,
+      )
       .filter(
         (item) =>
           !normalized ||
@@ -267,6 +278,7 @@ export function AlertsPage() {
             <option value="all">Tất cả mức độ</option>
             <option value="WARNING">Cảnh báo</option>
             <option value="BLOCK">Chặn</option>
+            <option value="HANDLED">Đã xử lý</option>
           </select>
           <div className="flex shrink-0 gap-2">
             <button
