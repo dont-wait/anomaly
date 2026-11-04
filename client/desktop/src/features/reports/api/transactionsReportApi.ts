@@ -57,5 +57,7 @@ export async function getTransactionReport(date: string): Promise<TransactionRep
     { headers: session ? { Authorization: `Bearer ${session.accessToken}` } : {} },
   );
   if (!response.ok) throw new Error("Không thể tải báo cáo doanh số giao dịch.");
-  return (await response.json()) as TransactionReport;
+  const body = (await response.json()) as { data?: TransactionReport } | TransactionReport;
+  if ("data" in body && body.data) return body.data;
+  return body as TransactionReport;
 }

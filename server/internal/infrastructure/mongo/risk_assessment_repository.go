@@ -292,6 +292,18 @@ func (r *RiskAssessmentRepository) Find(ctx context.Context, transactionID strin
 	}, true, nil
 }
 
+func (r *RiskAssessmentRepository) FindLatestAssessment(ctx context.Context, transactionID string) (riskassessment.Assessment, bool, error) {
+	var assessment riskassessment.Assessment
+	err := r.collection.FindOne(ctx, bson.M{"transaction_id": transactionID}, options.FindOne().SetSort(bson.D{{Key: "scored_at", Value: -1}, {Key: "received_at", Value: -1}, {Key: "_id", Value: -1}})).Decode(&assessment)
+	if errors.Is(err, mongodrv.ErrNoDocuments) {
+		return riskassessment.Assessment{}, false, nil
+	}
+	if err != nil {
+		return riskassessment.Assessment{}, false, err
+	}
+	return assessment, true, nil
+}
+
 func (r *RiskAssessmentRepository) Finalize(ctx context.Context, transactionID string) error {
 	now := time.Now().UTC()
 	_, err := r.collection.UpdateMany(ctx, bson.M{"transaction_id": transactionID, "finalized": bson.M{"$ne": true}}, bson.M{"$set": bson.M{"finalized": true, "finalized_at": now}})

@@ -15,9 +15,11 @@ import (
 	"github.com/dont-wait/anomaly/internal/domain/audit"
 	"github.com/dont-wait/anomaly/internal/domain/riskassessment"
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
+	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
 	"github.com/dont-wait/anomaly/internal/timeutil"
+	"github.com/rs/zerolog"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -168,6 +170,11 @@ func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc 
 		Parameters: []openapi.Parameter{{Name: "date", In: "query", Type: "string", Format: "date", Required: true, Example: "2026-11-04"}},
 		Response:   transactionReportDTO{}, FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 	})
+	admin("GET /api/admin/risk-assessments/transactions/{transactionId}", handler.TransactionAssessment, openapi.Operation{
+		ID: "adminTransactionRiskAssessment", Summary: "Get latest risk assessment for a transaction",
+		Parameters: []openapi.Parameter{{Name: "transactionId", In: "path", Type: "string", Required: true}},
+		Response:   riskAssessmentDTO{}, FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError},
+	})
 	admin("PATCH /api/admin/risk-assessments/{id}/handled", handler.UpdateHandled, openapi.Operation{
 		ID: "updateRiskAssessmentHandled", Summary: "Mark a risk assessment handled or reopen it",
 		Request: struct {
@@ -234,13 +241,13 @@ func (h *MonitorHandler) TransactionReport(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 	from, to, date, err := monitorWindow(r.URL.Query().Get("date"), "", time.Now().UTC())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		httpx.WriteError(w, zerolog.Nop(), err, func(error) int { return http.StatusBadRequest })
 		return
 	}
 	previousFrom := from.AddDate(0, 0, -1)
 	report, err := h.repository.TransactionReport(queryCtx, from, to, previousFrom, from)
 	if err != nil {
-		http.Error(w, "could not load transaction report", http.StatusInternalServerError)
+		httpx.WriteError(w, zerolog.Nop(), err, func(error) int { return http.StatusInternalServerError })
 		return
 	}
 	toSummary := func(value mongorepo.TransactionReportSummary) transactionReportSummaryDTO {
@@ -262,8 +269,33 @@ func (h *MonitorHandler) TransactionReport(w http.ResponseWriter, r *http.Reques
 		TopRiskSources: report.TopRiskSources, TopRiskReceivers: report.TopRiskReceivers,
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(response)
+	httpx.WriteSuccess(w, http.StatusOK, "Transaction report loaded", response)
+}
+
+func (h *MonitorHandler) TransactionAssessment(w http.ResponseWriter, r *http.Request) {
+	transactionID := strings.TrimSpace(r.PathValue("transactionId"))
+	if transactionID == "" {
+		httpx.WriteError(w, zerolog.Nop(), errors.New("transaction id is required"), func(error) int { return http.StatusBadRequest })
+		return
+	}
+	assessment, found, err := h.repository.FindLatestAssessment(r.Context(), transactionID)
+	if err != nil {
+		httpx.WriteError(w, zerolog.Nop(), err, func(error) int { return http.StatusInternalServerError })
+		return
+	}
+	if !found {
+		httpx.WriteError(w, zerolog.Nop(), mongodrv.ErrNoDocuments, func(error) int { return http.StatusNotFound })
+		return
+	}
+	items, err := h.enrichAssessments(r.Context(), []riskassessment.Assessment{assessment})
+	if err != nil || len(items) == 0 {
+		if err == nil {
+			err = errors.New("risk assessment context not found")
+		}
+		httpx.WriteError(w, zerolog.Nop(), err, func(error) int { return http.StatusInternalServerError })
+		return
+	}
+	httpx.WriteSuccess(w, http.StatusOK, "Risk assessment loaded", items[0])
 }
 
 func (h *MonitorHandler) UpdateHandled(w http.ResponseWriter, r *http.Request) {
