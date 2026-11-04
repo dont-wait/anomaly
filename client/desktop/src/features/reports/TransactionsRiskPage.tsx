@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowTrendUp,
@@ -194,7 +194,7 @@ export function TransactionsRiskPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async (showSpinner = true) => {
+  const load = useCallback(async (showSpinner = true) => {
     if (showSpinner) setRefreshing(true);
     setError(null);
     try {
@@ -207,17 +207,16 @@ export function TransactionsRiskPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    void load(false);
-    const timer = window.setInterval(() => void load(false), 15000);
-    return () => window.clearInterval(timer);
   }, [date]);
 
   useEffect(() => {
-    setPage(1);
-  }, [date, decision, query, status]);
+    const initialLoad = window.setTimeout(() => void load(false), 0);
+    const timer = window.setInterval(() => void load(false), 15000);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.clearInterval(timer);
+    };
+  }, [load]);
 
   const items = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -246,7 +245,7 @@ export function TransactionsRiskPage() {
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-(--admin-radius-md) bg-(--admin-primary-soft) text-(--admin-primary)"><FontAwesomeIcon icon={faShieldHalved} /></span>
             <div><p className={`${mono} text-[10px] font-semibold uppercase tracking-[0.08em] text-(--admin-primary)`}>BÁO CÁO VẬN HÀNH</p><h1 className="mt-1 text-[21px] font-bold tracking-[-0.03em] text-(--admin-text)">Giao dịch &amp; Rủi ro</h1><p className="mt-1 text-[12px] text-(--admin-text-muted)">Tổng hợp hoạt động trong ngày và kết quả phát hiện bất thường.</p></div>
           </div>
-          <div className="flex items-end gap-2"><div><p className={`${mono} mb-1 text-[10px] uppercase text-(--admin-text-muted)`}>Ngày báo cáo</p><div className="flex items-center gap-1.5"><ReportDateField value={date} onChange={setDate} /><button type="button" className={`${surface} h-9 rounded-sm border ${border} px-2.5 text-[11px] font-semibold text-(--admin-text) hover:bg-(--admin-surface-hover)`} onClick={() => setDate(todayInVietnam())} disabled={date === todayInVietnam()}>Hôm nay</button></div></div><button type="button" className={`${surface} grid h-9 w-9 place-items-center rounded-sm border ${border} text-(--admin-text-muted) hover:bg-(--admin-surface-hover) hover:text-(--admin-text)`} onClick={() => void load()} disabled={refreshing} aria-label="Làm mới báo cáo"><FontAwesomeIcon icon={faArrowsRotate} className={refreshing ? "animate-spin" : ""} /></button></div>
+          <div className="flex items-end gap-2"><div><p className={`${mono} mb-1 text-[10px] uppercase text-(--admin-text-muted)`}>Ngày báo cáo</p><div className="flex items-center gap-1.5"><ReportDateField value={date} onChange={(value) => { setPage(1); setDate(value); }} /><button type="button" className={`${surface} h-9 rounded-sm border ${border} px-2.5 text-[11px] font-semibold text-(--admin-text) hover:bg-(--admin-surface-hover)`} onClick={() => { setPage(1); setDate(todayInVietnam()); }} disabled={date === todayInVietnam()}>Hôm nay</button></div></div><button type="button" className={`${surface} grid h-9 w-9 place-items-center rounded-sm border ${border} text-(--admin-text-muted) hover:bg-(--admin-surface-hover) hover:text-(--admin-text)`} onClick={() => void load()} disabled={refreshing} aria-label="Làm mới báo cáo"><FontAwesomeIcon icon={faArrowsRotate} className={refreshing ? "animate-spin" : ""} /></button></div>
         </div>
       </header>
 
@@ -286,7 +285,7 @@ export function TransactionsRiskPage() {
       </section>
 
       <section className={`${surface} overflow-hidden rounded-(--admin-radius-md) border ${border}`}>
-        <div className="border-b border-(--admin-border) p-4"><div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center"><div><h2 className="text-[15px] font-bold text-(--admin-text)">Danh sách giao dịch</h2><p className="mt-1 text-[11px] text-(--admin-text-muted)">Các assessment gần nhất của ngày được chọn.</p></div><div className="flex flex-wrap gap-2"><div className={`flex h-8 min-w-55 items-center gap-2 rounded-sm border ${border} bg-(--admin-background) px-2.5`}><FontAwesomeIcon icon={faMagnifyingGlass} className="text-[11px] text-(--admin-text-muted)" /><input className="min-w-0 flex-1 bg-transparent text-[12px] text-(--admin-text) outline-none" placeholder="Tìm mã hoặc tài khoản" value={query} onChange={(event) => setQuery(event.target.value)} /></div><select className={`${subtle} h-8 rounded-sm border ${border} px-2 text-[11px] text-(--admin-text)`} value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)} aria-label="Trạng thái"><option value="all">Tất cả trạng thái</option><option value="awaiting_otp">Chờ xử lý</option><option value="success">Hoàn tất</option><option value="failed">Bị từ chối</option></select><select className={`${subtle} h-8 rounded-sm border ${border} px-2 text-[11px] text-(--admin-text)`} value={decision} onChange={(event) => setDecision(event.target.value as DecisionFilter)} aria-label="Kết quả rủi ro"><option value="all">Tất cả risk</option><option value="ALLOW">Cho phép</option><option value="BLOCK">Chặn</option></select><button type="button" className={`${subtle} flex h-8 items-center gap-1.5 rounded-sm border ${border} px-2 text-[11px] font-semibold text-(--admin-text)`} onClick={() => downloadReportCsv(date, report, items)} disabled={!report}><FontAwesomeIcon icon={faDownload} /> CSV</button><button type="button" className={`${subtle} flex h-8 items-center gap-1.5 rounded-sm border ${border} px-2 text-[11px] font-semibold text-(--admin-text)`} onClick={() => downloadReportExcel(date, report, items)} disabled={!report}><FontAwesomeIcon icon={faDownload} /> Excel</button></div></div></div>
+        <div className="border-b border-(--admin-border) p-4"><div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center"><div><h2 className="text-[15px] font-bold text-(--admin-text)">Danh sách giao dịch</h2><p className="mt-1 text-[11px] text-(--admin-text-muted)">Các assessment gần nhất của ngày được chọn.</p></div><div className="flex flex-wrap gap-2"><div className={`flex h-8 min-w-55 items-center gap-2 rounded-sm border ${border} bg-(--admin-background) px-2.5`}><FontAwesomeIcon icon={faMagnifyingGlass} className="text-[11px] text-(--admin-text-muted)" /><input className="min-w-0 flex-1 bg-transparent text-[12px] text-(--admin-text) outline-none" placeholder="Tìm mã hoặc tài khoản" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} /></div><select className={`${subtle} h-8 rounded-sm border ${border} px-2 text-[11px] text-(--admin-text)`} value={status} onChange={(event) => { setPage(1); setStatus(event.target.value as StatusFilter); }} aria-label="Trạng thái"><option value="all">Tất cả trạng thái</option><option value="awaiting_otp">Chờ xử lý</option><option value="success">Hoàn tất</option><option value="failed">Bị từ chối</option></select><select className={`${subtle} h-8 rounded-sm border ${border} px-2 text-[11px] text-(--admin-text)`} value={decision} onChange={(event) => { setPage(1); setDecision(event.target.value as DecisionFilter); }} aria-label="Kết quả rủi ro"><option value="all">Tất cả risk</option><option value="ALLOW">Cho phép</option><option value="BLOCK">Chặn</option></select><button type="button" className={`${subtle} flex h-8 items-center gap-1.5 rounded-sm border ${border} px-2 text-[11px] font-semibold text-(--admin-text)`} onClick={() => downloadReportCsv(date, report, items)} disabled={!report}><FontAwesomeIcon icon={faDownload} /> CSV</button><button type="button" className={`${subtle} flex h-8 items-center gap-1.5 rounded-sm border ${border} px-2 text-[11px] font-semibold text-(--admin-text)`} onClick={() => downloadReportExcel(date, report, items)} disabled={!report}><FontAwesomeIcon icon={faDownload} /> Excel</button></div></div></div>
         <div className="overflow-x-auto"><table className="w-full min-w-245 text-left text-[12px]"><thead className="border-b border-(--admin-border) text-[10px] uppercase tracking-[0.04em] text-(--admin-text-muted)"><tr><th className="px-4 py-3 font-semibold">Giao dịch</th><th className="px-4 py-3 font-semibold">Từ / đến</th><th className="px-4 py-3 font-semibold">Số tiền</th><th className="px-4 py-3 font-semibold">Trạng thái</th><th className="px-4 py-3 font-semibold">Risk</th><th className="px-4 py-3 font-semibold">Thời gian</th></tr></thead><tbody className="divide-y divide-(--admin-border)">{visibleItems.map((item) => { const tx = item.transaction; const tone = statusTone(tx?.status); const risk = riskTone(item.decision); return <tr key={item.assessmentId} className="cursor-pointer transition-colors hover:bg-(--admin-surface-hover)" onClick={() => setSelected(item)}><td className="px-4 py-3"><span className={`${mono} text-[11px] font-semibold text-(--admin-text)`}>{item.transactionId.slice(0, 12)}…</span></td><td className="px-4 py-3"><span className="text-(--admin-text)">{tx?.sourceAccountNo || "—"}</span><div className="mt-1 text-[11px] text-(--admin-text-muted)">→ {tx?.destinationAccountNo || "—"}</div></td><td className={`${mono} px-4 py-3 font-semibold text-(--admin-text)`}>{money(tx?.amount, tx?.currency)}</td><td className={`px-4 py-3 font-semibold ${tone}`}>{statusLabel(tx?.status)}</td><td className="px-4 py-3"><span className={`font-semibold ${risk}`}>{decisionLabels[item.decision] || item.decision}</span><div className={`${mono} mt-1 text-[10px] text-(--admin-text-muted)`}>{(item.riskScore * 100).toFixed(1)}%</div></td><td className="px-4 py-3 text-[11px] text-(--admin-text-muted)">{formatDate(item.receivedAt)}</td></tr>; })}</tbody></table></div>
         {!items.length && <div className="p-10 text-center"><FontAwesomeIcon icon={faShieldHalved} className="text-2xl text-(--admin-text-muted)" /><p className="mt-2 text-[12px] font-semibold text-(--admin-text)">Không có dữ liệu phù hợp</p><p className="mt-1 text-[11px] text-(--admin-text-muted)">Thử đổi ngày hoặc bộ lọc.</p></div>}
         <div className="flex items-center justify-center gap-3 border-t border-(--admin-border) pt-3"><button type="button" className={`${surface} h-9 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage === 1}>← Trang trước</button><span className={`${mono} min-w-18 text-center text-[11px] text-(--admin-text-muted)`}>Trang {currentPage}</span><button type="button" className={`${surface} h-9 rounded-sm border border-(--admin-border) px-3 text-[12px] font-semibold text-(--admin-text) hover:border-(--admin-primary) disabled:cursor-not-allowed disabled:opacity-40`} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={currentPage === totalPages}>Trang sau →</button></div>

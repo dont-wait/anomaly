@@ -22,13 +22,12 @@ function money(value: number) {
 export function DailyReportChart({ hourly, date, summary }: { hourly: TransactionReportHourly[]; date: string; summary?: TransactionReportSummary }) {
   const [mode, setMode] = useState<ChartMode>("count");
   const labels = hourly.map((point) => point.hour);
-  const value = (point: TransactionReportHourly, key: "success" | "failed" | "pending") => mode === "count" ? point[key] : key === "success" ? point.amount : 0;
   const barData = useMemo(() => ({
     labels,
     datasets: [
-      { label: "Hoàn tất", data: hourly.map((point) => value(point, "success")), backgroundColor: "#75d9a4", borderRadius: 3, stack: "status" },
-      { label: "Thất bại", data: hourly.map((point) => value(point, "failed")), backgroundColor: "#ff8f86", borderRadius: 3, stack: "status" },
-      { label: "Đang xử lý", data: hourly.map((point) => value(point, "pending")), backgroundColor: "#f6d58a", borderRadius: 3, stack: "status" },
+      { label: "Hoàn tất", data: hourly.map((point) => mode === "count" ? point.success : point.amount), backgroundColor: "#75d9a4", borderRadius: 3, stack: "status" },
+      { label: "Thất bại", data: hourly.map((point) => mode === "count" ? point.failed : 0), backgroundColor: "#ff8f86", borderRadius: 3, stack: "status" },
+      { label: "Đang xử lý", data: hourly.map((point) => mode === "count" ? point.pending : 0), backgroundColor: "#f6d58a", borderRadius: 3, stack: "status" },
     ],
   }), [hourly, labels, mode]);
   const pieData = {
