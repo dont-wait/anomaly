@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ type Repository interface {
 type Dependencies struct {
 	Accounts    Repository
 	LoanCatalog LoanCatalogSeeder
+	Savings     SavingsSeeder
 }
 
 type LoanCatalogSeeder interface {
@@ -68,8 +70,22 @@ func (r registry) run(ctx context.Context, deps Dependencies) error {
 }
 
 // Run executes all seeders registered by files in this package, stopping on failure.
+// SEED_ONLY (comma-separated seeder names) restricts the run to those seeders.
 func Run(ctx context.Context, deps Dependencies) error {
-	return seeders.run(ctx, deps)
+	only := strings.TrimSpace(os.Getenv("SEED_ONLY"))
+	if only == "" {
+		return seeders.run(ctx, deps)
+	}
+	selected := registry{}
+	for _, name := range strings.Split(only, ",") {
+		name = strings.TrimSpace(name)
+		run, ok := seeders[name]
+		if !ok {
+			return fmt.Errorf("unknown seeder in SEED_ONLY: %q", name)
+		}
+		selected[name] = run
+	}
+	return selected.run(ctx, deps)
 }
 
 func ValidateEnvironment(environment, enabled string) error {
