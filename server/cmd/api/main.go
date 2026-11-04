@@ -238,6 +238,7 @@ func main() {
 	mediaHandler := composition.NewMediaHandler(mediaRepo, bank, *logger)
 	otpHandler := composition.NewOTPHandler(rdb, config.SMTPConfig, *logger, auditRepository)
 	transactionHandler := composition.NewTransactionHandlerWithAudit(bank, recipientContacts, rdb, config.SMTPConfig, *logger, auditRepository, receiptOutbox)
+	transactionHandler.SetTransferOTPEnabled(config.HTTPConfig.TransferOTPEnabled)
 	if err := transactionHandler.SetTrustedProxyCIDRs(config.HTTPConfig.TrustedProxyCIDRs); err != nil {
 		logger.Fatal().Err(err).Msg("invalid trusted proxy configuration")
 	}
