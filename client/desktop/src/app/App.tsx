@@ -16,6 +16,7 @@ import { PackagesPage } from "@/features/products/PackagesPage";
 import { ProfileChangesPage } from "@/features/profileChanges/ProfileChangesPage";
 import { MonitorPage } from "@/features/monitor/MonitorPage";
 import { AlertsPage } from "@/features/alerts/AlertsPage";
+import { TransactionsRiskPage } from "@/features/reports/TransactionsRiskPage";
 import {
   navigate,
   protectedRouteFromHash,
@@ -67,6 +68,7 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
   const isAccountTimeline = route === routes.auditAccounts;
   const isEventExplorer = route === routes.audit;
   const isLoanReview = route === routes.loanApplications;
+  const isTransactionsRisk = route === routes.reportsTransactions;
   useEffect(() => {
     let active = true;
     let retryTimer: number | undefined;
@@ -114,6 +116,8 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
         <EventExplorerPage />
       ) : isLoanReview ? (
         <LoanReviewPage />
+      ) : isTransactionsRisk ? (
+        <TransactionsRiskPage />
       ) : route === routes.loanPackages ? (
         <PackagesPage key="loan" kind="loan" />
       ) : route === routes.savingsPackages ? (

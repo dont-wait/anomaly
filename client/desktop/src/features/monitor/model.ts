@@ -67,7 +67,7 @@ export interface MonitorSnapshot {
 }
 
 export interface MonitorDashboardResponse {
-  range: TimeRange;
+  range: TimeRange | string;
   updatedAt: string;
   dataStatus: "fresh" | "stale";
   cursor: string;
