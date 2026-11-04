@@ -26,12 +26,26 @@ export interface TransactionReportHourly {
   pending: number;
 }
 
+export interface TransactionReportItem {
+  transactionId: string;
+  sourceAccountNo: string;
+  destinationAccountNo: string;
+  amount: number;
+  fee: number;
+  currency: string;
+  status: string;
+  decision?: string;
+  riskScore?: number;
+  createdAt: string;
+}
+
 export interface TransactionReport {
   date: string;
   previousDate: string;
   summary: TransactionReportSummary;
   previous: TransactionReportSummary;
   hourly: TransactionReportHourly[];
+  transactions: TransactionReportItem[];
   topRiskSources: TransactionRiskAccount[];
   topRiskReceivers: TransactionRiskAccount[];
 }

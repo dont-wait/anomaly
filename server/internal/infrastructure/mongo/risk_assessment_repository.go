@@ -86,6 +86,7 @@ type TransactionReport struct {
 	Summary          TransactionReportSummary
 	Previous         TransactionReportSummary
 	Hourly           []TransactionReportHourly
+	Transactions     []TransactionReportItem
 	TopRiskSources   []TransactionRiskAccount
 	TopRiskReceivers []TransactionRiskAccount
 }
@@ -97,6 +98,19 @@ type TransactionReportHourly struct {
 	Success int64  `json:"success"`
 	Failed  int64  `json:"failed"`
 	Pending int64  `json:"pending"`
+}
+
+type TransactionReportItem struct {
+	TransactionID        string    `json:"transactionId"`
+	SourceAccountNo      string    `json:"sourceAccountNo"`
+	DestinationAccountNo string    `json:"destinationAccountNo"`
+	Amount               int64     `json:"amount"`
+	Fee                  int64     `json:"fee"`
+	Currency             string    `json:"currency"`
+	Status               string    `json:"status"`
+	Decision             string    `json:"decision,omitempty"`
+	RiskScore            float64   `json:"riskScore,omitempty"`
+	CreatedAt            time.Time `json:"createdAt"`
 }
 
 type riskAssessmentChange struct {
@@ -552,22 +566,22 @@ func (r *RiskAssessmentRepository) Summarize(ctx context.Context, from, to time.
 }
 
 func (r *RiskAssessmentRepository) TransactionReport(ctx context.Context, from, to, previousFrom, previousTo time.Time) (TransactionReport, error) {
-	summary, hourly, sourceRisk, receiverRisk, err := r.summarizeTransactions(ctx, from, to)
+	summary, hourly, transactions, sourceRisk, receiverRisk, err := r.summarizeTransactions(ctx, from, to)
 	if err != nil {
 		return TransactionReport{}, err
 	}
-	previous, _, _, _, err := r.summarizeTransactions(ctx, previousFrom, previousTo)
+	previous, _, _, _, _, err := r.summarizeTransactions(ctx, previousFrom, previousTo)
 	if err != nil {
 		return TransactionReport{}, err
 	}
-	return TransactionReport{Summary: summary, Previous: previous, Hourly: hourly, TopRiskSources: sourceRisk, TopRiskReceivers: receiverRisk}, nil
+	return TransactionReport{Summary: summary, Previous: previous, Hourly: hourly, Transactions: transactions, TopRiskSources: sourceRisk, TopRiskReceivers: receiverRisk}, nil
 }
 
-func (r *RiskAssessmentRepository) summarizeTransactions(ctx context.Context, from, to time.Time) (TransactionReportSummary, []TransactionReportHourly, []TransactionRiskAccount, []TransactionRiskAccount, error) {
+func (r *RiskAssessmentRepository) summarizeTransactions(ctx context.Context, from, to time.Time) (TransactionReportSummary, []TransactionReportHourly, []TransactionReportItem, []TransactionRiskAccount, []TransactionRiskAccount, error) {
 	filter := bson.M{"created_at": bson.M{"$gte": from, "$lt": to}, "type": "transfer"}
 	cursor, err := r.transactions.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}))
 	if err != nil {
-		return TransactionReportSummary{}, nil, nil, nil, err
+		return TransactionReportSummary{}, nil, nil, nil, nil, err
 	}
 	defer func() { _ = cursor.Close(ctx) }()
 
@@ -575,10 +589,11 @@ func (r *RiskAssessmentRepository) summarizeTransactions(ctx context.Context, fr
 	sources := map[string]TransactionRiskAccount{}
 	receivers := map[string]TransactionRiskAccount{}
 	hourly := map[string]TransactionReportHourly{}
+	transactions := make([]TransactionReportItem, 0)
 	for cursor.Next(ctx) {
 		var tx TransferDocument
 		if err := cursor.Decode(&tx); err != nil {
-			return TransactionReportSummary{}, nil, nil, nil, err
+			return TransactionReportSummary{}, nil, nil, nil, nil, err
 		}
 		hour := tx.CreatedAt.In(timeutil.VietnamLocation).Format("15:00")
 		bucket := hourly[hour]
@@ -595,6 +610,15 @@ func (r *RiskAssessmentRepository) summarizeTransactions(ctx context.Context, fr
 		}
 		hourly[hour] = bucket
 		summary.TransactionCount++
+		item := TransactionReportItem{
+			TransactionID: tx.ID, SourceAccountNo: tx.Source.AccountNo, DestinationAccountNo: tx.Destination.AccountNo,
+			Amount: tx.Amount, Fee: tx.Fee, Currency: tx.Currency, Status: tx.Status, CreatedAt: tx.CreatedAt,
+		}
+		if tx.RiskAssessment != nil {
+			item.Decision = string(tx.RiskAssessment.Decision)
+			item.RiskScore = tx.RiskAssessment.RiskScore
+		}
+		transactions = append(transactions, item)
 		if tx.Status == "success" {
 			summary.SuccessCount++
 			summary.TotalAmount += tx.Amount
@@ -623,7 +647,7 @@ func (r *RiskAssessmentRepository) summarizeTransactions(ctx context.Context, fr
 		}
 	}
 	if err := cursor.Err(); err != nil {
-		return TransactionReportSummary{}, nil, nil, nil, err
+		return TransactionReportSummary{}, nil, nil, nil, nil, err
 	}
 	if summary.SuccessCount > 0 {
 		summary.AverageAmount = float64(summary.TotalAmount) / float64(summary.SuccessCount)
@@ -637,7 +661,7 @@ func (r *RiskAssessmentRepository) summarizeTransactions(ctx context.Context, fr
 			hourlyItems = append(hourlyItems, TransactionReportHourly{Hour: key})
 		}
 	}
-	return summary, hourlyItems, topRiskAccounts(sources), topRiskAccounts(receivers), nil
+	return summary, hourlyItems, transactions, topRiskAccounts(sources), topRiskAccounts(receivers), nil
 }
 
 func topRiskAccounts(values map[string]TransactionRiskAccount) []TransactionRiskAccount {

@@ -17,7 +17,7 @@ import {
 import { getDailyMonitorReport } from "@/features/monitor/api/monitorApi";
 import type { MonitorDashboardResponse, RiskAssessment } from "@/features/monitor/model";
 import { DailyReportChart } from "./DailyReportChart";
-import { getTransactionReport, type TransactionReport } from "./api/transactionsReportApi";
+import { getTransactionReport, type TransactionReport, type TransactionReportItem } from "./api/transactionsReportApi";
 
 const surface = "bg-(--admin-surface)";
 const subtle = "bg-(--admin-surface-subtle)";
@@ -72,6 +72,37 @@ function percentChange(current: number, previous: number) {
 
 function share(value: number, total: number) {
   return total > 0 ? `${((value / total) * 100).toFixed(1)}% tổng giao dịch` : "0% tổng giao dịch";
+}
+
+function reportItemToAssessment(item: TransactionReportItem, existing?: RiskAssessment): RiskAssessment {
+  if (existing) return existing;
+  const blocked = item.decision === "BLOCK";
+  return {
+    assessmentId: item.transactionId,
+    transactionId: item.transactionId,
+    riskScore: item.riskScore || 0,
+    predictedLabel: blocked ? 1 : 0,
+    riskLevel: blocked ? "BLOCK" : "NORMAL",
+    decision: blocked ? "BLOCK" : "ALLOW",
+    threshold: 0,
+    modelVersion: "—",
+    featureVersion: "—",
+    receivedAt: item.createdAt,
+    handled: false,
+    transaction: {
+      transactionId: item.transactionId,
+      sourceAccountNo: item.sourceAccountNo,
+      sourceAccountName: "",
+      destinationAccountNo: item.destinationAccountNo,
+      destinationName: "",
+      amount: item.amount,
+      fee: item.fee,
+      currency: item.currency,
+      channel: "",
+      status: item.status,
+      createdAt: item.createdAt,
+    },
+  };
 }
 
 function downloadReportCsv(date: string, report: TransactionReport | null, items: RiskAssessment[]) {
@@ -191,12 +222,13 @@ export function TransactionsRiskPage() {
 
   const items = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return (response?.snapshot.recentAssessments || [])
+    const existing = new Map((response?.snapshot.recentAssessments || []).map((item) => [item.transactionId, item]));
+    return (report?.transactions || []).map((item) => reportItemToAssessment(item, existing.get(item.transactionId)))
       .filter((item) => status === "all" || item.transaction?.status === status)
       .filter((item) => decision === "all" || item.decision === decision)
       .filter((item) => !normalized || [item.transactionId, item.transaction?.sourceAccountNo, item.transaction?.destinationAccountNo, item.transaction?.sourceAccountName, item.transaction?.destinationName].some((value) => value?.toLowerCase().includes(normalized)))
       .sort((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt));
-  }, [decision, query, response, status]);
+  }, [decision, query, report, response, status]);
 
   const snapshot = response?.snapshot;
   const summary = report?.summary;

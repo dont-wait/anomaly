@@ -143,6 +143,7 @@ type transactionReportDTO struct {
 	Summary          transactionReportSummaryDTO         `json:"summary"`
 	Previous         transactionReportSummaryDTO         `json:"previous"`
 	Hourly           []mongorepo.TransactionReportHourly `json:"hourly"`
+	Transactions     []mongorepo.TransactionReportItem   `json:"transactions"`
 	TopRiskSources   []mongorepo.TransactionRiskAccount  `json:"topRiskSources"`
 	TopRiskReceivers []mongorepo.TransactionRiskAccount  `json:"topRiskReceivers"`
 }
@@ -257,6 +258,7 @@ func (h *MonitorHandler) TransactionReport(w http.ResponseWriter, r *http.Reques
 		Date: date, PreviousDate: previousFrom.In(timeutil.VietnamLocation).Format("2006-01-02"),
 		Summary: toSummary(report.Summary), Previous: toSummary(report.Previous),
 		Hourly:         report.Hourly,
+		Transactions:   report.Transactions,
 		TopRiskSources: report.TopRiskSources, TopRiskReceivers: report.TopRiskReceivers,
 	}
 	w.Header().Set("Cache-Control", "no-store")
