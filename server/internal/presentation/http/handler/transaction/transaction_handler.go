@@ -76,15 +76,16 @@ type RiskDecisionStore interface {
 }
 
 type Handler struct {
-	logger            zerolog.Logger
-	repo              Repository
-	otp               *otp.TransferOTPStore
-	receipt           ReceiptSender
-	outbox            ReceiptOutbox
-	contacts          ContactRepository
-	risk              RiskDecisionStore
-	audit             auditRecorder
-	trustedProxyCIDRs []netip.Prefix
+	logger             zerolog.Logger
+	repo               Repository
+	otp                *otp.TransferOTPStore
+	transferOTPEnabled bool
+	receipt            ReceiptSender
+	outbox             ReceiptOutbox
+	contacts           ContactRepository
+	risk               RiskDecisionStore
+	audit              auditRecorder
+	trustedProxyCIDRs  []netip.Prefix
 }
 
 func (h *Handler) SetRiskDecisionStore(store RiskDecisionStore) {
@@ -121,7 +122,14 @@ func NewHandler(logger zerolog.Logger, repo Repository, otpStore *otp.TransferOT
 	if len(receiptOutbox) > 0 {
 		outbox = receiptOutbox[0]
 	}
-	return &Handler{logger: logger, repo: repo, otp: otpStore, receipt: receiptSender, outbox: outbox, contacts: contacts}
+	return &Handler{logger: logger, repo: repo, otp: otpStore, transferOTPEnabled: true, receipt: receiptSender, outbox: outbox, contacts: contacts}
+}
+
+// SetTransferOTPEnabled temporarily controls OTP enforcement for transfer
+// confirmation. It intentionally does not affect login, account, or other OTP
+// flows.
+func (h *Handler) SetTransferOTPEnabled(enabled bool) {
+	h.transferOTPEnabled = enabled
 }
 
 var accountNumberPattern = regexp.MustCompile(`^\d{6,19}$`)
@@ -335,7 +343,10 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := createResponse(tx, source.Email)
-	if created {
+	if !h.transferOTPEnabled {
+		response.OTP = otp.TransferOTPInfo{}
+	}
+	if created && h.transferOTPEnabled {
 		info, err := h.otp.Issue(r.Context(), tx.ID, source.Email)
 		if err != nil {
 			if cancelErr := h.cancelPendingWithReason(r.Context(), tx.ID, "otp_delivery_failed"); cancelErr != nil {
@@ -525,50 +536,52 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	operationID := uuid.NewString()
-	verification, err := h.otp.VerifyWithState(r.Context(), id, req.OTP)
-	attemptsLeft := verification.AttemptsLeft
-	if errors.Is(err, otp.ErrTransferOTPInvalid) {
-		left := attemptsLeft
-		if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPVerificationFailed, operationID, id, claims.UserID, &left, "invalid_code"); auditErr != nil {
-			h.writeRepoError(w, auditErr)
+	if h.transferOTPEnabled {
+		operationID := uuid.NewString()
+		verification, err := h.otp.VerifyWithState(r.Context(), id, req.OTP)
+		attemptsLeft := verification.AttemptsLeft
+		if errors.Is(err, otp.ErrTransferOTPInvalid) {
+			left := attemptsLeft
+			if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPVerificationFailed, operationID, id, claims.UserID, &left, "invalid_code"); auditErr != nil {
+				h.writeRepoError(w, auditErr)
+				return
+			}
+			writeAPIErrorExtra(w, http.StatusBadRequest, "INVALID_OTP", "invalid otp", map[string]int{"attemptsLeft": attemptsLeft})
 			return
 		}
-		writeAPIErrorExtra(w, http.StatusBadRequest, "INVALID_OTP", "invalid otp", map[string]int{"attemptsLeft": attemptsLeft})
-		return
-	}
-	if errors.Is(err, otp.ErrTransferOTPExpired) {
-		if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPExpired, operationID, id, claims.UserID, nil, "expired"); auditErr != nil {
-			h.writeRepoError(w, auditErr)
+		if errors.Is(err, otp.ErrTransferOTPExpired) {
+			if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPExpired, operationID, id, claims.UserID, nil, "expired"); auditErr != nil {
+				h.writeRepoError(w, auditErr)
+				return
+			}
+			if cancelErr := h.cancelPendingWithReason(r.Context(), id, "otp_expired"); cancelErr != nil {
+				h.writeRepoError(w, cancelErr)
+				return
+			}
+			writeAPIError(w, http.StatusGone, "OTP_EXPIRED", "otp expired")
 			return
 		}
-		if cancelErr := h.cancelPendingWithReason(r.Context(), id, "otp_expired"); cancelErr != nil {
-			h.writeRepoError(w, cancelErr)
+		if errors.Is(err, otp.ErrTransferOTPExceeded) {
+			if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPAttemptsExceeded, operationID, id, claims.UserID, intPointer(0), "attempts_exceeded"); auditErr != nil {
+				h.writeRepoError(w, auditErr)
+				return
+			}
+			if cancelErr := h.cancelPendingWithReason(r.Context(), id, "otp_attempts_exceeded"); cancelErr != nil {
+				h.writeRepoError(w, cancelErr)
+				return
+			}
+			writeAPIError(w, http.StatusLocked, "OTP_ATTEMPTS_EXCEEDED", "otp attempts exceeded")
 			return
 		}
-		writeAPIError(w, http.StatusGone, "OTP_EXPIRED", "otp expired")
-		return
-	}
-	if errors.Is(err, otp.ErrTransferOTPExceeded) {
-		if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPAttemptsExceeded, operationID, id, claims.UserID, intPointer(0), "attempts_exceeded"); auditErr != nil {
-			h.writeRepoError(w, auditErr)
+		if err != nil {
+			h.writeRepoError(w, err)
 			return
 		}
-		if cancelErr := h.cancelPendingWithReason(r.Context(), id, "otp_attempts_exceeded"); cancelErr != nil {
-			h.writeRepoError(w, cancelErr)
-			return
-		}
-		writeAPIError(w, http.StatusLocked, "OTP_ATTEMPTS_EXCEEDED", "otp attempts exceeded")
-		return
-	}
-	if err != nil {
-		h.writeRepoError(w, err)
-		return
-	}
-	if verification.NewlyVerified {
-		if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPVerificationSucceeded, operationID, id, claims.UserID, nil, ""); auditErr != nil {
-			h.writeRepoError(w, auditErr)
-			return
+		if verification.NewlyVerified {
+			if auditErr := h.recordTransferOTPAudit(r.Context(), domainaudit.TransferOTPVerificationSucceeded, operationID, id, claims.UserID, nil, ""); auditErr != nil {
+				h.writeRepoError(w, auditErr)
+				return
+			}
 		}
 	}
 	var confirmed mongorepo.TransferDocument
@@ -598,7 +611,9 @@ func (h *Handler) ConfirmTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.finalizeRiskDecision(r.Context(), id)
-	_ = h.otp.Consume(r.Context(), id)
+	if h.transferOTPEnabled {
+		_ = h.otp.Consume(r.Context(), id)
+	}
 	h.sendTransferReceipt(r.Context(), owner, confirmed)
 	feed, err := h.repo.GetFeed(r.Context(), owner.ID, confirmed.ID)
 	if err != nil {
@@ -688,6 +703,10 @@ func (h *Handler) ResendOTP(w http.ResponseWriter, r *http.Request) {
 	claims, ok := middleware.ClaimsFromContext(r.Context())
 	if !ok || claims == nil {
 		writeAPIError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	if !h.transferOTPEnabled {
+		writeAPIError(w, http.StatusConflict, "OTP_DISABLED", "transfer OTP is disabled")
 		return
 	}
 	id := r.PathValue("transferId")
