@@ -14,7 +14,24 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const interval = time.Hour
+const (
+	interval    = time.Hour
+	scanTimeout = 2 * time.Minute
+)
+
+// runScan bounds each MongoDB scan; a slow query cannot stall the scheduler
+// indefinitely. The parent context still handles shutdown signals.
+func runScan(ctx context.Context, job reminder.Job, now time.Time, timeout time.Duration) (reminder.Stats, error) {
+	scanCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return job.Run(scanCtx, now)
+}
+
+// Candidate identifiers and financial details must never enter routine logs.
+func logDryRunCandidate(log *zerolog.Logger, item reminder.Candidate) {
+	log.Info().Str("type", string(item.Type)).
+		Msg("loan repayment reminder candidate (dry run; NOT sent)")
+}
 
 func main() {
 	log := logger.NewLogger(zerolog.InfoLevel)
@@ -43,31 +60,30 @@ func main() {
 		Repository: mongo.NewLoanReminderQuery(client, config.MongoDBName),
 		// Phase 1: safe, read-only dry-run. Never send email or reserve keys.
 		Handler: reminder.HandlerFunc(func(_ context.Context, item reminder.Candidate) error {
-			log.Info().Str("loan_no", item.LoanNo).
-				Int("installment_no", item.InstallmentNo).
-				Str("type", string(item.Type)).
-				Str("due_date", item.DueDate.UTC().Format("2006-01-02")).
-				Int64("total_due", item.TotalDue).
-				Str("idempotency_key", item.IdempotencyKey()).
-				Msg("loan repayment reminder candidate (dry run; NOT sent)")
+			logDryRunCandidate(log, item)
 			return nil
 		}),
 	}
 
-	run := func() {
-		stats, err := job.Run(ctx, time.Now())
+	run := func() error {
+		stats, err := runScan(ctx, job, time.Now(), scanTimeout)
 		if err != nil {
-			log.Error().Err(err).Msg("loan reminder scan failed")
-			return
+			return err
 		}
 		log.Info().Int("scanned", stats.Scanned).
 			Int("matched", stats.Matched).
 			Int("skipped", stats.Skipped).
 			Int("failed", stats.Failed).
 			Msg("loan reminder scan completed (dry run; sent=0)")
+		return nil
 	}
 
-	run()
+	if err := run(); err != nil {
+		if len(os.Args) == 2 { // --once must report a failed scan to the caller.
+			log.Fatal().Err(err).Msg("loan reminder one-shot scan failed")
+		}
+		log.Error().Err(err).Msg("loan reminder scan failed")
+	}
 	if len(os.Args) == 2 { // --once
 		return
 	}
@@ -80,7 +96,9 @@ func main() {
 			log.Info().Msg("loan repayment reminder scheduler stopped")
 			return
 		case <-ticker.C:
-			run()
+			if err := run(); err != nil {
+				log.Error().Err(err).Msg("loan reminder scan failed")
+			}
 		}
 	}
 }

@@ -8,7 +8,9 @@ This stage implements a **read-only** scheduler; it does **not** send email, wri
 - Only loan `status: active` and installment `status: upcoming` are eligible.
 - Match `T-5` and `T-0` with a Vietnam calendar date (`Asia/Ho_Chi_Minh` / fixed UTC+7).
 - Signed EMI `repayment_schedule.due_date` values are stored as *UTC-midnight date-only values*; query the matching UTC calendar day instead of converting due dates to midnight in Vietnam.
-- Keep `installment_no`, `total_due`, and `loan_no` from the read model. Never recompute EMI amounts.
+- Keep `installment_no`, `total_due`, and `loan_no` from the read model in memory. Never recompute EMI amounts.
+- Never log loan numbers, repayment amounts, due dates, or idempotency keys. Only aggregate statistics and reminder type are logged.
+- Migration `000020_loan_reminder_due_index` adds a compound multikey index for `status`, `repayment_schedule.status`, and `repayment_schedule.due_date`, so the active/upcoming due-date query can use an index as the loan collection grows. Run migrations through the team's approved process and inspect current migration status first; do not blindly apply earlier, possibly destructive migrations. Check query plans with MongoDB `explain` against representative data.
 
 ## Run
 
@@ -20,7 +22,7 @@ go run ./cmd/loan-reminder --once
 go run ./cmd/loan-reminder
 ```
 
-The first command is an optional isolated scan. The final command runs an immediate scan and then scans every hour until Ctrl+C. Both commands only log **candidates**, never send reminders.
+The first command runs tests. The `--once` command performs a single scan (exits nonzero when scanning fails). The final command runs an immediate scan and then scans every hour until Ctrl+C. Each scan has a 2-minute timeout. Both run modes log only non-sensitive candidate types and aggregate counts; neither sends reminders.
 
 ## Stage 2 integration contract
 
