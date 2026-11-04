@@ -89,13 +89,15 @@ func (l *Loader) LoadAllConfig() *Config {
 }
 
 type HTTPConfig struct {
-	TrustedProxyCIDRs []string
+	TrustedProxyCIDRs  []string
+	TransferOTPEnabled bool
 }
 
 func (l *Loader) LoadHTTPConfig() *HTTPConfig {
 	l.logger().Info().Msg("Load HTTP config")
 	return &HTTPConfig{
-		TrustedProxyCIDRs: splitCSV(l.LoadEnvOr("TRUSTED_PROXY_CIDRS", "")),
+		TrustedProxyCIDRs:  splitCSV(l.LoadEnvOr("TRUSTED_PROXY_CIDRS", "")),
+		TransferOTPEnabled: !l.LoadEnvBool("DISABLE_TRANSFER_OTP", false),
 	}
 }
 
