@@ -112,17 +112,19 @@ it("authenticates by message, orders binary chunks, and waits for the server bef
   expect(requestApi).toHaveBeenCalledTimes(1);
 });
 
-it("fails and cancels a congested connection instead of buffering video without a bound", async () => {
+it("fails a congested connection and keeps the attempt retryable", async () => {
   vi.useFakeTimers();
   const { capture, socket, error } = await open();
   socket.bufferedAmount = 1024 * 1024 + 1;
   await vi.advanceTimersByTimeAsync(250);
   expect(error).toHaveBeenCalledOnce();
   expect(socket.close).toHaveBeenCalledOnce();
-  expect(requestApi).toHaveBeenLastCalledWith(
-    "/api/kyc/realtime/attempts/attempt",
-    expect.objectContaining({ method: "DELETE", token: "kyc-token" }),
+  expect(requestApi).toHaveBeenCalledTimes(1);
+  expect(requestApi).toHaveBeenCalledWith(
+    "/api/kyc/realtime/attempts",
+    expect.objectContaining({ method: "POST", token: "kyc-token" }),
   );
   capture.dispose();
   expect(socket.close).toHaveBeenCalledOnce();
+  expect(requestApi).toHaveBeenCalledTimes(1);
 });
