@@ -32,10 +32,11 @@ type SavingsSeeder interface {
 	SeedBackdatedSavings(context.Context, eventstore.SeedSavingsInput) (journal.SavingsMovement, bool, error)
 }
 
-// seedMaturedSavings opens a savings contract that matured earlier today for
+// seedMaturedSavings opens a savings contract that has matured by now for
 // the account whose CCCD is in SEED_MATURED_SAVINGS_CCCD. It does nothing when
 // the variable is unset, so real identities never live in the repository.
-// One contract is created per account per Vietnam calendar day.
+// Repeated runs reuse that day's active contract, but create a fresh contract
+// if the previous demo contract has already been settled.
 func seedMaturedSavings(ctx context.Context, deps Dependencies) error {
 	cccd := strings.TrimSpace(os.Getenv("SEED_MATURED_SAVINGS_CCCD"))
 	if cccd == "" || deps.Savings == nil {
@@ -81,24 +82,30 @@ func seedMaturedSavings(ctx context.Context, deps Dependencies) error {
 	return nil
 }
 
-// maturedTodayOpening returns an opening time whose maturity falls on now's
-// Vietnam calendar day and no later than now (at least a minute earlier, or
-// 00:00 when the day has just started).
+// maturedTodayOpening returns an opening time whose maturity is no later than
+// now in Vietnam time (one hour earlier, or 00:00 near day start).
 func maturedTodayOpening(now time.Time, termMonths int) (time.Time, error) {
 	now = now.In(timeutil.VietnamLocation).Truncate(time.Second)
 	target := now.Add(-time.Hour)
 	if dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()); target.Before(dayStart) {
 		target = dayStart
 	}
-	// Months have different lengths, so search back from the naive guess for
-	// the opening whose calendar-month maturity lands exactly on target.
-	guess := target.AddDate(0, -termMonths, 0)
-	for offset := -3; offset <= 3; offset++ {
-		openedAt := guess.AddDate(0, 0, offset)
-		maturity, err := savings.MaturityForStoredContract(openedAt, termMonths)
-		if err == nil && maturity.Equal(target) {
-			return openedAt.UTC(), nil
+	// Some calendar dates cannot be reached by adding this term from any valid
+	// opening date (for example, February cannot produce a May 30 maturity).
+	// Pick the latest reachable maturity at or before the target instead.
+	for daysBack := 0; daysBack < 31; daysBack++ {
+		candidateMaturity := target.AddDate(0, 0, -daysBack)
+		openingMonth := time.Date(candidateMaturity.Year(), candidateMaturity.Month()-time.Month(termMonths), 1, 0, 0, 0, 0, candidateMaturity.Location())
+		lastDay := openingMonth.AddDate(0, 1, -1).Day()
+		for day := 1; day <= lastDay; day++ {
+			openedAt := time.Date(openingMonth.Year(), openingMonth.Month(), day,
+				candidateMaturity.Hour(), candidateMaturity.Minute(), candidateMaturity.Second(), candidateMaturity.Nanosecond(),
+				candidateMaturity.Location())
+			maturity, err := savings.MaturityForStoredContract(openedAt, termMonths)
+			if err == nil && maturity.Equal(candidateMaturity) {
+				return openedAt.UTC(), nil
+			}
 		}
 	}
-	return time.Time{}, fmt.Errorf("no %d-month opening matures at %s", termMonths, target)
+	return time.Time{}, fmt.Errorf("no reachable %d-month maturity on or before %s", termMonths, target)
 }

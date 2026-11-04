@@ -30,13 +30,29 @@ type SeedSavingsInput struct {
 // seed CLI may do. Funds, ownership and uniqueness are still validated against
 // the canonical banking stream, and a repeated key returns the stored contract.
 func (r SeedRepository) SeedBackdatedSavings(ctx context.Context, in SeedSavingsInput) (journal.SavingsMovement, bool, error) {
-	key := in.AccountID + ":" + strings.ToLower(in.IdempotencyKey)
+	if !savingsWritesEnabled() {
+		return journal.SavingsMovement{}, false, ErrSavingsWritesDisabled
+	}
+	baseKey := in.AccountID + ":" + strings.ToLower(in.IdempotencyKey)
 	created := false
 	result, err := r.mutate(ctx, func(s *bankState) (*journal.Record, any, error) {
-		if id := s.SavingsKeys[key]; id != "" {
-			return nil, s.Savings[id], nil
+		key := baseKey
+		quoteID := in.QuoteID
+		for generation := 0; ; generation++ {
+			if generation > 0 {
+				key = fmt.Sprintf("%s:reset:%d", baseKey, generation)
+				quoteID = journal.EventID(in.QuoteID, key)
+			}
+			id := s.SavingsKeys[key]
+			if id == "" {
+				break
+			}
+			existing := s.Savings[id]
+			if existing.Contract.Status != savings.ContractSettled {
+				return nil, existing, nil
+			}
 		}
-		if s.SavingsQuotes[in.QuoteID] != "" {
+		if s.SavingsQuotes[quoteID] != "" {
 			return nil, nil, ErrSavingsQuoteUsed
 		}
 		owner := s.Accounts[in.AccountID]
@@ -61,12 +77,12 @@ func (r SeedRepository) SeedBackdatedSavings(ctx context.Context, in SeedSavings
 		}
 		after := before - in.Principal
 		m := journal.SavingsMovement{
-			Contract: *c, ActorID: owner.Id, OpeningQuoteID: in.QuoteID, OpeningKey: key,
+			Contract: *c, ActorID: owner.Id, OpeningQuoteID: quoteID, OpeningKey: key,
 			TransactionID: journal.EventID(id, "deposit"),
 		}
 		created = true
 		return &journal.Record{
-			ID: journal.EventID(id, journal.SavingsOpened), Type: journal.SavingsOpened, At: in.OpenedAt,
+			ID: journal.EventID(id, journal.SavingsOpened), Type: journal.SavingsOpened, At: time.Now().UTC(),
 			AccountID: owner.Id, BalanceBefore: &before, BalanceAfter: &after, Savings: &m,
 		}, m, nil
 	})
