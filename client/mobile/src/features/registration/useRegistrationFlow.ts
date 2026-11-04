@@ -228,6 +228,10 @@ export function useRegistrationFlow() {
       Date.now() >= kycExpiresAt.current - 30000
     )
       throw new Error("Phiên xác thực đã hết hạn. Vui lòng đăng nhập lại.");
+    // Reuse the key while this attempt may still be active. The server derives
+    // the attempt ID from it, so a retry can recover the existing lease without
+    // consuming another start-rate or capacity slot. Rotate it after a final
+    // verification decision below.
     try {
       const capture = await openRealtimeKyc(
         documents.front,
