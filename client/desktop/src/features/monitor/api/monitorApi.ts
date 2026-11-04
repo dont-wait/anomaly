@@ -104,6 +104,20 @@ export async function getMonitorDashboard(
   return (await response.json()) as MonitorDashboardResponse;
 }
 
+export async function getDailyMonitorReport(
+  date: string,
+  signal?: AbortSignal,
+): Promise<MonitorDashboardResponse> {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/api/admin/monitor?date=${encodeURIComponent(date)}&handled=all`,
+    { headers: authHeaders(), signal },
+  );
+  if (!response.ok) {
+    throw new MonitorApiError("Không thể tải báo cáo giao dịch", response.status);
+  }
+  return (await response.json()) as MonitorDashboardResponse;
+}
+
 function parseSseBlock(block: string): RiskStreamEvent | null {
   let eventName = "message";
   let data = "";
