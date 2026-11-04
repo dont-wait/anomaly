@@ -57,12 +57,12 @@ export function shouldAdvanceMonitorCursor(
   return false;
 }
 
-function authHeaders(): HeadersInit {
+export function authHeaders(): HeadersInit {
   const session = readAdminSession();
   return session ? { Authorization: `Bearer ${session.accessToken}` } : {};
 }
 
-async function fetchWithTimeout(
+export async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit = {},
   timeoutMs = 8000,

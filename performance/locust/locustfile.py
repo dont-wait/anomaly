@@ -178,30 +178,19 @@ class AlertFlowMixin:
 
     def _find_assessment(self, transaction_id: str) -> dict[str, Any] | None:
         with self.client.get(
-            "/api/admin/monitor",
-            params={"range": "24h", "handled": "all"},
+            f"/api/admin/risk-assessments/transactions/{transaction_id}",
             headers=self._headers(self.admin_token),
-            name="GET /api/admin/monitor [risk poll]",
+            name="GET /api/admin/risk-assessments/transactions/{id}",
             catch_response=True,
         ) as response:
+            if response.status_code == 404:
+                response.success()
+                return None
             if response.status_code != 200:
-                response.failure(f"monitor returned HTTP {response.status_code}")
+                response.failure(f"risk assessment returned HTTP {response.status_code}")
                 return None
             payload = _payload(response)
-            snapshot = payload.get("snapshot", {})
-            assessments = snapshot.get("recentAssessments", [])
-            if not isinstance(assessments, list):
-                response.failure("monitor response recentAssessments is not a list")
-                return None
-            return next(
-                (
-                    item
-                    for item in assessments
-                    if isinstance(item, dict)
-                    and item.get("transactionId") == transaction_id
-                ),
-                None,
-            )
+            return payload if payload else None
 
     def _confirm_transfer(self, transaction_id: str) -> bool:
         with self.client.post(
