@@ -92,12 +92,15 @@ type TransactionReport struct {
 }
 
 type TransactionReportHourly struct {
-	Hour    string `json:"hour"`
-	Count   int64  `json:"count"`
-	Amount  int64  `json:"amount"`
-	Success int64  `json:"success"`
-	Failed  int64  `json:"failed"`
-	Pending int64  `json:"pending"`
+	Hour          string `json:"hour"`
+	Count         int64  `json:"count"`
+	Amount        int64  `json:"amount"`
+	Success       int64  `json:"success"`
+	SuccessAmount int64  `json:"successAmount"`
+	Failed        int64  `json:"failed"`
+	FailedAmount  int64  `json:"failedAmount"`
+	Pending       int64  `json:"pending"`
+	PendingAmount int64  `json:"pendingAmount"`
 }
 
 type TransactionReportItem struct {
@@ -615,10 +618,13 @@ func (r *RiskAssessmentRepository) summarizeTransactions(ctx context.Context, fr
 		switch tx.Status {
 		case "success":
 			bucket.Success++
+			bucket.SuccessAmount += tx.Amount
 		case "failed", "cancelled":
 			bucket.Failed++
+			bucket.FailedAmount += tx.Amount
 		default:
 			bucket.Pending++
+			bucket.PendingAmount += tx.Amount
 		}
 		hourly[hour] = bucket
 		summary.TransactionCount++

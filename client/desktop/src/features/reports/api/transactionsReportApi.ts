@@ -23,8 +23,11 @@ export interface TransactionReportHourly {
   count: number;
   amount: number;
   success: number;
+  successAmount: number;
   failed: number;
+  failedAmount: number;
   pending: number;
+  pendingAmount: number;
 }
 
 export interface TransactionReportItem {
