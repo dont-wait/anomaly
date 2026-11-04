@@ -17,6 +17,7 @@ import (
 	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
+	"github.com/dont-wait/anomaly/internal/timeutil"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -126,6 +127,27 @@ type monitorResponse struct {
 	Snapshot   monitorSnapshot `json:"snapshot"`
 }
 
+type transactionReportSummaryDTO struct {
+	TransactionCount int64   `json:"transactionCount"`
+	TotalAmount      int64   `json:"totalAmount"`
+	TotalFee         int64   `json:"totalFee"`
+	AverageAmount    float64 `json:"averageAmount"`
+	SuccessCount     int64   `json:"successCount"`
+	FailedCount      int64   `json:"failedCount"`
+	BlockedCount     int64   `json:"blockedCount"`
+}
+
+type transactionReportDTO struct {
+	Date             string                              `json:"date"`
+	PreviousDate     string                              `json:"previousDate"`
+	Summary          transactionReportSummaryDTO         `json:"summary"`
+	Previous         transactionReportSummaryDTO         `json:"previous"`
+	Hourly           []mongorepo.TransactionReportHourly `json:"hourly"`
+	Transactions     []mongorepo.TransactionReportItem   `json:"transactions"`
+	TopRiskSources   []mongorepo.TransactionRiskAccount  `json:"topRiskSources"`
+	TopRiskReceivers []mongorepo.TransactionRiskAccount  `json:"topRiskReceivers"`
+}
+
 func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc queries.TokenService, currentAdmin func(http.Handler) http.Handler, timelines ...*TimelineHandler) {
 	admin := func(pattern string, fn http.HandlerFunc, operation openapi.Operation) {
 		operation.Auth = true
@@ -135,8 +157,16 @@ func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc 
 	}
 	admin("GET /api/admin/monitor", handler.Snapshot, openapi.Operation{
 		ID: "adminMonitorSnapshot", Summary: "Get risk assessment monitor snapshot",
-		Parameters: []openapi.Parameter{{Name: "range", In: "query", Type: "string", Example: "24h"}},
-		Response:   monitorResponse{}, FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
+		Parameters: []openapi.Parameter{
+			{Name: "range", In: "query", Type: "string", Example: "24h"},
+			{Name: "date", In: "query", Type: "string", Format: "date", Example: "2026-11-04"},
+		},
+		Response: monitorResponse{}, FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
+	})
+	admin("GET /api/admin/reports/transactions", handler.TransactionReport, openapi.Operation{
+		ID: "adminTransactionReport", Summary: "Get daily transaction and risk report",
+		Parameters: []openapi.Parameter{{Name: "date", In: "query", Type: "string", Format: "date", Required: true, Example: "2026-11-04"}},
+		Response:   transactionReportDTO{}, FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 	})
 	admin("PATCH /api/admin/risk-assessments/{id}/handled", handler.UpdateHandled, openapi.Operation{
 		ID: "updateRiskAssessmentHandled", Summary: "Mark a risk assessment handled or reopen it",
@@ -158,14 +188,12 @@ func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc 
 func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 	queryCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	duration, rangeName, ok := monitorRange(r.URL.Query().Get("range"))
-	if !ok {
-		http.Error(w, "range must be 24h, 7d, or 30d", http.StatusBadRequest)
+	from, to, rangeName, err := monitorWindow(r.URL.Query().Get("date"), r.URL.Query().Get("range"), time.Now().UTC())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	now := time.Now().UTC()
-	from := now.Add(-duration)
-	summary, err := h.repository.Summarize(queryCtx, from, now)
+	summary, err := h.repository.Summarize(queryCtx, from, to)
 	if err != nil {
 		http.Error(w, "could not load risk assessments", http.StatusInternalServerError)
 		return
@@ -183,7 +211,7 @@ func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "handled must be all, handled, or unhandled", http.StatusBadRequest)
 		return
 	}
-	recent, err := h.repository.ListRecentByHandled(queryCtx, from, now, 50, handled)
+	recent, err := h.repository.ListRecentByHandled(queryCtx, from, to, 50, handled)
 	if err != nil {
 		http.Error(w, "could not load recent risk assessments", http.StatusInternalServerError)
 		return
@@ -193,12 +221,49 @@ func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not load transaction context", http.StatusInternalServerError)
 		return
 	}
-	response := buildMonitorResponse(rangeName, summary, recentDTO, now)
+	response := buildMonitorResponse(rangeName, summary, recentDTO, time.Now().UTC())
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		return
 	}
+}
+
+func (h *MonitorHandler) TransactionReport(w http.ResponseWriter, r *http.Request) {
+	queryCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	from, to, date, err := monitorWindow(r.URL.Query().Get("date"), "", time.Now().UTC())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	previousFrom := from.AddDate(0, 0, -1)
+	report, err := h.repository.TransactionReport(queryCtx, from, to, previousFrom, from)
+	if err != nil {
+		http.Error(w, "could not load transaction report", http.StatusInternalServerError)
+		return
+	}
+	toSummary := func(value mongorepo.TransactionReportSummary) transactionReportSummaryDTO {
+		return transactionReportSummaryDTO{
+			TransactionCount: value.TransactionCount,
+			TotalAmount:      value.TotalAmount,
+			TotalFee:         value.TotalFee,
+			AverageAmount:    value.AverageAmount,
+			SuccessCount:     value.SuccessCount,
+			FailedCount:      value.FailedCount,
+			BlockedCount:     value.BlockedCount,
+		}
+	}
+	response := transactionReportDTO{
+		Date: date, PreviousDate: previousFrom.In(timeutil.VietnamLocation).Format("2006-01-02"),
+		Summary: toSummary(report.Summary), Previous: toSummary(report.Previous),
+		Hourly:         report.Hourly,
+		Transactions:   report.Transactions,
+		TopRiskSources: report.TopRiskSources, TopRiskReceivers: report.TopRiskReceivers,
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func (h *MonitorHandler) UpdateHandled(w http.ResponseWriter, r *http.Request) {
@@ -349,6 +414,23 @@ func monitorRange(value string) (time.Duration, string, bool) {
 	default:
 		return 0, "", false
 	}
+}
+
+func monitorWindow(dateValue, rangeValue string, now time.Time) (time.Time, time.Time, string, error) {
+	if strings.TrimSpace(dateValue) != "" {
+		date, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(dateValue), timeutil.VietnamLocation)
+		if err != nil {
+			return time.Time{}, time.Time{}, "", errors.New("date must use YYYY-MM-DD")
+		}
+		next := date.AddDate(0, 0, 1)
+		return date.UTC(), next.UTC(), date.Format("2006-01-02"), nil
+	}
+	duration, rangeName, ok := monitorRange(rangeValue)
+	if !ok {
+		return time.Time{}, time.Time{}, "", errors.New("range must be 24h, 7d, or 30d")
+	}
+	to := now.UTC()
+	return to.Add(-duration), to, rangeName, nil
 }
 
 func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSummary, recent []riskAssessmentDTO, generatedAt time.Time) monitorResponse {

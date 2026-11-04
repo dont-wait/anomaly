@@ -112,7 +112,8 @@ export async function openRealtimeKyc(
   try {
     socket = new WebSocket(url);
   } catch (cause) {
-    cancelRemote();
+    // Keep the server attempt so a retry with the same idempotency key can
+    // recover it and request a fresh one-use stream ticket.
     throw cause instanceof Error
       ? cause
       : new Error("Không thể kết nối xác thực trực tiếp.");
@@ -133,7 +134,9 @@ export async function openRealtimeKyc(
     readyReject(error);
     startReject(error);
     finishReject(error);
-    dispose();
+    // A transient camera or stream failure is retryable. Cancelling here would
+    // tombstone this attempt and make the same idempotency key unusable.
+    dispose(false);
     onError(error);
   };
   const abort = () => fail(new Error("Đã hủy quay video."));
