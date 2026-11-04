@@ -40,7 +40,7 @@ func main() {
 		log.Fatal().Err(err).Msg("ensure loan catalog indexes failed")
 	}
 
-	if err := seeder.Run(ctx, seeder.Dependencies{Accounts: repo, LoanCatalog: loanCatalog}); err != nil {
+	if err := seeder.Run(ctx, seeder.Dependencies{Accounts: repo, LoanCatalog: loanCatalog, Savings: repo}); err != nil {
 		log.Fatal().Err(err).Msg("seed failed")
 	}
 	log.Info().Msg("all seeders completed")
