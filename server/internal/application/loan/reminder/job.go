@@ -62,6 +62,20 @@ func (fn HandlerFunc) Handle(ctx context.Context, item Candidate) error {
 	return fn(ctx, item)
 }
 
+// HandlerError identifies the failed reminder type without exposing the loan
+// number, installment amount, or an untrusted underlying error in routine logs.
+// errors.Is/errors.As still allow internal callers to inspect the cause.
+type HandlerError struct {
+	Type  ReminderType
+	Cause error
+}
+
+func (e *HandlerError) Error() string {
+	return fmt.Sprintf("loan reminder handler failed (type=%s)", e.Type)
+}
+
+func (e *HandlerError) Unwrap() error { return e.Cause }
+
 type Stats struct {
 	Scanned int
 	Matched int
@@ -98,6 +112,7 @@ func (j Job) Run(ctx context.Context, now time.Time) (Stats, error) {
 
 	stats := Stats{Scanned: len(rows)}
 	seen := make(map[string]struct{}, len(rows))
+	var handlerErrors []error
 	for _, row := range rows {
 		if err := ctx.Err(); err != nil {
 			return stats, err
@@ -140,8 +155,9 @@ func (j Job) Run(ctx context.Context, now time.Time) (Stats, error) {
 		stats.Matched++
 		if err := j.Handler.Handle(ctx, item); err != nil {
 			stats.Failed++
-			// One failed candidate must not abort the remaining candidates.
+			handlerErrors = append(handlerErrors, &HandlerError{Type: kind, Cause: err})
+			// Continue to other candidates; surface all errors afterwards.
 		}
 	}
-	return stats, nil
+	return stats, errors.Join(handlerErrors...)
 }

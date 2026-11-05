@@ -3,6 +3,7 @@ package reminder
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -79,16 +80,48 @@ func TestJobContinuesAfterCandidateHandlerFailure(t *testing.T) {
 		{LoanID: "b", LoanStatus: "active", InstallmentNo: 1, DueDate: today, TotalDue: 200, Status: "upcoming"},
 	}}
 	calls := 0
+	failure := errors.New("PRIVATE-LOAN-ID: temporary delivery failure")
 	job := Job{Repository: repo, Handler: HandlerFunc(func(_ context.Context, _ Candidate) error {
 		calls++
 		if calls == 1 {
-			return errors.New("temporary delivery failure")
+			return failure
 		}
 		return nil
 	})}
 	stats, err := job.Run(context.Background(), time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))
-	if err != nil || calls != 2 || stats.Matched != 2 || stats.Failed != 1 {
+	if calls != 2 || stats.Matched != 2 || stats.Failed != 1 || !errors.Is(err, failure) {
 		t.Fatalf("calls=%d stats=%+v err=%v", calls, stats, err)
+	}
+	var handlerError *HandlerError
+	if !errors.As(err, &handlerError) || handlerError.Type != ReminderDueToday {
+		t.Fatalf("expected typed handler error: %v", err)
+	}
+	if strings.Contains(err.Error(), "PRIVATE-LOAN-ID") || !strings.Contains(err.Error(), "T-0") {
+		t.Fatalf("error summary leaked sensitive data or omitted type: %s", err)
+	}
+}
+
+func TestJobJoinsMultipleHandlerFailures(t *testing.T) {
+	today, five := TargetDates(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))
+	repo := &fakeRepository{rows: []Installment{
+		{LoanID: "a", LoanStatus: "active", InstallmentNo: 1, DueDate: today, TotalDue: 100, Status: "upcoming"},
+		{LoanID: "b", LoanStatus: "active", InstallmentNo: 1, DueDate: five, TotalDue: 200, Status: "upcoming"},
+	}}
+	first, second := errors.New("private first error"), errors.New("private second error")
+	calls := 0
+	job := Job{Repository: repo, Handler: HandlerFunc(func(_ context.Context, _ Candidate) error {
+		calls++
+		if calls == 1 {
+			return first
+		}
+		return second
+	})}
+	stats, err := job.Run(context.Background(), time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))
+	if calls != 2 || stats.Failed != 2 || !errors.Is(err, first) || !errors.Is(err, second) {
+		t.Fatalf("calls=%d stats=%+v err=%v", calls, stats, err)
+	}
+	if strings.Contains(err.Error(), "private") || !strings.Contains(err.Error(), "T-0") || !strings.Contains(err.Error(), "T-5") {
+		t.Fatalf("unsafe aggregated error summary: %s", err)
 	}
 }
 

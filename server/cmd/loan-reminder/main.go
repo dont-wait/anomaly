@@ -11,6 +11,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/logger"
+	"github.com/dont-wait/anomaly/internal/scheduler"
 	"github.com/rs/zerolog"
 )
 
@@ -18,14 +19,6 @@ const (
 	interval    = time.Hour
 	scanTimeout = 2 * time.Minute
 )
-
-// runScan bounds each MongoDB scan; a slow query cannot stall the scheduler
-// indefinitely. The parent context still handles shutdown signals.
-func runScan(ctx context.Context, job reminder.Job, now time.Time, timeout time.Duration) (reminder.Stats, error) {
-	scanCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	return job.Run(scanCtx, now)
-}
 
 // Candidate identifiers and financial details must never enter routine logs.
 func logDryRunCandidate(log *zerolog.Logger, item reminder.Candidate) {
@@ -65,40 +58,32 @@ func main() {
 		}),
 	}
 
-	run := func() error {
-		stats, err := runScan(ctx, job, time.Now(), scanTimeout)
-		if err != nil {
+	runner, err := scheduler.New(log, []scheduler.Job{{
+		Name:     "loan-repayment-reminder",
+		Interval: interval,
+		Timeout:  scanTimeout,
+		Run: func(scanCtx context.Context, now time.Time) error {
+			stats, err := job.Run(scanCtx, now)
+			log.Info().Int("scanned", stats.Scanned).
+				Int("matched", stats.Matched).
+				Int("skipped", stats.Skipped).
+				Int("failed", stats.Failed).
+				Msg("loan reminder scan completed (dry run; sent=0)")
 			return err
-		}
-		log.Info().Int("scanned", stats.Scanned).
-			Int("matched", stats.Matched).
-			Int("skipped", stats.Skipped).
-			Int("failed", stats.Failed).
-			Msg("loan reminder scan completed (dry run; sent=0)")
-		return nil
+		},
+	}})
+	if err != nil {
+		log.Fatal().Err(err).Msg("configure loan reminder scheduler")
 	}
 
-	if err := run(); err != nil {
-		if len(os.Args) == 2 { // --once must report a failed scan to the caller.
+	if len(os.Args) == 2 { // --once: failures must produce a nonzero exit code.
+		if err := runner.RunOnce(ctx); err != nil {
 			log.Fatal().Err(err).Msg("loan reminder one-shot scan failed")
 		}
-		log.Error().Err(err).Msg("loan reminder scan failed")
-	}
-	if len(os.Args) == 2 { // --once
 		return
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+
 	log.Info().Dur("interval", interval).Msg("loan repayment reminder scheduler started (dry run)")
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info().Msg("loan repayment reminder scheduler stopped")
-			return
-		case <-ticker.C:
-			if err := run(); err != nil {
-				log.Error().Err(err).Msg("loan reminder scan failed")
-			}
-		}
-	}
+	runner.Start(ctx)
+	log.Info().Msg("loan repayment reminder scheduler stopped")
 }

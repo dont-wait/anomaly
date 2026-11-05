@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/application/loan/reminder"
+	"github.com/dont-wait/anomaly/internal/scheduler"
 	"github.com/rs/zerolog"
 )
 
@@ -23,6 +24,23 @@ type failedReminderRepository struct{}
 
 func (failedReminderRepository) FindUpcoming(context.Context, []time.Time) ([]reminder.Installment, error) {
 	return nil, errors.New("query unavailable")
+}
+
+func reminderTestScheduler(t *testing.T, repo reminder.Repository, timeout time.Duration) *scheduler.Scheduler {
+	t.Helper()
+	log := zerolog.Nop()
+	job := reminder.Job{Repository: repo, Handler: reminder.HandlerFunc(func(context.Context, reminder.Candidate) error { return nil })}
+	s, err := scheduler.New(&log, []scheduler.Job{{
+		Name: "loan-repayment-reminder", Interval: time.Hour, Timeout: timeout,
+		Run: func(ctx context.Context, now time.Time) error {
+			_, err := job.Run(ctx, now)
+			return err
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
 }
 
 func TestDryRunLogContainsNoFinancialIdentifiers(t *testing.T) {
@@ -48,24 +66,16 @@ func TestDryRunLogContainsNoFinancialIdentifiers(t *testing.T) {
 	}
 }
 
-func TestRunScanPropagatesRepositoryError(t *testing.T) {
-	job := reminder.Job{
-		Repository: failedReminderRepository{},
-		Handler:    reminder.HandlerFunc(func(context.Context, reminder.Candidate) error { return nil }),
-	}
-	_, err := runScan(context.Background(), job, time.Now(), time.Second)
-	if err == nil || !strings.Contains(err.Error(), "query unavailable") {
-		t.Fatalf("expected repository error, got %v", err)
+func TestRunOncePropagatesRepositoryError(t *testing.T) {
+	got := reminderTestScheduler(t, failedReminderRepository{}, time.Second).RunOnce(context.Background())
+	if got == nil || !strings.Contains(got.Error(), "query unavailable") {
+		t.Fatalf("expected repository error, got %v", got)
 	}
 }
 
-func TestRunScanCancelsSlowQuery(t *testing.T) {
-	job := reminder.Job{
-		Repository: blockingReminderRepository{},
-		Handler:    reminder.HandlerFunc(func(context.Context, reminder.Candidate) error { return nil }),
-	}
-	_, err := runScan(context.Background(), job, time.Now(), 15*time.Millisecond)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected scan timeout, got %v", err)
+func TestRunOnceCancelsSlowQuery(t *testing.T) {
+	got := reminderTestScheduler(t, blockingReminderRepository{}, 15*time.Millisecond).RunOnce(context.Background())
+	if !errors.Is(got, context.DeadlineExceeded) {
+		t.Fatalf("expected scan timeout, got %v", got)
 	}
 }
