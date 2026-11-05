@@ -54,7 +54,7 @@ func (q *LoanReminderQuery) FindUpcoming(ctx context.Context, startUTC, endUTC t
 	if err != nil {
 		return nil, fmt.Errorf("query loan reminders: %w", err)
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	var result []reminder.Installment
 	for cursor.Next(ctx) {

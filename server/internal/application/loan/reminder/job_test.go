@@ -151,9 +151,17 @@ func TestKindForDateCatchUpWindows(t *testing.T) {
 		offset int
 		kind   ReminderType
 	}{
-		{-4, ""}, {-3, ReminderDueToday}, {-2, ReminderDueToday}, {-1, ReminderDueToday}, {0, ReminderDueToday}, {1, ReminderFiveDays},
-		{2, ReminderFiveDays}, {3, ReminderFiveDays}, {4, ReminderFiveDays},
-		{5, ReminderFiveDays}, {6, ""},
+		{-4, ""},
+		{-3, ReminderDueToday},
+		{-2, ReminderDueToday},
+		{-1, ReminderDueToday},
+		{0, ReminderDueToday},
+		{1, ReminderFiveDays},
+		{2, ReminderFiveDays},
+		{3, ReminderFiveDays},
+		{4, ReminderFiveDays},
+		{5, ReminderFiveDays},
+		{6, ""},
 	}
 	for _, tc := range cases {
 		due := today.AddDate(0, 0, tc.offset)
