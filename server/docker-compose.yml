@@ -31,6 +31,9 @@ services:
       KYC_ATTEMPT_TTL: ${KYC_ATTEMPT_TTL:-2m}
       KYC_MAX_CONCURRENT_ATTEMPTS: ${KYC_MAX_CONCURRENT_ATTEMPTS:-8}
       KYC_STARTS_PER_MINUTE: ${KYC_STARTS_PER_MINUTE:-6}
+      NOTIFICATION_RETENTION_DAYS: ${NOTIFICATION_RETENTION_DAYS:-90}
+      NOTIFICATION_MAX_EVENT_AGE: ${NOTIFICATION_MAX_EVENT_AGE:-24h}
+      NOTIFICATION_STREAM_MAX_CONN_PER_USER: ${NOTIFICATION_STREAM_MAX_CONN_PER_USER:-5}
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       KAFKA_BROKERS: kafka:29092
@@ -76,6 +79,30 @@ services:
       EVENT_STORE_CONN_STRING: esdb://eventstore:2113?tls=false
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRY: ${JWT_EXPIRY:-24h}
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
+      eventstore:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      anomaly-migrate:
+        condition: service_completed_successfully
+    networks:
+      - anomaly-network
+
+  anomaly-notifier:
+    container_name: anomaly-notifier
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/notifier"]
+    environment:
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=rs0
+      MONGO_DB: anomaly
+      EVENT_STORE_CONN_STRING: esdb://eventstore:2113?tls=false
+      NOTIFICATION_RETENTION_DAYS: ${NOTIFICATION_RETENTION_DAYS:-90}
+      NOTIFICATION_MAX_EVENT_AGE: ${NOTIFICATION_MAX_EVENT_AGE:-24h}
       TZ: Asia/Ho_Chi_Minh
     depends_on:
       eventstore:

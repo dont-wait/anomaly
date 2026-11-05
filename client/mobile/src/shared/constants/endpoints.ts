@@ -40,4 +40,12 @@ export const API_ENDPOINTS = {
     DETAIL: (id: string) => `/api/transactions/${encodeURIComponent(id)}`,
     SUMMARY: "/api/transactions/summary",
   },
+  NOTIFICATIONS: {
+    LIST: "/api/notifications",
+    UNREAD_COUNT: "/api/notifications/unread-count",
+    MARK_READ: (id: string) =>
+      `/api/notifications/${encodeURIComponent(id)}/read`,
+    READ_ALL: "/api/notifications/read-all",
+    STREAM: "/api/notifications/stream",
+  },
 } as const;

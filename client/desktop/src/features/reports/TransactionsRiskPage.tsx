@@ -194,25 +194,30 @@ export function TransactionsRiskPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (showSpinner = true) => {
+  const load = useCallback(async (showSpinner = true, signal?: AbortSignal) => {
     if (showSpinner) setRefreshing(true);
     setError(null);
     try {
-      const [monitor, dailyReport] = await Promise.all([getDailyMonitorReport(date), getTransactionReport(date)]);
+      const [monitor, dailyReport] = await Promise.all([getDailyMonitorReport(date, signal), getTransactionReport(date, signal)]);
       setResponse(monitor);
       setReport(dailyReport);
     } catch (cause) {
+      if (signal?.aborted) return;
       setError(cause instanceof Error ? cause.message : "Không thể tải báo cáo giao dịch.");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [date]);
 
   useEffect(() => {
-    const initialLoad = window.setTimeout(() => void load(false), 0);
-    const timer = window.setInterval(() => void load(false), 15000);
+    const controller = new AbortController();
+    const initialLoad = window.setTimeout(() => void load(false, controller.signal), 0);
+    const timer = window.setInterval(() => void load(false, controller.signal), 15000);
     return () => {
+      controller.abort();
       window.clearTimeout(initialLoad);
       window.clearInterval(timer);
     };

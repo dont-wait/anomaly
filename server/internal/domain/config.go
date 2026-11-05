@@ -71,6 +71,7 @@ type Config struct {
 	DocsConfig       *DocsConfig
 	KYCConfig        *KYCConfig
 	HTTPConfig       *HTTPConfig
+	Notification     *NotificationConfig
 }
 
 func (l *Loader) LoadAllConfig() *Config {
@@ -85,6 +86,22 @@ func (l *Loader) LoadAllConfig() *Config {
 		DocsConfig:       l.LoadDocsConfig(),
 		KYCConfig:        l.LoadKYCConfig(),
 		HTTPConfig:       l.LoadHTTPConfig(),
+		Notification:     l.LoadNotificationConfig(),
+	}
+}
+
+type NotificationConfig struct {
+	Retention            time.Duration
+	MaxEventAge          time.Duration
+	StreamMaxConnPerUser int
+}
+
+func (l *Loader) LoadNotificationConfig() *NotificationConfig {
+	l.logger().Info().Msg("Load notification config")
+	return &NotificationConfig{
+		Retention:            time.Duration(l.LoadEnvPort("NOTIFICATION_RETENTION_DAYS", 90)) * 24 * time.Hour,
+		MaxEventAge:          l.LoadEnvDuration("NOTIFICATION_MAX_EVENT_AGE", 24*time.Hour),
+		StreamMaxConnPerUser: l.LoadEnvPort("NOTIFICATION_STREAM_MAX_CONN_PER_USER", 5),
 	}
 }
 

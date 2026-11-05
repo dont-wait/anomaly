@@ -25,9 +25,9 @@ export function DailyReportChart({ hourly, date, summary }: { hourly: Transactio
   const barData = useMemo(() => ({
     labels,
     datasets: [
-      { label: "Hoàn tất", data: hourly.map((point) => mode === "count" ? point.success : point.amount), backgroundColor: "#75d9a4", borderRadius: 3, stack: "status" },
-      { label: "Thất bại", data: hourly.map((point) => mode === "count" ? point.failed : 0), backgroundColor: "#ff8f86", borderRadius: 3, stack: "status" },
-      { label: "Đang xử lý", data: hourly.map((point) => mode === "count" ? point.pending : 0), backgroundColor: "#f6d58a", borderRadius: 3, stack: "status" },
+      { label: "Hoàn tất", data: hourly.map((point) => mode === "count" ? point.success : point.successAmount), backgroundColor: "#75d9a4", borderRadius: 3, stack: "status" },
+      { label: "Thất bại", data: hourly.map((point) => mode === "count" ? point.failed : point.failedAmount), backgroundColor: "#ff8f86", borderRadius: 3, stack: "status" },
+      { label: "Đang xử lý", data: hourly.map((point) => mode === "count" ? point.pending : point.pendingAmount), backgroundColor: "#f6d58a", borderRadius: 3, stack: "status" },
     ],
   }), [hourly, labels, mode]);
   const pieData = {

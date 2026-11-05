@@ -92,12 +92,15 @@ type TransactionReport struct {
 }
 
 type TransactionReportHourly struct {
-	Hour    string `json:"hour"`
-	Count   int64  `json:"count"`
-	Amount  int64  `json:"amount"`
-	Success int64  `json:"success"`
-	Failed  int64  `json:"failed"`
-	Pending int64  `json:"pending"`
+	Hour          string `json:"hour"`
+	Count         int64  `json:"count"`
+	Amount        int64  `json:"amount"`
+	Success       int64  `json:"success"`
+	SuccessAmount int64  `json:"successAmount"`
+	Failed        int64  `json:"failed"`
+	FailedAmount  int64  `json:"failedAmount"`
+	Pending       int64  `json:"pending"`
+	PendingAmount int64  `json:"pendingAmount"`
 }
 
 type TransactionReportItem struct {
@@ -290,6 +293,18 @@ func (r *RiskAssessmentRepository) Find(ctx context.Context, transactionID strin
 		Decision:      assessment.Decision,
 		Assessment:    risk.Assessment{Decision: assessment.Decision, IsAnomalous: assessment.RiskLevel == riskassessment.RiskLevelBlock, RiskScore: assessment.RiskScore, ModelVersion: assessment.ModelVersion, EvaluatedAt: evaluatedAt},
 	}, true, nil
+}
+
+func (r *RiskAssessmentRepository) FindLatestAssessment(ctx context.Context, transactionID string) (riskassessment.Assessment, bool, error) {
+	var assessment riskassessment.Assessment
+	err := r.collection.FindOne(ctx, bson.M{"transaction_id": transactionID}, options.FindOne().SetSort(bson.D{{Key: "scored_at", Value: -1}, {Key: "received_at", Value: -1}, {Key: "_id", Value: -1}})).Decode(&assessment)
+	if errors.Is(err, mongodrv.ErrNoDocuments) {
+		return riskassessment.Assessment{}, false, nil
+	}
+	if err != nil {
+		return riskassessment.Assessment{}, false, err
+	}
+	return assessment, true, nil
 }
 
 func (r *RiskAssessmentRepository) Finalize(ctx context.Context, transactionID string) error {
@@ -603,10 +618,13 @@ func (r *RiskAssessmentRepository) summarizeTransactions(ctx context.Context, fr
 		switch tx.Status {
 		case "success":
 			bucket.Success++
+			bucket.SuccessAmount += tx.Amount
 		case "failed", "cancelled":
 			bucket.Failed++
+			bucket.FailedAmount += tx.Amount
 		default:
 			bucket.Pending++
+			bucket.PendingAmount += tx.Amount
 		}
 		hourly[hour] = bucket
 		summary.TransactionCount++

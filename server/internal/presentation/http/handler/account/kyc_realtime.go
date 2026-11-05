@@ -223,7 +223,7 @@ func (h *Handler) streamAttempt(browser *websocket.Conn, r *http.Request) {
 		if !streamFinished {
 			cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			h.realtime.DB.Del(cleanup, "kyc:attempt:"+id)
+			h.realtime.DB.Del(cleanup, "kyc:attempt:"+id, "kyc:stream:"+id)
 			h.realtime.Release(cleanup, a)
 		}
 	}()

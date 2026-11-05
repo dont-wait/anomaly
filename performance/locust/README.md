@@ -2,7 +2,7 @@
 
 Hai scenario được cung cấp:
 
-- `RealtimeAlertUser`: tạo transfer và đo thời gian đến khi risk assessment xuất hiện trên admin monitor.
+- `RealtimeAlertUser`: tạo transfer và đo thời gian đến khi risk assessment xuất hiện qua endpoint tra cứu theo transaction ID.
 - `RealtimeAlertSseUser`: scenario SSE tùy chọn, giữ connection `/api/admin/monitor/stream` và đo thời gian đến khi nhận alert.
 - `AuditUser`: tải các API monitor, account timeline, event explorer và transaction history.
 
