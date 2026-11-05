@@ -48,7 +48,7 @@ func (r *LoanReminderRecipient) ResolveEligible(ctx context.Context, item remind
 		"status":         "active",
 		"repayment_schedule": bson.M{"$elemMatch": bson.M{
 			"installment_no": item.InstallmentNo,
-			"status":         "upcoming",
+			"status":         bson.M{"$in": reminder.AllowedStatuses(item.ScanAt, item.DueDate)},
 			"due_date":       bson.M{"$gte": start, "$lt": start.AddDate(0, 0, 1)},
 			"total_due":      item.TotalDue,
 		}},

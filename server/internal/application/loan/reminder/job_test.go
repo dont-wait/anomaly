@@ -10,12 +10,13 @@ import (
 
 type fakeRepository struct {
 	rows  []Installment
-	dates []time.Time
+	start time.Time
+	end   time.Time
 	err   error
 }
 
-func (f *fakeRepository) FindUpcoming(_ context.Context, dates []time.Time) ([]Installment, error) {
-	f.dates = append([]time.Time(nil), dates...)
+func (f *fakeRepository) FindUpcoming(_ context.Context, start, end time.Time) ([]Installment, error) {
+	f.start, f.end = start, end
 	return f.rows, f.err
 }
 
@@ -46,7 +47,7 @@ func TestJobFiltersDueDatesStatusesAndDuplicates(t *testing.T) {
 		row("b", 2, today, "upcoming"),
 		row("b", 2, today, "upcoming"), // duplicate projection row
 		row("c", 1, today, "paid"),
-		row("d", 1, today.AddDate(0, 0, 1), "upcoming"),
+		row("d", 1, today.AddDate(0, 0, 6), "upcoming"),
 		row("e", 1, today, "upcoming"),
 	}}
 	repo.rows[5].LoanStatus = "completed"
@@ -59,13 +60,13 @@ func TestJobFiltersDueDatesStatusesAndDuplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(repo.dates) != 2 || !repo.dates[0].Equal(today) || !repo.dates[1].Equal(five) {
-		t.Fatalf("query dates = %v", repo.dates)
+	if !repo.start.Equal(today.AddDate(0, 0, -DueCatchUpDays)) || !repo.end.Equal(five.AddDate(0, 0, 1)) {
+		t.Fatalf("query window: %s..%s", repo.start, repo.end)
 	}
 	if stats != (Stats{Scanned: 6, Matched: 2, Skipped: 4}) {
 		t.Fatalf("stats = %+v", stats)
 	}
-	if len(candidates) != 2 || candidates[0].Type != ReminderFiveDays || candidates[1].Type != ReminderDueToday {
+	if len(candidates) != 2 || candidates[0].Type != ReminderFiveDays || candidates[1].Type != ReminderDueToday || !candidates[0].ScanAt.Equal(now) {
 		t.Fatalf("candidates = %+v", candidates)
 	}
 	if candidates[0].IdempotencyKey() != "loan-reminder:a:1:T-5" || candidates[1].IdempotencyKey() != "loan-reminder:b:2:T-0" {
@@ -140,5 +141,96 @@ func TestJobTreatsPaidBetweenScanAndDeliveryAsSkip(t *testing.T) {
 	stats, err := job.Run(context.Background(), now)
 	if err != nil || stats.Matched != 1 || stats.Skipped != 1 || stats.Failed != 0 {
 		t.Fatalf("stale paid installment should be skipped: stats=%+v err=%v", stats, err)
+	}
+}
+
+func TestKindForDateCatchUpWindows(t *testing.T) {
+	now := time.Date(2026, 11, 6, 2, 0, 0, 0, time.UTC) // 09:00 Vietnam
+	today, _ := TargetDates(now)
+	cases := []struct {
+		offset int
+		kind   ReminderType
+	}{
+		{-4, ""}, {-3, ReminderDueToday}, {-2, ReminderDueToday}, {-1, ReminderDueToday}, {0, ReminderDueToday}, {1, ReminderFiveDays},
+		{2, ReminderFiveDays}, {3, ReminderFiveDays}, {4, ReminderFiveDays},
+		{5, ReminderFiveDays}, {6, ""},
+	}
+	for _, tc := range cases {
+		due := today.AddDate(0, 0, tc.offset)
+		if got := KindForDate(now, due); got != tc.kind {
+			t.Errorf("offset %d: got %q, want %q", tc.offset, got, tc.kind)
+		}
+	}
+}
+
+func TestJobUsesOneScanInstantAcrossMidnight(t *testing.T) {
+	// A scan that starts before midnight Vietnam time must keep that date
+	// even if handler work continues after midnight.
+	now := time.Date(2026, 11, 5, 16, 59, 59, 0, time.UTC)
+	today, _ := TargetDates(now)
+	repo := &fakeRepository{rows: []Installment{{
+		LoanID: "a", LoanStatus: "active", InstallmentNo: 1,
+		DueDate: today, TotalDue: 100, Status: "upcoming",
+	}}}
+	var received time.Time
+	job := Job{Repository: repo, Handler: HandlerFunc(func(_ context.Context, item Candidate) error {
+		received = item.ScanAt
+		return nil
+	})}
+	stats, err := job.Run(context.Background(), now)
+	if err != nil || stats.Matched != 1 || !received.Equal(now) {
+		t.Fatalf("wrong scan snapshot: stats=%+v now=%v err=%v", stats, received, err)
+	}
+}
+
+func TestJobCatchesUpT5OnFollowingDays(t *testing.T) {
+	now := time.Date(2026, 11, 6, 4, 0, 0, 0, time.UTC)
+	today, _ := TargetDates(now)
+	rows := make([]Installment, 0, 5)
+	for i := 1; i <= 5; i++ {
+		rows = append(rows, Installment{
+			LoanID: "loan", LoanStatus: "active", InstallmentNo: i,
+			DueDate: today.AddDate(0, 0, i), TotalDue: 100, Status: "upcoming",
+		})
+	}
+	repo := &fakeRepository{rows: rows}
+	var got []Candidate
+	job := Job{Repository: repo, Handler: HandlerFunc(func(_ context.Context, item Candidate) error {
+		got = append(got, item)
+		return nil
+	})}
+	stats, err := job.Run(context.Background(), now)
+	if err != nil || stats.Matched != 5 || len(got) != 5 {
+		t.Fatalf("catch-up failed: %+v %v (%d candidates)", stats, err, len(got))
+	}
+	for _, item := range got {
+		if item.Type != ReminderFiveDays || !item.ScanAt.Equal(now) {
+			t.Fatalf("wrong catch-up identity or scan instant: %+v", item)
+		}
+	}
+}
+
+func TestJobCatchesUpDueDayWhenWorkerWasOffline(t *testing.T) {
+	now := time.Date(2026, 11, 6, 3, 0, 0, 0, time.UTC) // Nov 6, 10am Vietnam
+	today, _ := TargetDates(now)
+	repo := &fakeRepository{rows: []Installment{
+		{LoanID: "a", LoanStatus: "active", InstallmentNo: 1, DueDate: today.AddDate(0, 0, -1), TotalDue: 100, Status: "overdue"},
+		{LoanID: "b", LoanStatus: "active", InstallmentNo: 1, DueDate: today.AddDate(0, 0, -2), TotalDue: 100, Status: "upcoming"},
+		{LoanID: "c", LoanStatus: "active", InstallmentNo: 1, DueDate: today.AddDate(0, 0, -1), TotalDue: 100, Status: "paid"},
+		{LoanID: "d", LoanStatus: "active", InstallmentNo: 1, DueDate: today.AddDate(0, 0, 1), TotalDue: 100, Status: "overdue"},
+	}}
+	var candidates []Candidate
+	job := Job{Repository: repo, Handler: HandlerFunc(func(_ context.Context, item Candidate) error {
+		candidates = append(candidates, item)
+		return nil
+	})}
+	stats, err := job.Run(context.Background(), now)
+	if err != nil || stats.Matched != 2 || stats.Skipped != 2 {
+		t.Fatalf("overdue recovery: %+v %v", stats, err)
+	}
+	for _, candidate := range candidates {
+		if candidate.Type != ReminderDueToday {
+			t.Fatalf("overdue reminder must reuse T-0 stable key: %+v", candidate)
+		}
 	}
 }

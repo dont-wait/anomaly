@@ -27,6 +27,8 @@ type ReminderType string
 const (
 	ReminderFiveDays ReminderType = "T-5"
 	ReminderDueToday ReminderType = "T-0"
+	// DueCatchUpDays bounds late delivery if the due-day process was down.
+	DueCatchUpDays = 3
 )
 
 // Candidate identifies a reminder with a stable idempotency key. In stage 2,
@@ -39,6 +41,9 @@ type Candidate struct {
 	DueDate       time.Time
 	TotalDue      int64
 	Type          ReminderType
+	// ScanAt is the one immutable instant selected by scheduler for this scan.
+	// Handler must not read its own clock across a Vietnam midnight.
+	ScanAt time.Time
 }
 
 func (c Candidate) IdempotencyKey() string {
@@ -47,7 +52,7 @@ func (c Candidate) IdempotencyKey() string {
 
 // Repository is supplied by MongoDB; it does not read EventStoreDB.
 type Repository interface {
-	FindUpcoming(ctx context.Context, datesUTC []time.Time) ([]Installment, error)
+	FindUpcoming(ctx context.Context, startUTC, endUTC time.Time) ([]Installment, error)
 }
 
 // Handler is a dry-run logger unless notifications are explicitly enabled.
@@ -95,6 +100,55 @@ func TargetDates(now time.Time) (today, inFiveDays time.Time) {
 	return today, today.AddDate(0, 0, 5)
 }
 
+// KindForDate is the single calendar policy for reminder selection. A T-5
+// reminder can be caught up on T-4..T-1; its stable identity remains T-5.
+// T-0 catches up for three overdue days with date-neutral copy, never a stale "today" message.
+func KindForDate(now, dueDate time.Time) ReminderType {
+	if now.IsZero() || dueDate.IsZero() {
+		return ""
+	}
+	today, _ := TargetDates(now)
+	due := time.Date(dueDate.UTC().Year(), dueDate.UTC().Month(), dueDate.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	daysLeft := int(due.Sub(today).Hours() / 24)
+	switch {
+	case daysLeft >= -DueCatchUpDays && daysLeft <= 0:
+		return ReminderDueToday
+	case daysLeft >= 1 && daysLeft <= 5:
+		return ReminderFiveDays
+	default:
+		return ""
+	}
+}
+
+// AllowedStatuses is the central status policy. An overdue installment can
+// receive one caught-up T-0 only while still unpaid and within the late window.
+func AllowedStatuses(now, dueDate time.Time) []string {
+	kind := KindForDate(now, dueDate)
+	if kind == "" {
+		return nil
+	}
+	today, _ := TargetDates(now)
+	due := time.Date(dueDate.UTC().Year(), dueDate.UTC().Month(), dueDate.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	if kind == ReminderDueToday && due.Before(today) {
+		return []string{"upcoming", "overdue"}
+	}
+	return []string{"upcoming"}
+}
+
+func StatusEligible(now, dueDate time.Time, status string) bool {
+	for _, allowed := range AllowedStatuses(now, dueDate) {
+		if status == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+// EligibleForKind is reused by both selection and the last-mile handler.
+func EligibleForKind(now, dueDate time.Time, kind ReminderType) bool {
+	return kind != "" && KindForDate(now, dueDate) == kind
+}
+
 func (j Job) Run(ctx context.Context, now time.Time) (Stats, error) {
 	if j.Repository == nil || j.Handler == nil {
 		return Stats{}, errors.New("loan reminder repository and handler are required")
@@ -104,7 +158,7 @@ func (j Job) Run(ctx context.Context, now time.Time) (Stats, error) {
 	}
 
 	today, inFiveDays := TargetDates(now)
-	rows, err := j.Repository.FindUpcoming(ctx, []time.Time{today, inFiveDays})
+	rows, err := j.Repository.FindUpcoming(ctx, today.AddDate(0, 0, -DueCatchUpDays), inFiveDays.AddDate(0, 0, 1))
 	if err != nil {
 		return Stats{}, fmt.Errorf("find upcoming loan repayments: %w", err)
 	}
@@ -116,23 +170,15 @@ func (j Job) Run(ctx context.Context, now time.Time) (Stats, error) {
 		if err := ctx.Err(); err != nil {
 			return stats, err
 		}
-		if row.LoanStatus != "active" || row.Status != "upcoming" ||
+		if row.LoanStatus != "active" || !StatusEligible(now, row.DueDate, row.Status) ||
 			strings.TrimSpace(row.LoanID) == "" || row.InstallmentNo <= 0 ||
 			row.TotalDue <= 0 || row.DueDate.IsZero() {
 			stats.Skipped++
 			continue
 		}
 
-		// The projection stores UTC dates; do not convert the timestamp to a
-		// local wall-clock time before comparing its calendar day.
-		date := row.DueDate.UTC().Format("2006-01-02")
-		kind := ReminderType("")
-		switch date {
-		case today.Format("2006-01-02"):
-			kind = ReminderDueToday
-		case inFiveDays.Format("2006-01-02"):
-			kind = ReminderFiveDays
-		default:
+		kind := KindForDate(now, row.DueDate)
+		if kind == "" {
 			stats.Skipped++
 			continue
 		}
@@ -144,6 +190,7 @@ func (j Job) Run(ctx context.Context, now time.Time) (Stats, error) {
 			DueDate:       row.DueDate,
 			TotalDue:      row.TotalDue,
 			Type:          kind,
+			ScanAt:        now,
 		}
 		key := item.IdempotencyKey()
 		if _, ok := seen[key]; ok {

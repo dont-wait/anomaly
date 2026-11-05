@@ -42,11 +42,21 @@ func TestLoanReminderNotificationE2E(t *testing.T) {
 		}
 	}()
 
+	store := NewNotificationRepository(client, dbName)
+	if err := store.CheckReady(ctx); err == nil {
+		t.Fatal("missing notifications collection should fail readiness")
+	}
 	if err := db.CreateCollection(ctx, "notifications"); err != nil {
 		t.Fatal(err)
 	}
-	if err := NewNotificationRepository(client, dbName).EnsureIndexes(ctx); err != nil {
+	if err := store.CheckReady(ctx); err == nil {
+		t.Fatal("notifications collection without migration indexes should fail readiness")
+	}
+	if err := store.EnsureIndexes(ctx); err != nil {
 		t.Fatal(err)
+	}
+	if err := store.CheckReady(ctx); err != nil {
+		t.Fatalf("read-only notification readiness check: %v", err)
 	}
 
 	now := time.Now().UTC()
@@ -60,6 +70,8 @@ func TestLoanReminderNotificationE2E(t *testing.T) {
 		"repayment_schedule": bson.A{
 			bson.M{"installment_no": 1, "due_date": today, "total_due": int64(1000000), "status": "upcoming"},
 			bson.M{"installment_no": 2, "due_date": five, "total_due": int64(1000000), "status": "upcoming"},
+			bson.M{"installment_no": 3, "due_date": today.AddDate(0, 0, 3), "total_due": int64(1000000), "status": "upcoming"},
+			bson.M{"installment_no": 4, "due_date": today.AddDate(0, 0, -1), "total_due": int64(1000000), "status": "overdue"},
 		},
 	})
 	if err != nil {
@@ -84,15 +96,15 @@ func TestLoanReminderNotificationE2E(t *testing.T) {
 	}
 	for i := 0; i < 2; i++ {
 		stats, err := job.Run(ctx, time.Now().UTC())
-		if err != nil || stats.Matched != 2 || stats.Failed != 0 {
+		if err != nil || stats.Matched != 4 || stats.Failed != 0 {
 			t.Fatalf("run %d stats=%+v err=%v", i, stats, err)
 		}
 	}
 	count, err := db.Collection("notifications").CountDocuments(ctx, bson.M{
 		"recipient_id": userID, "type": string(notification.TypeLoanRepaymentDue),
 	})
-	if err != nil || count != 2 {
-		t.Fatalf("expected exactly T-0 and T-5, count=%d err=%v", count, err)
+	if err != nil || count != 4 {
+		t.Fatalf("expected T-0, T-5 and two caught-up reminders, count=%d err=%v", count, err)
 	}
 	for _, kind := range []reminder.ReminderType{reminder.ReminderDueToday, reminder.ReminderFiveDays} {
 		installment := 1
@@ -104,6 +116,20 @@ func TestLoanReminderNotificationE2E(t *testing.T) {
 		if err := db.Collection("notifications").FindOne(ctx, bson.M{"_id": id, "category": "LOAN"}).Err(); err != nil {
 			t.Fatalf("missing %s: %v", kind, err)
 		}
+	}
+
+	// Catch-up uses the original T-5 deterministic id rather than T-3.
+	catchUpSource := (reminder.Candidate{LoanID: loanID, InstallmentNo: 3, Type: reminder.ReminderFiveDays}).IdempotencyKey()
+	catchUpID := notification.NotificationID(catchUpSource, notification.TypeLoanRepaymentDue, userID)
+	if err := db.Collection("notifications").FindOne(ctx, bson.M{"_id": catchUpID}).Err(); err != nil {
+		t.Fatalf("missing caught-up reminder: %v", err)
+	}
+
+	// A late unpaid installment uses the stable T-0 id even though it is T+1.
+	lateSource := (reminder.Candidate{LoanID: loanID, InstallmentNo: 4, Type: reminder.ReminderDueToday}).IdempotencyKey()
+	lateID := notification.NotificationID(lateSource, notification.TypeLoanRepaymentDue, userID)
+	if err := db.Collection("notifications").FindOne(ctx, bson.M{"_id": lateID}).Err(); err != nil {
+		t.Fatalf("missing late due reminder: %v", err)
 	}
 
 	// Verify that a previously paid installment is excluded from re-send.
@@ -121,11 +147,11 @@ func TestLoanReminderNotificationE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	stats, err := job.Run(ctx, time.Now().UTC())
-	if err != nil || stats.Matched != 1 {
+	if err != nil || stats.Matched != 3 {
 		t.Fatalf("paid installment still matched: %+v %v", stats, err)
 	}
 	count, err = db.Collection("notifications").CountDocuments(ctx, bson.M{})
-	if err != nil || count != 1 {
+	if err != nil || count != 3 {
 		t.Fatalf("paid installment was notified again: %d %v", count, err)
 	}
 }

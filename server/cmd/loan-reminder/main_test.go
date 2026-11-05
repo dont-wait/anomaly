@@ -15,32 +15,29 @@ import (
 
 type blockingReminderRepository struct{}
 
-func (blockingReminderRepository) FindUpcoming(ctx context.Context, _ []time.Time) ([]reminder.Installment, error) {
+func (blockingReminderRepository) FindUpcoming(ctx context.Context, _, _ time.Time) ([]reminder.Installment, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
 
 type failedReminderRepository struct{}
 
-func (failedReminderRepository) FindUpcoming(context.Context, []time.Time) ([]reminder.Installment, error) {
+func (failedReminderRepository) FindUpcoming(context.Context, time.Time, time.Time) ([]reminder.Installment, error) {
 	return nil, errors.New("query unavailable")
 }
 
-func reminderTestScheduler(t *testing.T, repo reminder.Repository, timeout time.Duration) *scheduler.Scheduler {
-	t.Helper()
-	log := zerolog.Nop()
-	job := reminder.Job{Repository: repo, Handler: reminder.HandlerFunc(func(context.Context, reminder.Candidate) error { return nil })}
-	s, err := scheduler.New(&log, []scheduler.Job{{
-		Name: "loan-repayment-reminder", Interval: time.Hour, Timeout: timeout,
-		Run: func(ctx context.Context, now time.Time) error {
-			_, err := job.Run(ctx, now)
-			return err
-		},
-	}})
-	if err != nil {
-		t.Fatal(err)
+type countingReminderRepository struct {
+	calls int
+	fail  bool
+	rows  []reminder.Installment
+}
+
+func (r *countingReminderRepository) FindUpcoming(context.Context, time.Time, time.Time) ([]reminder.Installment, error) {
+	r.calls++
+	if r.fail {
+		return nil, errors.New("scan failed")
 	}
-	return s
+	return r.rows, nil
 }
 
 func TestDryRunLogContainsNoFinancialIdentifiers(t *testing.T) {
@@ -66,16 +63,87 @@ func TestDryRunLogContainsNoFinancialIdentifiers(t *testing.T) {
 	}
 }
 
-func TestRunOncePropagatesRepositoryError(t *testing.T) {
-	got := reminderTestScheduler(t, failedReminderRepository{}, time.Second).RunOnce(context.Background())
+func TestProductionRunnerPropagatesRepositoryError(t *testing.T) {
+	var output bytes.Buffer
+	log := zerolog.New(&output)
+	job := reminder.Job{Repository: failedReminderRepository{}, Handler: reminder.HandlerFunc(func(context.Context, reminder.Candidate) error { return nil })}
+	runner, err := newReminderRunner(&log, job, "dry-run", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := runner.RunOnce(context.Background())
 	if got == nil || !strings.Contains(got.Error(), "query unavailable") {
 		t.Fatalf("expected repository error, got %v", got)
 	}
+	if strings.Contains(output.String(), "scan completed") || !strings.Contains(output.String(), "scan failed") {
+		t.Fatalf("failed scan reported as success: %s", output.String())
+	}
 }
 
-func TestRunOnceCancelsSlowQuery(t *testing.T) {
-	got := reminderTestScheduler(t, blockingReminderRepository{}, 15*time.Millisecond).RunOnce(context.Background())
-	if !errors.Is(got, context.DeadlineExceeded) {
+func TestProductionRunnerCancelsSlowQuery(t *testing.T) {
+	log := zerolog.Nop()
+	job := reminder.Job{Repository: blockingReminderRepository{}, Handler: reminder.HandlerFunc(func(context.Context, reminder.Candidate) error { return nil })}
+	runner, err := newReminderRunner(&log, job, "dry-run", 15*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := runner.RunOnce(context.Background()); !errors.Is(got, context.DeadlineExceeded) {
 		t.Fatalf("expected scan timeout, got %v", got)
+	}
+}
+
+func TestNotificationScansOnlyInVietnamDaytimeSlots(t *testing.T) {
+	var output bytes.Buffer
+	log := zerolog.New(&output)
+	repo := &countingReminderRepository{}
+	job := reminder.Job{Repository: repo, Handler: reminder.HandlerFunc(func(context.Context, reminder.Candidate) error { return nil })}
+	// A fixed clock flows into the exact closure that production registers.
+	now := time.Date(2026, 11, 6, 1, 0, 0, 0, time.UTC) // 08:00 Vietnam
+	runner, err := newReminderRunner(&log, job, "notification", time.Second, scheduler.WithNow(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(hour int, want int) {
+		t.Helper()
+		now = time.Date(2026, 11, 6, hour-7, 0, 0, 0, time.UTC)
+		if err := runner.RunOnce(context.Background()); err != nil {
+			t.Fatalf("hour %d: %v", hour, err)
+		}
+		if repo.calls != want {
+			t.Fatalf("hour %d: calls=%d, want=%d", hour, repo.calls, want)
+		}
+	}
+	check(8, 0)
+	check(9, 1)
+	check(10, 1)
+	check(15, 1)
+	check(16, 2)
+	check(20, 2)
+	check(21, 2)
+	// A new Vietnam calendar day always gets a new morning scan.
+	now = time.Date(2026, 11, 7, 2, 0, 0, 0, time.UTC)
+	if err := runner.RunOnce(context.Background()); err != nil || repo.calls != 3 {
+		t.Fatalf("next day: calls=%d err=%v", repo.calls, err)
+	}
+}
+
+func TestProductionRunnerRetriesFailedNotificationSlot(t *testing.T) {
+	log := zerolog.Nop()
+	repo := &countingReminderRepository{fail: true}
+	job := reminder.Job{Repository: repo, Handler: reminder.HandlerFunc(func(context.Context, reminder.Candidate) error { return nil })}
+	now := time.Date(2026, 11, 6, 3, 0, 0, 0, time.UTC) // 10:00 Vietnam
+	runner, err := newReminderRunner(&log, job, "notification", time.Second, scheduler.WithNow(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.RunOnce(context.Background()); err == nil || repo.calls != 1 {
+		t.Fatalf("expected first failure, calls=%d err=%v", repo.calls, err)
+	}
+	repo.fail = false
+	if err := runner.RunOnce(context.Background()); err != nil || repo.calls != 2 {
+		t.Fatalf("expected retry, calls=%d err=%v", repo.calls, err)
+	}
+	if err := runner.RunOnce(context.Background()); err != nil || repo.calls != 2 {
+		t.Fatalf("success should not immediately repeat, calls=%d err=%v", repo.calls, err)
 	}
 }

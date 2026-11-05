@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	notificationapp "github.com/dont-wait/anomaly/internal/application/notification"
 	"github.com/dont-wait/anomaly/internal/domain/notification"
@@ -28,7 +27,6 @@ type RecipientLookup interface {
 type NotificationHandler struct {
 	Lookup   RecipientLookup
 	Notifier notificationapp.Notifier
-	Now      func() time.Time
 }
 
 func (h NotificationHandler) Handle(ctx context.Context, item Candidate) error {
@@ -38,24 +36,12 @@ func (h NotificationHandler) Handle(ctx context.Context, item Candidate) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	now := time.Now()
-	if h.Now != nil {
-		now = h.Now()
+	// ScanAt is fixed at scheduler dispatch, so midnight cannot invalidate
+	// otherwise eligible work or make WithNow-based tests nondeterministic.
+	if !EligibleForKind(item.ScanAt, item.DueDate, item.Type) {
+		return ErrNoLongerEligible
 	}
-	today, five := TargetDates(now)
-	due := item.DueDate.UTC().Format("2006-01-02")
-	switch item.Type {
-	case ReminderFiveDays:
-		if due != five.Format("2006-01-02") {
-			return ErrNoLongerEligible
-		}
-	case ReminderDueToday:
-		if due != today.Format("2006-01-02") {
-			return ErrNoLongerEligible
-		}
-	default:
-		return fmt.Errorf("unsupported loan reminder type")
-	}
+
 	if strings.TrimSpace(item.LoanID) == "" || item.InstallmentNo <= 0 || item.TotalDue <= 0 {
 		return errors.New("invalid loan reminder candidate")
 	}
@@ -77,7 +63,7 @@ func (h NotificationHandler) Handle(ctx context.Context, item Candidate) error {
 		// Type T-5 or T-0 is embedded in the stable source identifier, so the
 		// same installment can receive exactly one notification at each stage.
 		SourceEventID: item.IdempotencyKey(),
-		OccurredAt:    now.UTC(),
+		OccurredAt:    item.ScanAt.UTC(),
 		Params: map[string]string{
 			"kind":   string(item.Type),
 			"loanId": item.LoanID,

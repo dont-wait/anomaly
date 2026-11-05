@@ -32,27 +32,22 @@ type reminderLoanDocument struct {
 	} `bson:"repayment_schedule"`
 }
 
-func (q *LoanReminderQuery) FindUpcoming(ctx context.Context, datesUTC []time.Time) ([]reminder.Installment, error) {
+func (q *LoanReminderQuery) FindUpcoming(ctx context.Context, startUTC, endUTC time.Time) ([]reminder.Installment, error) {
 	if q == nil || q.col == nil {
 		return nil, fmt.Errorf("loan reminder MongoDB repository is not configured")
 	}
-	if len(datesUTC) == 0 {
+	if !startUTC.Before(endUTC) {
 		return nil, nil
 	}
 
-	// Each due_date in the signed EMI schedule is UTC midnight, not a UTC
-	// timestamp to be shifted to local midnight. Match UTC calendar days.
-	or := make(bson.A, 0, len(datesUTC))
-	wanted := make(map[string]struct{}, len(datesUTC))
-	for _, day := range datesUTC {
-		start := time.Date(day.UTC().Year(), day.UTC().Month(), day.UTC().Day(), 0, 0, 0, 0, time.UTC)
-		or = append(or, bson.M{"repayment_schedule": bson.M{"$elemMatch": bson.M{
-			"status":   "upcoming",
-			"due_date": bson.M{"$gte": start, "$lt": start.AddDate(0, 0, 1)},
-		}}})
-		wanted[start.Format("2006-01-02")] = struct{}{}
-	}
-	filter := bson.M{"status": "active", "$or": or}
+	// One indexed date range covers the five-day reminder and its T-4..T-1
+	// catch-up days, the due-day reminder and a bounded overdue recovery.
+	// Dates are UTC-midnight values.
+	start := time.Date(startUTC.UTC().Year(), startUTC.UTC().Month(), startUTC.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	end := time.Date(endUTC.UTC().Year(), endUTC.UTC().Month(), endUTC.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	filter := bson.M{"status": "active", "repayment_schedule": bson.M{"$elemMatch": bson.M{
+		"status": bson.M{"$in": bson.A{"upcoming", "overdue"}}, "due_date": bson.M{"$gte": start, "$lt": end},
+	}}}
 	cursor, err := q.col.Find(ctx, filter, options.Find().SetProjection(bson.M{
 		"loan_no": 1, "status": 1, "repayment_schedule": 1,
 	}))
@@ -68,10 +63,10 @@ func (q *LoanReminderQuery) FindUpcoming(ctx context.Context, datesUTC []time.Ti
 			return nil, fmt.Errorf("decode loan reminder: %w", err)
 		}
 		for _, item := range loan.Schedule {
-			if item.Status != "upcoming" {
+			if item.Status != "upcoming" && item.Status != "overdue" {
 				continue
 			}
-			if _, ok := wanted[item.DueDate.UTC().Format("2006-01-02")]; !ok {
+			if item.DueDate.Before(start) || !item.DueDate.Before(end) {
 				continue
 			}
 			result = append(result, reminder.Installment{

@@ -39,14 +39,14 @@ func candidateForTest(now time.Time, kind ReminderType) Candidate {
 	if kind == ReminderFiveDays {
 		due = five
 	}
-	return Candidate{LoanID: "loan-uuid", LoanNo: "PRIVATE-LOAN", InstallmentNo: 2, DueDate: due, TotalDue: 1500000, Type: kind}
+	return Candidate{LoanID: "loan-uuid", LoanNo: "PRIVATE-LOAN", InstallmentNo: 2, DueDate: due, TotalDue: 1500000, Type: kind, ScanAt: now}
 }
 
 func TestNotificationHandlerT5AndT0UseDifferentDurableSourceIDs(t *testing.T) {
 	now := time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC)
 	lookup := &fakeRecipientLookup{recipient: "JWT-user-id", eligible: true}
 	notifier := &fakeNotifier{}
-	handler := NotificationHandler{Lookup: lookup, Notifier: notifier, Now: func() time.Time { return now }}
+	handler := NotificationHandler{Lookup: lookup, Notifier: notifier}
 	for _, kind := range []ReminderType{ReminderFiveDays, ReminderDueToday} {
 		if err := handler.Handle(context.Background(), candidateForTest(now, kind)); err != nil {
 			t.Fatal(err)
@@ -71,7 +71,7 @@ func TestNotificationHandlerSkipsPaidOrOutOfWindow(t *testing.T) {
 	now := time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC)
 	lookup := &fakeRecipientLookup{recipient: "JWT-user-id", eligible: false}
 	notifier := &fakeNotifier{}
-	handler := NotificationHandler{Lookup: lookup, Notifier: notifier, Now: func() time.Time { return now }}
+	handler := NotificationHandler{Lookup: lookup, Notifier: notifier}
 	if err := handler.Handle(context.Background(), candidateForTest(now, ReminderDueToday)); !errors.Is(err, ErrNoLongerEligible) {
 		t.Fatalf("paid installment should be skipped: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestNotificationHandlerRetriesUnavailableOwnerAndDeliveryErrors(t *testing.
 	now := time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC)
 	lookup := &fakeRecipientLookup{eligible: true}
 	notifier := &fakeNotifier{}
-	handler := NotificationHandler{Lookup: lookup, Notifier: notifier, Now: func() time.Time { return now }}
+	handler := NotificationHandler{Lookup: lookup, Notifier: notifier}
 	item := candidateForTest(now, ReminderDueToday)
 	if err := handler.Handle(context.Background(), item); err == nil || !strings.Contains(err.Error(), "owner") {
 		t.Fatalf("missing owner must be an error: %v", err)
@@ -103,5 +103,20 @@ func TestNotificationHandlerRetriesUnavailableOwnerAndDeliveryErrors(t *testing.
 	lookup.err = errors.New("ownership projection unavailable")
 	if err := handler.Handle(context.Background(), item); err == nil {
 		t.Fatal("lookup error not propagated")
+	}
+}
+
+func TestHandlerDoesNotUseWallClockAfterMidnight(t *testing.T) {
+	// ScanAt was chosen before midnight; the handler must not call time.Now.
+	now := time.Date(2026, 11, 5, 16, 59, 59, 0, time.UTC)
+	lookup := &fakeRecipientLookup{recipient: "JWT-user-id", eligible: true}
+	notifier := &fakeNotifier{}
+	handler := NotificationHandler{Lookup: lookup, Notifier: notifier}
+	item := candidateForTest(now, ReminderDueToday)
+	if err := handler.Handle(context.Background(), item); err != nil {
+		t.Fatal(err)
+	}
+	if len(notifier.requests) != 1 || !notifier.requests[0].OccurredAt.Equal(now) {
+		t.Fatalf("handler ignored scan timestamp: %+v", notifier.requests)
 	}
 }

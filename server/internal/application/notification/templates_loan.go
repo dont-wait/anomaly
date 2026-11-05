@@ -18,9 +18,9 @@ func init() {
 			var body string
 			switch params["kind"] {
 			case "T-5":
-				body = "Một kỳ thanh toán khoản vay sẽ đến hạn sau 5 ngày. Vui lòng kiểm tra lịch trả nợ trong ứng dụng."
+				body = "Một kỳ thanh toán khoản vay sắp đến hạn. Vui lòng kiểm tra lịch trả nợ trong ứng dụng."
 			case "T-0":
-				body = "Hôm nay là ngày đến hạn một kỳ thanh toán khoản vay. Vui lòng kiểm tra và thanh toán đúng hạn."
+				body = "Một kỳ thanh toán khoản vay đã đến hạn. Vui lòng kiểm tra và thanh toán trong ứng dụng."
 			default:
 				return "", "", nil, fmt.Errorf("unsupported loan reminder kind")
 			}
