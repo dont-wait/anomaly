@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/application/loan/reminder"
+	"github.com/dont-wait/anomaly/internal/composition"
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/logger"
@@ -49,13 +50,27 @@ func main() {
 		}
 	}()
 
+	notificationsEnabled := loader.LoadEnvBool("LOAN_REMINDER_NOTIFICATIONS_ENABLED", false)
+	mode := "dry-run"
+	var handler reminder.Handler = reminder.HandlerFunc(func(_ context.Context, item reminder.Candidate) error {
+		logDryRunCandidate(log, item)
+		return nil
+	})
+	if notificationsEnabled {
+		// Fail closed when migration 20 has not created notifications.
+		store := mongo.NewNotificationRepository(client, config.MongoDBName)
+		if err := store.EnsureIndexes(ctx); err != nil {
+			log.Fatal().Msg("notification store is not ready; apply the notification migration first")
+		}
+		handler = reminder.NotificationHandler{
+			Lookup:   mongo.NewLoanReminderRecipient(client, config.MongoDBName),
+			Notifier: composition.NewNotifier(client, config.MongoDBName, loader.LoadNotificationConfig()),
+		}
+		mode = "notification"
+	}
 	job := reminder.Job{
 		Repository: mongo.NewLoanReminderQuery(client, config.MongoDBName),
-		// Phase 1: safe, read-only dry-run. Never send email or reserve keys.
-		Handler: reminder.HandlerFunc(func(_ context.Context, item reminder.Candidate) error {
-			logDryRunCandidate(log, item)
-			return nil
-		}),
+		Handler:    handler,
 	}
 
 	runner, err := scheduler.New(log, []scheduler.Job{{
@@ -68,7 +83,8 @@ func main() {
 				Int("matched", stats.Matched).
 				Int("skipped", stats.Skipped).
 				Int("failed", stats.Failed).
-				Msg("loan reminder scan completed (dry run; sent=0)")
+				Str("mode", mode).
+				Msg("loan reminder scan completed")
 			return err
 		},
 	}})
@@ -83,7 +99,7 @@ func main() {
 		return
 	}
 
-	log.Info().Dur("interval", interval).Msg("loan repayment reminder scheduler started (dry run)")
+	log.Info().Dur("interval", interval).Str("mode", mode).Msg("loan repayment reminder scheduler started")
 	runner.Start(ctx)
 	log.Info().Msg("loan repayment reminder scheduler stopped")
 }

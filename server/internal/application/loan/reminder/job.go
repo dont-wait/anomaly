@@ -29,9 +29,9 @@ const (
 	ReminderDueToday ReminderType = "T-0"
 )
 
-// Candidate identifies a reminder without sending or reserving it.
-// Phase 2 must atomically enqueue this key with a unique constraint before
-// enabling actual delivery; a stable key by itself cannot prevent duplicates.
+// Candidate identifies a reminder with a stable idempotency key. In stage 2,
+// the shared Notification service persists a deterministic notification ID
+// using MongoDB $setOnInsert. The in-process seen map is only a scan-level filter.
 type Candidate struct {
 	LoanID        string
 	LoanNo        string
@@ -50,8 +50,7 @@ type Repository interface {
 	FindUpcoming(ctx context.Context, datesUTC []time.Time) ([]Installment, error)
 }
 
-// Handler is only an observer/dry-run logger in phase 1.
-// No real notification sender should be connected until phase 2 is complete.
+// Handler is a dry-run logger unless notifications are explicitly enabled.
 type Handler interface {
 	Handle(ctx context.Context, item Candidate) error
 }
@@ -154,6 +153,10 @@ func (j Job) Run(ctx context.Context, now time.Time) (Stats, error) {
 		seen[key] = struct{}{}
 		stats.Matched++
 		if err := j.Handler.Handle(ctx, item); err != nil {
+			if errors.Is(err, ErrNoLongerEligible) {
+				stats.Skipped++
+				continue
+			}
 			stats.Failed++
 			handlerErrors = append(handlerErrors, &HandlerError{Type: kind, Cause: err})
 			// Continue to other candidates; surface all errors afterwards.

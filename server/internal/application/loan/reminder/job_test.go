@@ -131,3 +131,14 @@ func TestJobPropagatesRepositoryError(t *testing.T) {
 		t.Fatal("expected repository error")
 	}
 }
+
+func TestJobTreatsPaidBetweenScanAndDeliveryAsSkip(t *testing.T) {
+	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	today, _ := TargetDates(now)
+	repo := &fakeRepository{rows: []Installment{{LoanID: "loan-a", LoanStatus: "active", InstallmentNo: 1, DueDate: today, TotalDue: 100, Status: "upcoming"}}}
+	job := Job{Repository: repo, Handler: HandlerFunc(func(context.Context, Candidate) error { return ErrNoLongerEligible })}
+	stats, err := job.Run(context.Background(), now)
+	if err != nil || stats.Matched != 1 || stats.Skipped != 1 || stats.Failed != 0 {
+		t.Fatalf("stale paid installment should be skipped: stats=%+v err=%v", stats, err)
+	}
+}
