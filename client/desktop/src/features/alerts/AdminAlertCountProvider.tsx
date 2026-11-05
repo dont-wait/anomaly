@@ -2,9 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { clearAdminSession } from "@/features/auth/api/adminSession";
 import { navigate, routes } from "@/app/routes";
 import {
-  consumeRiskStream,
-  getMonitorDashboard,
-  shouldAdvanceMonitorCursor,
+  consumeUnhandledAlertCountStream,
+  getUnhandledAlertCount,
 } from "@/features/monitor/api/monitorApi";
 import { AdminAlertCountContext } from "./adminAlertCountContext";
 
@@ -22,18 +21,13 @@ export function AdminAlertCountProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     let retryTimer: number | undefined;
     let controller: AbortController | undefined;
-    let cursor = "";
     let delay = RETRY_MIN_MS;
-    let connected = false;
 
     const refresh = async () => {
       try {
-        const response = await getMonitorDashboard("24h", undefined, "all");
+        const nextCount = await getUnhandledAlertCount();
         if (cancelled) return;
-        setCount(normalizeCount(response.snapshot.unhandledAlertCount));
-        if (shouldAdvanceMonitorCursor(cursor, response.cursor)) {
-          cursor = response.cursor;
-        }
+        setCount(normalizeCount(nextCount));
       } catch (error) {
         if (
           error instanceof Error &&
@@ -50,18 +44,10 @@ export function AdminAlertCountProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       controller = new AbortController();
       try {
-        await consumeRiskStream(
-          cursor,
-          (event, nextCursor) => {
-            if (nextCursor) cursor = nextCursor;
-            if (event.kind === "alert_count") {
-              setCount(normalizeCount(event.count));
-            }
-          },
+        await consumeUnhandledAlertCountStream(
+          (nextCount) => setCount(normalizeCount(nextCount)),
           controller.signal,
           () => {
-            if (connected) void refresh();
-            connected = true;
             delay = RETRY_MIN_MS;
           },
         );

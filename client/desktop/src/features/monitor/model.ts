@@ -55,7 +55,6 @@ export interface ModelVersionCount {
 export interface MonitorSnapshot {
   totalAssessments: number;
   anomalousCount: number;
-  unhandledAlertCount: number;
   anomalyRate: number;
   averageRiskScore: number;
   timeseries: RiskSeriesPoint[];

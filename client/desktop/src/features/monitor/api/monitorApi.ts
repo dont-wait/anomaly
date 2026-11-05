@@ -104,6 +104,89 @@ export async function getMonitorDashboard(
   return (await response.json()) as MonitorDashboardResponse;
 }
 
+export async function getUnhandledAlertCount(): Promise<number> {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/api/admin/risk-assessments/unhandled-count`,
+    { headers: authHeaders() },
+  );
+  if (!response.ok) {
+    throw new MonitorApiError(
+      "Không thể tải số lượng cảnh báo chưa xử lý",
+      response.status,
+    );
+  }
+  const body = (await response.json()) as { data?: { count?: unknown } };
+  const count = body.data?.count;
+  if (typeof count !== "number" || !Number.isFinite(count) || count < 0) {
+    throw new MonitorApiError("Phản hồi số lượng cảnh báo không hợp lệ");
+  }
+  return Math.floor(count);
+}
+
+export async function consumeUnhandledAlertCountStream(
+  onCount: (count: number) => void,
+  signal: AbortSignal,
+  onConnected?: () => void,
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/admin/risk-assessments/unhandled-count/stream`,
+    {
+      headers: { ...authHeaders(), Accept: "text/event-stream" },
+      signal,
+    },
+  );
+  if (!response.ok) {
+    throw new MonitorApiError(
+      "Không thể kết nối luồng số lượng cảnh báo",
+      response.status,
+    );
+  }
+  if (!response.body)
+    throw new MonitorApiError("Luồng số lượng cảnh báo không có dữ liệu");
+  onConnected?.();
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (!signal.aborted) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder
+        .decode(chunk.value, { stream: true })
+        .replace(/\r\n/g, "\n");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        const block = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        let eventName = "message";
+        let data = "";
+        for (const line of block.split("\n")) {
+          if (line.startsWith("event:")) eventName = line.slice(6).trim();
+          if (line.startsWith("data:")) data += line.slice(5).trim();
+        }
+        if (eventName === "risk_alert_count" && data) {
+          try {
+            const count = (JSON.parse(data) as { count?: unknown }).count;
+            if (
+              typeof count === "number" &&
+              Number.isFinite(count) &&
+              count >= 0
+            ) {
+              onCount(Math.floor(count));
+            }
+          } catch {
+            // Ignore malformed count events and keep the stream alive.
+          }
+        }
+        boundary = buffer.indexOf("\n\n");
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export async function getDailyMonitorReport(
   date: string,
   signal?: AbortSignal,

@@ -3,7 +3,6 @@ package admin
 import (
 	"context"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -90,16 +89,15 @@ func TestEnrichAssessmentsUsesOneBatchLookup(t *testing.T) {
 	}
 }
 
-func TestBuildMonitorResponseIncludesUnhandledAlertCount(t *testing.T) {
+func TestBuildMonitorResponseInitializesSnapshot(t *testing.T) {
 	response := buildMonitorResponse(
 		"24h",
 		mongorepo.RiskAssessmentSummary{},
 		nil,
-		7,
 		time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC),
 	)
-	if response.Snapshot.UnhandledAlertCount != 7 {
-		t.Fatalf("unhandled alert count = %d, want 7", response.Snapshot.UnhandledAlertCount)
+	if response.Snapshot.TotalAssessments != 0 {
+		t.Fatalf("total assessments = %d, want 0", response.Snapshot.TotalAssessments)
 	}
 }
 
@@ -108,7 +106,7 @@ func TestWriteUnhandledAlertCountEvent(t *testing.T) {
 	if err := writeUnhandledAlertCountEvent(recorder, recorder, 12); err != nil {
 		t.Fatal(err)
 	}
-	if got := recorder.Body.String(); !strings.Contains(got, "event: risk_alert_count") || !strings.Contains(got, `{"count":12}`) {
+	if got := recorder.Body.String(); got != "event: risk_alert_count\ndata: {\"count\":12}\n\n" {
 		t.Fatalf("unexpected SSE event: %q", got)
 	}
 }

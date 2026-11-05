@@ -109,18 +109,17 @@ type modelVersionCount struct {
 }
 
 type monitorSnapshot struct {
-	TotalAssessments    int                 `json:"totalAssessments"`
-	AnomalousCount      int                 `json:"anomalousCount"`
-	UnhandledAlertCount int64               `json:"unhandledAlertCount"`
-	AnomalyRate         float64             `json:"anomalyRate"`
-	AverageRiskScore    float64             `json:"averageRiskScore"`
-	Timeseries          []monitorPoint      `json:"timeseries"`
-	RecentAssessments   []riskAssessmentDTO `json:"recentAssessments"`
-	ModelVersions       []modelVersionCount `json:"modelVersions"`
-	NormalCount         int                 `json:"normalCount"`
-	WarningCount        int                 `json:"warningCount"`
-	BlockCount          int                 `json:"blockCount"`
-	TransactionStatus   map[string]int      `json:"transactionStatus"`
+	TotalAssessments  int                 `json:"totalAssessments"`
+	AnomalousCount    int                 `json:"anomalousCount"`
+	AnomalyRate       float64             `json:"anomalyRate"`
+	AverageRiskScore  float64             `json:"averageRiskScore"`
+	Timeseries        []monitorPoint      `json:"timeseries"`
+	RecentAssessments []riskAssessmentDTO `json:"recentAssessments"`
+	ModelVersions     []modelVersionCount `json:"modelVersions"`
+	NormalCount       int                 `json:"normalCount"`
+	WarningCount      int                 `json:"warningCount"`
+	BlockCount        int                 `json:"blockCount"`
+	TransactionStatus map[string]int      `json:"transactionStatus"`
 }
 
 type monitorResponse struct {
@@ -129,6 +128,10 @@ type monitorResponse struct {
 	DataStatus string          `json:"dataStatus"`
 	Cursor     string          `json:"cursor"`
 	Snapshot   monitorSnapshot `json:"snapshot"`
+}
+
+type unhandledAlertCountResponse struct {
+	Count int64 `json:"count"`
 }
 
 type transactionReportSummaryDTO struct {
@@ -188,6 +191,14 @@ func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc 
 		ID: "adminMonitorStream", Summary: "Stream risk assessments to the admin monitor",
 		ResponseContentType: "text/event-stream", FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 	})
+	admin("GET /api/admin/risk-assessments/unhandled-count", handler.UnhandledAlertCount, openapi.Operation{
+		ID: "adminUnhandledAlertCount", Summary: "Count unhandled WARNING and BLOCK risk assessments",
+		Response: unhandledAlertCountResponse{}, FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
+	})
+	admin("GET /api/admin/risk-assessments/unhandled-count/stream", handler.UnhandledAlertCountStream, openapi.Operation{
+		ID: "adminUnhandledAlertCountStream", Summary: "Stream unhandled WARNING and BLOCK count changes",
+		ResponseContentType: "text/event-stream", FailureStatuses: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
+	})
 	if len(timelines) > 0 && timelines[0] != nil {
 		RegisterTimelineRoutes(router, timelines[0], tokenSvc, currentAdmin)
 		RegisterEventExplorerRoutes(router, timelines[0], tokenSvc, currentAdmin)
@@ -205,11 +216,6 @@ func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 	summary, err := h.repository.Summarize(queryCtx, from, to)
 	if err != nil {
 		http.Error(w, "could not load risk assessments", http.StatusInternalServerError)
-		return
-	}
-	unhandledAlertCount, err := h.repository.CountUnhandledAlerts(queryCtx)
-	if err != nil {
-		http.Error(w, "could not count unhandled alerts", http.StatusInternalServerError)
 		return
 	}
 	var handled *bool
@@ -235,12 +241,23 @@ func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not load transaction context", http.StatusInternalServerError)
 		return
 	}
-	response := buildMonitorResponse(rangeName, summary, recentDTO, unhandledAlertCount, time.Now().UTC())
+	response := buildMonitorResponse(rangeName, summary, recentDTO, time.Now().UTC())
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		return
 	}
+}
+
+func (h *MonitorHandler) UnhandledAlertCount(w http.ResponseWriter, r *http.Request) {
+	queryCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	count, err := h.repository.CountUnhandledAlerts(queryCtx)
+	if err != nil {
+		http.Error(w, "could not count unhandled alerts", http.StatusInternalServerError)
+		return
+	}
+	httpx.WriteSuccess(w, http.StatusOK, "Unhandled alert count loaded", unhandledAlertCountResponse{Count: count})
 }
 
 func (h *MonitorHandler) TransactionReport(w http.ResponseWriter, r *http.Request) {
@@ -447,6 +464,68 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *MonitorHandler) UnhandledAlertCountStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming is not supported", http.StatusInternalServerError)
+		return
+	}
+	claims, claimsOK := middleware.ClaimsFromContext(r.Context())
+	if !claimsOK || claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	updates, cancel := h.hub.Subscribe()
+	defer cancel()
+	sse.SetHeaders(w)
+	if err := sse.WriteComment(w, flusher, "connected"); err != nil {
+		return
+	}
+	if !h.writeCurrentUnhandledAlertCount(w, flusher, r.Context()) {
+		return
+	}
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case event, open := <-updates:
+			if !open {
+				return
+			}
+			if event.UnhandledAlertCount == nil {
+				continue
+			}
+			if err := writeUnhandledAlertCountEvent(w, flusher, *event.UnhandledAlertCount); err != nil {
+				return
+			}
+		case <-ticker.C:
+			if !claims.ExpiresAt.IsZero() && !time.Now().Before(claims.ExpiresAt) {
+				return
+			}
+			if h.currentAdmin != nil && !h.currentAdmin(r.Context(), claims.UserID) {
+				return
+			}
+			if err := sse.WriteComment(w, flusher, "heartbeat"); err != nil {
+				return
+			}
+		}
+	}
+}
+
+func (h *MonitorHandler) writeCurrentUnhandledAlertCount(w http.ResponseWriter, flusher http.Flusher, ctx context.Context) bool {
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	count, err := h.repository.CountUnhandledAlerts(queryCtx)
+	if err != nil {
+		return false
+	}
+	return writeUnhandledAlertCountEvent(w, flusher, count) == nil
+}
+
 func monitorRange(value string) (time.Duration, string, bool) {
 	switch value {
 	case "", "24h":
@@ -477,15 +556,14 @@ func monitorWindow(dateValue, rangeValue string, now time.Time) (time.Time, time
 	return to.Add(-duration), to, rangeName, nil
 }
 
-func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSummary, recent []riskAssessmentDTO, unhandledAlertCount int64, generatedAt time.Time) monitorResponse {
+func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSummary, recent []riskAssessmentDTO, generatedAt time.Time) monitorResponse {
 	snapshot := monitorSnapshot{
-		TotalAssessments:    int(summary.Total),
-		AnomalousCount:      int(summary.Anomalous),
-		UnhandledAlertCount: unhandledAlertCount,
-		RecentAssessments:   make([]riskAssessmentDTO, 0, len(recent)),
-		Timeseries:          make([]monitorPoint, 0, len(summary.Timeseries)),
-		ModelVersions:       make([]modelVersionCount, 0, len(summary.ModelVersions)),
-		TransactionStatus:   make(map[string]int, len(summary.Statuses)),
+		TotalAssessments:  int(summary.Total),
+		AnomalousCount:    int(summary.Anomalous),
+		RecentAssessments: make([]riskAssessmentDTO, 0, len(recent)),
+		Timeseries:        make([]monitorPoint, 0, len(summary.Timeseries)),
+		ModelVersions:     make([]modelVersionCount, 0, len(summary.ModelVersions)),
+		TransactionStatus: make(map[string]int, len(summary.Statuses)),
 	}
 	if summary.Total > 0 {
 		snapshot.AverageRiskScore = summary.ScoreTotal / float64(summary.Total)
@@ -602,7 +680,8 @@ func writeUnhandledAlertCountEvent(w http.ResponseWriter, flusher http.Flusher, 
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "event: risk_alert_count\\ndata: %s\\n\\n", payload); err != nil {
+	sse.SetWriteDeadline(w)
+	if _, err := fmt.Fprintf(w, "event: risk_alert_count\ndata: %s\n\n", payload); err != nil {
 		return err
 	}
 	flusher.Flush()
