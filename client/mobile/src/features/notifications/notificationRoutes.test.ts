@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { routes, transactionDetailRoute } from "@/app/routes";
+import { loanContract, routes, transactionDetailRoute } from "@/app/routes";
 import type { AppNotification } from "./model";
 import {
   registerNotificationRoute,
@@ -43,5 +43,16 @@ it("lets modules register their own route", () => {
   registerNotificationRoute("LOAN_APPROVED", () => routes.loanApplications);
   expect(routeForNotification(notification("LOAN_APPROVED"))).toBe(
     routes.loanApplications,
+  );
+});
+
+it("opens loan repayment reminders at their own loan contract", () => {
+  expect(
+    routeForNotification(
+      notification("LOAN_REPAYMENT_DUE", { loanId: "loan 123" }),
+    ),
+  ).toBe(loanContract("loan 123"));
+  expect(routeForNotification(notification("LOAN_REPAYMENT_DUE"))).toBe(
+    routes.notifications,
   );
 });
