@@ -1,0 +1,67 @@
+[
+  {
+    "create": "notifications",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "audience",
+          "recipient_id",
+          "type",
+          "category",
+          "severity",
+          "title",
+          "body",
+          "data",
+          "source_event_id",
+          "occurred_at",
+          "created_at",
+          "read_at",
+          "expires_at"
+        ],
+        "properties": {
+          "_id": { "bsonType": "string", "minLength": 1 },
+          "audience": { "enum": ["CUSTOMER", "ADMIN"] },
+          "recipient_id": { "bsonType": "string", "minLength": 1 },
+          "type": { "bsonType": "string", "minLength": 1 },
+          "category": { "enum": ["TRANSACTION", "SECURITY", "ACCOUNT", "LOAN", "SAVINGS", "SYSTEM"] },
+          "severity": { "enum": ["INFO", "SUCCESS", "WARNING", "CRITICAL"] },
+          "title": { "bsonType": "string", "minLength": 1 },
+          "body": { "bsonType": "string" },
+          "data": {
+            "bsonType": "object",
+            "maxProperties": 20,
+            "additionalProperties": { "bsonType": "string", "maxLength": 256 }
+          },
+          "source_event_id": { "bsonType": "string", "minLength": 1 },
+          "occurred_at": { "bsonType": "date" },
+          "created_at": { "bsonType": "date" },
+          "read_at": { "bsonType": ["date", "null"] },
+          "expires_at": { "bsonType": "date" }
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "createIndexes": "notifications",
+    "indexes": [
+      {
+        "key": { "audience": 1, "recipient_id": 1, "created_at": -1, "_id": -1 },
+        "name": "idx_notifications_inbox"
+      },
+      {
+        "key": { "audience": 1, "recipient_id": 1, "read_at": 1 },
+        "name": "idx_notifications_unread",
+        "partialFilterExpression": { "read_at": { "$type": "null" } }
+      },
+      {
+        "key": { "expires_at": 1 },
+        "name": "idx_notifications_ttl",
+        "expireAfterSeconds": 0
+      }
+    ]
+  }
+]

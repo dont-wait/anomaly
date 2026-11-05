@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/dont-wait/anomaly/internal/composition"
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
 	mongo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
@@ -40,7 +41,13 @@ func main() {
 		log.Fatal().Err(err).Msg("ensure loan catalog indexes failed")
 	}
 
-	if err := seeder.Run(ctx, seeder.Dependencies{Accounts: repo, LoanCatalog: loanCatalog, Savings: repo}); err != nil {
+	notifications := mongo.NewNotificationRepository(mongoClient, mongoConfig.MongoDBName)
+	if err := notifications.EnsureIndexes(ctx); err != nil {
+		log.Fatal().Err(err).Msg("ensure notification indexes failed")
+	}
+	notifier := composition.NewNotifier(mongoClient, mongoConfig.MongoDBName, loader.LoadNotificationConfig())
+
+	if err := seeder.Run(ctx, seeder.Dependencies{Accounts: repo, LoanCatalog: loanCatalog, Savings: repo, Notifier: notifier}); err != nil {
 		log.Fatal().Err(err).Msg("seed failed")
 	}
 	log.Info().Msg("all seeders completed")

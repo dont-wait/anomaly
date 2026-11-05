@@ -10,7 +10,7 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: help start-app start-worker start-relay start-api seed add-money migrate migrate-up migrate-up-one migrate-new migrate-version migrate-status migrate-down test test-api test-account-e2e
+.PHONY: help start-app start-worker start-notifier start-relay start-api seed add-money migrate migrate-up migrate-up-one migrate-new migrate-version migrate-status migrate-down test test-api test-account-e2e
 
 start-app:
 	docker compose --profile app up --build
@@ -21,6 +21,7 @@ help:
 	@echo "  help              Show available commands"
 	@echo "  start-app         Build and start the Docker Compose app profile"
 	@echo "  start-worker      Project the banking stream into MongoDB"
+	@echo "  start-notifier    Turn banking stream events into notifications"
 	@echo "  start-relay       Publish EventStoreDB events to Kafka"
 	@echo "  import-bank       Offline import of legacy EventStore account streams"
 	@echo "  import-mongo-bank  Offline adoption of audited direct-Mongo MVP data"
@@ -76,6 +77,9 @@ test-account-e2e:
 start-worker:
 	go run ./cmd/projector
 
+start-notifier:
+	go run ./cmd/notifier
+
 start-relay:
 	go run ./cmd/relay
 
@@ -99,6 +103,13 @@ import-mongo-bank:
 
 test-transaction-e2e:
 	go test -tags=e2e -count=1 -timeout=6m -run '^TestBankEventSourcing$$' ./internal/infrastructure/eventstore
+
+.PHONY: test-notification-e2e test-notification-api
+test-notification-api:
+	@hurl --test --variable base_url="$(BASE_URL)" --variable 'customer_cccd="$(LOAN_CUSTOMER_CCCD)"' --secret customer_password="$(LOAN_CUSTOMER_PASSWORD)" tests/api/notifications/*.hurl
+
+test-notification-e2e:
+	go test -tags=e2e -count=1 -timeout=5m -run '^TestNotificationRepositoryWithMongo$$' ./internal/infrastructure/mongo
 
 .PHONY: test-loan-e2e
 

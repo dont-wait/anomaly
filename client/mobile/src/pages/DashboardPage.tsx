@@ -24,6 +24,7 @@ import { listTransactions } from "@/features/transactions/api";
 import type { TransactionRecord } from "@/features/transactions/model";
 import { Avatar } from "@/shared/ui";
 import { useAuth } from "@/features/auth/useAuth";
+import { useNotifications } from "@/features/notifications";
 import { navigate, routes } from "@/app/routes";
 import { ApiError } from "@/shared/lib/http";
 import { HTTP_STATUS } from "@/shared/constants/httpStatus";
@@ -65,6 +66,7 @@ const toDashboardTransaction = (record: TransactionRecord): Transaction => {
 
 const DashboardPage = () => {
   const { status, user, token, logout, refreshProfile } = useAuth();
+  const { unreadCount } = useNotifications();
   const quickActions = mockQuickActions;
   const promo = mockPromoBanner;
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -169,7 +171,8 @@ const DashboardPage = () => {
   return (
     <div className="mx-auto flex h-screen max-w-md flex-col overflow-hidden bg-linear-to-b from-violet-100 to-white">
       <AppHeader
-        notificationCount={3}
+        notificationCount={unreadCount}
+        onNotificationClick={() => navigate(routes.notifications)}
         onProfileClick={() => setProfileSidebarOpen(true)}
       />
 

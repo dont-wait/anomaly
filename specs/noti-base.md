@@ -226,7 +226,7 @@ Case 1–3 bắt nguồn từ stream `banking`. Cài một **catch-up subscripti
 
 - Không ràng buộc vòng đời notification vào banking projection: `projector --replay` không sinh lại thông báo, lỗi notification không chặn projection.
 - Lần đầu chạy (chưa có checkpoint) khởi tạo checkpoint ở **cuối stream**, không backfill lịch sử.
-- Host trong `cmd/projector` như một goroutine riêng, bật bằng env `NOTIFICATION_DISPATCHER_ENABLED=true`. Tách thành `cmd/notifier` sau nếu cần scale riêng.
+- Chạy như process riêng `cmd/notifier` (service `anomaly-notifier` trong Compose, `make start-notifier`), chỉ **một instance** vì checkpoint là một document. Bật/tắt bằng cách chạy hay không chạy service, **không dùng feature flag**: lỗi hay panic của dispatcher không ảnh hưởng `cmd/projector`. (Chốt câu hỏi mở 13.4.)
 - Dispatcher chỉ map event sang `[]Request` rồi gọi `Notifier.Notify`; ghi checkpoint sau khi `Notify` thành công. Crash giữa chừng thì chạy lại event, idempotent nhờ 3.3.
 - Tra `userId` của chủ tài khoản từ projection tài khoản trong Mongo (eventual consistency chấp nhận được vì không liên quan quyết định tiền). Không tìm thấy thì retry có backoff, quá N lần thì ghi `projection_failures` và đi tiếp.
 - Tài khoản đích ngoài hệ thống (không có userId) thì bỏ qua phía người nhận.
@@ -290,6 +290,8 @@ List trả thêm `nextCursor` (rỗng khi hết).
 
 - Heartbeat `: ping` mỗi 15s. Dùng lại `setSSEWriteDeadline` và các header `no-cache`, `X-Accel-Buffering: no` của monitor handler.
 - Event `unread-count` (`data: {"count": n}`) gửi khi mở kết nối và sau mỗi notification mới, để badge không cần poll.
+- Mở kết nối **không có cursor** thì gửi `event: cursor` (`data: {}`) với `id` là cursor của notification mới nhất, để client luôn có điểm nối lại. Inbox rỗng thì không gửi.
+- Change stream `notifications` mất history (resume token không còn trong oplog) thì API đóng mọi kết nối SSE (`Hub.DisconnectAll`); client reconnect với cursor và server replay phần bị gap từ Mongo.
 
 ---
 
@@ -320,10 +322,11 @@ Thêm vào `server/.env.example`:
 
 | Biến | Mặc định | Ý nghĩa |
 |------|----------|---------|
-| `NOTIFICATION_DISPATCHER_ENABLED` | `true` | Bật dispatcher trong `cmd/projector` |
 | `NOTIFICATION_RETENTION_DAYS` | `90` | TTL |
 | `NOTIFICATION_MAX_EVENT_AGE` | `24h` | Bỏ qua event cũ hơn ngưỡng (an toàn khi replay) |
 | `NOTIFICATION_STREAM_MAX_CONN_PER_USER` | `5` | Giới hạn SSE |
+
+Không có `NOTIFICATION_DISPATCHER_ENABLED`: dispatcher được quản lý bằng deployment (chạy hay không chạy service `anomaly-notifier`), xem 5.3.
 
 ---
 
@@ -350,7 +353,7 @@ Ghi chú:
 1. Domain `notification` + `NotificationID` + validate + unit test.
 2. Migration `000020_create_notifications` + `NotificationRepository` + `EnsureIndexes`.
 3. Application: `Notifier`, template registry, queries/commands, `Hub` theo recipient.
-4. Dispatcher banking stream (checkpoint riêng, khởi tạo ở cuối stream, `EventMapper` registry rỗng) trong `cmd/projector`.
+4. Dispatcher banking stream (checkpoint riêng, khởi tạo ở cuối stream, `EventMapper` registry rỗng) trong `cmd/notifier`.
 5. Change stream `notifications` → `Hub` trong `cmd/api` (tách helper watch/retry dùng chung với risk).
 6. HTTP handler + routes + SSE; `openapi.json` sinh tự động.
 7. Mobile: api, provider, bell, center page, routing registry, mở rộng toast.
@@ -385,4 +388,4 @@ Ghi chú:
 1. `SUSPICIOUS_ACTIVITY` có báo cho customer không, hay chỉ báo admin? Báo customer giúp chống chiếm tài khoản nhưng có thể gây hoang mang nếu model báo nhầm nhiều. Đề xuất: P0 báo customer với câu chữ trung tính, kèm rate limit 1 lần mỗi 30 phút cho mỗi tài khoản.
 2. `TRANSFER_BLOCKED` hiện được ghi ở bước confirm (`FailTransfer` với assessment). Có cần báo sớm hơn, ngay khi assessment `BLOCK` về, trước khi người dùng bấm confirm không?
 3. Có hiển thị số dư sau giao dịch trong body không? Thông báo hệ điều hành có thể hiện trên màn hình khóa.
-4. Dispatcher chạy trong `cmd/projector` hay tách `cmd/notifier` ngay từ đầu (thêm service vào Compose)?
+4. ~~Dispatcher chạy trong `cmd/projector` hay tách `cmd/notifier` ngay từ đầu?~~ **Đã chốt:** tách `cmd/notifier` ngay từ đầu, không feature flag (xem 5.3).
