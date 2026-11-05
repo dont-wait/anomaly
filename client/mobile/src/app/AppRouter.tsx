@@ -13,6 +13,7 @@ import QrPage from "@/pages/QrPage";
 import SavingsLivePage from "@/features/savings/SavingsLivePage";
 import LoanApplicationsPage from "@/pages/LoanApplicationsPage";
 import LoanContractsPage from "@/pages/LoanContractsPage";
+import NotificationCenterPage from "@/pages/NotificationCenterPage";
 import type { LoanApplication } from "@/features/loans/api";
 import {
   isProtectedRoute,
@@ -131,6 +132,8 @@ export function AppRouter() {
       return <LoanApplicationsRoute />;
     case routes.loanContracts:
       return <LoanContractsPage />;
+    case routes.notifications:
+      return <NotificationCenterPage />;
     case routes.forgotPassword:
       return <ForgotPasswordPage />;
     case routes.register:

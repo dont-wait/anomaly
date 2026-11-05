@@ -18,6 +18,7 @@ import (
 	"github.com/dont-wait/anomaly/internal/presentation/http/httpx"
 	"github.com/dont-wait/anomaly/internal/presentation/http/middleware"
 	"github.com/dont-wait/anomaly/internal/presentation/http/openapi"
+	"github.com/dont-wait/anomaly/internal/presentation/http/sse"
 	"github.com/dont-wait/anomaly/internal/timeutil"
 	"github.com/rs/zerolog"
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
@@ -357,11 +358,8 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 
 	updates, cancel := h.hub.Subscribe()
 	defer cancel()
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache, no-transform")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	setSSEWriteDeadline(w)
+	sse.SetHeaders(w)
+	sse.SetWriteDeadline(w)
 	_, _ = fmt.Fprint(w, ": connected\n\n")
 	flusher.Flush()
 
@@ -426,7 +424,7 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			if h.currentAdmin != nil && !h.currentAdmin(r.Context(), claims.UserID) {
 				return
 			}
-			setSSEWriteDeadline(w)
+			sse.SetWriteDeadline(w)
 			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
 				return
 			}
@@ -556,7 +554,7 @@ func (h *MonitorHandler) assessmentDTO(item riskassessment.Assessment, transacti
 }
 
 func writeAssessmentEvent(w http.ResponseWriter, flusher http.Flusher, item riskassessment.Assessment, dto riskAssessmentDTO) error {
-	setSSEWriteDeadline(w)
+	sse.SetWriteDeadline(w)
 	payload, err := json.Marshal(dto)
 	if err != nil {
 		return err
@@ -570,7 +568,7 @@ func writeAssessmentEvent(w http.ResponseWriter, flusher http.Flusher, item risk
 }
 
 func writeTransactionStatusEvent(w http.ResponseWriter, flusher http.Flusher, status riskstream.TransactionStatus) error {
-	setSSEWriteDeadline(w)
+	sse.SetWriteDeadline(w)
 	payload, err := json.Marshal(status)
 	if err != nil {
 		return err
@@ -580,10 +578,6 @@ func writeTransactionStatusEvent(w http.ResponseWriter, flusher http.Flusher, st
 	}
 	flusher.Flush()
 	return nil
-}
-
-func setSSEWriteDeadline(w http.ResponseWriter) {
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Second))
 }
 
 func encodeCursor(value cursor) string {

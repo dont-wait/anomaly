@@ -88,6 +88,51 @@
   animation: toast-countdown var(--toast-duration) linear forwards;
 }
 
+/* Error and success keep the original accent; newer tones override it. */
+.toast-card--warning {
+  border-color: color-mix(in srgb, #b45309 22%, transparent);
+}
+
+.toast-card--warning .toast-icon {
+  background: color-mix(in srgb, #fde68a 60%, transparent);
+  color: #b45309;
+}
+
+.toast-card--warning .toast-progress {
+  background: #b45309;
+}
+
+.toast-card--info {
+  border-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.toast-card--info .toast-icon {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+}
+
+.toast-card--info .toast-progress {
+  background: var(--color-primary);
+}
+
+.toast-action {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.toast-action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
 @keyframes toast-enter {
   from {
     opacity: 0;

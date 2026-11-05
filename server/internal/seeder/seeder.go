@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/application/account/commands"
+	notificationapp "github.com/dont-wait/anomaly/internal/application/notification"
 	"github.com/dont-wait/anomaly/internal/logger"
 	"github.com/rs/zerolog"
 )
@@ -24,6 +25,7 @@ type Dependencies struct {
 	Accounts    Repository
 	LoanCatalog LoanCatalogSeeder
 	Savings     SavingsSeeder
+	Notifier    notificationapp.Notifier
 }
 
 type LoanCatalogSeeder interface {

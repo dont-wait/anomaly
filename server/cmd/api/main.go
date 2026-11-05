@@ -70,10 +70,20 @@ func main() {
 	if err := riskAssessments.EnsureIndexes(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("ensure risk assessment indexes failed")
 	}
+	notificationAPI := composition.NewNotificationAPI(mongoClient, config.MongoConfig.MongoDBName, config.Notification, *logger)
+	if err := notificationAPI.Repository.EnsureIndexes(ctx); err != nil {
+		logger.Fatal().Err(err).Msg("ensure notification indexes failed")
+	}
+	// Producers only write to Mongo; every API instance pushes to the SSE
+	// clients it holds from the change stream. Clients replay by cursor after
+	// a gap, so a lost history needs no server-side replay.
+	go mongo.RunChangeStream(ctx, func(ctx context.Context, resumeAfter bson.Raw, startAt *bson.Timestamp) (bson.Raw, error) {
+		return notificationAPI.Repository.Watch(ctx, resumeAfter, startAt, notificationAPI.Hub.Publish)
+	}, 2*time.Second, func(err error, _ bool) {
+		logger.Error().Err(err).Msg("notification change stream stopped; retrying")
+	})
 	riskHub := riskstream.NewHub()
 	go func() {
-		var resumeToken bson.Raw
-		var startAtOperationTime *bson.Timestamp
 		var lastReceivedAt time.Time
 		var lastAssessmentID string
 		var lastCursor int64
@@ -93,37 +103,15 @@ func main() {
 			lastAssessmentID = assessment.ID
 			riskHub.Publish(riskstream.Event{ID: assessment.ID, Assessment: assessment})
 		}
-		for ctx.Err() == nil {
-			nextToken, err := riskAssessments.Watch(ctx, resumeToken, startAtOperationTime, publish)
-			if len(nextToken) > 0 {
-				resumeToken = append(bson.Raw(nil), nextToken...)
-			}
-			if ctx.Err() != nil {
-				return
-			}
-			var recoveryStart *bson.Timestamp
-			if isChangeStreamHistoryLost(err) {
-				now := uint32(time.Now().Unix())
-				recoveryStart = &bson.Timestamp{T: now}
-			}
+		watch := func(ctx context.Context, resumeAfter bson.Raw, startAt *bson.Timestamp) (bson.Raw, error) {
+			return riskAssessments.Watch(ctx, resumeAfter, startAt, publish)
+		}
+		mongo.RunChangeStream(ctx, watch, 2*time.Second, func(err error, _ bool) {
 			if replayErr := replayRiskAssessments(ctx, riskAssessments, publish, lastCursor, lastReceivedAt, lastAssessmentID); replayErr != nil {
 				logger.Error().Err(replayErr).Msg("risk assessment recovery replay failed")
 			}
-			if isChangeStreamHistoryLost(err) {
-				resumeToken = nil
-				startAtOperationTime = recoveryStart
-			} else if len(nextToken) > 0 {
-				startAtOperationTime = nil
-			}
 			logger.Error().Err(err).Msg("risk assessment change stream stopped; retrying")
-			timer := time.NewTimer(2 * time.Second)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return
-			case <-timer.C:
-			}
-		}
+		})
 	}()
 	var statusMu sync.Mutex
 	lastStatusFingerprints := make(map[string]string)
@@ -147,32 +135,11 @@ func main() {
 			CancelledAt:   status.CancelledAt,
 		}})
 	}
-	go func() {
-		var resumeToken bson.Raw
-		var startAtOperationTime *bson.Timestamp
-		for ctx.Err() == nil {
-			nextToken, err := riskAssessments.WatchTransactionStatuses(ctx, resumeToken, startAtOperationTime, publishStatus)
-			if len(nextToken) > 0 {
-				resumeToken = append(bson.Raw(nil), nextToken...)
-				startAtOperationTime = nil
-			}
-			if ctx.Err() != nil {
-				return
-			}
-			if isChangeStreamHistoryLost(err) {
-				resumeToken = nil
-				startAtOperationTime = &bson.Timestamp{T: uint32(time.Now().Unix())}
-			}
-			logger.Error().Err(err).Msg("transaction status change stream stopped; retrying")
-			timer := time.NewTimer(2 * time.Second)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return
-			case <-timer.C:
-			}
-		}
-	}()
+	go mongo.RunChangeStream(ctx, func(ctx context.Context, resumeAfter bson.Raw, startAt *bson.Timestamp) (bson.Raw, error) {
+		return riskAssessments.WatchTransactionStatuses(ctx, resumeAfter, startAt, publishStatus)
+	}, 2*time.Second, func(err error, _ bool) {
+		logger.Error().Err(err).Msg("transaction status change stream stopped; retrying")
+	})
 
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
@@ -324,7 +291,7 @@ func main() {
 	mux = presentation.NewRouterWithProducts(
 		mux, accountHandler, mediaHandler, otpHandler, transactionHandler,
 		tokenSvc, config.DocsConfig.SwaggerEnabled,
-		savingsHandler, adminMonitorHandler, adminTimelineHandler, catalogHandler.HTTP, loanHandler,
+		savingsHandler, adminMonitorHandler, adminTimelineHandler, catalogHandler.HTTP, notificationAPI.Handler, loanHandler,
 	)
 
 	logger.Info().Msg("Anomaly Fraud Detection running on port :8080...")
@@ -350,6 +317,7 @@ func main() {
 		defer cancel()
 		logger.Info().Msg("shutdown signal received; draining HTTP and background workers")
 		riskHub.Close()
+		notificationAPI.Hub.Close()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logger.Error().Err(err).Msg("graceful HTTP shutdown failed")
 		}
@@ -374,14 +342,6 @@ func replayRiskAssessments(ctx context.Context, repository *mongo.RiskAssessment
 			return nil
 		}
 	}
-}
-
-func isChangeStreamHistoryLost(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "changestreamhistorylost") || strings.Contains(message, "resume token")
 }
 
 func transactionStatusFingerprint(status mongo.RiskTransactionStatus) string {

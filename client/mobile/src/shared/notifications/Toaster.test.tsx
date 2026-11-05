@@ -46,3 +46,22 @@ it("can be dismissed manually and clears its timeout", () => {
   expect(screen.queryByRole("alert")).toBeNull();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it("renders warning and info tones with their default titles", () => {
+  render(<Toaster />);
+  act(() => toast.warning("Kiểm tra lại giao dịch"));
+  expect(screen.getByRole("alert").textContent).toContain("Cần lưu ý");
+  act(() => toast.info("Có thông báo mới", { title: "Nhận tiền thành công" }));
+  expect(screen.getByRole("alert").textContent).toContain(
+    "Nhận tiền thành công",
+  );
+});
+
+it("runs the click action and dismisses the toast", () => {
+  const onClick = vi.fn();
+  render(<Toaster />);
+  act(() => toast.info("Mở chi tiết", { onClick }));
+  fireEvent.click(screen.getByRole("button", { name: /Mở chi tiết/ }));
+  expect(onClick).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("alert")).toBeNull();
+});

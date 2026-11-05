@@ -12,6 +12,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/mig
 
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/projector ./cmd/projector
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/loan-projector ./cmd/loan-projector
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/notifier ./cmd/notifier
 
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/import-bank ./cmd/import-bank
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/bin/relay ./cmd/relay
@@ -29,6 +30,7 @@ COPY --from=builder /app/bin/worker ./worker
 COPY --from=builder /app/bin/migrate ./migrate
 COPY --from=builder /app/bin/projector ./projector
 COPY --from=builder /app/bin/loan-projector ./loan-projector
+COPY --from=builder /app/bin/notifier ./notifier
 COPY --from=builder /app/bin/import-bank ./import-bank
 COPY --from=builder /app/bin/relay ./relay
 COPY --from=builder /app/migrations ./migrations
