@@ -29,10 +29,18 @@ func TestLoanReminderNotificationE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Disconnect(context.Background())
+	defer func() {
+		if err := client.Disconnect(context.Background()); err != nil {
+			t.Errorf("disconnect MongoDB E2E client: %v", err)
+		}
+	}()
 	dbName := "anomaly_loan_reminder_e2e_" + uuid.NewString()[:8]
 	db := client.Database(dbName)
-	defer db.Drop(context.Background())
+	defer func() {
+		if err := db.Drop(context.Background()); err != nil {
+			t.Errorf("drop MongoDB E2E database: %v", err)
+		}
+	}()
 
 	if err := db.CreateCollection(ctx, "notifications"); err != nil {
 		t.Fatal(err)
