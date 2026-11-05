@@ -75,12 +75,17 @@ func main() {
 		logger.Fatal().Err(err).Msg("ensure notification indexes failed")
 	}
 	// Producers only write to Mongo; every API instance pushes to the SSE
-	// clients it holds from the change stream. Clients replay by cursor after
-	// a gap, so a lost history needs no server-side replay.
+	// clients it holds from the change stream. A normal stop resumes from the
+	// last token, so nothing is skipped. When the oplog no longer has that token
+	// the stream restarts from "now": disconnect every client so each one
+	// reconnects with its cursor and the SSE handler replays the gap from Mongo.
 	go mongo.RunChangeStream(ctx, func(ctx context.Context, resumeAfter bson.Raw, startAt *bson.Timestamp) (bson.Raw, error) {
 		return notificationAPI.Repository.Watch(ctx, resumeAfter, startAt, notificationAPI.Hub.Publish)
-	}, 2*time.Second, func(err error, _ bool) {
-		logger.Error().Err(err).Msg("notification change stream stopped; retrying")
+	}, 2*time.Second, func(err error, historyLost bool) {
+		logger.Error().Err(err).Bool("history_lost", historyLost).Msg("notification change stream stopped; retrying")
+		if historyLost {
+			notificationAPI.Hub.DisconnectAll()
+		}
 	})
 	riskHub := riskstream.NewHub()
 	go func() {

@@ -198,3 +198,23 @@ func TestDispatcherOnlyCallsSupportingMappers(t *testing.T) {
 		t.Fatalf("calls=%d inserted=%d", mapper.calls, len(store.inserted))
 	}
 }
+
+func TestHubDisconnectAllKeepsAcceptingSubscribers(t *testing.T) {
+	hub := NewHub(5)
+	key := notification.RecipientKey(notification.AudienceCustomer, "a")
+	updates, cancel, _ := hub.Subscribe(key)
+	defer cancel()
+	hub.DisconnectAll()
+	if _, ok := <-updates; ok {
+		t.Fatal("existing stream must be closed so the client replays")
+	}
+	again, cancelAgain, err := hub.Subscribe(key)
+	if err != nil {
+		t.Fatalf("reconnect must be accepted: %v", err)
+	}
+	defer cancelAgain()
+	hub.Publish(notification.Notification{ID: "1", Audience: notification.AudienceCustomer, RecipientID: "a"})
+	if got := <-again; got.ID != "1" {
+		t.Fatalf("unexpected %+v", got)
+	}
+}

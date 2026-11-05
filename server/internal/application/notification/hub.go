@@ -80,7 +80,10 @@ func (h *Hub) Publish(n notification.Notification) {
 	}
 }
 
-func (h *Hub) Close() {
+// DisconnectAll đóng mọi stream đang mở nhưng hub vẫn nhận subscriber mới.
+// Dùng khi change stream bị gap (vd mất history): client sẽ reconnect và
+// replay từ cursor nên không bỏ lỡ thông báo phát sinh trong khoảng gap.
+func (h *Hub) DisconnectAll() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for key, group := range h.clients {
@@ -89,6 +92,9 @@ func (h *Hub) Close() {
 		}
 	}
 }
+
+// Close đóng mọi stream khi API shutdown.
+func (h *Hub) Close() { h.DisconnectAll() }
 
 // Subscribers reports open streams for a recipient.
 func (h *Hub) Subscribers(recipientKey string) int {

@@ -231,3 +231,36 @@ func TestStreamRejectsTooManyConnections(t *testing.T) {
 		t.Fatalf("got %d", rec.Code)
 	}
 }
+
+func TestStreamWithoutCursorSendsResumeCursor(t *testing.T) {
+	newest := item("n1", "alice", time.Date(2026, 11, 4, 8, 0, 0, 0, time.UTC))
+	store := &fakeStore{items: []notificationdomain.Notification{newest}}
+	hub := notificationapp.NewHub(5)
+	mux := newTestServer(store, hub)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest("GET", "/api/notifications/stream", nil).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer alice")
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() { mux.ServeHTTP(rec, req); close(done) }()
+	key := notificationdomain.RecipientKey(notificationdomain.AudienceCustomer, "alice")
+	for deadline := time.Now().Add(2 * time.Second); hub.Subscribers(key) == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("stream never subscribed")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+
+	out := rec.Body.String()
+	want := "id: " + notificationdomain.CursorOf(newest).Encode() + "\nevent: cursor\n"
+	if !strings.Contains(out, want) {
+		t.Fatalf("missing resume cursor:\n%s", out)
+	}
+	if strings.Contains(out, `"id":"n1"`) {
+		t.Fatalf("existing notifications must not be replayed without a cursor:\n%s", out)
+	}
+}

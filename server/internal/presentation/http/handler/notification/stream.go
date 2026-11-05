@@ -54,6 +54,12 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request) {
 	if !h.writeUnreadCount(w, flusher, r.Context(), recipient) {
 		return
 	}
+	// A client without a cursor still needs a resume point: otherwise, when it
+	// is disconnected (network drop, slow client, change-stream gap) before any
+	// notification arrives, it reconnects without a cursor and the gap is lost.
+	if after == nil && !h.writeCursor(w, flusher, r.Context(), recipient) {
+		return
+	}
 
 	if after != nil {
 		for {
@@ -131,4 +137,21 @@ func (h *Handler) writeUnreadCount(w http.ResponseWriter, flusher http.Flusher, 
 		return false
 	}
 	return sse.WriteEvent(w, flusher, "", "unread-count", payload) == nil
+}
+
+// writeCursor sends `event: cursor` whose id is the recipient's newest
+// notification, so the client can resume from it. Nothing is sent when the
+// inbox is empty.
+func (h *Handler) writeCursor(w http.ResponseWriter, flusher http.Flusher, ctx context.Context, recipient notificationapp.Recipient) bool {
+	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	page, err := h.queries.List(queryCtx, notificationapp.ListQuery{Recipient: recipient, Limit: 1})
+	if err != nil {
+		h.log.Error().Err(err).Msg("notification stream cursor failed")
+		return false
+	}
+	if len(page.Items) == 0 {
+		return true
+	}
+	return sse.WriteEvent(w, flusher, notificationdomain.CursorOf(page.Items[0]).Encode(), "cursor", []byte("{}")) == nil
 }

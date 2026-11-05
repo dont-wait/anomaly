@@ -93,6 +93,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
               announce(notification);
             },
             onUnreadCount: setUnreadCount,
+            onCursor: (eventId) => {
+              lastEventId = eventId;
+            },
           },
           controller.signal,
         );

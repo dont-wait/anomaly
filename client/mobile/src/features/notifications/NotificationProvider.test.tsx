@@ -119,3 +119,26 @@ it("logs out when the stream is unauthorized", async () => {
   );
   await waitFor(() => expect(logout).toHaveBeenCalledOnce());
 });
+
+it("reconnects from the resume cursor sent before any notification", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      streamResponse([
+        'event: unread-count\ndata: {"count":0}\n\nid: newest-cursor\nevent: cursor\ndata: {}\n\n',
+      ]),
+    )
+    .mockResolvedValue(streamResponse([]));
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(
+    <NotificationProvider>
+      <Badge />
+    </NotificationProvider>,
+  );
+
+  await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(1), {
+    timeout: 3000,
+  });
+  expect(String(fetchMock.mock.calls[1][0])).toContain("cursor=newest-cursor");
+});

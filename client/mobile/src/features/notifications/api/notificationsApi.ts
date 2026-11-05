@@ -91,6 +91,8 @@ export interface StreamHandlers {
   onOpen?: () => void;
   onNotification: (notification: AppNotification, eventId: string) => void;
   onUnreadCount: (count: number) => void;
+  /** Server gửi khi client mở luồng không có cursor: điểm để nối lại sau này */
+  onCursor?: (eventId: string) => void;
 }
 
 /**
@@ -140,6 +142,8 @@ export async function openNotificationStream(
           toNotification(JSON.parse(message.data) as NotificationDto),
           message.id,
         );
+      } else if (message.event === "cursor") {
+        if (message.id) handlers.onCursor?.(message.id);
       } else if (message.event === "unread-count") {
         handlers.onUnreadCount(
           (JSON.parse(message.data) as { count: number }).count,
