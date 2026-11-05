@@ -17,6 +17,7 @@ import { ProfileChangesPage } from "@/features/profileChanges/ProfileChangesPage
 import { MonitorPage } from "@/features/monitor/MonitorPage";
 import { AlertsPage } from "@/features/alerts/AlertsPage";
 import { TransactionsRiskPage } from "@/features/reports/TransactionsRiskPage";
+import { AdminAlertCountProvider } from "@/features/alerts/AdminAlertCountProvider";
 import {
   navigate,
   protectedRouteFromHash,
@@ -105,35 +106,37 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
     );
   }
   return (
-    <AdminShell currentRoute={route} user={profile}>
-      {isMonitor ? (
-        <MonitorPage />
-      ) : isAlerts ? (
-        <AlertsPage />
-      ) : isAccountTimeline ? (
-        <AccountTimelinePage />
-      ) : isEventExplorer ? (
-        <EventExplorerPage />
-      ) : isLoanReview ? (
-        <LoanReviewPage />
-      ) : isTransactionsRisk ? (
-        <TransactionsRiskPage />
-      ) : route === routes.loanPackages ? (
-        <PackagesPage key="loan" kind="loan" />
-      ) : route === routes.savingsPackages ? (
-        <PackagesPage key="savings" kind="savings" />
-      ) : route === routes.loanContracts ? (
-        <LoanContractsAdminPage key="contracts" />
-      ) : route === routes.overdueLoans ? (
-        <LoanContractsAdminPage key="overdue" overdue />
-      ) : route === routes.savingsContracts ? (
-        <SavingsContractsPage />
-      ) : route === routes.profileChanges ? (
-        <ProfileChangesPage />
-      ) : (
-        <PlaceholderPage route={route} />
-      )}
-    </AdminShell>
+    <AdminAlertCountProvider>
+      <AdminShell currentRoute={route} user={profile}>
+        {isMonitor ? (
+          <MonitorPage />
+        ) : isAlerts ? (
+          <AlertsPage />
+        ) : isAccountTimeline ? (
+          <AccountTimelinePage />
+        ) : isEventExplorer ? (
+          <EventExplorerPage />
+        ) : isLoanReview ? (
+          <LoanReviewPage />
+        ) : isTransactionsRisk ? (
+          <TransactionsRiskPage />
+        ) : route === routes.loanPackages ? (
+          <PackagesPage key="loan" kind="loan" />
+        ) : route === routes.savingsPackages ? (
+          <PackagesPage key="savings" kind="savings" />
+        ) : route === routes.loanContracts ? (
+          <LoanContractsAdminPage key="contracts" />
+        ) : route === routes.overdueLoans ? (
+          <LoanContractsAdminPage key="overdue" overdue />
+        ) : route === routes.savingsContracts ? (
+          <SavingsContractsPage />
+        ) : route === routes.profileChanges ? (
+          <ProfileChangesPage />
+        ) : (
+          <PlaceholderPage route={route} />
+        )}
+      </AdminShell>
+    </AdminAlertCountProvider>
   );
 }
 

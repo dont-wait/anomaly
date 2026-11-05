@@ -92,6 +92,14 @@ func main() {
 		var lastReceivedAt time.Time
 		var lastAssessmentID string
 		var lastCursor int64
+		publishAlertCount := func() {
+			count, countErr := riskAssessments.CountUnhandledAlerts(ctx)
+			if countErr != nil {
+				logger.Error().Err(countErr).Msg("count unhandled risk alerts failed")
+				return
+			}
+			riskHub.Publish(riskstream.Event{UnhandledAlertCount: &count})
+		}
 		publish := func(assessment riskassessment.Assessment) {
 			if lastCursor > 0 && assessment.Cursor > 0 && assessment.Cursor <= lastCursor {
 				return
@@ -106,14 +114,33 @@ func main() {
 			}
 			lastReceivedAt = assessment.ReceivedAt
 			lastAssessmentID = assessment.ID
-			riskHub.Publish(riskstream.Event{ID: assessment.ID, Assessment: assessment})
+			event := riskstream.Event{ID: assessment.ID, Assessment: assessment}
+			if assessment.RiskLevel == riskassessment.RiskLevelWarning || assessment.RiskLevel == riskassessment.RiskLevelBlock {
+				count, countErr := riskAssessments.CountUnhandledAlerts(ctx)
+				if countErr != nil {
+					logger.Error().Err(countErr).Msg("count unhandled risk alerts failed")
+				} else {
+					event.UnhandledAlertCount = &count
+				}
+			}
+			riskHub.Publish(event)
 		}
 		watch := func(ctx context.Context, resumeAfter bson.Raw, startAt *bson.Timestamp) (bson.Raw, error) {
-			return riskAssessments.Watch(ctx, resumeAfter, startAt, publish)
+			return riskAssessments.Watch(ctx, resumeAfter, startAt, func(assessment riskassessment.Assessment, operation string) {
+				switch operation {
+				case "insert":
+					publish(assessment)
+				case "update", "replace":
+					publishAlertCount()
+				}
+			})
 		}
-		mongo.RunChangeStream(ctx, watch, 2*time.Second, func(err error, _ bool) {
+		mongo.RunChangeStream(ctx, watch, 2*time.Second, func(err error, historyLost bool) {
 			if replayErr := replayRiskAssessments(ctx, riskAssessments, publish, lastCursor, lastReceivedAt, lastAssessmentID); replayErr != nil {
 				logger.Error().Err(replayErr).Msg("risk assessment recovery replay failed")
+			}
+			if historyLost {
+				publishAlertCount()
 			}
 			logger.Error().Err(err).Msg("risk assessment change stream stopped; retrying")
 		})

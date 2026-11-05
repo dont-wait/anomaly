@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { AdminShell } from "./AdminShell";
 import { routes } from "@/app/routes";
+import { AdminAlertCountContext } from "@/features/alerts/adminAlertCountContext";
 
 const user = {
   id: "admin-id",
@@ -26,6 +27,19 @@ describe("AdminShell", () => {
     fireEvent.click(screen.getByRole("button", { name: /cảnh báo/i }));
 
     expect(window.location.hash).toBe(routes.alerts);
+  });
+
+  it("shows the unhandled alert count next to Cảnh báo and caps it at 99+", () => {
+    render(
+      <AdminAlertCountContext.Provider value={123}>
+        <AdminShell currentRoute={routes.monitor} user={user}>
+          <div>Dashboard content</div>
+        </AdminShell>
+      </AdminAlertCountContext.Provider>,
+    );
+
+    expect(screen.getByText("99+")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /cảnh báo/i })).toBeTruthy();
   });
 
   it("renders the Stitch navigation groups", () => {

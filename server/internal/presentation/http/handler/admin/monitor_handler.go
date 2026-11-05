@@ -109,17 +109,18 @@ type modelVersionCount struct {
 }
 
 type monitorSnapshot struct {
-	TotalAssessments  int                 `json:"totalAssessments"`
-	AnomalousCount    int                 `json:"anomalousCount"`
-	AnomalyRate       float64             `json:"anomalyRate"`
-	AverageRiskScore  float64             `json:"averageRiskScore"`
-	Timeseries        []monitorPoint      `json:"timeseries"`
-	RecentAssessments []riskAssessmentDTO `json:"recentAssessments"`
-	ModelVersions     []modelVersionCount `json:"modelVersions"`
-	NormalCount       int                 `json:"normalCount"`
-	WarningCount      int                 `json:"warningCount"`
-	BlockCount        int                 `json:"blockCount"`
-	TransactionStatus map[string]int      `json:"transactionStatus"`
+	TotalAssessments    int                 `json:"totalAssessments"`
+	AnomalousCount      int                 `json:"anomalousCount"`
+	UnhandledAlertCount int64               `json:"unhandledAlertCount"`
+	AnomalyRate         float64             `json:"anomalyRate"`
+	AverageRiskScore    float64             `json:"averageRiskScore"`
+	Timeseries          []monitorPoint      `json:"timeseries"`
+	RecentAssessments   []riskAssessmentDTO `json:"recentAssessments"`
+	ModelVersions       []modelVersionCount `json:"modelVersions"`
+	NormalCount         int                 `json:"normalCount"`
+	WarningCount        int                 `json:"warningCount"`
+	BlockCount          int                 `json:"blockCount"`
+	TransactionStatus   map[string]int      `json:"transactionStatus"`
 }
 
 type monitorResponse struct {
@@ -206,6 +207,11 @@ func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not load risk assessments", http.StatusInternalServerError)
 		return
 	}
+	unhandledAlertCount, err := h.repository.CountUnhandledAlerts(queryCtx)
+	if err != nil {
+		http.Error(w, "could not count unhandled alerts", http.StatusInternalServerError)
+		return
+	}
 	var handled *bool
 	switch r.URL.Query().Get("handled") {
 	case "", "all":
@@ -229,7 +235,7 @@ func (h *MonitorHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not load transaction context", http.StatusInternalServerError)
 		return
 	}
-	response := buildMonitorResponse(rangeName, summary, recentDTO, time.Now().UTC())
+	response := buildMonitorResponse(rangeName, summary, recentDTO, unhandledAlertCount, time.Now().UTC())
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -398,10 +404,18 @@ func (h *MonitorHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			if !open {
 				return
 			}
+			if event.UnhandledAlertCount != nil {
+				if err := writeUnhandledAlertCountEvent(w, flusher, *event.UnhandledAlertCount); err != nil {
+					return
+				}
+			}
 			if event.TransactionStatus != nil {
 				if err := writeTransactionStatusEvent(w, flusher, *event.TransactionStatus); err != nil {
 					return
 				}
+				continue
+			}
+			if event.Assessment.ID == "" {
 				continue
 			}
 			if !isAfter(event.Assessment, after) {
@@ -463,14 +477,15 @@ func monitorWindow(dateValue, rangeValue string, now time.Time) (time.Time, time
 	return to.Add(-duration), to, rangeName, nil
 }
 
-func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSummary, recent []riskAssessmentDTO, generatedAt time.Time) monitorResponse {
+func buildMonitorResponse(rangeName string, summary mongorepo.RiskAssessmentSummary, recent []riskAssessmentDTO, unhandledAlertCount int64, generatedAt time.Time) monitorResponse {
 	snapshot := monitorSnapshot{
-		TotalAssessments:  int(summary.Total),
-		AnomalousCount:    int(summary.Anomalous),
-		RecentAssessments: make([]riskAssessmentDTO, 0, len(recent)),
-		Timeseries:        make([]monitorPoint, 0, len(summary.Timeseries)),
-		ModelVersions:     make([]modelVersionCount, 0, len(summary.ModelVersions)),
-		TransactionStatus: make(map[string]int, len(summary.Statuses)),
+		TotalAssessments:    int(summary.Total),
+		AnomalousCount:      int(summary.Anomalous),
+		UnhandledAlertCount: unhandledAlertCount,
+		RecentAssessments:   make([]riskAssessmentDTO, 0, len(recent)),
+		Timeseries:          make([]monitorPoint, 0, len(summary.Timeseries)),
+		ModelVersions:       make([]modelVersionCount, 0, len(summary.ModelVersions)),
+		TransactionStatus:   make(map[string]int, len(summary.Statuses)),
 	}
 	if summary.Total > 0 {
 		snapshot.AverageRiskScore = summary.ScoreTotal / float64(summary.Total)
@@ -574,6 +589,20 @@ func writeTransactionStatusEvent(w http.ResponseWriter, flusher http.Flusher, st
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "event: transaction.status_changed\ndata: %s\n\n", payload); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
+}
+
+func writeUnhandledAlertCountEvent(w http.ResponseWriter, flusher http.Flusher, count int64) error {
+	payload, err := json.Marshal(struct {
+		Count int64 `json:"count"`
+	}{Count: count})
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "event: risk_alert_count\\ndata: %s\\n\\n", payload); err != nil {
 		return err
 	}
 	flusher.Flush()

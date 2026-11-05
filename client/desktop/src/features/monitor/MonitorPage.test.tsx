@@ -25,6 +25,7 @@ const dashboard = {
   snapshot: {
     totalAssessments: 2,
     anomalousCount: 1,
+    unhandledAlertCount: 1,
     anomalyRate: 0.5,
     averageRiskScore: 0.5533,
     timeseries: [

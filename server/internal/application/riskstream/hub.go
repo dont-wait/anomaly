@@ -8,9 +8,10 @@ import (
 )
 
 type Event struct {
-	ID                string
-	Assessment        riskassessment.Assessment
-	TransactionStatus *TransactionStatus
+	ID                  string
+	Assessment          riskassessment.Assessment
+	TransactionStatus   *TransactionStatus
+	UnhandledAlertCount *int64
 }
 
 type TransactionStatus struct {

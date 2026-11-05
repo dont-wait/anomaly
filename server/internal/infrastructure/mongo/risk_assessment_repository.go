@@ -200,11 +200,31 @@ func (r *RiskAssessmentRepository) EnsureIndexes(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	_, err = r.collection.Indexes().CreateOne(ctx, mongodrv.IndexModel{
+		Keys:    bson.D{{Key: "risk_level", Value: 1}, {Key: "handled", Value: 1}},
+		Options: options.Index().SetName("risk_decision_unhandled_alerts"),
+	})
+	if err != nil {
+		return err
+	}
 	_, err = r.rejected.Indexes().CreateOne(ctx, mongodrv.IndexModel{
 		Keys:    bson.D{{Key: "expires_at", Value: 1}},
 		Options: options.Index().SetExpireAfterSeconds(0).SetName("ttl_risk_decision_rejections"),
 	})
 	return err
+}
+
+// CountUnhandledAlerts returns all WARNING and BLOCK assessments that have not
+// been handled. This count is intentionally not restricted to a time window:
+// the admin badge represents the current work queue.
+func (r *RiskAssessmentRepository) CountUnhandledAlerts(ctx context.Context) (int64, error) {
+	return r.collection.CountDocuments(ctx, bson.M{
+		"risk_level": bson.M{"$in": []string{
+			riskassessment.RiskLevelWarning,
+			riskassessment.RiskLevelBlock,
+		}},
+		"handled": bson.M{"$ne": true},
+	})
 }
 
 // Save inserts an assessment once. Kafka redelivery is a successful no-op.
@@ -737,11 +757,11 @@ func (r *RiskAssessmentRepository) ListAfter(ctx context.Context, afterCursor in
 	return items, nil
 }
 
-// Watch emits persisted assessments for other API instances as well as the
-// local instance. The durable collection remains the source of truth; a
-// reconnecting client can replay from its cursor through ListAfter.
-func (r *RiskAssessmentRepository) Watch(ctx context.Context, resumeAfter bson.Raw, startAtOperationTime *bson.Timestamp, publish func(riskassessment.Assessment)) (bson.Raw, error) {
-	changeStreamOptions := options.ChangeStream()
+// Watch emits persisted assessment inserts and updates for other API
+// instances as well as the local instance. The operation type lets callers
+// distinguish a new assessment from a handled-state change.
+func (r *RiskAssessmentRepository) Watch(ctx context.Context, resumeAfter bson.Raw, startAtOperationTime *bson.Timestamp, publish func(riskassessment.Assessment, string)) (bson.Raw, error) {
+	changeStreamOptions := options.ChangeStream().SetFullDocument(options.UpdateLookup)
 	if len(resumeAfter) > 0 {
 		changeStreamOptions.SetResumeAfter(resumeAfter)
 	} else if startAtOperationTime != nil {
@@ -757,8 +777,8 @@ func (r *RiskAssessmentRepository) Watch(ctx context.Context, resumeAfter bson.R
 		if err := stream.Decode(&change); err != nil {
 			return stream.ResumeToken(), err
 		}
-		if change.OperationType == "insert" && change.FullDocument.ID != "" {
-			publish(change.FullDocument)
+		if (change.OperationType == "insert" || change.OperationType == "update" || change.OperationType == "replace") && change.FullDocument.ID != "" {
+			publish(change.FullDocument, change.OperationType)
 		}
 	}
 	return stream.ResumeToken(), stream.Err()

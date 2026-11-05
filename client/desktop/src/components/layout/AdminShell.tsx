@@ -25,6 +25,7 @@ import {
   type AdminProfile,
 } from "@/features/auth/api/adminSession";
 import { navigate, routes, type ProtectedRoute } from "@/app/routes";
+import { useAdminAlertCount } from "@/features/alerts/adminAlertCountContext";
 
 interface NavigationItem {
   label: string;
@@ -142,6 +143,13 @@ export function AdminShell({
   },
 }: AdminShellProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const unhandledAlertCount = useAdminAlertCount();
+  const alertBadge =
+    unhandledAlertCount > 99
+      ? "99+"
+      : unhandledAlertCount > 0
+        ? String(unhandledAlertCount)
+        : undefined;
   const shellColumns = isCollapsed
     ? "grid-cols-[64px_minmax(0,1fr)]"
     : "grid-cols-[308px_minmax(0,1fr)]";
@@ -221,12 +229,13 @@ export function AdminShell({
                       >
                         {item.label}
                       </span>
-                      {item.badge && (
+                      {(item.badge ||
+                        (item.route === routes.alerts && alertBadge)) && (
                         <span
                           className={`border border-[#7f1d1d] bg-[#c1121f] font-(family-name:--admin-font-mono) text-white max-[900px]:absolute max-[900px]:top-1.5 max-[900px]:right-1.5 max-[900px]:h-1.5 max-[900px]:min-w-0 max-[900px]:w-1.5 max-[900px]:rounded-full max-[900px]:p-0 max-[900px]:text-[0px] ${isCollapsed ? "absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full p-0 text-[0px]" : "min-w-5 rounded-[3px] px-1.5 py-0.5 text-center text-[10px] leading-4"}`}
-                          aria-label={`${item.badge} mục cần xử lý`}
+                          aria-label={`${item.badge ?? alertBadge} mục cần xử lý`}
                         >
-                          {item.badge}
+                          {item.badge ?? alertBadge}
                         </span>
                       )}
                     </button>

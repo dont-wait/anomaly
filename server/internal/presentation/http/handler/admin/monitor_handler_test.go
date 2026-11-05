@@ -2,6 +2,8 @@ package admin
 
 import (
 	"context"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,5 +87,28 @@ func TestEnrichAssessmentsUsesOneBatchLookup(t *testing.T) {
 	}
 	if items[0].Transaction == nil || items[0].Transaction.SourceAccountNo != "ACC001" {
 		t.Fatalf("first transaction context = %+v", items[0].Transaction)
+	}
+}
+
+func TestBuildMonitorResponseIncludesUnhandledAlertCount(t *testing.T) {
+	response := buildMonitorResponse(
+		"24h",
+		mongorepo.RiskAssessmentSummary{},
+		nil,
+		7,
+		time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC),
+	)
+	if response.Snapshot.UnhandledAlertCount != 7 {
+		t.Fatalf("unhandled alert count = %d, want 7", response.Snapshot.UnhandledAlertCount)
+	}
+}
+
+func TestWriteUnhandledAlertCountEvent(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	if err := writeUnhandledAlertCountEvent(recorder, recorder, 12); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.Body.String(); !strings.Contains(got, "event: risk_alert_count") || !strings.Contains(got, `{"count":12}`) {
+		t.Fatalf("unexpected SSE event: %q", got)
 	}
 }

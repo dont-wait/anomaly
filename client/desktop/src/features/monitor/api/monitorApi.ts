@@ -113,7 +113,10 @@ export async function getDailyMonitorReport(
     { headers: authHeaders(), signal },
   );
   if (!response.ok) {
-    throw new MonitorApiError("Không thể tải báo cáo giao dịch", response.status);
+    throw new MonitorApiError(
+      "Không thể tải báo cáo giao dịch",
+      response.status,
+    );
   }
   return (await response.json()) as MonitorDashboardResponse;
 }
@@ -136,6 +139,16 @@ function parseSseBlock(block: string): RiskStreamEvent | null {
       kind: "transaction_status",
       event: JSON.parse(data) as TransactionStatusEvent,
     };
+  if (eventName === "risk_alert_count") {
+    const payload = JSON.parse(data) as { count?: unknown };
+    if (
+      typeof payload.count !== "number" ||
+      !Number.isFinite(payload.count) ||
+      payload.count < 0
+    )
+      return null;
+    return { kind: "alert_count", count: payload.count };
+  }
   return null;
 }
 
