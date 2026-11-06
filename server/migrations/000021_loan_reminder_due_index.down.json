@@ -1,0 +1,6 @@
+[
+  {
+    "dropIndexes": "loans",
+    "index": "idx_loan_reminder_status_installment_due"
+  }
+]

@@ -1,0 +1,15 @@
+[
+  {
+    "createIndexes": "loans",
+    "indexes": [
+      {
+        "key": {
+          "status": 1,
+          "repayment_schedule.status": 1,
+          "repayment_schedule.due_date": 1
+        },
+        "name": "idx_loan_reminder_status_installment_due"
+      }
+    ]
+  }
+]

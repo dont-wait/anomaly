@@ -42,7 +42,7 @@ func (r *SavingsTermsRepository) Current(ctx context.Context) (savingsdomain.Ter
 	if err != nil {
 		return savingsdomain.TermsSnapshot{}, fmt.Errorf("query savings terms: %w", err)
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 	if !cursor.Next(ctx) {
 		if cursor.Err() != nil {
 			return savingsdomain.TermsSnapshot{}, cursor.Err()

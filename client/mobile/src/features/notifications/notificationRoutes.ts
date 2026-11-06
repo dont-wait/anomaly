@@ -1,4 +1,9 @@
-import { routes, transactionDetailRoute, type AppRoute } from "@/app/routes";
+import {
+  loanContract,
+  routes,
+  transactionDetailRoute,
+  type AppRoute,
+} from "@/app/routes";
 import type { AppNotification } from "./model";
 
 /**
@@ -35,6 +40,11 @@ const transferDetail: RouteResolver = (data) =>
 for (const type of ["TRANSFER_SENT", "TRANSFER_RECEIVED", "TRANSFER_BLOCKED"]) {
   registerNotificationRoute(type, transferDetail);
 }
+
+// Nhắc hạn trả nợ: loanId trỏ đến hợp đồng vay của chính người nhận.
+registerNotificationRoute("LOAN_REPAYMENT_DUE", (data) =>
+  data.loanId ? loanContract(data.loanId) : null,
+);
 
 // Ví dụ đăng ký cho module khác:
 // registerNotificationRoute("LOAN_APPROVED", (data) =>
