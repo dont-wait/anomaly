@@ -11,6 +11,12 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import type { RiskSeriesPoint, TimeRange } from "../model";
+import { useAdminTheme, type AdminTheme } from "@/theme/theme";
+
+const dashboardCard =
+  "bg-(--admin-dashboard-card-background) border border-(--admin-dashboard-card-border) shadow-(--admin-dashboard-card-shadow)";
+const dashboardControl =
+  "bg-(--admin-dashboard-control-background) border border-(--admin-dashboard-control-border)";
 
 ChartJS.register(
   CategoryScale,
@@ -21,15 +27,25 @@ ChartJS.register(
   Tooltip,
 );
 
-const chartColors = {
-  border: "#b4c5ff",
-  fill: "rgba(37, 99, 235, 0.13)",
-  grid: "#272b33",
-  muted: "#8d90a0",
-  danger: "#d52022",
-  surface: "#2a2a2c",
-  text: "#e5e1e4",
-};
+function getChartColors(theme: AdminTheme) {
+  return theme === "dark"
+    ? {
+        border: "#b4c5ff",
+        fill: "rgba(37, 99, 235, 0.13)",
+        grid: "#272b33",
+        muted: "#8d90a0",
+        danger: "#d52022",
+        surface: "#2a2a2c",
+      }
+    : {
+        border: "#2563eb",
+        fill: "rgba(37, 99, 235, 0.12)",
+        grid: "#d6dee9",
+        muted: "#64748b",
+        danger: "#b91c1c",
+        surface: "#ffffff",
+      };
+}
 
 interface TooltipState {
   left: number;
@@ -49,7 +65,10 @@ function formatTime(timestamp: string) {
   }).format(new Date(timestamp));
 }
 
-function createRiskMarkerPlugin(peakIndex: number): Plugin<"line"> {
+function createRiskMarkerPlugin(
+  peakIndex: number,
+  chartColors: ReturnType<typeof getChartColors>,
+): Plugin<"line"> {
   return {
     id: "risk-marker",
     beforeDatasetsDraw(chart) {
@@ -98,6 +117,8 @@ interface RiskTrendChartProps {
 type ChartMode = "risk" | "volume" | "alerts";
 
 export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
+  const { theme } = useAdminTheme();
+  const chartColors = getChartColors(theme);
   const [hoverTooltip, setHoverTooltip] = useState<TooltipState | null>(null);
   const [mode, setMode] = useState<ChartMode>("risk");
   const tooltipRef = useRef<TooltipState | null>(null);
@@ -209,7 +230,7 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
 
   return (
     <section
-      className="bg-(--admin-surface-subtle) h-full min-h-75 flex flex-col justify-between rounded-(--admin-radius-md) p-3"
+      className={`${dashboardCard} h-full min-h-75 flex flex-col justify-between rounded-(--admin-radius-lg) p-4`}
       data-testid="risk-trend-chart"
     >
       <div className="flex flex-col justify-between gap-2 pb-2 md:flex-row md:items-center">
@@ -218,7 +239,7 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
             Xu hướng rủi ro ({range})
           </h2>
           <div
-            className="bg-(--admin-surface) flex rounded-sm p-0.5"
+            className={`${dashboardControl} flex rounded-(--admin-radius-md) p-1`}
             role="group"
             aria-label="Chỉ số biểu đồ"
           >
@@ -234,7 +255,7 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
                 type="button"
                 aria-pressed={mode === value}
                 onClick={() => setMode(value)}
-                className={`rounded-sm px-2 py-1 text-[10px] font-semibold ${mode === value ? "bg-(--admin-primary) text-white" : "text-(--admin-text-muted) hover:text-(--admin-text)"}`}
+                className={`rounded-(--admin-radius-sm) px-2.5 py-1.5 text-[10px] font-semibold ${mode === value ? "bg-(--admin-primary-soft) text-(--admin-primary)" : "text-(--admin-text-muted) hover:bg-(--admin-surface-hover) hover:text-(--admin-text)"}`}
               >
                 {label}
               </button>
@@ -243,7 +264,7 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
         </div>
         <div className="font-(family-name:--admin-font-mono) flex flex-wrap items-center gap-2 text-[10px] text-(--admin-text-muted)">
           {peakPoint && (
-            <span className="rounded-sm bg-[#3b2930] px-1.5 py-1 text-[#ffb4ab]">
+            <span className="rounded-(--admin-radius-sm) border border-(--admin-danger-soft) bg-(--admin-risk-peak-background) px-2 py-1 text-(--admin-trend-up)">
               {mode === "risk"
                 ? `Cao nhất ${(values[peakIndex] ?? 0).toFixed(2)} điểm`
                 : mode === "volume"
@@ -271,7 +292,7 @@ export function RiskTrendChart({ series, range = "24h" }: RiskTrendChartProps) {
           <Line
             data={data}
             options={options}
-            plugins={[createRiskMarkerPlugin(peakIndex)]}
+            plugins={[createRiskMarkerPlugin(peakIndex, chartColors)]}
             aria-label="Biểu đồ điểm rủi ro trong khoảng thời gian đã chọn"
           />
         ) : (

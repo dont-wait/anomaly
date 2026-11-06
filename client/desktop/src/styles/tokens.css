@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --admin-primary: #2563eb;
   --admin-primary-strong: #1d4ed8;
   --admin-primary-soft: #1d263b;
@@ -24,6 +25,21 @@
   --admin-warning-soft: #1f140a;
   --admin-danger: #dc2626;
   --admin-danger-soft: #200d0e;
+  --admin-on-primary: #ffffff;
+  --admin-avatar-background: #b4c5ff;
+  --admin-avatar-foreground: #002a78;
+  --admin-alert-border: #7f1d1d;
+  --admin-alert-background: #c1121f;
+  --admin-success-foreground: #75d9a4;
+  --admin-warning-foreground: #f6d58a;
+  --admin-danger-foreground: #ff8f86;
+  --admin-trend-up: #ffb4ab;
+  --admin-risk-warning-background: #4b3b1d;
+  --admin-risk-warning-foreground: #f6d58a;
+  --admin-risk-block-background: #5b2427;
+  --admin-risk-block-foreground: #ffb4ab;
+  --admin-risk-peak-background: #3b2930;
+  --admin-risk-secondary: #3c4a5e;
 
   --admin-font-sans: "Geist", system-ui, sans-serif;
   --admin-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
@@ -48,5 +64,88 @@
 
   --admin-shadow-card: none;
   --admin-shadow-floating: none;
+  --admin-dashboard-card-background: #181b20;
+  --admin-dashboard-card-border: transparent;
+  --admin-dashboard-card-shadow: none;
+  --admin-dashboard-control-background: #111317;
+  --admin-dashboard-control-border: transparent;
+  --admin-dashboard-divider: transparent;
+  --admin-nav-active-background: #22262e;
+  --admin-nav-active-border: #272b33;
+  --admin-nav-active-foreground: #e5e1e4;
+  --admin-live-background: #111317;
+  --admin-live-border: transparent;
+  --admin-live-foreground: #c3c6d7;
+  --admin-live-dot: #2563eb;
+  --admin-metric-icon-background: transparent;
+  --admin-metric-icon-foreground: #8d90a0;
+  --admin-metric-warning: #2563eb;
   --admin-focus-ring: 0 0 0 1px #2563eb;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --admin-radius-sm: 5px;
+  --admin-radius-md: 8px;
+  --admin-radius-lg: 12px;
+  --admin-radius-xl: 16px;
+  --admin-primary: #2563eb;
+  --admin-primary-strong: #1d4ed8;
+  --admin-primary-soft: #eaf2ff;
+  --admin-accent: #2563eb;
+  --admin-accent-soft: #eaf2ff;
+
+  --admin-background: #f6f8fc;
+  --admin-surface: #ffffff;
+  --admin-surface-subtle: #f1f5fa;
+  --admin-surface-hover: #eef4ff;
+  --admin-text: #172033;
+  --admin-text-secondary: #475569;
+  --admin-text-muted: #64748b;
+  --admin-text-disabled: #94a3b8;
+  --admin-border: #dce4ef;
+  --admin-border-subtle: #e8eef6;
+
+  --admin-success: #047857;
+  --admin-success-soft: #ecfdf5;
+  --admin-info: #2563eb;
+  --admin-info-soft: #eff6ff;
+  --admin-warning: #b45309;
+  --admin-warning-soft: #fffbeb;
+  --admin-danger: #b91c1c;
+  --admin-danger-soft: #fef2f2;
+  --admin-on-primary: #ffffff;
+  --admin-avatar-background: #dbeafe;
+  --admin-avatar-foreground: #1e3a8a;
+  --admin-alert-border: #fecaca;
+  --admin-alert-background: #dc2626;
+  --admin-success-foreground: #047857;
+  --admin-warning-foreground: #92400e;
+  --admin-danger-foreground: #b91c1c;
+  --admin-trend-up: #b91c1c;
+  --admin-risk-warning-background: #fef3c7;
+  --admin-risk-warning-foreground: #92400e;
+  --admin-risk-block-background: #fee2e2;
+  --admin-risk-block-foreground: #991b1b;
+  --admin-risk-peak-background: #fee2e2;
+  --admin-risk-secondary: #64748b;
+  --admin-focus-ring: 0 0 0 1px #2563eb;
+  --admin-shadow-card: 0 1px 2px rgb(15 35 65 / 4%);
+  --admin-shadow-floating: 0 18px 45px rgb(15 35 65 / 12%);
+  --admin-dashboard-card-background: #ffffff;
+  --admin-dashboard-card-border: #e8eef6;
+  --admin-dashboard-card-shadow: 0 1px 2px rgb(15 35 65 / 4%);
+  --admin-dashboard-control-background: #f1f5fa;
+  --admin-dashboard-control-border: #e8eef6;
+  --admin-dashboard-divider: #e8eef6;
+  --admin-nav-active-background: #eaf2ff;
+  --admin-nav-active-border: #eaf2ff;
+  --admin-nav-active-foreground: #2563eb;
+  --admin-live-background: #ecfdf5;
+  --admin-live-border: #047857;
+  --admin-live-foreground: #047857;
+  --admin-live-dot: #047857;
+  --admin-metric-icon-background: #eaf2ff;
+  --admin-metric-icon-foreground: #2563eb;
+  --admin-metric-warning: #b45309;
 }

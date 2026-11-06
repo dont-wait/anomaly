@@ -3,8 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f6f7fb" />
+    <meta name="theme-color" content="#f6f8fc" />
     <title>Anomaly Admin Console</title>
+    <script>
+      (() => {
+        try {
+          const stored = window.localStorage.getItem("anomaly.admin.theme");
+          const theme =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia?.("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", theme === "dark" ? "#09090b" : "#f6f8fc");
+        } catch {
+          document.documentElement.dataset.theme = "dark";
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", "#09090b");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -54,7 +54,7 @@ function statusLabel(value?: string) {
 }
 
 function statusTone(value?: string) {
-  if (value === "success") return "text-[#75d9a4]";
+  if (value === "success") return "text-(--admin-success-foreground)";
   if (value === "failed" || value === "cancelled") return "text-(--admin-danger)";
   return "text-(--admin-warning)";
 }

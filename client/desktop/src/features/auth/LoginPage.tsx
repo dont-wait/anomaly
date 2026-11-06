@@ -9,6 +9,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { routes, navigate } from "@/app/routes";
 import { loginAdmin } from "./api/adminAuth";
+import { ThemeToggle } from "@/theme/ThemeToggle";
 
 interface LoginErrors {
   cccdNumber?: string;
@@ -60,6 +61,9 @@ export function LoginPage() {
 
   return (
     <main className="admin-login-page">
+      <div className="admin-login-theme-toggle">
+        <ThemeToggle />
+      </div>
       <section className="admin-login-card" aria-labelledby="login-title">
         <div className="admin-brand" aria-label="AnomalyBank Admin Console">
           <span className="admin-brand-mark" aria-hidden="true">

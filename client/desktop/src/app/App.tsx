@@ -24,6 +24,7 @@ import {
   routes,
   type ProtectedRoute,
 } from "./routes";
+import { ThemeProvider } from "@/theme/ThemeProvider";
 
 function subscribe(onChange: () => void) {
   window.addEventListener("hashchange", onChange);
@@ -140,10 +141,18 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
   );
 }
 
-export default function App() {
+function AppContent() {
   const hash = useHash();
   const protectedRoute = protectedRouteFromHash(hash);
 
   if (protectedRoute) return <ProtectedAdmin route={protectedRoute} />;
   return <LoginPage />;
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
 }
