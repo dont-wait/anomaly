@@ -903,6 +903,7 @@ export function MonitorPage() {
                 });
                 return;
               }
+              if (event.kind === "alert_count") return;
               const assessmentEvent = event.event;
               setResponse((current) => {
                 if (

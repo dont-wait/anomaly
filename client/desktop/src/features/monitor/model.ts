@@ -89,7 +89,8 @@ export interface TransactionStatusEvent {
 
 export type RiskStreamEvent =
   | { kind: "assessment"; event: RiskAssessmentEvent }
-  | { kind: "transaction_status"; event: TransactionStatusEvent };
+  | { kind: "transaction_status"; event: TransactionStatusEvent }
+  | { kind: "alert_count"; count: number };
 
 export const ranges: { value: TimeRange; label: string }[] = [
   { value: "24h", label: "24h" },
