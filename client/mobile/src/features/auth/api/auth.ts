@@ -119,6 +119,9 @@ export function toLoginError(error: unknown): string {
     if (error.hasCode("INVALID_CREDENTIALS")) {
       return "Số CCCD hoặc mật khẩu không đúng.";
     }
+    if (error.hasCode("KYC_UNDER_REVIEW")) {
+      return "Hồ sơ xác minh danh tính của bạn đang chờ duyệt. Vui lòng đăng nhập lại sau khi hồ sơ được xác nhận.";
+    }
     if (error.hasCode("INVALID_CCCD")) {
       return "Số CCCD phải gồm đúng 12 chữ số.";
     }

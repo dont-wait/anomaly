@@ -4,7 +4,6 @@ import (
 	"context"
 	"math"
 	"strconv"
-	"strings"
 	"time"
 
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
@@ -31,17 +30,8 @@ func NewVerifyAccountCommandHandler(repo AccountRepository) *VerifyAccountComman
 }
 
 func (h *VerifyAccountCommandHandler) Handle(ctx context.Context, cmd VerifyAccountCommand) (*accountdomain.UserAccount, error) {
-	if cmd.IdCardFrontUrl == "" || cmd.IdCardBackUrl == "" || cmd.LiveVideoUrl == "" {
-		return nil, accountdomain.ErrInvalidVerifyPayload
-	}
-	prefix := "kyc/" + cmd.AccountID + "/"
-	if !strings.HasPrefix(cmd.IdCardFrontUrl, prefix+"id-card-front/") ||
-		!strings.HasPrefix(cmd.IdCardBackUrl, prefix+"id-card-back/") ||
-		!strings.HasPrefix(cmd.LiveVideoUrl, prefix+"live-video/") {
-		return nil, accountdomain.ErrInvalidVerifyPayload
-	}
-	if cmd.Media != nil && (cmd.Media.IdentityFront.StorageKey != cmd.IdCardFrontUrl || cmd.Media.IdentityBack.StorageKey != cmd.IdCardBackUrl || cmd.Media.LivenessVideo.StorageKey != cmd.LiveVideoUrl) {
-		return nil, accountdomain.ErrInvalidVerifyPayload
+	if err := validateKYCMediaKeys(cmd.AccountID, cmd.IdCardFrontUrl, cmd.IdCardBackUrl, cmd.LiveVideoUrl, cmd.Media); err != nil {
+		return nil, err
 	}
 
 	acc, err := h.repo.FindByID(ctx, cmd.AccountID)
@@ -59,6 +49,10 @@ func (h *VerifyAccountCommandHandler) Handle(ctx context.Context, cmd VerifyAcco
 	// official KYC record when the command is retried.
 	if acc.IsVerified() {
 		return acc, nil
+	}
+	// A manual submission owns the account until an administrator decides.
+	if acc.IsKYCUnderReview() {
+		return nil, accountdomain.ErrKYCUnderReview
 	}
 	validPOC := cmd.POCBypass && cmd.Evidence != nil && cmd.Evidence.ModelID == "poc-bypass" &&
 		cmd.Evidence.PipelineVersion == "poc-v1" && cmd.Evidence.RequestID != "" &&

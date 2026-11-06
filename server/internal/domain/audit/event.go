@@ -25,6 +25,8 @@ const (
 	LoginFailed            = "LoginFailed"
 	AccountLocked          = "AccountLocked"
 	AccountUnlocked        = "AccountUnlocked"
+	KYCReviewApproved      = "KYCReviewApproved"
+	KYCReviewRejected      = "KYCReviewRejected"
 	RiskAssessmentHandled  = "RiskAssessmentHandled"
 	RiskAssessmentReopened = "RiskAssessmentReopened"
 )

@@ -99,6 +99,9 @@ func (h *LoginQueryHandler) StartKYCSession(ctx context.Context, q LoginQuery) (
 	if acc.IsVerified() {
 		return nil, accountdomain.ErrAccountAlreadyVerified
 	}
+	if acc.IsKYCUnderReview() {
+		return nil, accountdomain.ErrKYCUnderReview
+	}
 	token, expiresAt, err := h.tokens.IssueKYC(acc.Id)
 	if err != nil {
 		return nil, err

@@ -189,6 +189,12 @@ func (s *RealtimeStore) Unlock(ctx context.Context, id, token string) {
 	s.DB.Eval(ctx, `if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) end return 0`, []string{"kyc:processing:" + id}, token)
 }
 
+// ResetAttempts clears the rolling attempt counter after a manual rejection so
+// the customer can submit new evidence immediately.
+func (s *RealtimeStore) ResetAttempts(ctx context.Context, account string) error {
+	return s.DB.Del(ctx, "kyc:count:"+account).Err()
+}
+
 func (s *RealtimeStore) Count(ctx context.Context, account string) (int, time.Duration, error) {
 	n, err := s.DB.Get(ctx, "kyc:count:"+account).Int()
 	if errors.Is(err, redis.Nil) {

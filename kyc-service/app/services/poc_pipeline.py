@@ -1,4 +1,9 @@
-"""Explicit demo bypass. No biometric inference or synthetic model evidence."""
+"""Demo pipeline without biometric inference or synthetic model evidence.
+
+The realtime stream always works so the app can capture evidence. verify-face
+returns a bypass VERIFIED result only when KYC_POC_BYPASS=true; otherwise the
+Go API sends the submission to manual admin review.
+"""
 
 import asyncio
 import base64
@@ -23,6 +28,15 @@ class PocVisionPipeline(StubVisionPipeline):
     async def verify_face(
         self, cccd_front_image: UploadFile, live_video: UploadFile, challenge_type: str
     ) -> VerifyFaceResponse:
+        if not self._settings.poc_bypass:
+            # Manual review mode: the stream is captured, but nothing is auto-verified.
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "poc_bypass_disabled",
+                    "message": "POC auto-verification is off; KYC goes to manual review",
+                },
+            )
         image, image_overflow = await read_limited_bytes(
             cccd_front_image, self._settings.max_image_bytes
         )
