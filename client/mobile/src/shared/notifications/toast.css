@@ -88,7 +88,7 @@
   animation: toast-countdown var(--toast-duration) linear forwards;
 }
 
-/* Error and success keep the original accent; newer tones override it. */
+/* Error keeps the original accent; other tones override it. */
 .toast-card--warning {
   border-color: color-mix(in srgb, #b45309 22%, transparent);
 }
@@ -100,6 +100,19 @@
 
 .toast-card--warning .toast-progress {
   background: #b45309;
+}
+
+.toast-card--success {
+  border-color: color-mix(in srgb, #15803d 22%, transparent);
+}
+
+.toast-card--success .toast-icon {
+  background: color-mix(in srgb, #bbf7d0 60%, transparent);
+  color: #15803d;
+}
+
+.toast-card--success .toast-progress {
+  background: #15803d;
 }
 
 .toast-card--info {

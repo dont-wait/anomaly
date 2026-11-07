@@ -2,6 +2,7 @@ package composition
 
 import (
 	notificationapp "github.com/dont-wait/anomaly/internal/application/notification"
+	transfernoti "github.com/dont-wait/anomaly/internal/application/transaction/notification"
 	"github.com/dont-wait/anomaly/internal/domain"
 	"github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	notificationhandler "github.com/dont-wait/anomaly/internal/presentation/http/handler/notification"
@@ -25,8 +26,8 @@ func NewNotifier(client *mongodrv.Client, dbName string, config *domain.Notifica
 // Xem docs/how-to-register-noti.md, cách 1.
 func NewNotificationDispatcher(client *mongodrv.Client, dbName string, config *domain.NotificationConfig) *notificationapp.Dispatcher {
 	mappers := []notificationapp.EventMapper{
-		// Đăng ký mapper của module ở đây, vd:
-		// transfernoti.NewMapper(mongo.NewAccountRepository(client, dbName)),
+		// Đăng ký mapper của module ở đây.
+		transfernoti.NewMapper(mongo.NewAccountRepository(client, dbName), mongo.NewCustomerRepository(client, dbName)),
 	}
 	return notificationapp.NewDispatcher(NewNotifier(client, dbName, config), mappers...)
 }
