@@ -1,6 +1,7 @@
 package composition
 
 import (
+	loannoti "github.com/dont-wait/anomaly/internal/application/loan/notification"
 	notificationapp "github.com/dont-wait/anomaly/internal/application/notification"
 	transfernoti "github.com/dont-wait/anomaly/internal/application/transaction/notification"
 	"github.com/dont-wait/anomaly/internal/domain"
@@ -27,6 +28,7 @@ func NewNotifier(client *mongodrv.Client, dbName string, config *domain.Notifica
 func NewNotificationDispatcher(client *mongodrv.Client, dbName string, config *domain.NotificationConfig) *notificationapp.Dispatcher {
 	mappers := []notificationapp.EventMapper{
 		// Đăng ký mapper của module ở đây.
+		loannoti.NewMapper(mongo.NewAccountRepository(client, dbName)),
 		transfernoti.NewMapper(mongo.NewAccountRepository(client, dbName), mongo.NewCustomerRepository(client, dbName)),
 	}
 	return notificationapp.NewDispatcher(NewNotifier(client, dbName, config), mappers...)

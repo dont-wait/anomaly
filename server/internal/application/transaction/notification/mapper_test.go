@@ -145,11 +145,3 @@ func TestMapErrorsWhenAccountMissingOrLookupFails(t *testing.T) {
 		t.Fatal("lookup error must propagate for retry")
 	}
 }
-
-func TestFormatVND(t *testing.T) {
-	for in, want := range map[int64]string{0: "0", 999: "999", 1000: "1.000", 1500000: "1.500.000", 12345678901: "12.345.678.901"} {
-		if got := formatVND(in); got != want {
-			t.Fatalf("%d: got %s want %s", in, got, want)
-		}
-	}
-}

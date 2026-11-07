@@ -56,3 +56,12 @@ it("opens loan repayment reminders at their own loan contract", () => {
     routes.notifications,
   );
 });
+
+it("opens loan disbursement and repayment notifications at the loan contract", () => {
+  for (const type of ["LOAN_DISBURSED", "LOAN_INSTALLMENT_PAID"]) {
+    expect(routeForNotification(notification(type, { loanId: "loan 9" }))).toBe(
+      loanContract("loan 9"),
+    );
+    expect(routeForNotification(notification(type))).toBe(routes.notifications);
+  }
+});
