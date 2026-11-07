@@ -54,6 +54,8 @@ const (
 	// TypeLoanInstallmentPaid: a repayment was debited from the customer account.
 	TypeLoanInstallmentPaid Type = "LOAN_INSTALLMENT_PAID"
 	TypeSavingsMatured      Type = "SAVINGS_MATURED"
+	// TypeSavingsOpened: a savings deposit was debited from the customer account.
+	TypeSavingsOpened Type = "SAVINGS_OPENED"
 
 	// TypeSystemTest is only triggered by the development seeder.
 	TypeSystemTest Type = "SYSTEM_TEST"

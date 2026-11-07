@@ -53,6 +53,11 @@ for (const type of [
   );
 }
 
+// Tiết kiệm: app chưa có màn chi tiết từng sổ, nên mở danh sách tiết kiệm.
+for (const type of ["SAVINGS_OPENED", "SAVINGS_MATURED"]) {
+  registerNotificationRoute(type, () => routes.savings);
+}
+
 // Ví dụ đăng ký cho module khác:
 // registerNotificationRoute("LOAN_APPROVED", (data) =>
 //   data.applicationId ? loanApplication(data.applicationId) : null,
