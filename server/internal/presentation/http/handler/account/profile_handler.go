@@ -14,10 +14,13 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -235,31 +238,119 @@ func (h *Handler) RequestProfileChange(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteSuccess(w, http.StatusOK, "Profile change submitted", h.profileResponse(r.Context(), account))
 }
 
-// ListProfileChanges trả các đề nghị đang chờ admin duyệt.
+const profileChangeMaxPageSize = 50
+
+type profileChangeListParams struct {
+	Page     int
+	PageSize int
+	Status   string
+	Search   string
+}
+
+func parseProfileChangeListParams(values url.Values) (profileChangeListParams, error) {
+	params := profileChangeListParams{Page: 1, PageSize: 10, Status: accountdomain.ProfileChangePending}
+	if raw := values.Get("page"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 {
+			return params, errors.New("page must be a positive integer")
+		}
+		params.Page = value
+	}
+	if raw := values.Get("pageSize"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > profileChangeMaxPageSize {
+			return params, errors.New("pageSize must be between 1 and 50")
+		}
+		params.PageSize = value
+	}
+	if status := strings.ToUpper(strings.TrimSpace(values.Get("status"))); status != "" {
+		switch status {
+		case accountdomain.ProfileChangePending, accountdomain.ProfileChangeApproved,
+			accountdomain.ProfileChangeRejected, "ALL":
+			params.Status = status
+		default:
+			return params, errors.New("invalid profile change status")
+		}
+	}
+	params.Search = strings.ToLower(strings.TrimSpace(values.Get("search")))
+	if utf8.RuneCountInString(params.Search) > 120 {
+		return params, errors.New("search must be at most 120 characters")
+	}
+	return params, nil
+}
+
+// profileChangePage sorts newest-first before slicing. Tie-breaking by account ID
+// makes successive pages deterministic for unchanged data.
+func profileChangePage(accounts []*accountdomain.UserAccount, params profileChangeListParams) ProfileChangesPageResponse {
+	// Normalize here too: callers may construct params without the HTTP parser.
+	search := strings.ToLower(strings.TrimSpace(params.Search))
+	items := make([]ProfileChangeReviewItem, 0)
+	for _, account := range accounts {
+		if account == nil || account.Customer == nil || account.Customer.ProfileChange == nil {
+			continue
+		}
+		customer := account.Customer
+		change := customer.ProfileChange
+		if params.Status != "ALL" && change.Status != params.Status {
+			continue
+		}
+		if search != "" &&
+			!strings.Contains(strings.ToLower(account.Id), search) &&
+			!strings.Contains(strings.ToLower(account.Username), search) &&
+			!strings.Contains(strings.ToLower(customer.Profile.FullName), search) &&
+			!strings.Contains(strings.ToLower(change.FullName), search) {
+			continue
+		}
+		items = append(items, ProfileChangeReviewItem{
+			AccountID: account.Id,
+			Username:  account.Username,
+			Current: ProfileChangeCurrent{
+				FullName: customer.Profile.FullName, AddressLine: customer.Profile.Address.Line,
+				ProvinceCode: customer.Profile.Address.ProvinceCode,
+				IssuedPlace:  customer.Identity.IssuedPlace, PermanentAddress: customer.Identity.PermanentAddress,
+			},
+			Change: toProfileChangeResponse(change),
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		a, b := items[i], items[j]
+		if !a.Change.RequestedAt.Equal(b.Change.RequestedAt) {
+			return a.Change.RequestedAt.After(b.Change.RequestedAt)
+		}
+		return a.AccountID < b.AccountID
+	})
+	total := len(items)
+	pages := (total + params.PageSize - 1) / params.PageSize
+	result := ProfileChangesPageResponse{
+		Items: make([]ProfileChangeReviewItem, 0), Total: total,
+		Page: params.Page, PageSize: params.PageSize, TotalPages: pages,
+	}
+	// Avoid integer overflow from an extremely large page parameter.
+	if params.Page > pages {
+		return result
+	}
+	start := (params.Page - 1) * params.PageSize
+	end := min(start+params.PageSize, total)
+	result.Items = items[start:end]
+	return result
+}
+
+// ListProfileChanges returns an admin-only, paginated snapshot of requests.
+// Current account read ports expose FindAll; filtering is in-memory for the MVP.
+// A large production deployment should migrate this to a paged read-model query.
 func (h *Handler) ListProfileChanges(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
+	params, err := parseProfileChangeListParams(r.URL.Query())
+	if err != nil {
+		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
+		return
+	}
 	accounts, err := h.getAll.Handle(r.Context(), queries.GetAllAccountsQuery{})
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return
 	}
-	items := make([]ProfileChangeReviewItem, 0)
-	for _, account := range accounts {
-		if account.Customer == nil || account.Customer.ProfileChange == nil || account.Customer.ProfileChange.Status != accountdomain.ProfileChangePending {
-			continue
-		}
-		customer := account.Customer
-		items = append(items, ProfileChangeReviewItem{
-			AccountID: account.Id,
-			Username:  account.Username,
-			Current: ProfileChangeCurrent{
-				FullName: customer.Profile.FullName, AddressLine: customer.Profile.Address.Line, ProvinceCode: customer.Profile.Address.ProvinceCode,
-				IssuedPlace: customer.Identity.IssuedPlace, PermanentAddress: customer.Identity.PermanentAddress,
-			},
-			Change: toProfileChangeResponse(customer.ProfileChange),
-		})
-	}
-	httpx.WriteSuccess(w, http.StatusOK, "Profile changes retrieved", items)
+	httpx.WriteSuccess(w, http.StatusOK, "Profile changes retrieved", profileChangePage(accounts, params))
 }
 
 // DecideProfileChange duyệt hoặc từ chối đề nghị. requestId chống duyệt nhầm bản cũ.

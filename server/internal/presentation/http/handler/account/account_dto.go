@@ -88,6 +88,15 @@ type ProfileChangeReviewItem struct {
 	Change    *ProfileChangeResponse `json:"change"`
 }
 
+// ProfileChangesPageResponse is a bounded, sortable admin review result.
+type ProfileChangesPageResponse struct {
+	Items      []ProfileChangeReviewItem `json:"items"`
+	Total      int                       `json:"total"`
+	Page       int                       `json:"page"`
+	PageSize   int                       `json:"pageSize"`
+	TotalPages int                       `json:"totalPages"`
+}
+
 type ProfileChangeCurrent struct {
 	FullName         string `json:"fullName"`
 	AddressLine      string `json:"addressLine"`

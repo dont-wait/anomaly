@@ -153,8 +153,9 @@ func RegisterRoutes(
 		FailureStatuses: []int{400, 401, 404, 409, 500}, Auth: true,
 	})
 	router.Handle("GET /api/admin/profile-changes", adminOnly(http.HandlerFunc(h.ListProfileChanges)), openapi.Operation{
-		ID: "listProfileChanges", Summary: "List profile changes awaiting approval", Tags: []string{"Profile"},
-		Response: httpx.SuccessResponse[[]ProfileChangeReviewItem]{}, FailureStatuses: []int{401, 403, 500}, Auth: true,
+		ID: "listProfileChanges", Summary: "List profile changes with status, search and pagination", Tags: []string{"Profile"},
+		Description: "Query: page (1-based, default 1), pageSize (1-50, default 10), status (PENDING/APPROVED/REJECTED/ALL; default PENDING), search (username, customer name, account ID).",
+		Response:    httpx.SuccessResponse[ProfileChangesPageResponse]{}, FailureStatuses: []int{400, 401, 403, 500}, Auth: true,
 	})
 	router.Handle("POST /api/admin/profile-changes/{accountId}/{requestId}/decision", adminOnly(http.HandlerFunc(h.DecideProfileChange)), openapi.Operation{
 		ID: "decideProfileChange", Summary: "Approve or reject a profile change", Tags: []string{"Profile"},

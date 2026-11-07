@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUserPen } from "@fortawesome/free-solid-svg-icons";
 import { request } from "@/features/loans/api/loansApi";
@@ -27,7 +28,20 @@ export interface ProfileChangeItem {
   change: Partial<Record<FieldKey, string>> & {
     id: string;
     requestedAt: string;
+    status: "PENDING" | "APPROVED" | "REJECTED";
+    rejectionReason?: string;
+    reviewedAt?: string;
   };
+}
+
+type ReviewStatus = "PENDING" | "APPROVED" | "REJECTED" | "ALL";
+
+interface ProfileChangesPageData {
+  items: ProfileChangeItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 const ROOT = "/api/admin/profile-changes";
@@ -49,6 +63,7 @@ function ChangeCard({
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const changed = FIELDS.filter((key) => item.change[key]);
+  const pending = item.change.status === "PENDING";
 
   return (
     <article className={`${panel} grid gap-3 p-4`}>
@@ -78,7 +93,22 @@ function ChangeCard({
           ))}
         </tbody>
       </table>
-      {rejecting ? (
+      {!pending ? (
+        <div className="grid gap-1 text-[12px] text-(--admin-text-muted)">
+          <p className="font-semibold">
+            {item.change.status === "APPROVED" ? "Đã duyệt" : "Đã từ chối"}
+          </p>
+          {item.change.rejectionReason && (
+            <p>Lý do: {item.change.rejectionReason}</p>
+          )}
+          {item.change.reviewedAt && (
+            <p>
+              Ngày xử lý:{" "}
+              {new Date(item.change.reviewedAt).toLocaleString("vi-VN")}
+            </p>
+          )}
+        </div>
+      ) : rejecting ? (
         <div className="grid gap-2">
           <label className="grid gap-1 text-[11px] font-semibold text-(--admin-text-muted)">
             Lý do từ chối
@@ -133,19 +163,47 @@ function ChangeCard({
 }
 
 export function ProfileChangesPage() {
-  const [items, setItems] = useState<ProfileChangeItem[] | null>(null);
+  const [data, setData] = useState<ProfileChangesPageData | null>(null);
+  const [status, setStatus] = useState<ReviewStatus>("PENDING");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    setLoading(true);
+    setError("");
+    const query = new URLSearchParams({
+      page: String(page),
+      pageSize: "10",
+      status,
+      search,
+    });
     try {
-      const body = await request<{ data: ProfileChangeItem[] }>(ROOT);
-      setItems(body.data);
+      const body = await request<{ data: ProfileChangesPageData }>(
+        `${ROOT}?${query.toString()}`,
+      );
+      if (sequence !== loadSequence.current) return;
+      const result = body.data;
+      // If a review removed the last item on the last page, show the last
+      // available page rather than leaving the admin on an empty page.
+      if (page > Math.max(1, result.totalPages)) {
+        setPage(Math.max(1, result.totalPages));
+        return;
+      }
+      setData(result);
     } catch (cause) {
-      setItems([]);
+      if (sequence !== loadSequence.current) return;
+      setData(null);
       setError(explainLoanError(cause));
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
     }
-  }, []);
+  }, [page, status, search]);
 
   useEffect(() => {
     void Promise.resolve().then(load);
@@ -163,15 +221,21 @@ export function ProfileChangesPage() {
         `${ROOT}/${encodeURIComponent(item.accountId)}/${encodeURIComponent(item.change.id)}/decision`,
         { method: "POST", body: JSON.stringify({ decision, reason }) },
       );
-      setItems((old) =>
-        (old ?? []).filter((other) => other.accountId !== item.accountId),
-      );
+      // Refresh from the server so totals, filters and other admin decisions
+      // cannot be desynchronized by optimistic removal.
+      await load();
     } catch (cause) {
       setError(explainLoanError(cause));
-      await load();
     } finally {
       setBusy(false);
     }
+  };
+
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setData(null);
+    setPage(1);
+    setSearch(searchInput.trim());
   };
 
   return (
@@ -190,6 +254,58 @@ export function ProfileChangesPage() {
           </p>
         </div>
       </section>
+      <section className={`${panel} flex flex-wrap items-end gap-3 p-3`}>
+        <label className="grid min-w-40 gap-1 text-[12px] text-(--admin-text)">
+          Trạng thái yêu cầu
+          <select
+            aria-label="Trạng thái yêu cầu"
+            value={status}
+            disabled={busy}
+            onChange={(event) => {
+              setData(null);
+              setPage(1);
+              setStatus(event.target.value as ReviewStatus);
+            }}
+            className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-(--admin-text)"
+          >
+            <option value="PENDING">Chờ duyệt</option>
+            <option value="APPROVED">Đã duyệt</option>
+            <option value="REJECTED">Đã từ chối</option>
+            <option value="ALL">Tất cả</option>
+          </select>
+        </label>
+        <form
+          onSubmit={submitSearch}
+          className="flex flex-1 flex-wrap items-end gap-2"
+        >
+          <label className="grid min-w-48 flex-1 gap-1 text-[12px] text-(--admin-text)">
+            Tìm theo tên hoặc mã tài khoản
+            <input
+              aria-label="Tìm khách hàng"
+              value={searchInput}
+              maxLength={120}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Tên khách hàng, username, mã tài khoản"
+              className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-(--admin-text)"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy}
+            className={`${button} bg-(--admin-primary) text-white`}
+          >
+            Tìm kiếm
+          </button>
+        </form>
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={busy || loading}
+          className={`${button} border border-(--admin-border) text-(--admin-text)`}
+        >
+          Làm mới
+        </button>
+      </section>
       {error && (
         <p
           role="alert"
@@ -198,17 +314,17 @@ export function ProfileChangesPage() {
           {error}
         </p>
       )}
-      {items === null && (
+      {loading && (
         <p role="status" className="text-[12px] text-(--admin-text-muted)">
           Đang tải...
         </p>
       )}
-      {items?.length === 0 && !error && (
+      {data?.items.length === 0 && !error && !loading && (
         <p className="rounded-sm border border-dashed border-(--admin-border) px-3 py-6 text-center text-[12px] text-(--admin-text-muted)">
-          Không có yêu cầu nào đang chờ duyệt.
+          Không có yêu cầu phù hợp với bộ lọc.
         </p>
       )}
-      {items?.map((item) => (
+      {data?.items.map((item) => (
         <ChangeCard
           key={item.change.id}
           item={item}
@@ -216,6 +332,40 @@ export function ProfileChangesPage() {
           onDecide={(decision, reason) => void decide(item, decision, reason)}
         />
       ))}
+      {data && !error && (
+        <footer
+          className={`${panel} flex flex-wrap items-center justify-between gap-2 p-3 text-[12px] text-(--admin-text-muted)`}
+        >
+          <span>
+            {data.total} yêu cầu · Trang {data.page}/
+            {Math.max(1, data.totalPages)}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={loading || busy || page <= 1}
+              onClick={() => {
+                setData(null);
+                setPage((value) => value - 1);
+              }}
+              className={`${button} border border-(--admin-border) text-(--admin-text)`}
+            >
+              Trang trước
+            </button>
+            <button
+              type="button"
+              disabled={loading || busy || page >= data.totalPages}
+              onClick={() => {
+                setData(null);
+                setPage((value) => value + 1);
+              }}
+              className={`${button} border border-(--admin-border) text-(--admin-text)`}
+            >
+              Trang sau
+            </button>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }

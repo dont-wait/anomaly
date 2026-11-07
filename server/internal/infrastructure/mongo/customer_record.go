@@ -47,12 +47,29 @@ type creditProfileRecord struct {
 	UpdatedAt time.Time `bson:"updated_at"`
 }
 
+// profileChangeRecord persists the proposed values separately from the
+// approved customer profile. Never apply these fields until an admin approves.
+type profileChangeRecord struct {
+	ID               string     `bson:"id"`
+	FullName         string     `bson:"full_name"`
+	AddressLine      string     `bson:"address_line"`
+	ProvinceCode     string     `bson:"province_code"`
+	IssuedPlace      string     `bson:"issued_place"`
+	PermanentAddress string     `bson:"permanent_address"`
+	Status           string     `bson:"status"`
+	RejectionReason  string     `bson:"rejection_reason"`
+	RequestedAt      time.Time  `bson:"requested_at"`
+	ReviewedAt       *time.Time `bson:"reviewed_at,omitempty"`
+	ReviewedBy       string     `bson:"reviewed_by"`
+}
+
 type customerRecord struct {
 	Id                   bson.ObjectID          `bson:"_id"`
 	CustomerCode         string                 `bson:"customer_code"`
 	Profile              customerProfileRecord  `bson:"profile"`
 	Avatar               *profileMediaRecord    `bson:"avatar,omitempty"`
 	Documents            []profileMediaRecord   `bson:"documents,omitempty"`
+	ProfileChange        *profileChangeRecord   `bson:"profile_change,omitempty"`
 	Identity             customerIdentityRecord `bson:"identity"`
 	VerifiedKYCSessionId *bson.ObjectID         `bson:"verified_kyc_session_id"`
 	KYCStatus            string                 `bson:"kyc_status"`
@@ -99,8 +116,9 @@ func toCustomerRecord(customer *accountdomain.Customer) (customerRecord, error) 
 				ProvinceCode: customer.Profile.Address.ProvinceCode,
 			},
 		},
-		Avatar:    avatar,
-		Documents: documents,
+		Avatar:        avatar,
+		Documents:     documents,
+		ProfileChange: toProfileChangeRecord(customer.ProfileChange),
 		Identity: customerIdentityRecord{
 			Type:             optionalString(customer.Identity.Type),
 			Number:           optionalString(customer.Identity.Number),
@@ -151,8 +169,9 @@ func fromCustomerRecord(record customerRecord) *accountdomain.Customer {
 				ProvinceCode: record.Profile.Address.ProvinceCode,
 			},
 		},
-		Avatar:    avatar,
-		Documents: documents,
+		Avatar:        avatar,
+		Documents:     documents,
+		ProfileChange: fromProfileChangeRecord(record.ProfileChange),
 		Identity: accountdomain.CustomerIdentity{
 			Type:             stringValue(record.Identity.Type),
 			Number:           stringValue(record.Identity.Number),
@@ -170,6 +189,32 @@ func fromCustomerRecord(record customerRecord) *accountdomain.Customer {
 		Status:    accountdomain.CustomerStatus(record.Status),
 		CreatedAt: record.CreatedAt,
 		UpdatedAt: record.UpdatedAt,
+	}
+}
+
+func toProfileChangeRecord(change *accountdomain.ProfileChangeRequest) *profileChangeRecord {
+	if change == nil {
+		return nil
+	}
+	return &profileChangeRecord{
+		ID: change.Id, FullName: change.FullName, AddressLine: change.AddressLine,
+		ProvinceCode: change.ProvinceCode, IssuedPlace: change.IssuedPlace,
+		PermanentAddress: change.PermanentAddress, Status: change.Status,
+		RejectionReason: change.RejectionReason, RequestedAt: change.RequestedAt,
+		ReviewedAt: change.ReviewedAt, ReviewedBy: change.ReviewedBy,
+	}
+}
+
+func fromProfileChangeRecord(change *profileChangeRecord) *accountdomain.ProfileChangeRequest {
+	if change == nil {
+		return nil
+	}
+	return &accountdomain.ProfileChangeRequest{
+		Id: change.ID, FullName: change.FullName, AddressLine: change.AddressLine,
+		ProvinceCode: change.ProvinceCode, IssuedPlace: change.IssuedPlace,
+		PermanentAddress: change.PermanentAddress, Status: change.Status,
+		RejectionReason: change.RejectionReason, RequestedAt: change.RequestedAt,
+		ReviewedAt: change.ReviewedAt, ReviewedBy: change.ReviewedBy,
 	}
 }
 
