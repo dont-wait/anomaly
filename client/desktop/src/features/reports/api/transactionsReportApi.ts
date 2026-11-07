@@ -1,5 +1,8 @@
 import { API_BASE_URL } from "@/features/auth/api/adminSession";
-import { authHeaders, fetchWithTimeout } from "@/features/monitor/api/monitorApi";
+import {
+  authHeaders,
+  fetchWithTimeout,
+} from "@/features/monitor/api/monitorApi";
 
 export interface TransactionReportSummary {
   transactionCount: number;
@@ -54,13 +57,18 @@ export interface TransactionReport {
   topRiskReceivers: TransactionRiskAccount[];
 }
 
-export async function getTransactionReport(date: string, signal?: AbortSignal): Promise<TransactionReport> {
+export async function getTransactionReport(
+  date: string,
+  signal?: AbortSignal,
+): Promise<TransactionReport> {
   const response = await fetchWithTimeout(
     `${API_BASE_URL}/api/admin/reports/transactions?date=${encodeURIComponent(date)}`,
     { headers: authHeaders(), signal },
   );
-  if (!response.ok) throw new Error("Không thể tải báo cáo doanh số giao dịch.");
-  const body = (await response.json()) as { data?: TransactionReport } | TransactionReport;
+  if (!response.ok)
+    throw new Error("Không thể tải báo cáo doanh số giao dịch.");
+  const body = (await response.json()) as
+    { data?: TransactionReport } | TransactionReport;
   if ("data" in body && body.data) return body.data;
   return body as TransactionReport;
 }

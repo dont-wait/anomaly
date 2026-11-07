@@ -1,4 +1,7 @@
-import { API_BASE_URL, readAdminSession } from "@/features/auth/api/adminSession";
+import {
+  API_BASE_URL,
+  readAdminSession,
+} from "@/features/auth/api/adminSession";
 import { LoansApiError, request } from "@/features/loans/api/loansApi";
 
 export { LoansApiError as KycReviewApiError } from "@/features/loans/api/loansApi";
@@ -61,13 +64,10 @@ export async function downloadKycMedia(path: string): Promise<Blob> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 60_000);
   try {
-    const response = await fetch(
-      `${API_BASE_URL.replace(/\/+$/, "")}${path}`,
-      {
-        headers: { Authorization: `Bearer ${session.accessToken}` },
-        signal: controller.signal,
-      },
-    );
+    const response = await fetch(`${API_BASE_URL.replace(/\/+$/, "")}${path}`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+      signal: controller.signal,
+    });
     if (!response.ok) {
       throw new LoansApiError("Không tải được chứng từ KYC.", response.status);
     }

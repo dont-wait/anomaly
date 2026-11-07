@@ -95,11 +95,17 @@ function MediaBox({
           Không có dữ liệu
         </p>
       ) : error ? (
-        <p role="alert" className="py-8 text-center text-[11px] text-(--admin-danger)">
+        <p
+          role="alert"
+          className="py-8 text-center text-[11px] text-(--admin-danger)"
+        >
           {error}
         </p>
       ) : !url ? (
-        <p role="status" className="py-8 text-center text-[11px] text-(--admin-text-muted)">
+        <p
+          role="status"
+          className="py-8 text-center text-[11px] text-(--admin-text-muted)"
+        >
           Đang tải...
         </p>
       ) : kind === "video" ? (
@@ -124,16 +130,20 @@ function MediaBox({
   );
 }
 
-const IDENTITY_FIELDS: Array<{ key: keyof KycReviewIdentity; label: string }> = [
-  { key: "fullName", label: "Họ và tên" },
-  { key: "number", label: "Số CCCD" },
-  { key: "dateOfBirth", label: "Ngày sinh" },
-  { key: "issuedDate", label: "Ngày cấp" },
-  { key: "issuedPlace", label: "Nơi cấp" },
-  { key: "permanentAddress", label: "Địa chỉ thường trú" },
-];
+const IDENTITY_FIELDS: Array<{ key: keyof KycReviewIdentity; label: string }> =
+  [
+    { key: "fullName", label: "Họ và tên" },
+    { key: "number", label: "Số CCCD" },
+    { key: "dateOfBirth", label: "Ngày sinh" },
+    { key: "issuedDate", label: "Ngày cấp" },
+    { key: "issuedPlace", label: "Nơi cấp" },
+    { key: "permanentAddress", label: "Địa chỉ thường trú" },
+  ];
 
-function identityValue(identity: KycReviewIdentity, key: keyof KycReviewIdentity): string {
+function identityValue(
+  identity: KycReviewIdentity,
+  key: keyof KycReviewIdentity,
+): string {
   const value = identity[key];
   if (!value) return "Chưa có";
   if (key === "dateOfBirth" || key === "issuedDate") {
@@ -161,7 +171,9 @@ function ReviewDetail({
 
   return (
     <article className="grid gap-3">
-      <header className={`${panel} flex flex-wrap items-start justify-between gap-3 p-4`}>
+      <header
+        className={`${panel} flex flex-wrap items-start justify-between gap-3 p-4`}
+      >
         <div>
           <h2 className="text-[16px] font-bold text-(--admin-text)">
             {item.declared.fullName || item.username}
@@ -194,7 +206,10 @@ function ReviewDetail({
               const declared = identityValue(item.declared, field.key);
               const mismatch = registration !== declared;
               return (
-                <tr key={field.key} className="border-t border-(--admin-border)">
+                <tr
+                  key={field.key}
+                  className="border-t border-(--admin-border)"
+                >
                   <td className="py-1.5 pr-2">{field.label}</td>
                   <td className="py-1.5 pr-2">{registration}</td>
                   <td
@@ -212,9 +227,17 @@ function ReviewDetail({
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <MediaBox path={item.media.front} label="CCCD mặt trước" kind="image" />
         <MediaBox path={item.media.back} label="CCCD mặt sau" kind="image" />
-        <MediaBox path={item.media.video} label="Video xác thực khuôn mặt" kind="video" />
+        <MediaBox
+          path={item.media.video}
+          label="Video xác thực khuôn mặt"
+          kind="video"
+        />
         {item.media.faceImage && (
-          <MediaBox path={item.media.faceImage} label="Ảnh chân dung" kind="image" />
+          <MediaBox
+            path={item.media.faceImage}
+            label="Ảnh chân dung"
+            kind="image"
+          />
         )}
       </section>
 
@@ -253,8 +276,9 @@ function ReviewDetail({
       {mode === "approve" && (
         <div className={`${panel} grid gap-2 p-4`}>
           <p className="text-[12px] text-(--admin-text)">
-            Xác nhận hồ sơ của <strong>{item.declared.fullName || item.username}</strong>{" "}
-            khớp với giấy tờ và video, đồng ý mở xác thực KYC?
+            Xác nhận hồ sơ của{" "}
+            <strong>{item.declared.fullName || item.username}</strong> khớp với
+            giấy tờ và video, đồng ý mở xác thực KYC?
           </p>
           <div className="flex gap-2">
             <button
@@ -435,10 +459,14 @@ export function KycReviewPage() {
               key={selected.accountId}
               item={selected}
               busy={busy}
-              onDecide={(decision, reason) => void decide(selected, decision, reason)}
+              onDecide={(decision, reason) =>
+                void decide(selected, decision, reason)
+              }
             />
           ) : (
-            <p className={`${panel} p-6 text-center text-[12px] text-(--admin-text-muted)`}>
+            <p
+              className={`${panel} p-6 text-center text-[12px] text-(--admin-text-muted)`}
+            >
               Chọn một hồ sơ để xem chi tiết.
             </p>
           )}
