@@ -69,7 +69,7 @@ func TestCompleteKYCStoresOnlyVerifiedMedia(t *testing.T) {
 				zerolog.Nop(), commands.NewRegisterAccountCommandHandler(repo, repo), commands.NewVerifyAccountCommandHandler(repo),
 				queries.NewLoginQueryHandler(repo, tokens), queries.NewGetAccountByIDQueryHandler(repo),
 				queries.NewGetAccountByEmailQueryHandler(repo), queries.NewGetAllAccountsQueryHandler(repo), tokens, verifier, store,
-			)
+			).WithKYCWorkflow(commands.NewSubmitKYCCommandHandler(repo), commands.NewReviewKYCCommandHandler(repo), true)
 			mux := http.NewServeMux()
 			handleraccount.RegisterRoutes(openapi.NewRegistry(mux, false), handler, tokens)
 			token, _, err := tokens.IssueKYC(account.Id)
@@ -92,6 +92,53 @@ func TestCompleteKYCStoresOnlyVerifiedMedia(t *testing.T) {
 				t.Fatalf("verified = %v, want %v", account.IsVerified(), test.wantVerify)
 			}
 		})
+	}
+}
+
+func TestCompleteKYCWithoutBypassQueuesManualReview(t *testing.T) {
+	repo := newMemoryAccountRepository()
+	account := testAccount(t)
+	repo.accounts[account.Id] = account
+	tokens := auth.NewTokenService("test-secret", time.Hour)
+	verifier := &verifierStub{result: &kycinfra.VerifyResult{Success: true, Decision: "VERIFIED"}}
+	store := &mediaStoreStub{}
+	handler := handleraccount.NewHandler(
+		zerolog.Nop(), commands.NewRegisterAccountCommandHandler(repo, repo), commands.NewVerifyAccountCommandHandler(repo),
+		queries.NewLoginQueryHandler(repo, tokens), queries.NewGetAccountByIDQueryHandler(repo),
+		queries.NewGetAccountByEmailQueryHandler(repo), queries.NewGetAllAccountsQueryHandler(repo), tokens, verifier, store,
+	).WithKYCWorkflow(commands.NewSubmitKYCCommandHandler(repo), commands.NewReviewKYCCommandHandler(repo), false)
+	mux := http.NewServeMux()
+	handleraccount.RegisterRoutes(openapi.NewRegistry(mux, false), handler, tokens)
+	token, _, err := tokens.IssueKYC(account.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		body, contentType := completeBody(t)
+		req := httptest.NewRequest(http.MethodPost, "/api/kyc/complete", body)
+		req.Header.Set("Content-Type", contentType)
+		req.Header.Set("Authorization", "Bearer "+token)
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), `"decision":"PENDING_REVIEW"`) {
+			t.Fatalf("body = %s, want PENDING_REVIEW", recorder.Body.String())
+		}
+	}
+	if verifier.calls != 0 {
+		t.Fatalf("vision service calls = %d, want 0", verifier.calls)
+	}
+	if len(store.keys) != 3 {
+		t.Fatalf("stored objects = %d, want 3", len(store.keys))
+	}
+	if !account.IsKYCUnderReview() {
+		t.Fatalf("KYC status = %q, want pending", account.Customer.KYCStatus)
+	}
+	if len(account.KYCSessions) != 1 || account.KYCSessions[0].Review != nil {
+		t.Fatalf("sessions = %+v, want one unreviewed pending session", account.KYCSessions)
 	}
 }
 

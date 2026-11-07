@@ -61,6 +61,10 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 		writeVerifiedKYC(w, account)
 		return
 	}
+	if account.IsKYCUnderReview() {
+		writePendingKYC(w, account)
+		return
+	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxKYCRequestBytes)
 	if err := r.ParseMultipartForm(maxKYCRequestBytes); err != nil {
@@ -99,7 +103,7 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.kyc == nil || h.media == nil {
+	if h.media == nil || (h.pocBypass && h.kyc == nil) || (!h.pocBypass && h.submitKYC == nil) {
 		h.logger.Error().Msg("KYC dependencies are unavailable")
 		writeKYCSystemError(w, "KYC verification is temporarily unavailable")
 		return
@@ -132,6 +136,10 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer h.realtime.Unlock(context.WithoutCancel(r.Context()), attempt.ID, locked)
+	}
+	if !h.pocBypass {
+		h.submitManualKYC(w, r, claims.UserID, front, back, video, attempt)
+		return
 	}
 	result, err := h.kyc.VerifyFace(r.Context(),
 		kycinfra.Media{Filename: front.filename, ContentType: front.contentType, Data: front.data},
@@ -186,28 +194,16 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 		writeVerifiedKYC(w, account)
 		return
 	}
+	if account.IsKYCUnderReview() {
+		writePendingKYC(w, account)
+		return
+	}
 
-	keys := []string{
-		fmt.Sprintf("kyc/%s/id-card-front/%s%s", claims.UserID, uuid.NewString(), front.extension),
-		fmt.Sprintf("kyc/%s/id-card-back/%s%s", claims.UserID, uuid.NewString(), back.extension),
-		fmt.Sprintf("kyc/%s/live-video/%s%s", claims.UserID, uuid.NewString(), video.extension),
-	}
-	uploads := []kycUpload{front, back, video}
-	if h.realtime != nil {
-		if err := h.realtime.QueueCleanup(r.Context(), claims.UserID, keys); err != nil {
-			writeKYCSystemError(w, "KYC media reconciliation is unavailable")
-			return
-		}
-	}
-	uploaded := 0
-	for i := range uploads {
-		if err := h.media.Upload(r.Context(), keys[i], bytes.NewReader(uploads[i].data), uploads[i].contentType); err != nil {
-			h.logger.Error().Err(err).Msg("store verified KYC media failed")
-			deleteMedia(r.Context(), h.media, keys[:uploaded], h.logger)
-			writeKYCSystemError(w, "KYC media storage is temporarily unavailable")
-			return
-		}
-		uploaded++
+	keys, err := h.uploadKYCMedia(r.Context(), claims.UserID, []kycUpload{front, back, video})
+	if err != nil {
+		h.logger.Error().Err(err).Msg("store verified KYC media failed")
+		writeKYCSystemError(w, "KYC media storage is temporarily unavailable")
+		return
 	}
 
 	account, err = h.verify.Handle(r.Context(), commands.VerifyAccountCommand{
@@ -233,17 +229,101 @@ func (h *Handler) CompleteKYC(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return
 	}
-	if attempt != nil {
-		user := toAccountResponsePrivate(account)
-		attempt.Result, _ = json.Marshal(KYCCompleteResponse{Decision: "VERIFIED", User: &user})
-		attempt.Front.Data = nil
-		attempt.Back.Data = nil
-		if err := h.realtime.Save(context.WithoutCancel(r.Context()), attempt); err != nil {
-			h.logger.Error().Err(err).Msg("cache committed KYC result failed")
-		}
-		h.realtime.Release(context.WithoutCancel(r.Context()), attempt)
-	}
+	h.cacheKYCResult(r.Context(), attempt, KYCCompleteResponse{Decision: "VERIFIED", User: ptrAccountResponse(account)})
 	writeVerifiedKYC(w, account)
+}
+
+// submitManualKYC stores the evidence and parks the account in the manual review
+// queue. It runs only when KYC_POC_BYPASS=false.
+func (h *Handler) submitManualKYC(w http.ResponseWriter, r *http.Request, accountID string, front, back, video kycUpload, attempt *kycinfra.Attempt) {
+	account, err := h.getByID.Handle(r.Context(), queries.GetAccountByIDQuery{ID: accountID})
+	if err != nil {
+		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	if account.IsVerified() {
+		writeVerifiedKYC(w, account)
+		return
+	}
+	if account.IsKYCUnderReview() {
+		writePendingKYC(w, account)
+		return
+	}
+
+	keys, err := h.uploadKYCMedia(r.Context(), accountID, []kycUpload{front, back, video})
+	if err != nil {
+		h.logger.Error().Err(err).Msg("store manual KYC media failed")
+		writeKYCSystemError(w, "KYC media storage is temporarily unavailable")
+		return
+	}
+
+	account, err = h.submitKYC.Handle(r.Context(), commands.SubmitKYCCommand{
+		AccountID: accountID, IdCardFrontUrl: keys[0], IdCardBackUrl: keys[1], LiveVideoUrl: keys[2],
+		Media: &accountdomain.KYCMedia{
+			IdentityFront: accountdomain.MediaObject{StorageKey: keys[0], MIMEType: front.contentType, SizeBytes: int64(len(front.data)), SHA256: kycinfra.Digest(front.data)},
+			IdentityBack:  accountdomain.MediaObject{StorageKey: keys[1], MIMEType: back.contentType, SizeBytes: int64(len(back.data)), SHA256: kycinfra.Digest(back.data)},
+			LivenessVideo: accountdomain.LivenessVideo{MediaObject: accountdomain.MediaObject{StorageKey: keys[2], MIMEType: video.contentType, SizeBytes: int64(len(video.data)), SHA256: kycinfra.Digest(video.data)}},
+		},
+	})
+	if err != nil {
+		// Save timeouts can occur after a commit. Preserve objects until ownership is known.
+		check, readErr := h.getByID.Handle(context.WithoutCancel(r.Context()), queries.GetAccountByIDQuery{ID: accountID})
+		if readErr == nil && check.IsKYCUnderReview() {
+			writePendingKYC(w, check)
+			return
+		}
+		if readErr == nil {
+			deleteMedia(context.WithoutCancel(r.Context()), h.media, keys, h.logger)
+		}
+		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+		return
+	}
+	h.cacheKYCResult(r.Context(), attempt, KYCCompleteResponse{Decision: "PENDING_REVIEW", User: ptrAccountResponse(account)})
+	writePendingKYC(w, account)
+}
+
+// uploadKYCMedia writes the three evidence objects and registers them for
+// reconciliation, so a crash cannot leak orphaned media.
+func (h *Handler) uploadKYCMedia(ctx context.Context, accountID string, uploads []kycUpload) ([]string, error) {
+	keys := []string{
+		fmt.Sprintf("kyc/%s/id-card-front/%s%s", accountID, uuid.NewString(), uploads[0].extension),
+		fmt.Sprintf("kyc/%s/id-card-back/%s%s", accountID, uuid.NewString(), uploads[1].extension),
+		fmt.Sprintf("kyc/%s/live-video/%s%s", accountID, uuid.NewString(), uploads[2].extension),
+	}
+	if h.realtime != nil {
+		if err := h.realtime.QueueCleanup(ctx, accountID, keys); err != nil {
+			return nil, err
+		}
+	}
+	uploaded := 0
+	for i := range uploads {
+		if err := h.media.Upload(ctx, keys[i], bytes.NewReader(uploads[i].data), uploads[i].contentType); err != nil {
+			deleteMedia(ctx, h.media, keys[:uploaded], h.logger)
+			return nil, err
+		}
+		uploaded++
+	}
+	return keys, nil
+}
+
+// cacheKYCResult makes a completed attempt idempotent for the client retry.
+func (h *Handler) cacheKYCResult(ctx context.Context, attempt *kycinfra.Attempt, response KYCCompleteResponse) {
+	if attempt == nil || h.realtime == nil {
+		return
+	}
+	cacheCtx := context.WithoutCancel(ctx)
+	attempt.Result, _ = json.Marshal(response)
+	attempt.Front.Data = nil
+	attempt.Back.Data = nil
+	if err := h.realtime.Save(cacheCtx, attempt); err != nil {
+		h.logger.Error().Err(err).Msg("cache committed KYC result failed")
+	}
+	h.realtime.Release(cacheCtx, attempt)
+}
+
+func ptrAccountResponse(account *accountdomain.UserAccount) *AccountResponsePrivate {
+	user := toAccountResponsePrivate(account)
+	return &user
 }
 
 func readKYCUpload(form *multipart.Form, field string, maxBytes int64, imageFile bool) (kycUpload, error) {
@@ -338,6 +418,12 @@ func deleteMedia(ctx context.Context, store MediaStore, keys []string, logger ze
 func writeVerifiedKYC(w http.ResponseWriter, account *accountdomain.UserAccount) {
 	user := toAccountResponsePrivate(account)
 	httpx.WriteSuccess(w, http.StatusOK, "KYC verification completed", KYCCompleteResponse{Decision: "VERIFIED", User: &user})
+}
+
+// writePendingKYC reports evidence that waits for an administrator decision.
+func writePendingKYC(w http.ResponseWriter, account *accountdomain.UserAccount) {
+	user := toAccountResponsePrivate(account)
+	httpx.WriteSuccess(w, http.StatusOK, "KYC submitted for manual review", KYCCompleteResponse{Decision: "PENDING_REVIEW", User: &user})
 }
 
 func writeKYCSystemError(w http.ResponseWriter, message string) {

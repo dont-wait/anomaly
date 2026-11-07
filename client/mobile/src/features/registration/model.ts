@@ -7,6 +7,7 @@ export type Screen =
   | "processing"
   | "password"
   | "success"
+  | "pending"
   | "error";
 export const stages: Screen[] = [
   "email",

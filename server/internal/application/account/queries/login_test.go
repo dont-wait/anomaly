@@ -135,3 +135,17 @@ func TestLoginRejectsLockedAccount(t *testing.T) {
 		t.Fatalf("audit events = %#v, want account_locked LoginFailed", recorder.events)
 	}
 }
+
+func TestLoginReturnsKYCUnderReviewForPendingAccount(t *testing.T) {
+	recorder := &loginAuditFake{}
+	account := newLoginAccount(t, false)
+	account.Customer.KYCStatus = accountdomain.KYCStatusPending
+	handler := NewLoginQueryHandler(&loginRepositoryFake{account: account}, loginTokenFake{}).WithAudit(recorder)
+
+	if _, err := handler.Handle(context.Background(), LoginQuery{CCCDNumber: "cccd", Password: "password"}); !errors.Is(err, accountdomain.ErrKYCUnderReview) {
+		t.Fatalf("Handle() error = %v, want ErrKYCUnderReview", err)
+	}
+	if len(recorder.events) != 1 || recorder.events[0].Type != audit.LoginFailed || recorder.events[0].ReasonCode != "kyc_under_review" {
+		t.Fatalf("audit events = %#v, want kyc_under_review LoginFailed", recorder.events)
+	}
+}

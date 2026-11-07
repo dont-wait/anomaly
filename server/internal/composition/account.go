@@ -25,14 +25,17 @@ type AccountRepository interface {
 }
 
 func NewAccountHandler(repo AccountRepository, tokenSvc *auth.TokenService, logger zerolog.Logger, recorders ...audit.Recorder) *handleraccount.Handler {
-	return newAccountHandler(repo, tokenSvc, nil, nil, logger, recorders...)
+	return newAccountHandler(repo, tokenSvc, nil, nil, false, logger, recorders...)
 }
 
-func NewAccountHandlerWithKYC(repo AccountRepository, tokenSvc *auth.TokenService, kycClient *kyc.Client, mediaRepo *rustfs.MediaRepository, logger zerolog.Logger, recorders ...audit.Recorder) *handleraccount.Handler {
-	return newAccountHandler(repo, tokenSvc, kycClient, mediaRepo, logger, recorders...)
+// NewAccountHandlerWithKYC wires the vision client and storage. When bypass is
+// false submitted evidence waits for an administrator instead of being
+// auto-verified.
+func NewAccountHandlerWithKYC(repo AccountRepository, tokenSvc *auth.TokenService, kycClient *kyc.Client, mediaRepo *rustfs.MediaRepository, bypass bool, logger zerolog.Logger, recorders ...audit.Recorder) *handleraccount.Handler {
+	return newAccountHandler(repo, tokenSvc, kycClient, mediaRepo, bypass, logger, recorders...)
 }
 
-func newAccountHandler(repo AccountRepository, tokenSvc *auth.TokenService, kycClient *kyc.Client, mediaRepo *rustfs.MediaRepository, logger zerolog.Logger, recorders ...audit.Recorder) *handleraccount.Handler {
+func newAccountHandler(repo AccountRepository, tokenSvc *auth.TokenService, kycClient *kyc.Client, mediaRepo *rustfs.MediaRepository, bypass bool, logger zerolog.Logger, recorders ...audit.Recorder) *handleraccount.Handler {
 	login := queries.NewLoginQueryHandler(repo, tokenSvc)
 	if len(recorders) > 0 {
 		login.WithAudit(recorders[0])
@@ -53,7 +56,9 @@ func newAccountHandler(repo AccountRepository, tokenSvc *auth.TokenService, kycC
 	if len(recorders) > 0 {
 		recorder = recorders[0]
 	}
-	return handler.WithProfile(repo, recorder)
+	return handler.
+		WithProfile(repo, recorder).
+		WithKYCWorkflow(commands.NewSubmitKYCCommandHandler(repo), commands.NewReviewKYCCommandHandler(repo), bypass)
 }
 
 // AttachProfileSecurity configures password throttling and email-change verification.

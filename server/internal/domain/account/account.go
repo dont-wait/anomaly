@@ -24,12 +24,19 @@ const (
 	CustomerStatusActive CustomerStatus = "active"
 
 	KYCStatusNotStarted KYCStatus = "not_started"
+	KYCStatusPending    KYCStatus = "pending"
 	KYCStatusVerified   KYCStatus = "verified"
+	KYCStatusRejected   KYCStatus = "rejected"
 
+	KYCSessionStatusPending  KYCSessionStatus   = "pending"
 	KYCSessionStatusVerified KYCSessionStatus   = "verified"
+	KYCSessionStatusRejected KYCSessionStatus   = "rejected"
 	VerificationStatusNotRun VerificationStatus = "not_run"
 	VerificationStatusPassed VerificationStatus = "passed"
 	VerificationStatusFailed VerificationStatus = "failed"
+
+	KYCReviewApproved = "APPROVED"
+	KYCReviewRejected = "REJECTED"
 )
 
 type Balance struct {
@@ -176,6 +183,14 @@ type KYCFailure struct {
 	Message string
 }
 
+// KYCReview ghi lại quyết định của admin cho một hồ sơ KYC nộp thủ công.
+type KYCReview struct {
+	Decision   string
+	Reason     string
+	ReviewedBy string
+	ReviewedAt time.Time
+}
+
 type KYCSession struct {
 	Id           string
 	CustomerId   string
@@ -184,6 +199,7 @@ type KYCSession struct {
 	IdentityData KYCIdentityData
 	Media        KYCMedia
 	Verification KYCVerification
+	Review       *KYCReview
 	Failure      *KYCFailure
 	StartedAt    time.Time
 	CompletedAt  *time.Time
@@ -234,6 +250,40 @@ func (u *UserAccount) Withdraw(amount int64) error {
 
 func (u *UserAccount) IsVerified() bool {
 	return u.Customer != nil && u.Customer.KYCStatus == KYCStatusVerified
+}
+
+// IsKYCUnderReview reports whether the account submitted manual KYC evidence
+// that is still waiting for an administrator decision.
+func (u *UserAccount) IsKYCUnderReview() bool {
+	return u.Customer != nil && u.Customer.KYCStatus == KYCStatusPending
+}
+
+// LatestKYCSession returns the most recent attempt, which is the one an
+// administrator reviews or the customer resumes.
+func (u *UserAccount) LatestKYCSession() *KYCSession {
+	var latest *KYCSession
+	for _, session := range u.KYCSessions {
+		if session == nil {
+			continue
+		}
+		if latest == nil || session.AttemptNo >= latest.AttemptNo {
+			latest = session
+		}
+	}
+	return latest
+}
+
+// PendingKYCSession returns the submitted session awaiting an administrator
+// decision, or nil when the account has nothing under review.
+func (u *UserAccount) PendingKYCSession() *KYCSession {
+	if !u.IsKYCUnderReview() {
+		return nil
+	}
+	latest := u.LatestKYCSession()
+	if latest == nil || latest.Status != KYCSessionStatusPending {
+		return nil
+	}
+	return latest
 }
 
 func (u *UserAccount) VerifiedKYCSession() *KYCSession {

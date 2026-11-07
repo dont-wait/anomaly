@@ -76,9 +76,11 @@ export function RegistrationFlow({ onLogin }: { onLogin: () => void }) {
           <span>
             {screen === "face"
               ? "Xác thực khuôn mặt"
-              : step >= 0
-                ? `BƯỚC ${step + 1}/${stages.length}`
-                : "AnomalyBank"}
+              : screen === "pending"
+                ? "Chờ xác minh hồ sơ"
+                : step >= 0
+                  ? `BƯỚC ${step + 1}/${stages.length}`
+                  : "AnomalyBank"}
           </span>
           <button className="help-button" onClick={() => setDialog("Hỗ trợ")}>
             Trợ giúp

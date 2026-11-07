@@ -28,6 +28,10 @@ func (r *KYCSessionRepository) EnsureIndexes(ctx context.Context) error {
 			Keys:    bson.D{{Key: "customer_id", Value: 1}, {Key: "created_at", Value: -1}},
 			Options: options.Index().SetName("idx_customer_created_at"),
 		},
+		{
+			Keys:    bson.D{{Key: "status", Value: 1}, {Key: "created_at", Value: -1}},
+			Options: options.Index().SetName("idx_status_created_at"),
+		},
 	}
 	_, err := r.col.Indexes().CreateMany(ctx, indexes)
 	return err

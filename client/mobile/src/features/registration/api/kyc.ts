@@ -4,7 +4,11 @@ import type { AuthUser } from "@/features/auth/api";
 import type { CaptureIdentity } from "./realtime";
 export const LIVENESS_CHALLENGE = "TURN_HEAD_LEFT_RIGHT_BLINK";
 export type KycDecision =
-  "VERIFIED" | "RETRY_ALLOWED" | "FAILED_FINAL" | "SYSTEM_ERROR";
+  | "VERIFIED"
+  | "PENDING_REVIEW"
+  | "RETRY_ALLOWED"
+  | "FAILED_FINAL"
+  | "SYSTEM_ERROR";
 export interface KycResult {
   decision: KycDecision;
   reasonCode?: string;
@@ -16,10 +20,23 @@ export interface KycResult {
 }
 const decisions: KycDecision[] = [
   "VERIFIED",
+  "PENDING_REVIEW",
   "RETRY_ALLOWED",
   "FAILED_FINAL",
   "SYSTEM_ERROR",
 ];
+
+function hasExpectedUser(result: KycResult): boolean {
+  if (result.decision === "VERIFIED") {
+    return !!result.user?.id && result.user.isVerify === true;
+  }
+  // A manual submission keeps the account unverified until an administrator
+  // approves it, but the response still identifies the account.
+  if (result.decision === "PENDING_REVIEW") {
+    return !!result.user?.id && result.user.isVerify === false;
+  }
+  return result.user === undefined;
+}
 
 function validateResult(value: unknown): KycResult {
   if (!value || typeof value !== "object")
@@ -39,9 +56,7 @@ function validateResult(value: unknown): KycResult {
       typeof result.reasonCode !== "string") ||
     (result.reasonMessage !== undefined &&
       typeof result.reasonMessage !== "string") ||
-    (result.decision === "VERIFIED"
-      ? !result.user?.id || result.user.isVerify !== true
-      : result.user !== undefined)
+    !hasExpectedUser(result)
   ) {
     throw new ApiError(0, "Phản hồi xác thực không hợp lệ. Vui lòng thử lại.");
   }

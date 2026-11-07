@@ -14,6 +14,7 @@ import {
 } from "@/features/products/ContractsPages";
 import { PackagesPage } from "@/features/products/PackagesPage";
 import { ProfileChangesPage } from "@/features/profileChanges/ProfileChangesPage";
+import { KycReviewPage } from "@/features/kyc/KycReviewPage";
 import { MonitorPage } from "@/features/monitor/MonitorPage";
 import { AlertsPage } from "@/features/alerts/AlertsPage";
 import { TransactionsRiskPage } from "@/features/reports/TransactionsRiskPage";
@@ -70,6 +71,7 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
   const isEventExplorer = route === routes.audit;
   const isLoanReview = route === routes.loanApplications;
   const isTransactionsRisk = route === routes.reportsTransactions;
+  const isKyc = route === routes.kyc;
   useEffect(() => {
     let active = true;
     let retryTimer: number | undefined;
@@ -132,6 +134,8 @@ function ProtectedAdmin({ route }: { route: ProtectedRoute }) {
           <SavingsContractsPage />
         ) : route === routes.profileChanges ? (
           <ProfileChangesPage />
+        ) : isKyc ? (
+          <KycReviewPage />
         ) : (
           <PlaceholderPage route={route} />
         )}

@@ -6,6 +6,7 @@ import { FaceStep } from "./steps/FaceStep";
 import { ProcessingStep } from "./steps/ProcessingStep";
 import { PasswordStep } from "./steps/PasswordStep";
 import { SuccessStep } from "./steps/SuccessStep";
+import { PendingStep } from "./steps/PendingStep";
 import { ErrorStep } from "./steps/ErrorStep";
 import type { RegistrationFlowState } from "./useRegistrationFlow";
 export function RegistrationStep({
@@ -102,6 +103,15 @@ export function RegistrationStep({
     case "success":
       return (
         <SuccessStep
+          email={flow.email}
+          profile={flow.profile}
+          heading={flow.heading}
+          onLogin={onLogin}
+        />
+      );
+    case "pending":
+      return (
+        <PendingStep
           email={flow.email}
           profile={flow.profile}
           heading={flow.heading}
