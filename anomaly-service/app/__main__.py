@@ -1,18 +1,16 @@
 """Console entry point for the Anomaly ML publisher."""
 import logging
 import sys
-import time
 
 from .config import ConfigError, load_config
+from .logging_time import VietnamLogFormatter
 from .worker import run
 
 
 def main():
-    formatter = logging.Formatter(
-        fmt="%(asctime)sZ %(levelname)s %(name)s %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
+    formatter = VietnamLogFormatter(
+        fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-    formatter.converter = time.gmtime
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
     logging.basicConfig(level=logging.INFO, handlers=[handler])
