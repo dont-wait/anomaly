@@ -199,6 +199,8 @@ func accountErrorCode(err error) httpx.ErrorCode {
 		return httpx.ErrorCodeKYCUnderReview
 	case errors.Is(err, accountdomain.ErrKYCReviewClosed):
 		return httpx.ErrorCodeKYCReviewClosed
+	case errors.Is(err, accountdomain.ErrSelfKYCReview):
+		return httpx.ErrorCodeSelfKYCReview
 	case errors.Is(err, accountdomain.ErrInvalidKYCReview):
 		return httpx.ErrorCodeValidation
 	case errors.Is(err, accountdomain.ErrAccountAlreadyVerified):

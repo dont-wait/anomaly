@@ -252,19 +252,19 @@ func (h *Handler) DownloadKYCReviewMedia(w http.ResponseWriter, r *http.Request)
 	http.ServeContent(w, r, filename, mediaTime(session), bytes.NewReader(data))
 }
 
+// reviewSession returns the submission an administrator may inspect: only the
+// pending session of an account that is still awaiting review. Decided
+// sessions are never served, so evidence of closed reviews is not exposed.
+// A non-empty sessionID must match that pending session.
 func reviewSession(account *accountdomain.UserAccount, sessionID string) *accountdomain.KYCSession {
-	if sessionID != "" {
-		for _, session := range account.KYCSessions {
-			if session != nil && session.Id == sessionID {
-				return session
-			}
-		}
+	pending := account.PendingKYCSession()
+	if pending == nil {
 		return nil
 	}
-	if pending := account.PendingKYCSession(); pending != nil {
-		return pending
+	if sessionID != "" && pending.Id != sessionID {
+		return nil
 	}
-	return account.LatestKYCSession()
+	return pending
 }
 
 func kycReviewMedia(session *accountdomain.KYCSession, kind string) (accountdomain.MediaObject, string, bool) {

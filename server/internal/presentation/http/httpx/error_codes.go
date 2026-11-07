@@ -31,6 +31,7 @@ const (
 	ErrorCodeKYCRequired            ErrorCode = "KYC_REQUIRED"
 	ErrorCodeKYCUnderReview         ErrorCode = "KYC_UNDER_REVIEW"
 	ErrorCodeKYCReviewClosed        ErrorCode = "KYC_REVIEW_CLOSED"
+	ErrorCodeSelfKYCReview          ErrorCode = "SELF_KYC_REVIEW"
 	ErrorCodeAccountAlreadyVerified ErrorCode = "ACCOUNT_ALREADY_VERIFIED"
 	ErrorCodeInvalidVerifyPayload   ErrorCode = "INVALID_VERIFY_PAYLOAD"
 	ErrorCodeAccountNotFound        ErrorCode = "ACCOUNT_NOT_FOUND"
