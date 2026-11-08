@@ -137,7 +137,12 @@ it("filters status and searches, retaining filters when refreshing", async () =>
 it("uses the server page and allows navigation", async () => {
   vi.mocked(request).mockImplementation(async (path: string) => {
     const page = Number(new URLSearchParams(path.split("?")[1]).get("page"));
-    return pageData([item], page, 11);
+    return {
+      data: {
+        ...pageData([item], page, 11).data,
+        nextCursor: page === 1 ? "cursor-1" : undefined,
+      },
+    };
   });
   render(<ProfileChangesPage />);
   expect(await screen.findByText("Tên mới")).toBeTruthy();
@@ -171,4 +176,69 @@ it("shows reviewed requests as read-only", async () => {
   expect(await screen.findByText("Đã từ chối")).toBeTruthy();
   expect(screen.getByText("Lý do: Không hợp lệ")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Duyệt" })).toBeNull();
+});
+
+it("reloads an unchanged search without blanking the list", async () => {
+  render(<ProfileChangesPage />);
+  expect(await screen.findByText("Tên mới")).toBeTruthy();
+  const prior = vi.mocked(request).mock.calls.length;
+  fireEvent.click(screen.getByRole("button", { name: "Tìm kiếm" }));
+  await waitFor(() =>
+    expect(vi.mocked(request).mock.calls.length).toBe(prior + 1),
+  );
+  expect(screen.getByText("Tên mới")).toBeTruthy();
+});
+
+it("sends the stable nextCursor on page two", async () => {
+  vi.mocked(request).mockImplementation(async (path: string) => {
+    const params = new URLSearchParams(path.split("?")[1]);
+    return {
+      data: {
+        ...pageData([item], Number(params.get("page")), 11).data,
+        nextCursor: params.has("cursor") ? undefined : "snapshot-next",
+      },
+    };
+  });
+  render(<ProfileChangesPage />);
+  expect(await screen.findByText("Tên mới")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Trang sau" }));
+  await waitFor(() =>
+    expect(
+      vi
+        .mocked(request)
+        .mock.calls.some(([path]) => path.includes("cursor=snapshot-next")),
+    ).toBe(true),
+  );
+});
+
+it("clearly marks older reviews with no before-image", async () => {
+  vi.mocked(request).mockResolvedValue(
+    pageData([
+      {
+        ...item,
+        currentKnown: false,
+        change: { ...item.change, status: "APPROVED" },
+      },
+    ]),
+  );
+  render(<ProfileChangesPage />);
+  expect(await screen.findByText("Không có bản ghi trước duyệt")).toBeTruthy();
+});
+
+it("falls back when the paginated endpoint is unavailable during rollout", async () => {
+  const { LoansApiError } = await import("@/features/loans/api/loansApi");
+  // During a staggered rollout, a server may have the pre-versioned page
+  // object on the original route but not yet expose /page.
+  vi.mocked(request).mockImplementation(async (path: string) => {
+    if (path.includes("/page?")) {
+      const notFound = Object.create(LoansApiError.prototype) as Error & {
+        status: number;
+      };
+      notFound.status = 404;
+      throw notFound;
+    }
+    return pageData([item]);
+  });
+  render(<ProfileChangesPage />);
+  expect(await screen.findByText("Tên mới")).toBeTruthy();
 });

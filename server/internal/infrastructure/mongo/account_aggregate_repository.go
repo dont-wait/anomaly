@@ -12,18 +12,22 @@ import (
 )
 
 type AccountAggregateRepository struct {
-	accounts  *AccountRepository
-	customers *CustomerRepository
-	kyc       *KYCSessionRepository
+	client               *mongodrv.Client
+	profileChangeReviews *mongodrv.Collection
+	accounts             *AccountRepository
+	customers            *CustomerRepository
+	kyc                  *KYCSessionRepository
 }
 
 const compensationTimeout = 5 * time.Second
 
 func NewAccountAggregateRepository(client *mongodrv.Client, dbName string) *AccountAggregateRepository {
 	return &AccountAggregateRepository{
-		accounts:  NewAccountRepository(client, dbName),
-		customers: NewCustomerRepository(client, dbName),
-		kyc:       NewKYCSessionRepository(client, dbName),
+		client:               client,
+		profileChangeReviews: client.Database(dbName).Collection("profile_change_requests"),
+		accounts:             NewAccountRepository(client, dbName),
+		customers:            NewCustomerRepository(client, dbName),
+		kyc:                  NewKYCSessionRepository(client, dbName),
 	}
 }
 
@@ -245,6 +249,15 @@ func (r *AccountAggregateRepository) hydrate(
 	account.KYCSessions, err = r.kyc.FindByCustomerID(ctx, account.CustomerId)
 	if err != nil {
 		return nil, err
+	}
+	if account.Customer != nil {
+		change, err := r.currentProfileChange(ctx, account.Id)
+		if err != nil {
+			return nil, err
+		}
+		if change != nil {
+			account.Customer.ProfileChange = change
+		}
 	}
 	return account, nil
 }

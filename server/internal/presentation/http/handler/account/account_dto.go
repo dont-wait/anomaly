@@ -82,10 +82,11 @@ type ProfileChangeResponse struct {
 
 // ProfileChangeReviewItem là một đề nghị kèm thông tin hiện tại để admin so sánh.
 type ProfileChangeReviewItem struct {
-	AccountID string                 `json:"accountId"`
-	Username  string                 `json:"username"`
-	Current   ProfileChangeCurrent   `json:"current"`
-	Change    *ProfileChangeResponse `json:"change"`
+	AccountID    string                 `json:"accountId"`
+	Username     string                 `json:"username"`
+	Current      ProfileChangeCurrent   `json:"current"`
+	CurrentKnown bool                   `json:"currentKnown"`
+	Change       *ProfileChangeResponse `json:"change"`
 }
 
 // ProfileChangesPageResponse is a bounded, sortable admin review result.
@@ -95,6 +96,7 @@ type ProfileChangesPageResponse struct {
 	Page       int                       `json:"page"`
 	PageSize   int                       `json:"pageSize"`
 	TotalPages int                       `json:"totalPages"`
+	NextCursor string                    `json:"nextCursor,omitempty"`
 }
 
 type ProfileChangeCurrent struct {

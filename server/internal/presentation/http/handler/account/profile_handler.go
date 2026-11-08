@@ -245,6 +245,7 @@ type profileChangeListParams struct {
 	PageSize int
 	Status   string
 	Search   string
+	Cursor   string
 }
 
 func parseProfileChangeListParams(values url.Values) (profileChangeListParams, error) {
@@ -273,6 +274,10 @@ func parseProfileChangeListParams(values url.Values) (profileChangeListParams, e
 		}
 	}
 	params.Search = strings.ToLower(strings.TrimSpace(values.Get("search")))
+	params.Cursor = strings.TrimSpace(values.Get("cursor"))
+	if len(params.Cursor) > 1024 {
+		return params, errors.New("cursor is too long")
+	}
 	if utf8.RuneCountInString(params.Search) > 120 {
 		return params, errors.New("search must be at most 120 characters")
 	}
@@ -302,8 +307,9 @@ func profileChangePage(accounts []*accountdomain.UserAccount, params profileChan
 			continue
 		}
 		items = append(items, ProfileChangeReviewItem{
-			AccountID: account.Id,
-			Username:  account.Username,
+			AccountID:    account.Id,
+			Username:     account.Username,
+			CurrentKnown: true,
 			Current: ProfileChangeCurrent{
 				FullName: customer.Profile.FullName, AddressLine: customer.Profile.Address.Line,
 				ProvinceCode: customer.Profile.Address.ProvinceCode,
@@ -335,22 +341,85 @@ func profileChangePage(accounts []*accountdomain.UserAccount, params profileChan
 	return result
 }
 
-// ListProfileChanges returns an admin-only, paginated snapshot of requests.
-// Current account read ports expose FindAll; filtering is in-memory for the MVP.
-// A large production deployment should migrate this to a paged read-model query.
-func (h *Handler) ListProfileChanges(w http.ResponseWriter, r *http.Request) {
+// profileChangePageFromStore converts the database read-model into the public
+// shape without reconstructing past values from the now-updated customer profile.
+func profileChangePageFromStore(list accountdomain.ProfileChangeListResult, params profileChangeListParams) ProfileChangesPageResponse {
+	result := ProfileChangesPageResponse{
+		Items: make([]ProfileChangeReviewItem, 0, len(list.Items)), Total: list.Total,
+		Page: params.Page, PageSize: params.PageSize,
+		TotalPages: (list.Total + params.PageSize - 1) / params.PageSize, NextCursor: list.NextCursor,
+	}
+	for _, item := range list.Items {
+		result.Items = append(result.Items, ProfileChangeReviewItem{
+			AccountID: item.AccountID, Username: item.Username, CurrentKnown: item.HasPrevious,
+			Current: ProfileChangeCurrent{
+				FullName: item.Previous.FullName, AddressLine: item.Previous.AddressLine,
+				ProvinceCode: item.Previous.ProvinceCode, IssuedPlace: item.Previous.IssuedPlace,
+				PermanentAddress: item.Previous.PermanentAddress,
+			}, Change: toProfileChangeResponse(&item.Change),
+		})
+	}
+	return result
+}
+
+func (h *Handler) loadProfileChangePage(ctx context.Context, params profileChangeListParams) (ProfileChangesPageResponse, error) {
+	if h.profileChange != nil {
+		store, ok, err := h.profileChange.List(ctx, accountdomain.ProfileChangeListOptions{
+			Page: params.Page, PageSize: params.PageSize, Status: params.Status,
+			Search: params.Search, Cursor: params.Cursor,
+		})
+		if ok {
+			return profileChangePageFromStore(store, params), err
+		}
+	}
+	accounts, err := h.getAll.Handle(ctx, queries.GetAllAccountsQuery{})
+	if err != nil {
+		return ProfileChangesPageResponse{}, err
+	}
+	return profileChangePage(accounts, params), nil
+}
+
+// ListProfileChangesPage is the versioned admin endpoint. New clients use this
+// object response and opaque cursors; the pre-existing array API remains stable.
+func (h *Handler) ListProfileChangesPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	params, err := parseProfileChangeListParams(r.URL.Query())
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
 		return
 	}
-	accounts, err := h.getAll.Handle(r.Context(), queries.GetAllAccountsQuery{})
+	result, err := h.loadProfileChangePage(r.Context(), params)
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return
 	}
-	httpx.WriteSuccess(w, http.StatusOK, "Profile changes retrieved", profileChangePage(accounts, params))
+	httpx.WriteSuccess(w, http.StatusOK, "Profile changes retrieved", result)
+}
+
+// Legacy path deliberately preserves the pre-#212 array response so older
+// desktop builds can coexist with a newer API during rollout.
+func (h *Handler) ListProfileChanges(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	const chunk = 50
+	params := profileChangeListParams{Page: 1, PageSize: chunk, Status: accountdomain.ProfileChangePending}
+	items := make([]ProfileChangeReviewItem, 0)
+	for {
+		result, err := h.loadProfileChangePage(r.Context(), params)
+		if err != nil {
+			httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+			return
+		}
+		items = append(items, result.Items...)
+		if result.NextCursor != "" {
+			params.Cursor = result.NextCursor
+			params.Page++
+		} else if result.Page < result.TotalPages {
+			params.Page++
+		} else {
+			break
+		}
+	}
+	httpx.WriteSuccess(w, http.StatusOK, "Profile changes retrieved", items)
 }
 
 // DecideProfileChange duyệt hoặc từ chối đề nghị. requestId chống duyệt nhầm bản cũ.

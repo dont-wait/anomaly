@@ -83,10 +83,36 @@ type CreditProfile struct {
 }
 
 const (
-	ProfileChangePending  = "PENDING"
-	ProfileChangeApproved = "APPROVED"
-	ProfileChangeRejected = "REJECTED"
+	ProfileChangePending    = "PENDING"
+	ProfileChangeApproved   = "APPROVED"
+	ProfileChangeRejected   = "REJECTED"
+	ProfileChangeSuperseded = "SUPERSEDED"
 )
+
+// ProfileChangeSnapshot is the immutable pre-submission value shown in review history.
+// Missing snapshots in migrated legacy records are explicitly marked unknown.
+type ProfileChangeSnapshot struct {
+	FullName, AddressLine, ProvinceCode, IssuedPlace, PermanentAddress string
+}
+
+type ProfileChangeReview struct {
+	AccountID   string
+	Username    string
+	Previous    ProfileChangeSnapshot
+	HasPrevious bool
+	Change      ProfileChangeRequest
+}
+
+type ProfileChangeListOptions struct {
+	Page, PageSize         int
+	Status, Search, Cursor string
+}
+
+type ProfileChangeListResult struct {
+	Items      []ProfileChangeReview
+	Total      int
+	NextCursor string
+}
 
 // ProfileChangeRequest giữ thông tin khách đề nghị đổi cho đến khi admin duyệt.
 // Trường rỗng nghĩa là không đổi. Hồ sơ thật chỉ thay đổi khi được duyệt.

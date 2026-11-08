@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUserPen } from "@fortawesome/free-solid-svg-icons";
-import { request } from "@/features/loans/api/loansApi";
+import { LoansApiError, request } from "@/features/loans/api/loansApi";
 import { explainLoanError } from "@/features/loans/format";
 
 type FieldKey =
@@ -25,10 +25,11 @@ export interface ProfileChangeItem {
   accountId: string;
   username: string;
   current: Record<FieldKey, string>;
+  currentKnown?: boolean;
   change: Partial<Record<FieldKey, string>> & {
     id: string;
     requestedAt: string;
-    status: "PENDING" | "APPROVED" | "REJECTED";
+    status: "PENDING" | "APPROVED" | "REJECTED" | "SUPERSEDED";
     rejectionReason?: string;
     reviewedAt?: string;
   };
@@ -42,9 +43,12 @@ interface ProfileChangesPageData {
   page: number;
   pageSize: number;
   totalPages: number;
+  nextCursor?: string;
+  legacyFallback?: boolean;
 }
 
 const ROOT = "/api/admin/profile-changes";
+const PAGE_ROOT = `${ROOT}/page`;
 
 const panel =
   "rounded-(--admin-radius-md) border border-(--admin-border) bg-(--admin-surface)";
@@ -87,7 +91,11 @@ function ChangeCard({
           {changed.map((key) => (
             <tr key={key} className="border-t border-(--admin-border)">
               <td className="py-1.5 pr-2">{FIELD_LABELS[key]}</td>
-              <td className="py-1.5 pr-2">{item.current[key] || "Chưa có"}</td>
+              <td className="py-1.5 pr-2">
+                {item.currentKnown === false
+                  ? "Không có bản ghi trước duyệt"
+                  : item.current[key] || "Chưa có"}
+              </td>
               <td className="py-1.5 font-semibold">{item.change[key]}</td>
             </tr>
           ))}
@@ -96,7 +104,11 @@ function ChangeCard({
       {!pending ? (
         <div className="grid gap-1 text-[12px] text-(--admin-text-muted)">
           <p className="font-semibold">
-            {item.change.status === "APPROVED" ? "Đã duyệt" : "Đã từ chối"}
+            {item.change.status === "APPROVED"
+              ? "Đã duyệt"
+              : item.change.status === "SUPERSEDED"
+                ? "Đã thay thế"
+                : "Đã từ chối"}
           </p>
           {item.change.rejectionReason && (
             <p>Lý do: {item.change.rejectionReason}</p>
@@ -168,6 +180,7 @@ export function ProfileChangesPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -183,16 +196,61 @@ export function ProfileChangesPage() {
       status,
       search,
     });
+    const cursor = cursors[page - 1];
+    if (cursor) query.set("cursor", cursor);
     try {
-      const body = await request<{ data: ProfileChangesPageData }>(
-        `${ROOT}?${query.toString()}`,
-      );
+      let result: ProfileChangesPageData;
+      try {
+        const body = await request<{ data: ProfileChangesPageData }>(
+          `${PAGE_ROOT}?${query.toString()}`,
+        );
+        result = body.data;
+      } catch (cause) {
+        if (!(cause instanceof LoansApiError && cause.status === 404))
+          throw cause;
+        // Older API: the original route returns an array of pending requests.
+        // This compatibility path is intentionally temporary during rollout.
+        const legacy = await request<{
+          data: ProfileChangeItem[] | ProfileChangesPageData;
+        }>(ROOT);
+        const legacyItems = Array.isArray(legacy.data)
+          ? legacy.data
+          : legacy.data?.items;
+        if (!Array.isArray(legacyItems))
+          throw Object.assign(
+            new Error("Invalid legacy profile-change response"),
+            { cause }
+          );
+        const normalized = search.toLocaleLowerCase();
+        const filtered = legacyItems.filter(
+          (item) =>
+            (status === "ALL" || item.change.status === status) &&
+            (!normalized ||
+              [
+                item.accountId,
+                item.username,
+                item.current.fullName,
+                item.change.fullName ?? "",
+              ].some((value) =>
+                value.toLocaleLowerCase().includes(normalized),
+              )),
+        );
+        result = {
+          items: filtered.slice((page - 1) * 10, page * 10),
+          page,
+          pageSize: 10,
+          total: filtered.length,
+          totalPages: Math.ceil(filtered.length / 10),
+          legacyFallback: true,
+        };
+      }
       if (sequence !== loadSequence.current) return;
-      const result = body.data;
       // If a review removed the last item on the last page, show the last
       // available page rather than leaving the admin on an empty page.
       if (page > Math.max(1, result.totalPages)) {
-        setPage(Math.max(1, result.totalPages));
+        const last = Math.max(1, result.totalPages);
+        setCursors((items) => items.slice(0, last));
+        setPage(last);
         return;
       }
       setData(result);
@@ -203,7 +261,7 @@ export function ProfileChangesPage() {
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
     }
-  }, [page, status, search]);
+  }, [page, status, search, cursors]);
 
   useEffect(() => {
     void Promise.resolve().then(load);
@@ -223,7 +281,12 @@ export function ProfileChangesPage() {
       );
       // Refresh from the server so totals, filters and other admin decisions
       // cannot be desynchronized by optimistic removal.
-      await load();
+      if (page > 1) {
+        setCursors([null]);
+        setPage(1);
+      } else {
+        await load();
+      }
     } catch (cause) {
       setError(explainLoanError(cause));
     } finally {
@@ -233,9 +296,16 @@ export function ProfileChangesPage() {
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const query = searchInput.trim();
+    if (page === 1 && search === query) {
+      // A repeated search must still reload, otherwise clearing data blanks UI.
+      void load();
+      return;
+    }
     setData(null);
+    setCursors([null]);
     setPage(1);
-    setSearch(searchInput.trim());
+    setSearch(query);
   };
 
   return (
@@ -263,6 +333,7 @@ export function ProfileChangesPage() {
             disabled={busy}
             onChange={(event) => {
               setData(null);
+              setCursors([null]);
               setPage(1);
               setStatus(event.target.value as ReviewStatus);
             }}
@@ -354,8 +425,21 @@ export function ProfileChangesPage() {
             </button>
             <button
               type="button"
-              disabled={loading || busy || page >= data.totalPages}
+              disabled={
+                loading ||
+                busy ||
+                !(
+                  data.nextCursor ||
+                  (data.legacyFallback && page < data.totalPages)
+                )
+              }
               onClick={() => {
+                if (data.nextCursor) {
+                  setCursors((items) => [
+                    ...items.slice(0, page),
+                    data.nextCursor!,
+                  ]);
+                }
                 setData(null);
                 setPage((value) => value + 1);
               }}

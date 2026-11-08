@@ -59,3 +59,47 @@ func TestSpecHandlerServesValidOpenAPIDocument(t *testing.T) {
 		t.Fatal("failure response 401 was not documented")
 	}
 }
+
+func TestQueryParametersIncludeDefaultsAndBounds(t *testing.T) {
+	doc := NewRegistry(http.NewServeMux(), true)
+	doc.HandleFunc("GET /api/admin/profile-changes/page", func(http.ResponseWriter, *http.Request) {}, Operation{
+		ID: "listProfileChangesPage",
+		Parameters: []Parameter{
+			{Name: "page", In: "query", Type: "integer", Default: "1", Minimum: 1},
+			{Name: "pageSize", In: "query", Type: "integer", Default: "10", Minimum: 1, Maximum: 50},
+			{Name: "status", In: "query", Type: "string", Default: "PENDING", Enum: []string{"PENDING", "APPROVED", "REJECTED", "ALL"}},
+			{Name: "search", In: "query", Type: "string"},
+			{Name: "cursor", In: "query", Type: "string"},
+		},
+	})
+	body := httptest.NewRecorder()
+	doc.SpecHandler().ServeHTTP(body, httptest.NewRequest("GET", "/openapi.json", nil))
+	var specification struct {
+		Paths map[string]map[string]struct {
+			Parameters []struct {
+				Name   string         `json:"name"`
+				Schema map[string]any `json:"schema"`
+			} `json:"parameters"`
+		} `json:"paths"`
+	}
+	if err := json.Unmarshal(body.Body.Bytes(), &specification); err != nil {
+		t.Fatal(err)
+	}
+	params := specification.Paths["/api/admin/profile-changes/page"]["get"].Parameters
+	if len(params) != 5 {
+		t.Fatalf("query parameters: %d, want five", len(params))
+	}
+	if params[0].Name != "page" || params[0].Schema["default"] != float64(1) || params[0].Schema["minimum"] != float64(1) {
+		t.Fatalf("page schema: %#v", params[0])
+	}
+	if params[1].Name != "pageSize" || params[1].Schema["maximum"] != float64(50) {
+		t.Fatalf("pageSize schema: %#v", params[1])
+	}
+	if params[2].Name != "status" || params[2].Schema["default"] != "PENDING" {
+		t.Fatalf("status schema: %#v", params[2])
+	}
+	allowed, ok := params[2].Schema["enum"].([]any)
+	if !ok || len(allowed) != 4 {
+		t.Fatalf("status values: %#v", params[2].Schema["enum"])
+	}
+}

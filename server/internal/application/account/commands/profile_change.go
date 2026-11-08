@@ -19,11 +19,27 @@ type ProfileChangeInput struct {
 	PermanentAddress string
 }
 
+// ProfileChangeStore is implemented by the Mongo aggregate repository. All
+// mutations in the store are transactional and requests are retained separately
+// from customer documents. Other repositories keep the existing unit-test port.
+type ProfileChangeStore interface {
+	SubmitProfileChange(context.Context, *accountdomain.UserAccount, *accountdomain.ProfileChangeRequest) error
+	DecideProfileChange(context.Context, string, string, string, string, string, time.Time) error
+	ListProfileChanges(context.Context, accountdomain.ProfileChangeListOptions) (accountdomain.ProfileChangeListResult, error)
+}
+
 // ProfileChangeHandler lưu đề nghị của khách. Hồ sơ thật chỉ đổi khi admin duyệt.
-type ProfileChangeHandler struct{ repo AccountRepository }
+type ProfileChangeHandler struct {
+	repo  AccountRepository
+	store ProfileChangeStore
+}
 
 func NewProfileChangeHandler(repo AccountRepository) *ProfileChangeHandler {
-	return &ProfileChangeHandler{repo: repo}
+	handler := &ProfileChangeHandler{repo: repo}
+	if store, ok := repo.(ProfileChangeStore); ok {
+		handler.store = store
+	}
+	return handler
 }
 
 // Submit thay thế đề nghị đang chờ, nếu có, bằng đề nghị mới.
@@ -53,6 +69,14 @@ func (h *ProfileChangeHandler) Submit(ctx context.Context, accountID string, inp
 	if account == nil || account.Customer == nil {
 		return nil, accountdomain.ErrAccountNotFound
 	}
+	if h.store != nil {
+		if err := h.store.SubmitProfileChange(ctx, account, request); err != nil {
+			return nil, err
+		}
+		account.Customer.ProfileChange = request
+		touchAccount(account)
+		return account, nil
+	}
 	account.Customer.ProfileChange = request
 	touchAccount(account)
 	if err := h.repo.Save(ctx, account); err != nil {
@@ -76,6 +100,9 @@ func (h *ProfileChangeHandler) Decide(ctx context.Context, adminID, accountID, r
 		}
 	default:
 		return accountdomain.ErrInvalidProfile
+	}
+	if h.store != nil {
+		return h.store.DecideProfileChange(ctx, adminID, accountID, requestID, decision, reason, time.Now().UTC())
 	}
 	account, err := h.repo.FindByID(ctx, accountID)
 	if err != nil {
@@ -115,4 +142,14 @@ func applyProfileChange(customer *accountdomain.Customer, request *accountdomain
 			*field.target = field.value
 		}
 	}
+}
+
+// List uses the indexed Mongo read-model when available. A fallback is kept
+// for in-memory tests and non-Mongo adapters, not the production API path.
+func (h *ProfileChangeHandler) List(ctx context.Context, options accountdomain.ProfileChangeListOptions) (accountdomain.ProfileChangeListResult, bool, error) {
+	if h.store == nil {
+		return accountdomain.ProfileChangeListResult{}, false, nil
+	}
+	result, err := h.store.ListProfileChanges(ctx, options)
+	return result, true, err
 }
