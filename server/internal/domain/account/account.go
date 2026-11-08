@@ -96,11 +96,14 @@ type ProfileChangeSnapshot struct {
 }
 
 type ProfileChangeReview struct {
-	AccountID   string
-	Username    string
-	Previous    ProfileChangeSnapshot
-	HasPrevious bool
-	Change      ProfileChangeRequest
+	AccountID            string
+	Username             string
+	Email                string
+	IdentityType         string
+	IdentityNumberMasked string
+	Previous             ProfileChangeSnapshot
+	HasPrevious          bool
+	Change               ProfileChangeRequest
 }
 
 type ProfileChangeListOptions struct {

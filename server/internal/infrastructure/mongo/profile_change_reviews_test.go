@@ -76,3 +76,25 @@ func TestAccountRecordIDAcceptsObjectIDAndLegacyHexID(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewSearchKeysAndIdentityMask(t *testing.T) {
+	keys := reviewSearchKeys("ACC123", "khach", "Nguyễn Văn A", "Trần Văn B")
+	for _, expected := range []string{"acc123", "nguyễn văn a", "văn a", "a", "trần văn b", "văn b"} {
+		found := false
+		for _, key := range keys {
+			if key == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing indexed prefix %q in %q", expected, keys)
+		}
+	}
+	if got := maskedIdentity("123456789012"); got != "********9012" {
+		t.Fatalf("identity mask leaked or lost suffix: %q", got)
+	}
+	if got := maskedIdentity("1234"); got != "****" {
+		t.Fatalf("short identity: %q", got)
+	}
+}

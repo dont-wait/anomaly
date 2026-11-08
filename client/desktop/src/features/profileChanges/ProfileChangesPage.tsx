@@ -24,6 +24,9 @@ const FIELDS = Object.keys(FIELD_LABELS) as FieldKey[];
 export interface ProfileChangeItem {
   accountId: string;
   username: string;
+  email?: string;
+  identityType?: string;
+  identityNumberMasked?: string;
   current: Record<FieldKey, string>;
   currentKnown?: boolean;
   change: Partial<Record<FieldKey, string>> & {
@@ -79,6 +82,15 @@ function ChangeCard({
           Gửi {new Date(item.change.requestedAt).toLocaleString("vi-VN")}
         </span>
       </div>
+      {(item.email || item.identityType || item.identityNumberMasked) && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-(--admin-text-muted)">
+          {item.email && <span>Email: {item.email}</span>}
+          {item.identityType && <span>Giấy tờ: {item.identityType}</span>}
+          {item.identityNumberMasked && (
+            <span>Số giấy tờ: {item.identityNumberMasked}</span>
+          )}
+        </div>
+      )}
       <table className="w-full text-left text-[12px]">
         <thead className="text-(--admin-text-muted)">
           <tr>
@@ -180,8 +192,9 @@ export function ProfileChangesPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [cursors, setCursors] = useState<(string | null)[]>([null]);
-  const [loading, setLoading] = useState(false);
+  // Cursor changes should not recreate `load` and trigger duplicate effects.
+  const cursors = useRef<(string | null)[]>([null]);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const loadSequence = useRef(0);
@@ -196,7 +209,7 @@ export function ProfileChangesPage() {
       status,
       search,
     });
-    const cursor = cursors[page - 1];
+    const cursor = cursors.current[page - 1];
     if (cursor) query.set("cursor", cursor);
     try {
       let result: ProfileChangesPageData;
@@ -206,8 +219,17 @@ export function ProfileChangesPage() {
         );
         result = body.data;
       } catch (cause) {
-        if (!(cause instanceof LoansApiError && cause.status === 404))
+        // Only an unstructured route-level 404 may indicate an old API.
+        // Structured 404s are real API errors, not signals to hide failures.
+        if (
+          !(
+            cause instanceof LoansApiError &&
+            cause.status === 404 &&
+            !cause.codes?.length
+          )
+        ) {
           throw cause;
+        }
         // Older API: the original route returns an array of pending requests.
         // This compatibility path is intentionally temporary during rollout.
         const legacy = await request<{
@@ -249,7 +271,7 @@ export function ProfileChangesPage() {
       // available page rather than leaving the admin on an empty page.
       if (page > Math.max(1, result.totalPages)) {
         const last = Math.max(1, result.totalPages);
-        setCursors((items) => items.slice(0, last));
+        cursors.current = cursors.current.slice(0, last);
         setPage(last);
         return;
       }
@@ -261,7 +283,7 @@ export function ProfileChangesPage() {
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
     }
-  }, [page, status, search, cursors]);
+  }, [page, status, search]);
 
   useEffect(() => {
     void Promise.resolve().then(load);
@@ -282,7 +304,7 @@ export function ProfileChangesPage() {
       // Refresh from the server so totals, filters and other admin decisions
       // cannot be desynchronized by optimistic removal.
       if (page > 1) {
-        setCursors([null]);
+        cursors.current = [null];
         setPage(1);
       } else {
         await load();
@@ -303,7 +325,8 @@ export function ProfileChangesPage() {
       return;
     }
     setData(null);
-    setCursors([null]);
+    cursors.current = [null];
+    setLoading(true);
     setPage(1);
     setSearch(query);
   };
@@ -333,7 +356,8 @@ export function ProfileChangesPage() {
             disabled={busy}
             onChange={(event) => {
               setData(null);
-              setCursors([null]);
+              cursors.current = [null];
+              setLoading(true);
               setPage(1);
               setStatus(event.target.value as ReviewStatus);
             }}
@@ -377,6 +401,12 @@ export function ProfileChangesPage() {
           Làm mới
         </button>
       </section>
+      {data?.legacyFallback && (
+        <p role="status" className="rounded-sm border border-(--admin-border) bg-(--admin-surface) px-3 py-2 text-[12px] text-(--admin-text-muted)">
+          Đang kết nối API phiên bản cũ: chỉ có danh sách duyệt giới hạn,
+          lịch sử và phân trang có thể chưa đầy đủ. Hãy cập nhật Backend.
+        </p>
+      )}
       {error && (
         <p
           role="alert"
@@ -416,6 +446,7 @@ export function ProfileChangesPage() {
               type="button"
               disabled={loading || busy || page <= 1}
               onClick={() => {
+                setLoading(true);
                 setData(null);
                 setPage((value) => value - 1);
               }}
@@ -435,11 +466,12 @@ export function ProfileChangesPage() {
               }
               onClick={() => {
                 if (data.nextCursor) {
-                  setCursors((items) => [
-                    ...items.slice(0, page),
-                    data.nextCursor!,
-                  ]);
+                  cursors.current = [
+                    ...cursors.current.slice(0, page),
+                    data.nextCursor,
+                  ];
                 }
+                setLoading(true);
                 setData(null);
                 setPage((value) => value + 1);
               }}

@@ -74,11 +74,11 @@ func main() {
 	if err := notificationAPI.Repository.EnsureIndexes(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("ensure notification indexes failed")
 	}
-	// Profile review history is authoritative after migration 23. Do not
-	// accidentally create an empty collection before the backfill migration.
+	// Migrations own review-index creation and historical backfill. If rollout
+	// is incomplete, log a warning instead of crash-looping unrelated APIs.
 	profileStore := mongo.NewAccountAggregateRepository(mongoClient, config.MongoConfig.MongoDBName)
-	if err := profileStore.EnsureProfileChangeIndexes(ctx); err != nil {
-		logger.Fatal().Err(err).Msg("ensure profile review collection/indexes failed")
+	if err := profileStore.VerifyProfileChangeMigration(ctx); err != nil {
+		logger.Warn().Err(err).Msg("profile review unavailable until migration 24 completes")
 	}
 	// Producers only write to Mongo; every API instance pushes to the SSE
 	// clients it holds from the change stream. A normal stop resumes from the

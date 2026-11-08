@@ -31,3 +31,6 @@ var (
 	ErrInvalidKYCReview       = errors.New("invalid KYC review decision")
 	ErrConcurrentUpdate       = errors.New("account was modified concurrently")
 )
+
+// ErrProfileReviewUnavailable means schema migrations must complete before reviews can be used.
+var ErrProfileReviewUnavailable = errors.New("profile review service requires database migrations")

@@ -284,6 +284,18 @@ func parseProfileChangeListParams(values url.Values) (profileChangeListParams, e
 	return params, nil
 }
 
+// maskReviewIdentity only exposes the final four characters to the review UI.
+func maskReviewIdentity(number string) string {
+	if number == "" {
+		return ""
+	}
+	chars := []rune(number)
+	if len(chars) <= 4 {
+		return strings.Repeat("*", len(chars))
+	}
+	return strings.Repeat("*", len(chars)-4) + string(chars[len(chars)-4:])
+}
+
 // profileChangePage sorts newest-first before slicing. Tie-breaking by account ID
 // makes successive pages deterministic for unchanged data.
 func profileChangePage(accounts []*accountdomain.UserAccount, params profileChangeListParams) ProfileChangesPageResponse {
@@ -403,17 +415,32 @@ func (h *Handler) ListProfileChanges(w http.ResponseWriter, r *http.Request) {
 	const chunk = 50
 	params := profileChangeListParams{Page: 1, PageSize: chunk, Status: accountdomain.ProfileChangePending}
 	items := make([]ProfileChangeReviewItem, 0)
+	seenRequests := make(map[string]struct{})
 	for {
 		result, err := h.loadProfileChangePage(r.Context(), params)
 		if err != nil {
 			httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 			return
 		}
-		items = append(items, result.Items...)
+		for _, item := range result.Items {
+			if item.Change == nil {
+				continue
+			}
+			if _, exists := seenRequests[item.Change.ID]; exists {
+				continue
+			}
+			seenRequests[item.Change.ID] = struct{}{}
+			items = append(items, item)
+		}
 		if result.NextCursor != "" {
 			params.Cursor = result.NextCursor
 			params.Page++
+		} else if params.Cursor != "" {
+			// The cursor traversal ended. Do not retry an old cursor merely
+			// because the live total count changed during this request.
+			break
 		} else if result.Page < result.TotalPages {
+			params.Cursor = ""
 			params.Page++
 		} else {
 			break

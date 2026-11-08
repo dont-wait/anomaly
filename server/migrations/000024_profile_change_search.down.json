@@ -1,0 +1,6 @@
+[
+  {
+    "dropIndexes": "profile_change_requests",
+    "index": "idx_review_search_keys"
+  }
+]

@@ -82,6 +82,11 @@ func (h *ProfileChangeHandler) Submit(ctx context.Context, accountID string, inp
 	if err := h.repo.Save(ctx, account); err != nil {
 		return nil, err
 	}
+	// Non-transactional repositories are supported for tests/adapters only.
+	// Never report success if an adapter silently discards the mirror.
+	if err := h.verifyFallbackMirror(ctx, accountID, request.Id, request.Status); err != nil {
+		return nil, err
+	}
 	return account, nil
 }
 
@@ -124,7 +129,25 @@ func (h *ProfileChangeHandler) Decide(ctx context.Context, adminID, accountID, r
 	request.ReviewedAt = &now
 	request.ReviewedBy = adminID
 	touchAccount(account)
-	return h.repo.Save(ctx, account)
+	if err := h.repo.Save(ctx, account); err != nil {
+		return err
+	}
+	return h.verifyFallbackMirror(ctx, accountID, requestID, decision)
+}
+
+// Fail closed if a legacy persistence adapter does not actually save the
+// compatibility mirror. The production Mongo adapter uses ProfileChangeStore
+// and never reaches this read-after-write fallback.
+func (h *ProfileChangeHandler) verifyFallbackMirror(ctx context.Context, accountID, requestID, status string) error {
+	saved, err := h.repo.FindByID(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	if saved == nil || saved.Customer == nil || saved.Customer.ProfileChange == nil ||
+		saved.Customer.ProfileChange.Id != requestID || saved.Customer.ProfileChange.Status != status {
+		return accountdomain.ErrProfileReviewUnavailable
+	}
+	return nil
 }
 
 func applyProfileChange(customer *accountdomain.Customer, request *accountdomain.ProfileChangeRequest) {

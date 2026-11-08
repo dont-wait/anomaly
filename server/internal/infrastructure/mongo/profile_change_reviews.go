@@ -25,6 +25,10 @@ type profileChangeReviewRecord struct {
 	CustomerID      bson.ObjectID               `bson:"customer_id"`
 	Username        string                      `bson:"username"`
 	SearchText      string                      `bson:"search_text"`
+	SearchKeys      []string                    `bson:"search_keys,omitempty"`
+	Email           string                      `bson:"email,omitempty"`
+	IdentityType    string                      `bson:"identity_type,omitempty"`
+	IdentityMasked  string                      `bson:"identity_number_masked,omitempty"`
 	Status          string                      `bson:"status"`
 	RequestedAt     time.Time                   `bson:"requested_at"`
 	Proposed        profileChangeRecord         `bson:"proposed"`
@@ -68,35 +72,89 @@ func (r profileChangeReviewRecord) domain() accountdomain.ProfileChangeReview {
 	change.ReviewedAt = r.ReviewedAt
 	change.ReviewedBy = r.ReviewedBy
 	return accountdomain.ProfileChangeReview{
-		AccountID: r.AccountID, Username: r.Username,
+		AccountID: r.AccountID, Username: r.Username, Email: r.Email,
+		IdentityType: r.IdentityType, IdentityNumberMasked: r.IdentityMasked,
 		Previous: r.Previous.domain(), HasPrevious: r.HasPrevious, Change: *change,
 	}
 }
 
-// EnsureProfileChangeIndexes is safe to call after migration 23. It does not
-// create/backfill the collection: deployment must run migrations first.
-func (r *AccountAggregateRepository) EnsureProfileChangeIndexes(ctx context.Context) error {
-	// Fail closed when the migration has not created/backfilled the review store.
+// VerifyProfileChangeMigration only checks the collection created by migration
+// 24. Index creation and backfill are owned exclusively by migrations.
+// The API does not fail startup if deployment order is wrong; review methods
+// return an explicit error until migrations are applied.
+func (r *AccountAggregateRepository) VerifyProfileChangeMigration(ctx context.Context) error {
+	if r.reviewReady.Load() {
+		return nil
+	}
 	names, err := r.profileChangeReviews.Database().ListCollectionNames(ctx, bson.M{"name": "profile_change_requests"})
 	if err != nil {
 		return err
 	}
 	if len(names) != 1 {
-		return errors.New("profile_change_requests collection missing; run migration 23 before starting API")
+		return fmt.Errorf("%w: profile_change_requests missing; run migration 23", accountdomain.ErrProfileReviewUnavailable)
 	}
-	indexes := []mongodrv.IndexModel{
-		{Keys: bson.D{{Key: "status", Value: 1}, {Key: "requested_at", Value: -1}, {Key: "_id", Value: 1}}, Options: options.Index().SetName("idx_review_status_newest")},
-		{Keys: bson.D{{Key: "requested_at", Value: -1}, {Key: "_id", Value: 1}}, Options: options.Index().SetName("idx_review_newest")},
-		{Keys: bson.D{{Key: "account_id", Value: 1}, {Key: "requested_at", Value: -1}}, Options: options.Index().SetName("idx_review_account")},
-		{Keys: bson.D{{Key: "account_id", Value: 1}, {Key: "status", Value: 1}}, Options: options.Index().SetName("uniq_review_pending_account").SetUnique(true).SetPartialFilterExpression(bson.M{"status": accountdomain.ProfileChangePending})},
+	indexes, err := r.profileChangeReviews.Indexes().List(ctx)
+	if err != nil {
+		return err
 	}
-	_, err = r.profileChangeReviews.Indexes().CreateMany(ctx, indexes)
-	return err
+	defer indexes.Close(ctx)
+	var entries []struct {
+		Name string `bson:"name"`
+	}
+	if err = indexes.All(ctx, &entries); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.Name == "idx_review_search_keys" {
+			r.reviewReady.Store(true)
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: search index missing; run migration 24", accountdomain.ErrProfileReviewUnavailable)
+}
+
+// Prefix search is index-backed. Full names and individual words are indexed,
+// so "Văn" and "Nguyễn Văn" both find "Nguyễn Văn A" without collection scans.
+func reviewSearchKeys(values ...string) []string {
+	keys := make([]string, 0, 16)
+	seen := make(map[string]struct{})
+	add := func(value string) {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		keys = append(keys, value)
+	}
+	for _, value := range values {
+		words := strings.Fields(value)
+		for i := range words {
+			add(strings.Join(words[i:], " "))
+		}
+	}
+	return keys
+}
+
+func maskedIdentity(value string) string {
+	if value == "" {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= 4 {
+		return strings.Repeat("*", len(runes))
+	}
+	return strings.Repeat("*", len(runes)-4) + string(runes[len(runes)-4:])
 }
 
 // SubmitProfileChange stores the request, the before-image and the customer UI
 // mirror atomically. A new submission supersedes any older pending request.
 func (r *AccountAggregateRepository) SubmitProfileChange(ctx context.Context, account *accountdomain.UserAccount, request *accountdomain.ProfileChangeRequest) error {
+	if err := r.VerifyProfileChangeMigration(ctx); err != nil {
+		return err
+	}
 	customerID, err := bson.ObjectIDFromHex(account.CustomerId)
 	if err != nil {
 		return err
@@ -134,8 +192,11 @@ func (r *AccountAggregateRepository) SubmitProfileChange(ctx context.Context, ac
 		}
 		review := profileChangeReviewRecord{
 			ID: request.Id, AccountID: account.Id, CustomerID: customerID, Username: account.Username,
-			SearchText: strings.ToLower(strings.Join([]string{account.Id, account.Username, customer.Profile.FullName, request.FullName}, " ")),
-			Status:     accountdomain.ProfileChangePending, RequestedAt: request.RequestedAt,
+			Email: customer.Profile.Email, IdentityType: stringValue(customer.Identity.Type),
+			IdentityMasked: maskedIdentity(stringValue(customer.Identity.Number)),
+			SearchText:     strings.ToLower(strings.Join([]string{account.Id, account.Username, customer.Profile.FullName, request.FullName}, " ")),
+			SearchKeys:     reviewSearchKeys(account.Id, account.Username, customer.Profile.FullName, request.FullName),
+			Status:         accountdomain.ProfileChangePending, RequestedAt: request.RequestedAt,
 			Proposed: *toProfileChangeRecord(request), Previous: snapshotOfCustomer(customer), HasPrevious: true,
 		}
 		if _, err = r.profileChangeReviews.InsertOne(tx, review); err != nil {
@@ -150,6 +211,9 @@ func (r *AccountAggregateRepository) SubmitProfileChange(ctx context.Context, ac
 // DecideProfileChange uses a pending-only compare-and-swap. Both the review
 // decision and selective profile edits commit in the SAME Mongo transaction.
 func (r *AccountAggregateRepository) DecideProfileChange(ctx context.Context, adminID, accountID, requestID, decision, reason string, reviewedAt time.Time) error {
+	if err := r.VerifyProfileChangeMigration(ctx); err != nil {
+		return err
+	}
 	session, err := r.client.StartSession()
 	if err != nil {
 		return err
@@ -182,6 +246,18 @@ func (r *AccountAggregateRepository) DecideProfileChange(ctx context.Context, ad
 		}
 
 		if decision == accountdomain.ProfileChangeApproved {
+			// Keep search metadata consistent with the new approved name.
+			approvedName := review.Previous.FullName
+			if review.Proposed.FullName != "" {
+				approvedName = review.Proposed.FullName
+			}
+			searchKeys := reviewSearchKeys(review.AccountID, review.Username, review.Previous.FullName, approvedName, review.Proposed.FullName)
+			searchText := strings.ToLower(strings.Join([]string{review.AccountID, review.Username, review.Previous.FullName, approvedName, review.Proposed.FullName}, " "))
+			if _, err := r.profileChangeReviews.UpdateOne(tx,
+				bson.M{"_id": review.ID, "status": decision},
+				bson.M{"$set": bson.M{"search_keys": searchKeys, "search_text": searchText}}); err != nil {
+				return nil, err
+			}
 			// Only changed fields are written; unrelated customer attributes
 			// (including KYC/media) are never replaced by a stale aggregate.
 			for _, field := range []struct{ value, key string }{
@@ -248,77 +324,86 @@ func decodeReviewCursor(raw, status, search string) (reviewCursor, error) {
 	return cursor, nil
 }
 
-// ListProfileChanges queries indexed request records without hydrating all
-// accounts. The cursor makes later pages stable as NEW requests are inserted.
-func (r *AccountAggregateRepository) ListProfileChanges(ctx context.Context, options accountdomain.ProfileChangeListOptions) (accountdomain.ProfileChangeListResult, error) {
+// ListProfileChanges uses indexed prefix terms and one aggregation. A $facet
+// computes an exact total and the bounded page from the SAME read operation.
+// Requests added after the cursor boundary cannot shift later pages.
+func (r *AccountAggregateRepository) ListProfileChanges(ctx context.Context, filterOptions accountdomain.ProfileChangeListOptions) (accountdomain.ProfileChangeListResult, error) {
 	result := accountdomain.ProfileChangeListResult{Items: make([]accountdomain.ProfileChangeReview, 0)}
-	if options.PageSize < 1 || options.PageSize > 50 || options.Page < 1 {
+	if err := r.VerifyProfileChangeMigration(ctx); err != nil {
+		return result, err
+	}
+	if filterOptions.PageSize < 1 || filterOptions.PageSize > 50 || filterOptions.Page < 1 {
 		return result, accountdomain.ErrInvalidProfile
 	}
-	search := strings.ToLower(strings.TrimSpace(options.Search))
-	cursor, err := decodeReviewCursor(options.Cursor, options.Status, search)
+	search := strings.ToLower(strings.TrimSpace(filterOptions.Search))
+	cursor, err := decodeReviewCursor(filterOptions.Cursor, filterOptions.Status, search)
 	if err != nil {
 		return result, err
 	}
-	clauses := make([]bson.M, 0, 3)
-	if options.Status != "ALL" {
-		clauses = append(clauses, bson.M{"status": options.Status})
+
+	match := bson.M{}
+	if filterOptions.Status != "ALL" {
+		match["status"] = filterOptions.Status
 	}
 	if search != "" {
-		clauses = append(clauses, bson.M{"search_text": bson.M{"$regex": regexp.QuoteMeta(search)}})
+		match["search_keys"] = bson.M{"$regex": "^" + regexp.QuoteMeta(search)}
 	}
-	base := bson.M{}
-	if len(clauses) > 0 {
-		base["$and"] = clauses
-	}
-	count, err := r.profileChangeReviews.CountDocuments(ctx, base)
-	if err != nil {
-		return result, err
-	}
-	if count > math.MaxInt {
-		return result, fmt.Errorf("too many profile change reviews")
-	}
-	result.Total = int(count)
+
+	items := bson.A{}
 	if cursor.ID != "" {
-		clauses = append(clauses, bson.M{"$or": bson.A{
+		items = append(items, bson.D{{Key: "$match", Value: bson.M{"$or": bson.A{
 			bson.M{"requested_at": bson.M{"$lt": cursor.At}},
 			bson.M{"requested_at": cursor.At, "_id": bson.M{"$gt": cursor.ID}},
-		}})
+		}}}})
+	} else if filterOptions.Page > 1 {
+		// Compatibility for older clients calling the page API with offsets.
+		items = append(items, bson.D{{Key: "$skip", Value: int64(filterOptions.Page-1) * int64(filterOptions.PageSize)}})
 	}
-	filter := bson.M{}
-	if len(clauses) > 0 {
-		filter["$and"] = clauses
+	items = append(items, bson.D{{Key: "$limit", Value: int64(filterOptions.PageSize + 1)}})
+	pipeline := mongodrv.Pipeline{
+		bson.D{{Key: "$match", Value: match}},
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "requested_at", Value: -1}, {Key: "_id", Value: 1}}}},
+		bson.D{{Key: "$facet", Value: bson.M{
+			"meta":  bson.A{bson.D{{Key: "$count", Value: "total"}}},
+			"items": items,
+		}}},
 	}
-	opts := profileReviewFindOptions(options.PageSize + 1)
-	if cursor.ID == "" && options.Page > 1 {
-		// Older callers can still use offset pages; new UI always uses cursor.
-		opts.SetSkip(int64(options.Page-1) * int64(options.PageSize))
-	}
-	docs, err := r.profileChangeReviews.Find(ctx, filter, opts)
+	stream, err := r.profileChangeReviews.Aggregate(ctx, pipeline)
 	if err != nil {
 		return result, err
 	}
-	defer docs.Close(ctx)
-	records := make([]profileChangeReviewRecord, 0, options.PageSize+1)
-	if err := docs.All(ctx, &records); err != nil {
+	defer stream.Close(ctx)
+	var output []struct {
+		Meta []struct {
+			Total int64 `bson:"total"`
+		} `bson:"meta"`
+		Items []profileChangeReviewRecord `bson:"items"`
+	}
+	if err := stream.All(ctx, &output); err != nil {
 		return result, err
 	}
-	hasNext := len(records) > options.PageSize
+	if len(output) != 1 {
+		return result, errors.New("invalid profile change aggregation result")
+	}
+	if len(output[0].Meta) != 0 {
+		if output[0].Meta[0].Total > math.MaxInt {
+			return result, fmt.Errorf("too many profile change reviews")
+		}
+		result.Total = int(output[0].Meta[0].Total)
+	}
+	records := output[0].Items
+	hasNext := len(records) > filterOptions.PageSize
 	if hasNext {
-		records = records[:options.PageSize]
+		records = records[:filterOptions.PageSize]
 	}
 	for _, record := range records {
 		result.Items = append(result.Items, record.domain())
 	}
-	if hasNext && len(records) > 0 {
+	if hasNext && len(records) != 0 {
 		last := records[len(records)-1]
-		result.NextCursor = encodeReviewCursor(last.RequestedAt, last.ID, options.Status, search)
+		result.NextCursor = encodeReviewCursor(last.RequestedAt, last.ID, filterOptions.Status, search)
 	}
 	return result, nil
-}
-
-func profileReviewFindOptions(limit int) *options.FindOptionsBuilder {
-	return options.Find().SetSort(bson.D{{Key: "requested_at", Value: -1}, {Key: "_id", Value: 1}}).SetLimit(int64(limit))
 }
 
 func (r *AccountAggregateRepository) currentProfileChange(ctx context.Context, accountID string) (*accountdomain.ProfileChangeRequest, error) {

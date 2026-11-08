@@ -242,3 +242,56 @@ it("falls back when the paginated endpoint is unavailable during rollout", async
   render(<ProfileChangesPage />);
   expect(await screen.findByText("Tên mới")).toBeTruthy();
 });
+
+
+it("shows masked identity and email without an unmasked document number", async () => {
+  vi.mocked(request).mockResolvedValue(
+    pageData([
+      {
+        ...item,
+        email: "customer@example.com",
+        identityType: "CCCD",
+        identityNumberMasked: "********9012",
+      },
+    ]),
+  );
+  render(<ProfileChangesPage />);
+  expect(await screen.findByText("Email: customer@example.com")).toBeTruthy();
+  expect(screen.getByText("Giấy tờ: CCCD")).toBeTruthy();
+  expect(screen.getByText("Số giấy tờ: ********9012")).toBeTruthy();
+  expect(screen.queryByText("123456789012")).toBeNull();
+});
+
+it("does not silently fall back for a structured 404 from the page API", async () => {
+  const { LoansApiError } = await import("@/features/loans/api/loansApi");
+  vi.mocked(request).mockRejectedValue(
+    new LoansApiError("Missing review", 404, ["REVIEW_NOT_FOUND"]),
+  );
+  render(<ProfileChangesPage />);
+  expect(await screen.findByRole("alert")).toBeTruthy();
+  expect(vi.mocked(request).mock.calls).toHaveLength(1);
+  expect(screen.queryByText("Tên mới")).toBeNull();
+});
+
+it("shows a compatibility warning when using the legacy route", async () => {
+  const { LoansApiError } = await import("@/features/loans/api/loansApi");
+  vi.mocked(request).mockImplementation(async (path: string) => {
+    if (path.includes("/page?")) throw new LoansApiError("Not Found", 404);
+    return pageData([item]);
+  });
+  render(<ProfileChangesPage />);
+  expect(await screen.findByText("Tên mới")).toBeTruthy();
+  expect(screen.getByText(/Đang kết nối API phiên bản cũ/)).toBeTruthy();
+});
+
+it("does not start duplicate fetches when changing filters", async () => {
+  render(<ProfileChangesPage />);
+  expect(await screen.findByText("Tên mới")).toBeTruthy();
+  const before = vi.mocked(request).mock.calls.length;
+  fireEvent.change(screen.getByLabelText("Trạng thái yêu cầu"), {
+    target: { value: "APPROVED" },
+  });
+  await waitFor(() =>
+    expect(vi.mocked(request).mock.calls.length).toBe(before + 1),
+  );
+});

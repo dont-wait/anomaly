@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
 
 	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 
@@ -14,6 +17,7 @@ import (
 type AccountAggregateRepository struct {
 	client               *mongodrv.Client
 	profileChangeReviews *mongodrv.Collection
+	reviewReady          atomic.Bool
 	accounts             *AccountRepository
 	customers            *CustomerRepository
 	kyc                  *KYCSessionRepository
@@ -220,21 +224,81 @@ func (r *AccountAggregateRepository) FindByCCCDNumber(ctx context.Context, cccd 
 	return r.hydrate(ctx, account, nil)
 }
 
+// FindAll batches only the new review-history enrichment. Avoid adding a
+// separate profile_change_requests query for every hydrated account.
 func (r *AccountAggregateRepository) FindAll(ctx context.Context) ([]*accountdomain.UserAccount, error) {
 	accounts, err := r.accounts.FindAll(ctx)
 	if err != nil {
 		return nil, err
 	}
+	ids := make([]string, 0, len(accounts))
+	byID := make(map[string]*accountdomain.UserAccount, len(accounts))
 	for index, account := range accounts {
-		accounts[index], err = r.hydrate(ctx, account, nil)
+		accounts[index], err = r.hydrateBase(ctx, account, nil)
 		if err != nil {
 			return nil, err
+		}
+		if accounts[index] == nil || accounts[index].Customer == nil {
+			continue
+		}
+		ids = append(ids, account.Id)
+		byID[account.Id] = accounts[index]
+	}
+	// One indexed aggregation per batch, not one lookup for every account.
+	for offset := 0; offset < len(ids); offset += 100 {
+		end := offset + 100
+		if end > len(ids) {
+			end = len(ids)
+		}
+		pipeline := mongodrv.Pipeline{
+			bson.D{{Key: "$match", Value: bson.M{"account_id": bson.M{"$in": ids[offset:end]}}}},
+			bson.D{{Key: "$sort", Value: bson.D{{Key: "account_id", Value: 1}, {Key: "requested_at", Value: -1}, {Key: "_id", Value: 1}}}},
+			bson.D{{Key: "$group", Value: bson.M{"_id": "$account_id", "record": bson.M{"$first": "$$ROOT"}}}},
+			bson.D{{Key: "$replaceRoot", Value: bson.M{"newRoot": "$record"}}},
+		}
+		stream, err := r.profileChangeReviews.Aggregate(ctx, pipeline)
+		if err != nil {
+			return nil, err
+		}
+		var records []profileChangeReviewRecord
+		decodeErr := stream.All(ctx, &records)
+		closeErr := stream.Close(ctx)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		for _, record := range records {
+			if owner := byID[record.AccountID]; owner != nil {
+				change := record.domain().Change
+				owner.Customer.ProfileChange = &change
+			}
 		}
 	}
 	return accounts, nil
 }
 
 func (r *AccountAggregateRepository) hydrate(
+	ctx context.Context,
+	account *accountdomain.UserAccount,
+	err error,
+) (*accountdomain.UserAccount, error) {
+	account, err = r.hydrateBase(ctx, account, err)
+	if err != nil || account == nil || account.Customer == nil {
+		return account, err
+	}
+	change, err := r.currentProfileChange(ctx, account.Id)
+	if err != nil {
+		return nil, err
+	}
+	if change != nil {
+		account.Customer.ProfileChange = change
+	}
+	return account, nil
+}
+
+func (r *AccountAggregateRepository) hydrateBase(
 	ctx context.Context,
 	account *accountdomain.UserAccount,
 	err error,
@@ -249,15 +313,6 @@ func (r *AccountAggregateRepository) hydrate(
 	account.KYCSessions, err = r.kyc.FindByCustomerID(ctx, account.CustomerId)
 	if err != nil {
 		return nil, err
-	}
-	if account.Customer != nil {
-		change, err := r.currentProfileChange(ctx, account.Id)
-		if err != nil {
-			return nil, err
-		}
-		if change != nil {
-			account.Customer.ProfileChange = change
-		}
 	}
 	return account, nil
 }
