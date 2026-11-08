@@ -7,6 +7,7 @@ Backend cho Anomaly, gồm HTTP API, banking projection worker và adapter hạ 
 - `README.md`: quick start và chỉ mục tài liệu
 - [Architecture](../docs/ARCHITECTURE.md): cấu trúc layer, executable, và runtime flow
 - [Transaction API for frontend](docs/transactions-api.md): request/response, OTP, retry, filters và mã lỗi
+- [Admin transaction report v2 contract](docs/admin-transaction-report-contract.md): contract đích cho báo cáo giao dịch/rủi ro (#223); Phase 1 chốt semantics, chưa thay API hiện hành
 - [Anomaly service](../anomaly-service/README.md): publisher GATv2, inference từ bundle local và training records
 - [Features](../docs/FEATURE.md): feature hiện có và phạm vi test
 - [Infrastructure](../docs/INFRA.md): service local, env, port, workflow vận hành

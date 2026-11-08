@@ -5,6 +5,10 @@ The frontend workspace owns the shared toolchain for both applications:
 - `mobile/`: consumer app and Android Tauri shell
 - `desktop/`: admin desktop app and Tauri shell
 
+Admin report implementation target: [transaction & risk report v2 contract](../server/docs/admin-transaction-report-contract.md).
+This Phase 1 contract defines shared server/client semantics for issue #223;
+it does not describe the currently deployed API response.
+
 Install dependencies once from this directory:
 
 ```bash
