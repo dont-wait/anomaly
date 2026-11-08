@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowTrendUp,
@@ -14,20 +14,23 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { DailyReportChart } from "./DailyReportChart";
-import {
-  getTransactionReport,
-  type TransactionReport,
-  type TransactionReportItem,
+import type {
+  TransactionReport,
+  TransactionReportItem,
 } from "./api/transactionsReportApi";
+import { useTransactionReport } from "./useTransactionReport";
+import {
+  filterReportItems,
+  formatReportTimestamp as formatDate,
+  type StatusFilter,
+  type DecisionFilter,
+} from "./reportView";
 
 const surface = "bg-(--admin-surface)";
 const subtle = "bg-(--admin-surface-subtle)";
 const border = "border-(--admin-border)";
 const mono = "font-(family-name:--admin-font-mono)";
 const PAGE_SIZE = 10;
-
-type StatusFilter = "all" | TransactionReportItem["effectiveStatus"];
-type DecisionFilter = "all" | "ALLOW" | "BLOCK" | "unassessed" | "unknown";
 
 const statusLabels: Record<string, string> = {
   pending: "Chờ xử lý",
@@ -51,15 +54,6 @@ function todayInVietnam() {
 
 function money(value?: number | null, currency = "VND") {
   return value == null ? "—" : `${value.toLocaleString("vi-VN")} ${currency}`;
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("vi-VN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Ho_Chi_Minh",
-  }).format(new Date(value));
 }
 
 function statusLabel(value?: string) {
@@ -283,94 +277,38 @@ export function TransactionsRiskPage() {
   const [decision, setDecision] = useState<DecisionFilter>("all");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [report, setReport] = useState<TransactionReport | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const requestRef = useRef<AbortController | null>(null);
-  const currentReport = report?.date === date ? report : null;
+  const {
+    report: currentReport,
+    pending: refreshing,
+    stale,
+    error,
+    refresh: load,
+    canExport,
+  } = useTransactionReport(date);
   const selected = currentReport?.transactions.find(
     (item) => item.transactionId === selectedId,
   );
 
-  const load = useCallback(async () => {
-    requestRef.current?.abort();
-    const controller = new AbortController();
-    requestRef.current = controller;
-    setRefreshing(true);
-    setError(null);
-    try {
-      const dailyReport = await getTransactionReport(date, controller.signal);
-      if (controller.signal.aborted) return;
-      setReport(dailyReport);
-    } catch (cause) {
-      if (controller.signal.aborted) return;
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Không thể tải báo cáo giao dịch.",
-      );
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    }
-  }, [date]);
-
-  useEffect(() => {
-    const initialLoad = window.setTimeout(() => void load(), 0);
-    const timer = window.setInterval(() => void load(), 15000);
-    return () => {
-      requestRef.current?.abort();
-      window.clearTimeout(initialLoad);
-      window.clearInterval(timer);
-    };
-  }, [load]);
-
-  const items = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return (currentReport?.transactions || [])
-      .filter((item) => status === "all" || item.effectiveStatus === status)
-      .filter((item) => {
-        if (decision === "all") return true;
-        if (decision === "unassessed") return !item.selectedAssessment;
-        if (decision === "unknown")
-          return !!item.selectedAssessment && !item.selectedAssessment.decision;
-        return item.selectedAssessment?.decision === decision;
-      })
-      .filter(
-        (item) =>
-          !normalized ||
-          [
-            item.transactionId,
-            item.sourceAccountNo,
-            item.destinationAccountNo,
-            item.sourceAccountName,
-            item.destinationName,
-          ].some((value) => value?.toLowerCase().includes(normalized)),
-      );
-  }, [decision, query, currentReport, status]);
+  const items = useMemo(
+    () =>
+      filterReportItems(
+        currentReport?.transactions ?? [],
+        status,
+        decision,
+        query,
+      ),
+    [currentReport, status, decision, query],
+  );
 
   const summary = currentReport?.summary;
   const previous = currentReport?.previous;
-  const canExport = !!currentReport && !error && !refreshing;
   const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const visibleItems = items.slice(
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   );
-
-  if (loading)
-    return (
-      <section
-        className={`${surface} grid min-h-80 place-items-center rounded-(--admin-radius-md) text-sm text-(--admin-text-muted)`}
-      >
-        Đang tải báo cáo...
-      </section>
-    );
 
   return (
     <div className="grid gap-4" aria-label="Giao dịch và rủi ro">
@@ -451,150 +389,170 @@ export function TransactionsRiskPage() {
         </p>
       )}
 
-      <p className="text-[11px] text-(--admin-text-muted)">
-        Tổng hợp toàn ngày; bộ lọc chỉ áp dụng cho danh sách. Tham chiếu:{" "}
-        {formatDate(currentReport?.asOf)} (giờ Việt Nam).
-        {currentReport?.projection.status === "unknown" &&
-          " Chưa xác định độ trễ projection."}
-        {currentReport?.projection.status === "lagging" &&
-          " Projection đang chậm so với dữ liệu gốc."}
-        {date === todayInVietnam() &&
-          " Ngày chưa kết thúc; so sánh với toàn ngày liền trước."}
-        {error &&
-          currentReport &&
-          " Dữ liệu đang hiển thị là bản tải trước đó."}
-      </p>
-      {!!currentReport?.dataQuality.length && (
-        <p role="alert" className="text-[12px] text-(--admin-warning)">
-          Báo cáo có cảnh báo chất lượng dữ liệu:{" "}
-          {currentReport.dataQuality
-            .map((issue) => `${issue.code} (${issue.count})`)
-            .join(", ")}
-          .
+      {refreshing && (
+        <p role="status" className="text-[12px] text-(--admin-text-muted)">
+          {currentReport ? "Đang cập nhật báo cáo..." : "Đang tải báo cáo..."}
+        </p>
+      )}
+      {!currentReport && !refreshing && (
+        <p role="status" className="text-[12px] text-(--admin-text-muted)">
+          Chưa có báo cáo cho ngày được chọn. Chọn ngày hợp lệ hoặc làm mới để
+          thử lại.
         </p>
       )}
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <MetricCard
-          label="Khởi tạo trong ngày"
-          value={summary?.created.transactionCount ?? "—"}
-          note={`So với ngày liền trước: ${percentChange(summary?.created.transactionCount || 0, previous?.created.transactionCount || 0)}`}
-          icon={faShieldHalved}
-        />
-        <MetricCard
-          label="Doanh số thực hiện"
-          value={money(summary?.completed.totalAmount)}
-          note={`Theo ngày hoàn tất · ${percentChange(summary?.completed.totalAmount || 0, previous?.completed.totalAmount || 0)} so với ngày liền trước`}
-          icon={faMoneyBillTransfer}
-          tone="primary"
-        />
-        <MetricCard
-          label="Phí thực thu"
-          value={money(summary?.completed.totalFee)}
-          note="Phí của giao dịch thành công"
-          icon={faCircleCheck}
-        />
-        <MetricCard
-          label="Giá trị trung bình"
-          value={money(summary?.completed.averageAmount)}
-          note="Trên giao dịch thành công"
-          icon={faArrowTrendUp}
-        />
-        <MetricCard
-          label="Hoàn tất trong ngày"
-          value={summary?.completed.count ?? "—"}
-          note="Theo thời điểm hoàn tất, không phải khởi tạo"
-          icon={faCircleCheck}
-          tone="primary"
-        />
-        <MetricCard
-          label="Thất bại (nhóm khởi tạo)"
-          value={summary?.created.failedCount ?? "—"}
-          note={share(
-            summary?.created.failedCount || 0,
-            summary?.created.transactionCount || 0,
+      {currentReport && (
+        <>
+          <p className="text-[11px] text-(--admin-text-muted)">
+            Tổng hợp toàn ngày; bộ lọc chỉ áp dụng cho danh sách. Tham chiếu:{" "}
+            {formatDate(currentReport?.asOf)} (giờ Việt Nam).
+            {currentReport?.projection.status === "unknown" &&
+              " Chưa xác định độ trễ projection."}
+            {currentReport?.projection.status === "lagging" &&
+              " Projection đang chậm so với dữ liệu gốc."}
+            {date === todayInVietnam() &&
+              " Ngày chưa kết thúc; so sánh với toàn ngày liền trước."}
+            {stale && " Dữ liệu đang hiển thị là bản tải trước đó."}
+          </p>
+          {!!currentReport?.dataQuality.length && (
+            <p role="alert" className="text-[12px] text-(--admin-warning)">
+              Báo cáo có cảnh báo chất lượng dữ liệu:{" "}
+              {currentReport.dataQuality
+                .map(
+                  (issue) =>
+                    `${issue.code} (${issue.count}; ${issue.date ?? "toàn lịch sử"}; ${issue.scope})`,
+                )
+                .join(", ")}
+              .
+            </p>
           )}
-          icon={faCircleXmark}
-          tone="danger"
-        />
-        <MetricCard
-          label="Thực tế bị chặn"
-          value={summary?.risk.actualBlockedCount ?? "—"}
-          note={share(
-            summary?.risk.actualBlockedCount || 0,
-            summary?.created.transactionCount || 0,
-          )}
-          icon={faCircleExclamation}
-          tone="danger"
-        />
-        <MetricCard
-          label="Risk trung bình"
-          value={scoreLabel(summary?.risk.averageScore)}
-          note={`Đã đánh giá ${summary?.risk.assessedCount ?? 0}/${summary?.created.transactionCount ?? 0} giao dịch khởi tạo`}
-          icon={faArrowTrendUp}
-        />
-      </section>
 
-      <DailyReportChart
-        hourly={currentReport?.hourly || { created: [], completed: [] }}
-        date={date}
-        summary={summary}
-      />
-
-      <section className="grid gap-3 lg:grid-cols-2">
-        {[
-          [
-            "Nguồn có nhiều giao dịch BLOCK",
-            currentReport?.topRiskSources || [],
-          ],
-          [
-            "Điểm nhận có nhiều giao dịch BLOCK",
-            currentReport?.topRiskReceivers || [],
-          ],
-        ].map(([title, values]) => (
-          <article
-            key={title as string}
-            className={`${surface} rounded-(--admin-radius-md) border ${border} p-4`}
-          >
-            <h2 className="text-[14px] font-bold text-(--admin-text)">
-              {title as string}
-            </h2>
-            <div className="mt-3 grid gap-2">
-              {(values as TransactionReport["topRiskSources"]).map((item) => (
-                <div
-                  key={item.accountNo}
-                  className="flex items-center justify-between gap-3 rounded-sm bg-(--admin-surface-subtle) px-3 py-2 text-[11px]"
-                >
-                  <div>
-                    <p className={`${mono} font-semibold text-(--admin-text)`}>
-                      {item.accountNo}
-                    </p>
-                    <p className="text-(--admin-text-muted)">
-                      {item.name || "Chưa có tên"}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-(--admin-danger)">
-                      {item.count} giao dịch BLOCK
-                    </p>
-                    <p
-                      className={`${mono} text-[10px] text-(--admin-text-muted)`}
-                    >
-                      {money(item.amount)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {!(values as TransactionReport["topRiskSources"]).length && (
-                <p className="text-[11px] text-(--admin-text-muted)">
-                  Chưa có dữ liệu rủi ro.
-                </p>
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <MetricCard
+              label="Khởi tạo trong ngày"
+              value={summary?.created.transactionCount ?? "—"}
+              note={`So với ngày liền trước (${currentReport.previousDate}): ${percentChange(summary?.created.transactionCount || 0, previous?.created.transactionCount || 0)}`}
+              icon={faShieldHalved}
+            />
+            <MetricCard
+              label="Doanh số thực hiện"
+              value={money(summary?.completed.totalAmount)}
+              note={`Theo ngày hoàn tất · ${percentChange(summary?.completed.totalAmount || 0, previous?.completed.totalAmount || 0)} so với ${currentReport.previousDate}`}
+              icon={faMoneyBillTransfer}
+              tone="primary"
+            />
+            <MetricCard
+              label="Phí thực thu"
+              value={money(summary?.completed.totalFee)}
+              note="Phí của giao dịch thành công"
+              icon={faCircleCheck}
+            />
+            <MetricCard
+              label="Giá trị trung bình"
+              value={money(summary?.completed.averageAmount)}
+              note="Trên giao dịch thành công"
+              icon={faArrowTrendUp}
+            />
+            <MetricCard
+              label="Hoàn tất trong ngày"
+              value={summary?.completed.count ?? "—"}
+              note="Theo thời điểm hoàn tất, không phải khởi tạo"
+              icon={faCircleCheck}
+              tone="primary"
+            />
+            <MetricCard
+              label="Thất bại (nhóm khởi tạo)"
+              value={summary?.created.failedCount ?? "—"}
+              note={share(
+                summary?.created.failedCount || 0,
+                summary?.created.transactionCount || 0,
               )}
-            </div>
-          </article>
-        ))}
-      </section>
+              icon={faCircleXmark}
+              tone="danger"
+            />
+            <MetricCard
+              label="Thực tế bị chặn"
+              value={summary?.risk.actualBlockedCount ?? "—"}
+              note={share(
+                summary?.risk.actualBlockedCount || 0,
+                summary?.created.transactionCount || 0,
+              )}
+              icon={faCircleExclamation}
+              tone="danger"
+            />
+            <MetricCard
+              label="Risk trung bình"
+              value={scoreLabel(summary?.risk.averageScore)}
+              note={`Đã đánh giá ${summary?.risk.assessedCount ?? 0}/${summary?.created.transactionCount ?? 0} giao dịch khởi tạo`}
+              icon={faArrowTrendUp}
+            />
+          </section>
 
+          <DailyReportChart
+            hourly={currentReport?.hourly || { created: [], completed: [] }}
+            date={date}
+            summary={summary}
+          />
+
+          <section className="grid gap-3 lg:grid-cols-2">
+            {[
+              [
+                "Nguồn có nhiều giao dịch BLOCK",
+                currentReport?.topRiskSources || [],
+              ],
+              [
+                "Điểm nhận có nhiều giao dịch BLOCK",
+                currentReport?.topRiskReceivers || [],
+              ],
+            ].map(([title, values]) => (
+              <article
+                key={title as string}
+                className={`${surface} rounded-(--admin-radius-md) border ${border} p-4`}
+              >
+                <h2 className="text-[14px] font-bold text-(--admin-text)">
+                  {title as string}
+                </h2>
+                <div className="mt-3 grid gap-2">
+                  {(values as TransactionReport["topRiskSources"]).map(
+                    (item) => (
+                      <div
+                        key={item.accountNo}
+                        className="flex items-center justify-between gap-3 rounded-sm bg-(--admin-surface-subtle) px-3 py-2 text-[11px]"
+                      >
+                        <div>
+                          <p
+                            className={`${mono} font-semibold text-(--admin-text)`}
+                          >
+                            {item.accountNo}
+                          </p>
+                          <p className="text-(--admin-text-muted)">
+                            {item.name || "Chưa có tên"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-(--admin-danger)">
+                            {item.count} giao dịch BLOCK
+                          </p>
+                          <p
+                            className={`${mono} text-[10px] text-(--admin-text-muted)`}
+                          >
+                            {money(item.amount)}
+                          </p>
+                        </div>
+                      </div>
+                    ),
+                  )}
+                  {!(values as TransactionReport["topRiskSources"]).length && (
+                    <p className="text-[11px] text-(--admin-text-muted)">
+                      Chưa có dữ liệu rủi ro.
+                    </p>
+                  )}
+                </div>
+              </article>
+            ))}
+          </section>
+        </>
+      )}
       <section
         className={`${surface} overflow-hidden rounded-(--admin-radius-md) border ${border}`}
       >
@@ -662,7 +620,10 @@ export function TransactionsRiskPage() {
               <button
                 type="button"
                 className={`${subtle} flex h-8 items-center gap-1.5 rounded-sm border ${border} px-2 text-[11px] font-semibold text-(--admin-text)`}
-                onClick={() => downloadReportCsv(date, currentReport, items)}
+                onClick={() => {
+                  if (canExport && currentReport)
+                    downloadReportCsv(currentReport.date, currentReport, items);
+                }}
                 disabled={!canExport}
               >
                 <FontAwesomeIcon icon={faDownload} /> CSV
@@ -670,7 +631,14 @@ export function TransactionsRiskPage() {
               <button
                 type="button"
                 className={`${subtle} flex h-8 items-center gap-1.5 rounded-sm border ${border} px-2 text-[11px] font-semibold text-(--admin-text)`}
-                onClick={() => downloadReportExcel(date, currentReport, items)}
+                onClick={() => {
+                  if (canExport && currentReport)
+                    downloadReportExcel(
+                      currentReport.date,
+                      currentReport,
+                      items,
+                    );
+                }}
                 disabled={!canExport}
               >
                 <FontAwesomeIcon icon={faDownload} /> Excel
@@ -742,7 +710,7 @@ export function TransactionsRiskPage() {
             </tbody>
           </table>
         </div>
-        {!items.length && (
+        {currentReport && !items.length && (
           <div className="p-10 text-center">
             <FontAwesomeIcon
               icon={faShieldHalved}
@@ -898,6 +866,28 @@ export function TransactionsRiskPage() {
                     <dt className="text-(--admin-text-muted)">Khởi tạo</dt>
                     <dd className="text-right">
                       {formatDate(selected.createdAt)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-(--admin-text-muted)">Hoàn tất</dt>
+                    <dd>
+                      {formatDate(selected.completedAt)}
+                      {selected.completionTimeSource === "posted_at" &&
+                        " (mốc ghi sổ lịch sử)"}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-(--admin-text-muted)">Đánh giá lúc</dt>
+                    <dd>
+                      {formatDate(selected.selectedAssessment?.evaluatedAt)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-(--admin-text-muted)">
+                      Nhận assessment
+                    </dt>
+                    <dd>
+                      {formatDate(selected.selectedAssessment?.receivedAt)}
                     </dd>
                   </div>
                 </dl>

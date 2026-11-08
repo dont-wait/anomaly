@@ -1,8 +1,6 @@
 import { API_BASE_URL } from "@/features/auth/api/adminSession";
-import {
-  authHeaders,
-  fetchWithTimeout,
-} from "@/features/monitor/api/monitorApi";
+import { authHeaders } from "@/features/monitor/api/monitorApi";
+import { isReportDate, parseTransactionReport } from "./reportValidation";
 
 export interface TransactionStatusCounts {
   successCount: number;
@@ -117,25 +115,49 @@ export async function getTransactionReport(
   date: string,
   signal?: AbortSignal,
 ): Promise<TransactionReport> {
-  const response = await fetchWithTimeout(
-    `${API_BASE_URL}/api/admin/reports/transactions?date=${encodeURIComponent(date)}`,
-    { headers: authHeaders(), signal },
-  );
-  if (!response.ok)
-    throw new Error("Không thể tải báo cáo doanh số giao dịch.");
-  const body = (await response.json()) as { data?: TransactionReport };
-  if (
-    !body.data ||
-    body.data.reportVersion !== 2 ||
-    body.data.date !== date ||
-    !body.data.summary?.created ||
-    !body.data.summary?.completed ||
-    !body.data.summary?.risk ||
-    !Array.isArray(body.data.transactions) ||
-    !Array.isArray(body.data.hourly?.created) ||
-    !Array.isArray(body.data.hourly?.completed)
-  ) {
-    throw new Error("Dữ liệu báo cáo không đúng cấu trúc hoặc ngày được chọn.");
+  if (!isReportDate(date))
+    throw new Error("Chọn ngày báo cáo hợp lệ (YYYY-MM-DD).");
+  // Keep cancellation and the deadline active until JSON has been consumed,
+  // not only until headers arrive. Leave the shared monitor transport unchanged.
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  let timedOut = false;
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 12000);
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/reports/transactions?date=${encodeURIComponent(date)}`,
+      { headers: authHeaders(), signal: controller.signal },
+    );
+    if (!response.ok)
+      throw new Error("Không thể tải báo cáo doanh số giao dịch.");
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch (cause) {
+      if (controller.signal.aborted) throw cause;
+      // Preserve the cause while keeping compatibility with the ES2020 target.
+      throw Object.assign(
+        new Error("Dữ liệu báo cáo không đúng cấu trúc hoặc ngày được chọn."),
+        { cause },
+      );
+    }
+    if (controller.signal.aborted)
+      throw new DOMException("Request aborted", "AbortError");
+    return parseTransactionReport(body, date);
+  } catch (cause) {
+    if (timedOut)
+      throw Object.assign(
+        new Error("Tải báo cáo quá thời gian chờ. Vui lòng thử lại."),
+        { cause },
+      );
+    throw cause;
+  } finally {
+    window.clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
   }
-  return body.data;
 }

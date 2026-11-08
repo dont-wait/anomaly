@@ -390,3 +390,38 @@ response. Query completion có kiểm tra lỗi ngày trên lịch sử success 
 giấu record không thể quy về ngày; không giữ toàn bộ lịch sử đó trong RAM.
 Chi phí kiểm tra lịch sử và phân trang/aggregation cần được đo khi tối ưu hiệu
 năng, không được bỏ kiểm tra âm thầm để response nhanh hơn.
+
+### Kiểm chứng client Phase 3
+
+Client đọc duy nhất report API. Trước khi render/export, kiểm tra cấu trúc đầy đủ,
+ngày được chọn, timestamp UTC, số tiền nguyên an toàn, score hữu hạn và metadata
+assessment đúng nguồn đã chọn. Không tự tính lại thống kê từ các dòng đã lọc.
+
+Vòng đời request quản lý riêng trong `useTransactionReport`: đổi ngày/unmount
+hủy request cũ; response hoặc lỗi đến muộn không ghi đè request mới. Polling mỗi
+15 giây bỏ qua lượt khi request trước chưa xong, không liên tục hủy request chậm.
+Riêng report API giữ timeout 12 giây và signal hủy đến khi đọc xong JSON, không
+chỉ đến lúc nhận headers; cleanup deadline/listener sau mỗi request.
+Lỗi refresh giữ bản cùng ngày và asOf cũ, đánh dấu stale cho tới khi tải thành
+công, kể cả trong lúc retry. Export bị khóa khi loading, stale, lỗi hoặc chưa có
+báo cáo khớp ngày. Loading/lỗi không hiển thị số liệu giả bằng 0; bộ chọn ngày
+vẫn dùng được trong lúc tải.
+
+Filter phân biệt thiếu assessment với decision chưa xác định; hỗ trợ đầy đủ sáu
+trạng thái hiệu lực. Tìm kiếm ID/tài khoản/tên không phân biệt hoa thường và dấu
+tiếng Việt, cùng một tập dòng dùng cho bảng và export. Drawer giữ riêng các mốc
+khởi tạo, hoàn tất, chấm điểm và nhận assessment theo giờ Việt Nam; không mượn
+timestamp/threshold của latestAssessment cho appliedRisk.
+
+Từ thư mục `client/`:
+
+```bash
+./node_modules/.bin/vitest run --config vitest.config.ts --mode desktop desktop/src/features/reports
+./node_modules/.bin/tsc -p desktop/tsconfig.json --pretty false
+./node_modules/.bin/eslint desktop/src/features/reports
+```
+
+Test bao phủ malformed response, score 0/null, nguồn assessment, >50 giao dịch,
+phân trang, filter, qua nửa đêm, request trả ngược thứ tự, lỗi refresh/retry,
+polling request chậm và cleanup trong StrictMode. Phase 3 không thay định dạng
+file export; xuất `.xlsx` thực, an toàn spreadsheet và kiểm thử file thuộc Phase 5.
