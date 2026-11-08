@@ -5,9 +5,10 @@ The frontend workspace owns the shared toolchain for both applications:
 - `mobile/`: consumer app and Android Tauri shell
 - `desktop/`: admin desktop app and Tauri shell
 
-Admin report implementation target: [transaction & risk report v2 contract](../server/docs/admin-transaction-report-contract.md).
-This Phase 1 contract defines shared server/client semantics for issue #223;
-it does not describe the currently deployed API response.
+Admin reports use the shared [transaction & risk report contract](../server/docs/admin-transaction-report-contract.md)
+for issue #223. Server and desktop client use one response shape without a
+version query parameter. Deploy the new server and client together; the legacy
+report response is no longer supported.
 
 Install dependencies once from this directory:
 

@@ -357,6 +357,17 @@ func structSchema(t reflect.Type) map[string]any {
 		if field.PkgPath != "" {
 			continue
 		}
+		// encoding/json flattens exported embedded structs with no named tag.
+		if field.Anonymous && field.Tag.Get("json") == "" && field.Type.Kind() == reflect.Struct {
+			embedded := structSchema(field.Type)
+			for name, property := range embedded["properties"].(map[string]any) {
+				properties[name] = property
+			}
+			if fields, ok := embedded["required"].([]string); ok {
+				required = append(required, fields...)
+			}
+			continue
+		}
 		name, options := jsonFieldName(field)
 		if name == "-" {
 			continue

@@ -1,10 +1,12 @@
-# Contract báo cáo giao dịch & rủi ro — version 2
+# Contract báo cáo giao dịch & rủi ro
 
 Issue: [#223](https://github.com/dont-wait/anomaly/issues/223).
 
-**Trạng thái:** đã chốt thiết kế trong Phase 1, là chuẩn nghiệm thu cho Phase 2–6.
-Đây là contract đích, **chưa phải response đang được triển khai**. Phase 1 chỉ
-thay đổi tài liệu; không thay đổi API, dữ liệu, policy risk hay giao diện.
+**Trạng thái:** Phase 1 đã chốt thiết kế; server và client dùng duy nhất contract
+mới, thay thế hoàn toàn cách tính/response cũ theo yêu cầu triển khai. Không có
+query chọn version, không giữ nhánh v1. Đây là chuẩn nghiệm thu cho Phase 2–6,
+không phải khẳng định phiên bản đã được deploy hoặc mọi hạng mục UI/export đã
+hoàn tất. Policy risk không thay đổi.
 
 Phạm vi: admin desktop, tab **BÁO CÁO → Giao dịch & Rủi ro**, giao dịch
 `type=transfer` nội bộ, đơn vị VND. Không gộp giải ngân, trả nợ, tiết kiệm hoặc
@@ -215,16 +217,17 @@ Sắp theo count giảm dần, amount giảm dần, accountNo tăng dần; lấy
 accountNo không được nhóm thành một tài khoản giả; trả cảnh báo chất lượng dữ
 liệu. WARNING không nằm trong top này, và handled không làm mất dữ liệu lịch sử.
 
-## 6. Contract response đích và tương thích
+## 6. Contract response duy nhất
 
 Endpoint vẫn là `GET /api/admin/reports/transactions`, auth admin hiện hành.
-Phase 2 thêm query `version=2`, trả envelope thành công `{status,message,data}`.
-`version` không được hỗ trợ trả 400. Tạm giữ request không có version hoặc
-`version=1` với semantics/shape cũ để client hiện hành không âm thầm đọc sai.
-Phase 3 chuyển client sang v2; xóa v1 chỉ trong thay đổi deprecation riêng.
+Server trả envelope thành công `{status,message,data}` theo contract mới cho
+mọi request hợp lệ; client chỉ gửi `date`. Không chọn version bằng query. Bỏ
+implementation cũ và các field summary phẳng. Đây là thay đổi không tương thích:
+deploy server và client mới cùng đợt; client cũ phải cập nhật, không có fallback
+về cách tính cũ.
 
-Các nhóm field v2 sau là bắt buộc khi triển khai; không đổi nghĩa ngầm các field
-summary phẳng của v1:
+Các nhóm field sau là bắt buộc. `reportVersion=2` chỉ nhận diện cấu trúc response
+để client phát hiện payload không phù hợp; không phải tham số lựa chọn API:
 
 | Đường dẫn trong data | Nội dung |
 |---|---|
@@ -253,7 +256,14 @@ trông như đầy đủ mà giấu các record bị loại. Không thay dữ li
 UI/export phải đánh dấu có cảnh báo, không coi response có cảnh báo là báo cáo
 đã đối soát sạch. Lỗi truy vấn/hạ tầng trả non-2xx, không đổi thành report rỗng.
 
-V2 không đổi contract `/api/admin/monitor` hoặc history/summary dành cho consumer.
+Mỗi dataQuality item có thêm `date` (YYYY-MM-DD hoặc null cho scope global), để
+phân biệt lỗi ngày D và D-1. Khi amount/fee/currency không hợp lệ, giữ dòng khởi
+tạo với amount/fee=null và cảnh báo; không cộng vào completed totals. Tổng tiền
+vượt giới hạn số nguyên an toàn của client trả lỗi non-2xx, không trả tổng đã
+làm tròn. Count top risk vẫn giữ bằng chứng BLOCK nhưng amount loại phần tiền
+không hợp lệ, có cảnh báo INVALID_MONEY tương ứng.
+
+Báo cáo mới không đổi contract `/api/admin/monitor` hoặc history/summary dành cho consumer.
 Admin report không lấy quy tắc gộp cancelled thành failed từ consumer history.
 Phân trang server tương lai phải giữ summary toàn tập và export đầy đủ phạm vi,
 không được coi một trang là toàn ngày.
@@ -351,3 +361,32 @@ risk.actualBlockedCount <= created.failedCount
 
 Các invariant này áp dụng cùng snapshot, cùng currency và cùng phạm vi dữ liệu.
 Phase 2–6 chỉ hoàn tất khi có test chứng minh, không chỉ khi UI trông hợp lý.
+
+### Kiểm chứng server Phase 2
+
+Từ thư mục `server/`:
+
+```bash
+go test ./...
+go test -race ./internal/application/reporting ./internal/presentation/http/handler/admin ./internal/presentation/http/openapi
+go test -tags=e2e ./internal/infrastructure/mongo -run '^TestTransactionReportMongoE2E$' -count=1 -v
+```
+
+E2E chạy MongoDB replica set riêng bằng Testcontainers (cần Docker), không dùng
+database ứng dụng. Bao phủ hai cohort, 501 giao dịch qua hai batch
+assessment, finalized/handled, score 0, timestamp fallback/global quality và
+writer thay đổi dữ liệu giữa các query để chứng minh snapshot nhất quán.
+
+Ví dụ gọi API sau khi deploy server mới:
+
+```http
+GET /api/admin/reports/transactions?date=2026-11-08
+Authorization: Bearer <admin-access-token>
+```
+
+Phase 2 trả projection.status=unknown cùng checkpoint đọc được (hoặc null), vì
+chưa đo canonical head trong request. Không suy ra độ trễ bằng thời gian tạo
+response. Query completion có kiểm tra lỗi ngày trên lịch sử success để không
+giấu record không thể quy về ngày; không giữ toàn bộ lịch sử đó trong RAM.
+Chi phí kiểm tra lịch sử và phân trang/aggregation cần được đo khi tối ưu hiệu
+năng, không được bỏ kiểm tra âm thầm để response nhanh hơn.

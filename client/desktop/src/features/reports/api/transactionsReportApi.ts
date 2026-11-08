@@ -4,14 +4,33 @@ import {
   fetchWithTimeout,
 } from "@/features/monitor/api/monitorApi";
 
-export interface TransactionReportSummary {
-  transactionCount: number;
-  totalAmount: number;
-  totalFee: number;
-  averageAmount: number;
+export interface TransactionStatusCounts {
   successCount: number;
   failedCount: number;
-  blockedCount: number;
+  cancelledCount: number;
+  expiredCount: number;
+  pendingCount: number;
+  unknownCount: number;
+}
+
+export interface TransactionReportSummary {
+  created: TransactionStatusCounts & { transactionCount: number };
+  completed: {
+    count: number;
+    totalAmount: number;
+    totalFee: number;
+    averageAmount: number | null;
+  };
+  risk: {
+    assessedCount: number;
+    unassessedCount: number;
+    averageScore: number | null;
+    coverage: number | null;
+    allowCount: number;
+    modelBlockCount: number;
+    unknownDecisionCount: number;
+    actualBlockedCount: number;
+  };
 }
 
 export interface TransactionRiskAccount {
@@ -22,39 +41,76 @@ export interface TransactionRiskAccount {
 }
 
 export interface TransactionReportHourly {
-  hour: string;
-  count: number;
-  amount: number;
-  success: number;
-  successAmount: number;
-  failed: number;
-  failedAmount: number;
-  pending: number;
-  pendingAmount: number;
+  created: (TransactionStatusCounts & { hour: string; count: number })[];
+  completed: {
+    hour: string;
+    count: number;
+    totalAmount: number;
+    totalFee: number;
+  }[];
+}
+
+export interface ReportAssessment {
+  assessmentId: string | null;
+  decision: "ALLOW" | "BLOCK" | null;
+  riskScore: number;
+  threshold: number | null;
+  modelVersion: string;
+  featureVersion: string | null;
+  evaluatedAt: string;
+  receivedAt: string | null;
 }
 
 export interface TransactionReportItem {
   transactionId: string;
   sourceAccountNo: string;
+  sourceAccountName: string;
   destinationAccountNo: string;
-  amount: number;
-  fee: number;
+  destinationName: string;
+  amount: number | null;
+  fee: number | null;
   currency: string;
-  status: string;
-  decision?: string;
-  riskScore?: number;
+  canonicalStatus: string;
+  effectiveStatus:
+    "success" | "failed" | "cancelled" | "expired" | "pending" | "unknown";
+  statusAt: string | null;
+  failureReason: string | null;
   createdAt: string;
+  completedAt: string | null;
+  completionTimeSource: string | null;
+  otpExpiresAt: string | null;
+  appliedRisk: ReportAssessment | null;
+  latestAssessment: ReportAssessment | null;
+  selectedAssessment: ReportAssessment | null;
+  assessmentSource: "applied" | "observed" | "none";
 }
 
 export interface TransactionReport {
+  reportVersion: 2;
   date: string;
   previousDate: string;
+  timezone: string;
+  currency: string;
+  from: string;
+  to: string;
+  asOf: string;
+  generatedAt: string;
+  projection: {
+    status: "caught_up" | "lagging" | "unknown";
+    checkpointRevision: string | null;
+  };
   summary: TransactionReportSummary;
   previous: TransactionReportSummary;
-  hourly: TransactionReportHourly[];
+  hourly: TransactionReportHourly;
   transactions: TransactionReportItem[];
   topRiskSources: TransactionRiskAccount[];
   topRiskReceivers: TransactionRiskAccount[];
+  dataQuality: {
+    code: string;
+    scope: string;
+    date: string | null;
+    count: number;
+  }[];
 }
 
 export async function getTransactionReport(
@@ -67,8 +123,19 @@ export async function getTransactionReport(
   );
   if (!response.ok)
     throw new Error("Không thể tải báo cáo doanh số giao dịch.");
-  const body = (await response.json()) as
-    { data?: TransactionReport } | TransactionReport;
-  if ("data" in body && body.data) return body.data;
-  return body as TransactionReport;
+  const body = (await response.json()) as { data?: TransactionReport };
+  if (
+    !body.data ||
+    body.data.reportVersion !== 2 ||
+    body.data.date !== date ||
+    !body.data.summary?.created ||
+    !body.data.summary?.completed ||
+    !body.data.summary?.risk ||
+    !Array.isArray(body.data.transactions) ||
+    !Array.isArray(body.data.hourly?.created) ||
+    !Array.isArray(body.data.hourly?.completed)
+  ) {
+    throw new Error("Dữ liệu báo cáo không đúng cấu trúc hoặc ngày được chọn.");
+  }
+  return body.data;
 }

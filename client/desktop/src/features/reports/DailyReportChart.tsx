@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Bar, Doughnut } from "react-chartjs-2";
 import {
   ArcElement,
@@ -25,6 +25,15 @@ ChartJS.register(
 
 type ChartMode = "count" | "amount";
 
+const statuses = [
+  { key: "successCount", label: "Hoàn tất", color: "#75d9a4" },
+  { key: "failedCount", label: "Thất bại", color: "#ff8f86" },
+  { key: "cancelledCount", label: "Đã huỷ", color: "#b599e8" },
+  { key: "expiredCount", label: "Hết hạn OTP", color: "#eda668" },
+  { key: "pendingCount", label: "Đang xử lý", color: "#f6d58a" },
+  { key: "unknownCount", label: "Chưa xác định", color: "#8d90a0" },
+] as const;
+
 function money(value: number) {
   return `${value.toLocaleString("vi-VN")} VND`;
 }
@@ -34,60 +43,41 @@ export function DailyReportChart({
   date,
   summary,
 }: {
-  hourly: TransactionReportHourly[];
+  hourly: TransactionReportHourly;
   date: string;
   summary?: TransactionReportSummary;
 }) {
   const [mode, setMode] = useState<ChartMode>("count");
-  const labels = hourly.map((point) => point.hour);
-  const barData = useMemo(
-    () => ({
-      labels,
-      datasets: [
-        {
-          label: "Hoàn tất",
-          data: hourly.map((point) =>
-            mode === "count" ? point.success : point.successAmount,
-          ),
-          backgroundColor: "#75d9a4",
-          borderRadius: 3,
-          stack: "status",
-        },
-        {
-          label: "Thất bại",
-          data: hourly.map((point) =>
-            mode === "count" ? point.failed : point.failedAmount,
-          ),
-          backgroundColor: "#ff8f86",
-          borderRadius: 3,
-          stack: "status",
-        },
-        {
-          label: "Đang xử lý",
-          data: hourly.map((point) =>
-            mode === "count" ? point.pending : point.pendingAmount,
-          ),
-          backgroundColor: "#f6d58a",
-          borderRadius: 3,
-          stack: "status",
-        },
-      ],
-    }),
-    [hourly, labels, mode],
+  const labels = (mode === "count" ? hourly.created : hourly.completed).map(
+    (point) => point.hour,
   );
+  const barData = {
+    labels,
+    datasets:
+      mode === "count"
+        ? statuses.map(({ key, label, color }) => ({
+            label,
+            data: hourly.created.map((point) => point[key]),
+            backgroundColor: color,
+            borderRadius: 3,
+            stack: "status",
+          }))
+        : [
+            {
+              label: "Doanh số theo giờ hoàn tất",
+              data: hourly.completed.map((point) => point.totalAmount),
+              backgroundColor: "#75d9a4",
+              borderRadius: 3,
+              stack: "status",
+            },
+          ],
+  };
   const pieData = {
-    labels: ["Hoàn tất", "Thất bại khác", "Bị chặn"],
+    labels: statuses.map((status) => status.label),
     datasets: [
       {
-        data: [
-          summary?.successCount || 0,
-          Math.max(
-            0,
-            (summary?.failedCount || 0) - (summary?.blockedCount || 0),
-          ),
-          summary?.blockedCount || 0,
-        ],
-        backgroundColor: ["#75d9a4", "#ff8f86", "#f6d58a"],
+        data: statuses.map(({ key }) => summary?.created[key] ?? 0),
+        backgroundColor: statuses.map((status) => status.color),
         borderColor: "#202125",
         borderWidth: 3,
         hoverOffset: 5,
@@ -155,7 +145,10 @@ export function DailyReportChart({
             Tổng quan trong ngày
           </h2>
           <p className="text-[11px] text-(--admin-text-muted)">
-            Phân bổ theo giờ · {date}
+            {mode === "count"
+              ? "Theo giờ khởi tạo"
+              : "Doanh số theo giờ hoàn tất"}{" "}
+            · {date}
           </p>
         </div>
         <div
@@ -178,7 +171,11 @@ export function DailyReportChart({
       </div>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(220px,0.8fr)]">
         <div className="h-70 min-w-0">
-          {hourly.length ? (
+          {(
+            mode === "count"
+              ? summary?.created.transactionCount
+              : summary?.completed.count
+          ) ? (
             <Bar data={barData} options={barOptions} />
           ) : (
             <div className="grid h-full place-items-center text-[12px] text-(--admin-text-muted)">
@@ -187,7 +184,16 @@ export function DailyReportChart({
           )}
         </div>
         <div className="h-70 min-w-0">
-          <Doughnut data={pieData} options={pieOptions} />
+          <p className="text-[11px] text-(--admin-text-muted)">
+            Trạng thái nhóm khởi tạo
+          </p>
+          {summary?.created.transactionCount ? (
+            <Doughnut data={pieData} options={pieOptions} />
+          ) : (
+            <p className="mt-4 text-[12px] text-(--admin-text-muted)">
+              Không có giao dịch khởi tạo trong ngày.
+            </p>
+          )}
         </div>
       </div>
     </section>

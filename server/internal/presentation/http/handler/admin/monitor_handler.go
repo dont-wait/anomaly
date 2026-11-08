@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dont-wait/anomaly/internal/application/account/queries"
+	"github.com/dont-wait/anomaly/internal/application/reporting"
 	"github.com/dont-wait/anomaly/internal/application/riskstream"
 	"github.com/dont-wait/anomaly/internal/domain/audit"
 	"github.com/dont-wait/anomaly/internal/domain/riskassessment"
@@ -26,6 +27,7 @@ import (
 
 type MonitorHandler struct {
 	repository   *mongorepo.RiskAssessmentRepository
+	reports      reporting.Reader
 	hub          *riskstream.Hub
 	transactions transactionContextLookup
 	currentAdmin func(context.Context, string) bool
@@ -46,7 +48,7 @@ func NewMonitorHandler(repository *mongorepo.RiskAssessmentRepository, hub *risk
 	if len(currentAdmin) > 0 {
 		checker = currentAdmin[0]
 	}
-	return &MonitorHandler{repository: repository, hub: hub, transactions: transactions, currentAdmin: checker}
+	return &MonitorHandler{repository: repository, reports: repository, hub: hub, transactions: transactions, currentAdmin: checker}
 }
 
 type cursor struct {
@@ -134,27 +136,6 @@ type unhandledAlertCountResponse struct {
 	Count int64 `json:"count"`
 }
 
-type transactionReportSummaryDTO struct {
-	TransactionCount int64   `json:"transactionCount"`
-	TotalAmount      int64   `json:"totalAmount"`
-	TotalFee         int64   `json:"totalFee"`
-	AverageAmount    float64 `json:"averageAmount"`
-	SuccessCount     int64   `json:"successCount"`
-	FailedCount      int64   `json:"failedCount"`
-	BlockedCount     int64   `json:"blockedCount"`
-}
-
-type transactionReportDTO struct {
-	Date             string                              `json:"date"`
-	PreviousDate     string                              `json:"previousDate"`
-	Summary          transactionReportSummaryDTO         `json:"summary"`
-	Previous         transactionReportSummaryDTO         `json:"previous"`
-	Hourly           []mongorepo.TransactionReportHourly `json:"hourly"`
-	Transactions     []mongorepo.TransactionReportItem   `json:"transactions"`
-	TopRiskSources   []mongorepo.TransactionRiskAccount  `json:"topRiskSources"`
-	TopRiskReceivers []mongorepo.TransactionRiskAccount  `json:"topRiskReceivers"`
-}
-
 func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc queries.TokenService, currentAdmin func(http.Handler) http.Handler, timelines ...*TimelineHandler) {
 	admin := func(pattern string, fn http.HandlerFunc, operation openapi.Operation) {
 		operation.Auth = true
@@ -172,8 +153,12 @@ func RegisterRoutes(router *openapi.Registry, handler *MonitorHandler, tokenSvc 
 	})
 	admin("GET /api/admin/reports/transactions", handler.TransactionReport, openapi.Operation{
 		ID: "adminTransactionReport", Summary: "Get daily transaction and risk report",
-		Parameters: []openapi.Parameter{{Name: "date", In: "query", Type: "string", Format: "date", Required: true, Example: "2026-11-04"}},
-		Response:   transactionReportDTO{}, FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
+		Description: "Reports created and completed transaction cohorts separately. See server/docs/admin-transaction-report-contract.md.",
+		Parameters: []openapi.Parameter{
+			{Name: "date", In: "query", Type: "string", Format: "date", Required: true, Example: "2026-11-04"},
+		},
+		Response:        httpx.SuccessResponse[reporting.Report]{},
+		FailureStatuses: []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError},
 	})
 	admin("GET /api/admin/risk-assessments/transactions/{transactionId}", handler.TransactionAssessment, openapi.Operation{
 		ID: "adminTransactionRiskAssessment", Summary: "Get latest risk assessment for a transaction",
@@ -258,42 +243,6 @@ func (h *MonitorHandler) UnhandledAlertCount(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	httpx.WriteSuccess(w, http.StatusOK, "Unhandled alert count loaded", unhandledAlertCountResponse{Count: count})
-}
-
-func (h *MonitorHandler) TransactionReport(w http.ResponseWriter, r *http.Request) {
-	queryCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	from, to, date, err := monitorWindow(r.URL.Query().Get("date"), "", time.Now().UTC())
-	if err != nil {
-		httpx.WriteError(w, zerolog.Nop(), err, func(error) int { return http.StatusBadRequest })
-		return
-	}
-	previousFrom := from.AddDate(0, 0, -1)
-	report, err := h.repository.TransactionReport(queryCtx, from, to, previousFrom, from)
-	if err != nil {
-		httpx.WriteError(w, zerolog.Nop(), err, func(error) int { return http.StatusInternalServerError })
-		return
-	}
-	toSummary := func(value mongorepo.TransactionReportSummary) transactionReportSummaryDTO {
-		return transactionReportSummaryDTO{
-			TransactionCount: value.TransactionCount,
-			TotalAmount:      value.TotalAmount,
-			TotalFee:         value.TotalFee,
-			AverageAmount:    value.AverageAmount,
-			SuccessCount:     value.SuccessCount,
-			FailedCount:      value.FailedCount,
-			BlockedCount:     value.BlockedCount,
-		}
-	}
-	response := transactionReportDTO{
-		Date: date, PreviousDate: previousFrom.In(timeutil.VietnamLocation).Format("2006-01-02"),
-		Summary: toSummary(report.Summary), Previous: toSummary(report.Previous),
-		Hourly:         report.Hourly,
-		Transactions:   report.Transactions,
-		TopRiskSources: report.TopRiskSources, TopRiskReceivers: report.TopRiskReceivers,
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	httpx.WriteSuccess(w, http.StatusOK, "Transaction report loaded", response)
 }
 
 func (h *MonitorHandler) TransactionAssessment(w http.ResponseWriter, r *http.Request) {
