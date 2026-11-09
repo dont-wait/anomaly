@@ -58,6 +58,17 @@ rust {
     rootDirRel = "../../../"
 }
 
+// Jackson 2.15+ references java.lang.BootstrapMethodError (API 26+), which crashes
+// Tauri's PluginManager on Android 7.x (API 24-25). Keep 2.14.x while minSdk < 26.
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group.startsWith("com.fasterxml.jackson")) {
+            useVersion("2.14.3")
+            because("2.15+ needs BootstrapMethodError (API 26) at class init")
+        }
+    }
+}
+
 dependencies {
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.appcompat:appcompat:1.7.1")

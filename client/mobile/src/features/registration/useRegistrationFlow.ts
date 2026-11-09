@@ -100,11 +100,12 @@ export function useRegistrationFlow() {
   const kycAttemptKey = useRef(crypto.randomUUID());
   const registrationKey = useRef("");
   const step =
-    screen === "processing" || screen === "error"
+    screen === "processing" ||
+    screen === "error" ||
+    screen === "success" ||
+    screen === "pending"
       ? stages.indexOf("face")
-      : screen === "success"
-        ? stages.indexOf("face")
-        : stages.indexOf(screen);
+      : stages.indexOf(screen);
   useEffect(() => () => operation.current?.abort(), []);
   useEffect(() => {
     if (resume.expired) {
@@ -314,6 +315,19 @@ export function useRegistrationFlow() {
         kycExpiresAt.current = 0;
         setDocuments({ front: null, back: null });
         setScreen("success");
+      } else if (result.decision === "PENDING_REVIEW") {
+        if (result.user!.id !== createdAccount.id)
+          throw new Error("Tài khoản xác thực không khớp hồ sơ vừa tạo.");
+        kycAttemptKey.current = crypto.randomUUID();
+        pendingCapture.current = null;
+        setHasPendingCapture(false);
+        setPassword("");
+        setConfirm("");
+        clearKycResumeSession();
+        kycToken.current = "";
+        kycExpiresAt.current = 0;
+        setDocuments({ front: null, back: null });
+        setScreen("pending");
       } else if (result.decision === "SYSTEM_ERROR") {
         toast.error(
           result.reasonMessage ||

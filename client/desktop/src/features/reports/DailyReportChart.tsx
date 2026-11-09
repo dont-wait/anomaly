@@ -12,7 +12,14 @@ import {
 import type { TransactionReportHourly, TransactionReportSummary } from "./api/transactionsReportApi";
 import { useAdminTheme } from "@/theme/theme";
 
-ChartJS.register(ArcElement, BarElement, CategoryScale, Legend, LinearScale, Tooltip);
+ChartJS.register(
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  Legend,
+  LinearScale,
+  Tooltip,
+);
 
 type ChartMode = "count" | "amount";
 
@@ -20,7 +27,15 @@ function money(value: number) {
   return `${value.toLocaleString("vi-VN")} VND`;
 }
 
-export function DailyReportChart({ hourly, date, summary }: { hourly: TransactionReportHourly[]; date: string; summary?: TransactionReportSummary }) {
+export function DailyReportChart({
+  hourly,
+  date,
+  summary,
+}: {
+  hourly: TransactionReportHourly[];
+  date: string;
+  summary?: TransactionReportSummary;
+}) {
   const [mode, setMode] = useState<ChartMode>("count");
   const { theme } = useAdminTheme();
   const chartColors = useMemo(() => theme === "dark" ? { success: "#75d9a4", failure: "#ff8f86", pending: "#f6d58a", border: "#202125", muted: "#8d90a0", grid: "#272b33" } : { success: "#047857", failure: "#b91c1c", pending: "#b45309", border: "#d6dee9", muted: "#64748b", grid: "#d6dee9" }, [theme]);
@@ -46,8 +61,52 @@ export function DailyReportChart({ hourly, date, summary }: { hourly: Transactio
   };
   const pieOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right" as const, labels: { color: chartColors.muted, boxWidth: 10, font: { size: 10 } } } } };
 
-  return <section className="bg-(--admin-surface-subtle) rounded-(--admin-radius-md) p-4" data-testid="daily-report-chart">
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-[16px] font-semibold text-(--admin-text)">Tổng quan trong ngày</h2><p className="text-[11px] text-(--admin-text-muted)">Phân bổ theo giờ · {date}</p></div><div className="bg-(--admin-surface) flex rounded-sm p-0.5" role="group" aria-label="Chỉ số biểu đồ">{(["count", "amount"] as const).map((value) => <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)} className={`rounded-sm px-2.5 py-1 text-[10px] font-semibold ${mode === value ? "bg-(--admin-primary) text-white" : "text-(--admin-text-muted) hover:text-(--admin-text)"}`}>{value === "count" ? "Số lượng" : "Doanh số"}</button>)}</div></div>
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(220px,0.8fr)]"><div className="h-70 min-w-0">{hourly.length ? <Bar data={barData} options={barOptions} /> : <div className="grid h-full place-items-center text-[12px] text-(--admin-text-muted)">Chưa có giao dịch trong ngày.</div>}</div><div className="h-70 min-w-0"><Doughnut data={pieData} options={pieOptions} /></div></div>
-  </section>;
+  return (
+    <section
+      className="bg-(--admin-surface-subtle) rounded-(--admin-radius-md) p-4"
+      data-testid="daily-report-chart"
+    >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-[16px] font-semibold text-(--admin-text)">
+            Tổng quan trong ngày
+          </h2>
+          <p className="text-[11px] text-(--admin-text-muted)">
+            Phân bổ theo giờ · {date}
+          </p>
+        </div>
+        <div
+          className="bg-(--admin-surface) flex rounded-sm p-0.5"
+          role="group"
+          aria-label="Chỉ số biểu đồ"
+        >
+          {(["count", "amount"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={mode === value}
+              onClick={() => setMode(value)}
+              className={`rounded-sm px-2.5 py-1 text-[10px] font-semibold ${mode === value ? "bg-(--admin-primary) text-white" : "text-(--admin-text-muted) hover:text-(--admin-text)"}`}
+            >
+              {value === "count" ? "Số lượng" : "Doanh số"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(220px,0.8fr)]">
+        <div className="h-70 min-w-0">
+          {hourly.length ? (
+            <Bar data={barData} options={barOptions} />
+          ) : (
+            <div className="grid h-full place-items-center text-[12px] text-(--admin-text-muted)">
+              Chưa có giao dịch trong ngày.
+            </div>
+          )}
+        </div>
+        <div className="h-70 min-w-0">
+          <Doughnut data={pieData} options={pieOptions} />
+        </div>
+      </div>
+    </section>
+  );
 }

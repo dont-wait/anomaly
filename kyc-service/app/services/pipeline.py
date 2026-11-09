@@ -322,10 +322,10 @@ class StubVisionPipeline:
 def build_vision_pipeline(settings: Settings) -> VisionPipeline:
     backend = settings.vision_pipeline_backend.strip().lower()
     if backend == "poc":
-        if settings.app_env not in {"test", "development"} or not settings.poc_bypass:
-            raise VisionPipelineConfigurationError(
-                "POC requires development/test and KYC_POC_BYPASS=true"
-            )
+        # The POC pipeline only relays the capture stream. Whether it may also
+        # auto-verify is decided per request by KYC_POC_BYPASS.
+        if settings.app_env not in {"test", "development"}:
+            raise VisionPipelineConfigurationError("POC requires APP_ENV development or test")
         from app.services.poc_pipeline import PocVisionPipeline
 
         return PocVisionPipeline(settings)

@@ -15,23 +15,30 @@ Trong `kyc-service/.env`:
 ```dotenv
 APP_ENV=development
 VISION_PIPELINE_BACKEND=poc
-KYC_POC_BYPASS=true
+KYC_POC_BYPASS=true   # hoặc false, phải giống server/.env
 KYC_SERVICE_TOKEN=<cung-token-voi-server>
 ```
 
-Trong `server/.env`, bật `KYC_POC_BYPASS=true` và dùng cùng token. Khởi động lại
-Python (`make start`) và Go (`make start-api`) sau khi đổi cấu hình.
+`KYC_POC_BYPASS` phải đặt giống nhau ở `server/.env` và `kyc-service/.env`:
 
-POC giữ camera, quay video và luồng WebSocket/ACK hiện có. Hướng dẫn động tác
-chạy theo thời gian để demo; không thực hiện nhận diện hoặc liveness.
-Khi complete, Go vẫn kiểm tra ticket, chủ tài khoản, hash ảnh/video, lưu media
+| Cả hai bên | Kết quả |
+|---|---|
+| `true`  | Bypass: sau khi quay xong, tài khoản được `verified` ngay |
+| `false` | Manual: Go lưu hồ sơ, tài khoản chờ admin duyệt trên desktop |
+
+Khởi động lại Python (`make start`) và Go (`make start-api`) sau khi đổi cấu hình.
+
+POC giữ camera, quay video và luồng WebSocket/ACK hiện có ở cả hai chế độ.
+Hướng dẫn động tác chạy theo thời gian để demo; không thực hiện nhận diện hoặc
+liveness. Python chỉ cho phép POC trong development/test.
+
+Khi bypass bật, Go vẫn kiểm tra ticket, chủ tài khoản, hash ảnh/video, lưu media
 và cập nhật tài khoản thành `verified`. Session ghi provider
 `anomaly-poc-bypass`, matching/liveness là `not_run`, score và số frame phân tích
-là 0. Không tạo evidence giả cho model thật. Python chỉ cho phép POC trong
-development/test; Go phải bật cờ riêng mới nhận kết quả bypass.
+là 0. Không tạo evidence giả cho model thật. Khi bypass tắt, Go không gọi
+`verify-face`; nếu bị gọi, Python trả `409 poc_bypass_disabled`.
 
-`GET /ready` trả backend `PocVisionPipeline`. Đổi về `real` và tắt cờ bypass
-để dùng pipeline model. Các mục mô hình bên dưới chỉ áp dụng cho chế độ `real`.
+`GET /ready` trả backend `PocVisionPipeline`. Đổi về `real` để dùng pipeline model. Các mục mô hình bên dưới chỉ áp dụng cho chế độ `real`.
 
 Tạo thư mục riêng, ví dụ `kyc-service/models/`, chứa:
 

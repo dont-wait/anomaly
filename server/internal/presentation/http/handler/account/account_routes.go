@@ -120,7 +120,7 @@ func RegisterRoutes(
 		middleware.RequireKYCAuth(tokenSvc)(http.HandlerFunc(h.CompleteKYC)), openapi.Operation{
 			ID:                 "completeKYC",
 			Summary:            "Complete pre-login KYC",
-			Description:        "Requires a KYC bearer token. Validates media, calls the configured KYC service, and stores media only after a VERIFIED decision.",
+			Description:        "Requires a KYC bearer token. Validates media and either calls the configured KYC service (KYC_POC_BYPASS=true) or stores the evidence as a pending manual review submission (KYC_POC_BYPASS=false).",
 			Tags:               []string{"KYC"},
 			Request:            completeKYCRequest{},
 			RequestContentType: "multipart/form-data",
@@ -159,6 +159,35 @@ func RegisterRoutes(
 	router.Handle("POST /api/admin/profile-changes/{accountId}/{requestId}/decision", adminOnly(http.HandlerFunc(h.DecideProfileChange)), openapi.Operation{
 		ID: "decideProfileChange", Summary: "Approve or reject a profile change", Tags: []string{"Profile"},
 		Request: profileChangeDecisionRequest{}, Response: httpx.SuccessResponse[map[string]bool]{},
+		FailureStatuses: []int{400, 401, 403, 404, 409, 500}, Auth: true,
+	})
+	router.Handle("GET /api/admin/kyc/reviews", adminOnly(http.HandlerFunc(h.ListKYCReviews)), openapi.Operation{
+		ID:              "listKYCReviews",
+		Summary:         "List KYC submissions waiting for manual review",
+		Tags:            []string{"KYC"},
+		Description:     "Empty when KYC_POC_BYPASS=true, because submissions are verified automatically.",
+		Response:        httpx.SuccessResponse[[]KYCReviewItem]{},
+		FailureStatuses: []int{401, 403, 500, 503}, Auth: true,
+	})
+	router.Handle("GET /api/admin/kyc/reviews/{accountId}/media/{kind}", adminOnly(http.HandlerFunc(h.DownloadKYCReviewMedia)), openapi.Operation{
+		ID:      "downloadKYCReviewMedia",
+		Summary: "Download one KYC evidence object for review",
+		Tags:    []string{"KYC"},
+		Parameters: []openapi.Parameter{
+			{Name: "accountId", In: "path", Required: true, Type: "string"},
+			{Name: "kind", In: "path", Required: true, Type: "string"},
+			{Name: "sessionId", In: "query", Required: false, Type: "string"},
+		},
+		Response: openapi.Binary{}, ResponseContentType: "application/octet-stream",
+		FailureStatuses: []int{401, 403, 404, 415, 500, 503}, Auth: true,
+	})
+	router.Handle("POST /api/admin/kyc/reviews/{accountId}/decision", adminOnly(http.HandlerFunc(h.DecideKYCReview)), openapi.Operation{
+		ID:              "decideKYCReview",
+		Summary:         "Approve or reject a KYC submission",
+		Tags:            []string{"KYC"},
+		Request:         kycReviewDecisionRequest{},
+		Parameters:      []openapi.Parameter{{Name: "accountId", In: "path", Required: true, Type: "string"}},
+		Response:        httpx.SuccessResponse[map[string]string]{},
 		FailureStatuses: []int{400, 401, 403, 404, 409, 500}, Auth: true,
 	})
 	router.Handle("GET /api/accounts", adminOnly(http.HandlerFunc(h.GetAll)), openapi.Operation{

@@ -58,6 +58,12 @@ func (h *LoginQueryHandler) Handle(ctx context.Context, q LoginQuery) (*LoginRes
 		}
 		return nil, err
 	}
+	if acc.IsKYCUnderReview() {
+		if auditErr := h.recordLogin(ctx, audit.LoginFailed, "kyc_under_review", acc.Id); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, accountdomain.ErrKYCUnderReview
+	}
 	if !acc.IsVerified() {
 		if auditErr := h.recordLogin(ctx, audit.LoginFailed, "kyc_required", acc.Id); auditErr != nil {
 			return nil, auditErr
@@ -98,6 +104,9 @@ func (h *LoginQueryHandler) StartKYCSession(ctx context.Context, q LoginQuery) (
 	}
 	if acc.IsVerified() {
 		return nil, accountdomain.ErrAccountAlreadyVerified
+	}
+	if acc.IsKYCUnderReview() {
+		return nil, accountdomain.ErrKYCUnderReview
 	}
 	token, expiresAt, err := h.tokens.IssueKYC(acc.Id)
 	if err != nil {

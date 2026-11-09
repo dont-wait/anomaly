@@ -24,6 +24,9 @@ type Handler struct {
 	logger             zerolog.Logger
 	register           *commands.RegisterAccountCommandHandler
 	verify             *commands.VerifyAccountCommandHandler
+	submitKYC          *commands.SubmitKYCCommandHandler
+	reviewKYC          *commands.ReviewKYCCommandHandler
+	pocBypass          bool
 	login              *queries.LoginQueryHandler
 	getByID            *queries.GetAccountByIDQueryHandler
 	getByEmail         *queries.GetAccountByEmailQueryHandler
@@ -69,6 +72,16 @@ func (h *Handler) WithProfileSecurity(limiter commands.PasswordAttemptLimiter, e
 func (h *Handler) WithPasswordReset(reset *commands.PasswordResetHandler) *Handler {
 	h.passwordReset = reset
 	h.passwordResetSlots = make(chan struct{}, maxPendingPasswordResets)
+	return h
+}
+
+// WithKYCWorkflow configures manual KYC submission and review. When bypass is
+// false a submitted attempt waits for an administrator instead of being
+// auto-verified by the vision service.
+func (h *Handler) WithKYCWorkflow(submit *commands.SubmitKYCCommandHandler, review *commands.ReviewKYCCommandHandler, bypass bool) *Handler {
+	h.submitKYC = submit
+	h.reviewKYC = review
+	h.pocBypass = bypass
 	return h
 }
 
@@ -122,7 +135,7 @@ func accountErrorStatus(err error) int {
 		errors.Is(err, accountdomain.ErrConcurrentUpdate),
 		errors.Is(err, accountdomain.ErrProfileChangeClosed):
 		return http.StatusConflict
-	case errors.Is(err, accountdomain.ErrSelfProfileReview):
+	case errors.Is(err, accountdomain.ErrSelfProfileReview), errors.Is(err, accountdomain.ErrSelfKYCReview):
 		return http.StatusForbidden
 	case errors.Is(err, accountdomain.ErrTooManyAttempts), errors.Is(err, appotp.ErrTooSoon):
 		return http.StatusTooManyRequests
@@ -135,8 +148,11 @@ func accountErrorStatus(err error) int {
 		return http.StatusUnauthorized
 	case errors.Is(err, accountdomain.ErrAccountLocked):
 		return http.StatusForbidden
-	case errors.Is(err, accountdomain.ErrKYCRequired), errors.Is(err, accountdomain.ErrAccountAlreadyVerified):
+	case errors.Is(err, accountdomain.ErrKYCRequired), errors.Is(err, accountdomain.ErrAccountAlreadyVerified),
+		errors.Is(err, accountdomain.ErrKYCUnderReview):
 		return http.StatusForbidden
+	case errors.Is(err, accountdomain.ErrKYCReviewClosed):
+		return http.StatusConflict
 	case errors.Is(err, accountdomain.ErrAccountNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, accountdomain.ErrInvalidIdempotencyKey), errors.Is(err, accountdomain.ErrInvalidEmail),
@@ -147,6 +163,7 @@ func accountErrorStatus(err error) int {
 		errors.Is(err, accountdomain.ErrInvalidDate),
 		errors.Is(err, accountdomain.ErrInvalidAmount),
 		errors.Is(err, accountdomain.ErrInsufficientFunds),
+		errors.Is(err, accountdomain.ErrInvalidKYCReview),
 		errors.Is(err, accountdomain.ErrInvalidVerifyPayload):
 		return http.StatusBadRequest
 	default:
@@ -178,6 +195,14 @@ func accountErrorCode(err error) httpx.ErrorCode {
 		return httpx.ErrorCodeAccountLocked
 	case errors.Is(err, accountdomain.ErrKYCRequired):
 		return httpx.ErrorCodeKYCRequired
+	case errors.Is(err, accountdomain.ErrKYCUnderReview):
+		return httpx.ErrorCodeKYCUnderReview
+	case errors.Is(err, accountdomain.ErrKYCReviewClosed):
+		return httpx.ErrorCodeKYCReviewClosed
+	case errors.Is(err, accountdomain.ErrSelfKYCReview):
+		return httpx.ErrorCodeSelfKYCReview
+	case errors.Is(err, accountdomain.ErrInvalidKYCReview):
+		return httpx.ErrorCodeValidation
 	case errors.Is(err, accountdomain.ErrAccountAlreadyVerified):
 		return httpx.ErrorCodeAccountAlreadyVerified
 	case errors.Is(err, accountdomain.ErrAccountNotFound):

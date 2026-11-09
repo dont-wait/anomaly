@@ -10,19 +10,18 @@ from app.main import create_app
 from app.services.pipeline import VisionPipelineConfigurationError, build_vision_pipeline
 
 
-@pytest.mark.parametrize("environment,enabled", [("production", True), ("development", False)])
-def test_poc_requires_explicit_development_configuration(environment, enabled):
+@pytest.mark.parametrize("enabled", [True, False])
+def test_poc_is_forbidden_outside_development(enabled):
     with pytest.raises(VisionPipelineConfigurationError):
         build_vision_pipeline(
-            Settings(APP_ENV=environment, VISION_PIPELINE_BACKEND="poc", KYC_POC_BYPASS=enabled)
+            Settings(APP_ENV="production", VISION_PIPELINE_BACKEND="poc", KYC_POC_BYPASS=enabled)
         )
 
 
-@pytest.fixture
-def client(monkeypatch):
+def _poc_client(monkeypatch, bypass: str):
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("VISION_PIPELINE_BACKEND", "poc")
-    monkeypatch.setenv("KYC_POC_BYPASS", "true")
+    monkeypatch.setenv("KYC_POC_BYPASS", bypass)
     monkeypatch.setenv("KYC_SERVICE_TOKEN", "poc-test-token")
     get_settings.cache_clear()
     get_vision_pipeline.cache_clear()
@@ -32,6 +31,45 @@ def client(monkeypatch):
     finally:
         get_settings.cache_clear()
         get_vision_pipeline.cache_clear()
+
+
+@pytest.fixture
+def client(monkeypatch):
+    yield from _poc_client(monkeypatch, "true")
+
+
+@pytest.fixture
+def manual_client(monkeypatch):
+    yield from _poc_client(monkeypatch, "false")
+
+
+def test_poc_without_bypass_streams_but_never_verifies(manual_client):
+    assert manual_client.get("/ready").json()["backend"] == "PocVisionPipeline"
+    headers = {"X-KYC-Service-Token": "poc-test-token"}
+    with manual_client.websocket_connect("/v1/kyc/realtime", headers=headers) as socket:
+        socket.send_json(
+            {
+                "front": base64.b64encode(b"POC image").decode(),
+                "challenge_type": "TURN_HEAD_LEFT_RIGHT_BLINK",
+            }
+        )
+        assert socket.receive_json()["type"] == "ready"
+        socket.send_json({"type": "start"})
+        socket.send_bytes(b"\x01\x00\x00\x00\x00demo-video")
+        assert socket.receive_json()["type"] == "progress"
+        socket.send_json({"type": "end", "lastChunkSeq": 0})
+        assert socket.receive_json()["type"] == "stream_finished"
+    response = manual_client.post(
+        "/v1/kyc/verify-face",
+        files={
+            "cccd_front_image": ("front.png", b"POC image", "image/png"),
+            "live_video": ("live.webm", b"demo-video", "video/webm"),
+        },
+        data={"challenge_type": "TURN_HEAD_LEFT_RIGHT_BLINK"},
+        headers=headers,
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "poc_bypass_disabled"
 
 
 def test_poc_realtime_and_completion_without_models(client):

@@ -55,6 +55,13 @@ type kycFailureRecord struct {
 	Message *string `bson:"message"`
 }
 
+type kycReviewRecord struct {
+	Decision   string    `bson:"decision"`
+	Reason     string    `bson:"reason"`
+	ReviewedBy string    `bson:"reviewed_by"`
+	ReviewedAt time.Time `bson:"reviewed_at"`
+}
+
 type kycSessionRecord struct {
 	Id           bson.ObjectID         `bson:"_id"`
 	CustomerId   bson.ObjectID         `bson:"customer_id"`
@@ -63,6 +70,7 @@ type kycSessionRecord struct {
 	IdentityData kycIdentityDataRecord `bson:"identity_data"`
 	Media        kycMediaRecord        `bson:"media"`
 	Verification kycVerificationRecord `bson:"verification"`
+	Review       *kycReviewRecord      `bson:"review,omitempty"`
 	Failure      kycFailureRecord      `bson:"failure"`
 	StartedAt    time.Time             `bson:"started_at"`
 	CompletedAt  *time.Time            `bson:"completed_at"`
@@ -132,6 +140,16 @@ func toKYCSessionRecord(session *accountdomain.KYCSession) (kycSessionRecord, er
 		}
 	}
 
+	var review *kycReviewRecord
+	if session.Review != nil {
+		review = &kycReviewRecord{
+			Decision:   session.Review.Decision,
+			Reason:     session.Review.Reason,
+			ReviewedBy: session.Review.ReviewedBy,
+			ReviewedAt: session.Review.ReviewedAt,
+		}
+	}
+
 	return kycSessionRecord{
 		Id:         id,
 		CustomerId: customerID,
@@ -165,6 +183,7 @@ func toKYCSessionRecord(session *accountdomain.KYCSession) (kycSessionRecord, er
 			LivenessScore:       session.Verification.LivenessScore,
 			Evidence:            session.Verification.Evidence,
 		},
+		Review:      review,
 		Failure:     failure,
 		StartedAt:   session.StartedAt,
 		CompletedAt: session.CompletedAt,
@@ -209,6 +228,16 @@ func fromKYCSessionRecord(record kycSessionRecord) *accountdomain.KYCSession {
 		}
 	}
 
+	var review *accountdomain.KYCReview
+	if record.Review != nil {
+		review = &accountdomain.KYCReview{
+			Decision:   record.Review.Decision,
+			Reason:     record.Review.Reason,
+			ReviewedBy: record.Review.ReviewedBy,
+			ReviewedAt: record.Review.ReviewedAt,
+		}
+	}
+
 	return &accountdomain.KYCSession{
 		Id:         record.Id.Hex(),
 		CustomerId: record.CustomerId.Hex(),
@@ -242,6 +271,7 @@ func fromKYCSessionRecord(record kycSessionRecord) *accountdomain.KYCSession {
 			LivenessScore:       record.Verification.LivenessScore,
 			Evidence:            record.Verification.Evidence,
 		},
+		Review:      review,
 		Failure:     failure,
 		StartedAt:   record.StartedAt,
 		CompletedAt: record.CompletedAt,

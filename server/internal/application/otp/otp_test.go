@@ -33,9 +33,12 @@ func newFakeStore() *fakeStore {
 	}
 }
 
-func (s *fakeStore) Set(_ context.Context, email, code string, _ time.Duration) error {
+func (s *fakeStore) Set(ctx context.Context, email, code string, _ time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if s.setE != nil {
 		return s.setE
 	}
@@ -134,6 +137,7 @@ type fakeSender struct {
 	mu      sync.Mutex
 	sent    int
 	sendErr error
+	onSend  func()
 	lastTo  string
 	lastMsg maildomain.MailMessage
 }
@@ -157,6 +161,9 @@ func (r *auditRecorderFake) Record(_ context.Context, event audit.Event) error {
 func (s *fakeSender) Send(_ context.Context, msg maildomain.MailMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.onSend != nil {
+		s.onSend()
+	}
 	if s.sendErr != nil {
 		return s.sendErr
 	}
@@ -219,6 +226,26 @@ func TestRequestOTPOverwritesPrevious(t *testing.T) {
 		t.Fatalf("overwritten code = %q, want 6 digits", second)
 	}
 	_ = first
+}
+
+// Client ngắt kết nối trong lúc SMTP đang gửi: mail đã tới nơi nên mã vẫn
+// phải được lưu để người dùng nhập được.
+func TestRequestOTPStoresCodeWhenClientDisconnectsDuringSend(t *testing.T) {
+	store := newFakeStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sender := &fakeSender{onSend: cancel}
+	h := NewRequestOTPCommandHandler(store, sender, testLogger())
+
+	if err := h.Handle(ctx, RequestOTPCommand{Email: "a@b.co"}); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	if sender.sent != 1 {
+		t.Fatalf("sent = %d, want 1", sender.sent)
+	}
+	if _, err := store.Get(context.Background(), "a@b.co"); err != nil {
+		t.Fatalf("Get() error = %v, want code persisted after delivery", err)
+	}
 }
 
 func TestRequestOTPSendFailureDoesNotStoreKey(t *testing.T) {
