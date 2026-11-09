@@ -15,7 +15,6 @@ import {
   faUserPen,
   faMagnifyingGlass,
   faMoneyBillTransfer,
-  faPlay,
   faTerminal,
   faTriangleExclamation,
   faCircleUser,
@@ -68,7 +67,6 @@ const navigationGroups: NavigationGroup[] = [
         route: routes.auditAccounts,
         icon: faClockRotateLeft,
       },
-      { label: "Replay Console", route: routes.auditReplay, icon: faPlay },
     ],
   },
   {
