@@ -18,6 +18,7 @@ import type {
   TransactionReport,
   TransactionReportItem,
 } from "./api/transactionsReportApi";
+import { downloadTransactionReportCsv } from "./reportExport";
 import { useTransactionReport } from "./useTransactionReport";
 import {
   filterReportItems,
@@ -100,94 +101,16 @@ function downloadReportCsv(
   date: string,
   report: TransactionReport | null,
   items: TransactionReportItem[],
+  status: StatusFilter,
+  decision: DecisionFilter,
+  query: string,
 ) {
-  if (!report) return;
-  const rows = [
-    ["Báo cáo ngày", date],
-    ["Thời điểm tham chiếu", report.asOf],
-    ["Múi giờ", report.timezone],
-    ["Phạm vi tổng hợp", "Toàn ngày; danh sách theo bộ lọc hiện tại"],
-    ["Giao dịch khởi tạo", report.summary.created.transactionCount],
-    ["Giao dịch hoàn tất trong ngày", report.summary.completed.count],
-    ["Doanh số thực hiện", report.summary.completed.totalAmount],
-    ["Phí thực thu", report.summary.completed.totalFee],
-    [
-      "Giá trị trung bình hoàn tất",
-      report.summary.completed.averageAmount ?? "",
-    ],
-    ["Thành công trong nhóm khởi tạo", report.summary.created.successCount],
-    ["Thất bại trong nhóm khởi tạo", report.summary.created.failedCount],
-    ["Thực tế bị chặn", report.summary.risk.actualBlockedCount],
-    [
-      "Cảnh báo dữ liệu",
-      report.dataQuality
-        .map((issue) => `${issue.code}: ${issue.count}`)
-        .join("; "),
-    ],
-    [],
-    [
-      "Transaction ID",
-      "Source",
-      "Destination",
-      "Amount",
-      "Status",
-      "Risk",
-      "Created At",
-    ],
-    ...items.map((item) => [
-      item.transactionId,
-      item.sourceAccountNo,
-      item.destinationAccountNo,
-      item.amount ?? "",
-      item.effectiveStatus,
-      item.selectedAssessment?.decision ?? "",
-      item.createdAt,
-    ]),
-  ];
-  const csv =
-    "\ufeff" +
-    rows
-      .map((row) =>
-        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
-      )
-      .join("\n");
-  const url = URL.createObjectURL(
-    new Blob([csv], { type: "text/csv;charset=utf-8" }),
-  );
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `bao-cao-giao-dich-${date}.csv`;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-function downloadReportExcel(
-  date: string,
-  report: TransactionReport | null,
-  items: TransactionReportItem[],
-) {
-  if (!report) return;
-  const escapeHtml = (value: unknown) =>
-    String(value)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  const rows = items
-    .map(
-      (item) =>
-        `<tr><td>${escapeHtml(item.transactionId)}</td><td>${escapeHtml(item.sourceAccountNo)}</td><td>${escapeHtml(item.destinationAccountNo)}</td><td>${escapeHtml(item.amount ?? "")}</td><td>${escapeHtml(item.effectiveStatus)}</td><td>${escapeHtml(item.selectedAssessment?.decision ?? "")}</td><td>${escapeHtml(item.createdAt)}</td></tr>`,
-    )
-    .join("");
-  const html = `<html><head><meta charset="utf-8"><style>body{font-family:Arial}table{border-collapse:collapse}th,td{border:1px solid #cbd5e1;padding:8px;min-width:140px}th{background:#1f4e78;color:white}h1{font-size:18px}</style></head><body><h1>Báo cáo giao dịch ngày ${escapeHtml(date)}</h1><p>Tham chiếu: ${escapeHtml(report.asOf)} | Múi giờ: ${escapeHtml(report.timezone)} | Tổng hợp toàn ngày; danh sách theo bộ lọc hiện tại</p><p>Doanh số thực hiện: ${escapeHtml(report.summary.completed.totalAmount)} | Phí thực thu: ${escapeHtml(report.summary.completed.totalFee)} | Hoàn tất trong ngày: ${escapeHtml(report.summary.completed.count)} | Thất bại trong nhóm khởi tạo: ${escapeHtml(report.summary.created.failedCount)} | Thực tế bị chặn: ${escapeHtml(report.summary.risk.actualBlockedCount)}</p><p>Cảnh báo dữ liệu: ${escapeHtml(report.dataQuality.map((issue) => `${issue.code}: ${issue.count}`).join("; "))}</p><table><thead><tr><th>Transaction ID</th><th>Source</th><th>Destination</th><th>Amount</th><th>Status</th><th>Risk</th><th>Created At</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
-  const url = URL.createObjectURL(
-    new Blob([html], { type: "application/vnd.ms-excel" }),
-  );
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `bao-cao-giao-dich-${date}.xls`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  if (report)
+    downloadTransactionReportCsv(date, report, items, {
+      status,
+      decision,
+      query,
+    });
 }
 
 function ReportDateField({
@@ -619,29 +542,22 @@ export function TransactionsRiskPage() {
               </select>
               <button
                 type="button"
+                aria-label="CSV"
                 className={`${subtle} flex h-8 items-center gap-1.5 rounded-sm border ${border} px-2 text-[11px] font-semibold text-(--admin-text)`}
                 onClick={() => {
                   if (canExport && currentReport)
-                    downloadReportCsv(currentReport.date, currentReport, items);
-                }}
-                disabled={!canExport}
-              >
-                <FontAwesomeIcon icon={faDownload} /> CSV
-              </button>
-              <button
-                type="button"
-                className={`${subtle} flex h-8 items-center gap-1.5 rounded-sm border ${border} px-2 text-[11px] font-semibold text-(--admin-text)`}
-                onClick={() => {
-                  if (canExport && currentReport)
-                    downloadReportExcel(
+                    downloadReportCsv(
                       currentReport.date,
                       currentReport,
                       items,
+                      status,
+                      decision,
+                      query,
                     );
                 }}
                 disabled={!canExport}
               >
-                <FontAwesomeIcon icon={faDownload} /> Excel
+                <FontAwesomeIcon icon={faDownload} /> CSV toàn bộ lọc
               </button>
             </div>
           </div>

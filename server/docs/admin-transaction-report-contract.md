@@ -423,8 +423,7 @@ Từ thư mục `client/`:
 
 Test bao phủ malformed response, score 0/null, nguồn assessment, >50 giao dịch,
 phân trang, filter, qua nửa đêm, request trả ngược thứ tự, lỗi refresh/retry,
-polling request chậm và cleanup trong StrictMode. Phase 3 không thay định dạng
-file export; xuất `.xlsx` thực, an toàn spreadsheet và kiểm thử file thuộc Phase 5.
+polling request chậm và cleanup trong StrictMode.
 
 ### Kiểm chứng client Phase 4
 
@@ -447,3 +446,17 @@ và chart amount chỉ dùng `hourly.completed`; donut đủ sáu trạng thái 
 nhau. Phần đối soát hiển thị đồng thời tổng bucket và tổng card để operator nhận
 ra sai lệch nếu contract bị phá ở runtime. Risk trung bình hiển thị cùng độ phủ
 assessment; score 0 hợp lệ vẫn được tính và không bị coi là thiếu dữ liệu.
+
+### Kiểm chứng client Phase 5
+
+Export CSV dùng đúng toàn bộ `items` sau filter, không dùng `visibleItems` của
+trang hiện tại. File ghi rõ ngày, timezone, asOf, generatedAt, projection
+checkpoint/status, cảnh báo data quality, summary toàn ngày và bộ lọc của danh
+sách. Summary và danh sách được tách section để không hiểu nhầm hai phạm vi.
+
+Mọi ID/số tài khoản và nội dung chuỗi được xuất như text; giá trị bắt đầu bằng
+`=`, `+`, `-` hoặc `@` được prefix để tránh spreadsheet formula injection. Số
+tiền/score vẫn là giá trị số; null giữ rỗng, không đổi thành 0. File luôn có BOM
+UTF-8 và tên `bao-cao-giao-dich-YYYY-MM-DD.csv`. Nút export bị khóa khi report
+chưa tải xong, stale, lỗi hoặc không khớp ngày đang chọn. Không còn HTML giả
+`.xls`; nếu cần workbook `.xlsx` native sẽ là thay đổi phụ thuộc riêng.
