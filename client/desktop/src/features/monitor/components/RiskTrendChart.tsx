@@ -11,7 +11,8 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import type { RiskSeriesPoint, TimeRange } from "../model";
-import { useAdminTheme, type AdminTheme } from "@/shared/theme/theme";
+import { useAdminTheme } from "@/shared/theme/theme";
+import { getChartColors } from "./riskTrendChartColors";
 
 const dashboardCard =
   "bg-(--admin-dashboard-card-background) border border-(--admin-dashboard-card-border) shadow-(--admin-dashboard-card-shadow)";
@@ -26,26 +27,6 @@ ChartJS.register(
   Filler,
   Tooltip,
 );
-
-function getChartColors(theme: AdminTheme) {
-  return theme === "dark"
-    ? {
-        border: "#b4c5ff",
-        fill: "rgba(37, 99, 235, 0.13)",
-        grid: "#272b33",
-        muted: "#8d90a0",
-        danger: "#d52022",
-        surface: "#2a2a2c",
-      }
-    : {
-        border: "#2563eb",
-        fill: "rgba(37, 99, 235, 0.12)",
-        grid: "#d6dee9",
-        muted: "#64748b",
-        danger: "#b91c1c",
-        surface: "#ffffff",
-      };
-}
 
 interface TooltipState {
   left: number;
@@ -73,7 +54,7 @@ function createRiskMarkerPlugin(
     id: "risk-marker",
     beforeDatasetsDraw(chart) {
       chart.ctx.save();
-      chart.ctx.shadowColor = "rgba(180, 197, 255, 0.22)";
+      chart.ctx.shadowColor = chartColors.markerGlow;
       chart.ctx.shadowBlur = 8;
       chart.ctx.shadowOffsetY = 1;
     },
@@ -97,7 +78,7 @@ function createRiskMarkerPlugin(
         const active = activeElement.getProps(["x", "y"], true);
         ctx.setLineDash([3, 3]);
         ctx.lineWidth = 1;
-        ctx.strokeStyle = "rgba(180, 197, 255, 0.75)";
+        ctx.strokeStyle = chartColors.hoverGuide;
         ctx.beginPath();
         ctx.moveTo(active.x, chartArea.top);
         ctx.lineTo(active.x, chartArea.bottom);
