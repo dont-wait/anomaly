@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Bar, Doughnut } from "react-chartjs-2";
 import {
   ArcElement,
@@ -9,10 +9,8 @@ import {
   LinearScale,
   Tooltip,
 } from "chart.js";
-import type {
-  TransactionReportHourly,
-  TransactionReportSummary,
-} from "./api/transactionsReportApi";
+import type { TransactionReportHourly, TransactionReportSummary } from "./api/transactionsReportApi";
+import { useAdminTheme } from "@/shared/theme/theme";
 
 ChartJS.register(
   ArcElement,
@@ -63,6 +61,39 @@ export function DailyReportChart({
   summary?: TransactionReportSummary;
 }) {
   const [mode, setMode] = useState<ChartMode>("count");
+  const { theme } = useAdminTheme();
+  const chartColors = useMemo(
+    () =>
+      theme === "dark"
+        ? {
+            success: "#75d9a4",
+            failure: "#ff8f86",
+            pending: "#f6d58a",
+            border: "#202125",
+            muted: "#8d90a0",
+            grid: "#272b33",
+          }
+        : {
+            success: "#047857",
+            failure: "#b91c1c",
+            pending: "#b45309",
+            border: "#d6dee9",
+            muted: "#64748b",
+            grid: "#d6dee9",
+          },
+    [theme],
+  );
+  const chartStatuses = statuses.map((status) => ({
+    ...status,
+    color:
+      status.key === "successCount"
+        ? chartColors.success
+        : status.key === "failedCount"
+          ? chartColors.failure
+          : status.key === "pendingCount"
+            ? chartColors.pending
+            : status.color,
+  }));
   const labels = (mode === "count" ? hourly.created : hourly.completed).map(
     (point) => point.hour,
   );
@@ -70,7 +101,7 @@ export function DailyReportChart({
     labels,
     datasets:
       mode === "count"
-        ? statuses.map(({ key, label, color }) => ({
+        ? chartStatuses.map(({ key, label, color }) => ({
             label,
             data: hourly.created.map((point) => point[key]),
             backgroundColor: color,
@@ -81,7 +112,7 @@ export function DailyReportChart({
             {
               label: "Doanh số theo giờ hoàn tất",
               data: hourly.completed.map((point) => point.totalAmount),
-              backgroundColor: "#75d9a4",
+              backgroundColor: chartColors.success,
               borderRadius: 3,
               stack: "status",
             },
@@ -92,8 +123,8 @@ export function DailyReportChart({
     datasets: [
       {
         data: statuses.map(({ key }) => summary?.created[key] ?? 0),
-        backgroundColor: statuses.map((status) => status.color),
-        borderColor: "#202125",
+        backgroundColor: chartStatuses.map((status) => status.color),
+        borderColor: chartColors.border,
         borderWidth: 3,
         hoverOffset: 5,
       },
@@ -107,14 +138,11 @@ export function DailyReportChart({
       legend: {
         position: "top" as const,
         align: "end" as const,
-        labels: { color: "#8d90a0", boxWidth: 10, font: { size: 10 } },
+        labels: { color: chartColors.muted, boxWidth: 10, font: { size: 10 } },
       },
       tooltip: {
         callbacks: {
-          label: (context: {
-            dataset: { label?: string };
-            parsed: { y: number };
-          }) =>
+          label: (context: { dataset: { label?: string }; parsed: { y: number } }) =>
             `${context.dataset.label}: ${mode === "amount" ? money(context.parsed.y) : context.parsed.y}`,
         },
       },
@@ -123,14 +151,14 @@ export function DailyReportChart({
       x: {
         stacked: true,
         grid: { display: false },
-        ticks: { color: "#8d90a0", maxTicksLimit: 12 },
+        ticks: { color: chartColors.muted, maxTicksLimit: 12 },
       },
       y: {
         stacked: true,
         beginAtZero: true,
-        grid: { color: "#272b33" },
+        grid: { color: chartColors.grid },
         ticks: {
-          color: "#8d90a0",
+          color: chartColors.muted,
           precision: 0,
           callback: (tick: string | number) =>
             mode === "amount" ? `${Number(tick) / 1000000}M` : tick,
@@ -144,7 +172,7 @@ export function DailyReportChart({
     plugins: {
       legend: {
         position: "right" as const,
-        labels: { color: "#8d90a0", boxWidth: 10, font: { size: 10 } },
+        labels: { color: chartColors.muted, boxWidth: 10, font: { size: 10 } },
       },
     },
   };

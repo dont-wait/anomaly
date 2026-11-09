@@ -368,7 +368,7 @@ export function AlertsPage() {
                   </td>
                   <td className="px-2">
                     <span
-                      className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${item.riskLevel === "BLOCK" ? "text-(--admin-danger)" : "text-[#e1b86b]"}`}
+                      className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${item.riskLevel === "BLOCK" ? "text-(--admin-danger)" : "text-(--admin-warning-foreground)"}`}
                     >
                       <FontAwesomeIcon
                         icon={
