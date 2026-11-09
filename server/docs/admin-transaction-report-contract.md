@@ -425,3 +425,25 @@ Test bao phủ malformed response, score 0/null, nguồn assessment, >50 giao d�
 phân trang, filter, qua nửa đêm, request trả ngược thứ tự, lỗi refresh/retry,
 polling request chậm và cleanup trong StrictMode. Phase 3 không thay định dạng
 file export; xuất `.xlsx` thực, an toàn spreadsheet và kiểm thử file thuộc Phase 5.
+
+### Kiểm chứng client Phase 4
+
+Trước khi render, client kiểm tra các invariant đối soát:
+
+```text
+sum(created status counts) = summary.created.transactionCount
+sum(hourly.created.count) = summary.created.transactionCount
+sum(hourly.completed.count) = summary.completed.count
+sum(hourly.completed.totalAmount) = summary.completed.totalAmount
+sum(hourly.completed.totalFee) = summary.completed.totalFee
+assessedCount + unassessedCount = created.transactionCount
+allowCount + modelBlockCount + unknownDecisionCount = assessedCount
+actualBlockedCount <= created.failedCount
+```
+
+Payload vi phạm invariant bị từ chối như dữ liệu không hợp lệ, không được render
+thành các card/chart lệch nhau. Khi hợp lệ, chart count chỉ dùng `hourly.created`
+và chart amount chỉ dùng `hourly.completed`; donut đủ sáu trạng thái loại trừ
+nhau. Phần đối soát hiển thị đồng thời tổng bucket và tổng card để operator nhận
+ra sai lệch nếu contract bị phá ở runtime. Risk trung bình hiển thị cùng độ phủ
+assessment; score 0 hợp lệ vẫn được tính và không bị coi là thiếu dữ liệu.

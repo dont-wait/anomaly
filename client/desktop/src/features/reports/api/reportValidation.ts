@@ -175,6 +175,94 @@ const hours =
 const account: Check = (value) =>
   fields(value, { accountNo: nonempty, name: string, count, amount: count });
 
+function sum(values: number[]) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function consistentSummary(value: RecordValue) {
+  const created = value.created as RecordValue;
+  const completed = value.completed as RecordValue;
+  const risk = value.risk as RecordValue;
+  const createdCount = created.transactionCount as number;
+  const assessedCount = risk.assessedCount as number;
+  const statusTotal = sum([
+    created.successCount as number,
+    created.failedCount as number,
+    created.cancelledCount as number,
+    created.expiredCount as number,
+    created.pendingCount as number,
+    created.unknownCount as number,
+  ]);
+  if (statusTotal !== createdCount) return false;
+  if (assessedCount + (risk.unassessedCount as number) !== createdCount)
+    return false;
+  if (
+    sum([
+      risk.allowCount as number,
+      risk.modelBlockCount as number,
+      risk.unknownDecisionCount as number,
+    ]) !== assessedCount
+  )
+    return false;
+  if ((risk.actualBlockedCount as number) > (created.failedCount as number))
+    return false;
+  const average = completed.averageAmount as number | null;
+  if (
+    completed.count === 0
+      ? average !== null
+      : average !==
+        (completed.totalAmount as number) / (completed.count as number)
+  )
+    return false;
+  const averageRisk = risk.averageScore as number | null;
+  if (assessedCount === 0 ? averageRisk !== null : averageRisk === null)
+    return false;
+  const coverage = risk.coverage as number | null;
+  if (
+    createdCount === 0
+      ? coverage !== null
+      : coverage !== assessedCount / createdCount
+  )
+    return false;
+  return true;
+}
+
+function consistentHourly(value: RecordValue, summaryValue: RecordValue) {
+  const hourly = value as RecordValue;
+  const created = hourly.created as RecordValue[];
+  const completed = hourly.completed as RecordValue[];
+  const summaryCreated = (summaryValue.created as RecordValue)
+    .transactionCount as number;
+  const summaryCompleted = (summaryValue.completed as RecordValue)
+    .count as number;
+  const summaryAmount = (summaryValue.completed as RecordValue)
+    .totalAmount as number;
+  const summaryFee = (summaryValue.completed as RecordValue).totalFee as number;
+  const createdCount = sum(created.map((point) => point.count as number));
+  const completedCount = sum(completed.map((point) => point.count as number));
+  const completedAmount = sum(
+    completed.map((point) => point.totalAmount as number),
+  );
+  const completedFee = sum(completed.map((point) => point.totalFee as number));
+  return (
+    created.every(
+      (point) =>
+        sum([
+          point.successCount as number,
+          point.failedCount as number,
+          point.cancelledCount as number,
+          point.expiredCount as number,
+          point.pendingCount as number,
+          point.unknownCount as number,
+        ]) === point.count,
+    ) &&
+    createdCount === summaryCreated &&
+    completedCount === summaryCompleted &&
+    completedAmount === summaryAmount &&
+    completedFee === summaryFee
+  );
+}
+
 // Validate the wire shape before React formats dates, indexes collections, or
 // exports values. Statistics themselves remain server-owned; do not recompute
 // them from a filtered page or replace invalid/missing fields with zero.
@@ -229,5 +317,15 @@ export function parseTransactionReport(
   ) {
     throw new Error("Dữ liệu báo cáo không đúng cấu trúc hoặc ngày được chọn.");
   }
-  return body.data as unknown as TransactionReport;
+  const data = body.data as unknown as RecordValue;
+  if (
+    !consistentSummary(data.summary as RecordValue) ||
+    !consistentSummary(data.previous as RecordValue) ||
+    !consistentHourly(data.hourly as RecordValue, data.summary as RecordValue)
+  ) {
+    throw new Error(
+      "Số liệu báo cáo không nhất quán giữa tổng hợp và biểu đồ theo giờ.",
+    );
+  }
+  return data as unknown as TransactionReport;
 }

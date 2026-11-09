@@ -103,6 +103,39 @@ describe("report wire validation", () => {
     ).toBeNull();
   });
 
+  it("rejects status, hourly and revenue totals that cannot reconcile with cards", () => {
+    const cases = [
+      (data: ReturnType<typeof reportFixture>) => {
+        data.summary.created.pendingCount += 1;
+      },
+      (data: ReturnType<typeof reportFixture>) => {
+        data.hourly.created[0].count += 1;
+      },
+      (data: ReturnType<typeof reportFixture>) => {
+        data.hourly.created[0].pendingCount += 1;
+      },
+      (data: ReturnType<typeof reportFixture>) => {
+        data.hourly.completed[12].totalAmount += 1;
+      },
+      (data: ReturnType<typeof reportFixture>) => {
+        data.summary.completed.averageAmount = 1;
+      },
+      (data: ReturnType<typeof reportFixture>) => {
+        data.summary.risk.coverage = 1;
+      },
+      (data: ReturnType<typeof reportFixture>) => {
+        data.summary.risk.assessedCount = 2;
+      },
+    ];
+    for (const mutate of cases) {
+      const data = reportFixture();
+      mutate(data);
+      expect(() => parseTransactionReport({ data }, data.date)).toThrow(
+        /không nhất quán/,
+      );
+    }
+  });
+
   it.each([
     "",
     "2026-02-30",

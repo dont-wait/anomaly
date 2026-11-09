@@ -38,6 +38,21 @@ function money(value: number) {
   return `${value.toLocaleString("vi-VN")} VND`;
 }
 
+function totalCreated(hourly: TransactionReportHourly["created"]) {
+  return hourly.reduce((total, point) => total + point.count, 0);
+}
+
+function totalCompleted(hourly: TransactionReportHourly["completed"]) {
+  return hourly.reduce(
+    (total, point) => ({
+      count: total.count + point.count,
+      amount: total.amount + point.totalAmount,
+      fee: total.fee + point.totalFee,
+    }),
+    { count: 0, amount: 0, fee: 0 },
+  );
+}
+
 export function DailyReportChart({
   hourly,
   date,
@@ -133,6 +148,8 @@ export function DailyReportChart({
       },
     },
   };
+  const completedTotals = totalCompleted(hourly.completed);
+  const createdTotal = totalCreated(hourly.created);
 
   return (
     <section
@@ -150,6 +167,21 @@ export function DailyReportChart({
               : "Doanh số theo giờ hoàn tất"}{" "}
             · {date}
           </p>
+          <div
+            className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-(--admin-text-muted)"
+            data-testid="chart-reconciliation"
+          >
+            <span>
+              Khởi tạo: {createdTotal}/{summary?.created.transactionCount ?? 0}
+            </span>
+            <span>
+              Hoàn tất: {completedTotals.count}/{summary?.completed.count ?? 0}
+            </span>
+            <span>
+              Doanh số: {money(completedTotals.amount)}/
+              {money(summary?.completed.totalAmount ?? 0)}
+            </span>
+          </div>
         </div>
         <div
           className="bg-(--admin-surface) flex rounded-sm p-0.5"
@@ -185,7 +217,8 @@ export function DailyReportChart({
         </div>
         <div className="h-70 min-w-0">
           <p className="text-[11px] text-(--admin-text-muted)">
-            Trạng thái nhóm khởi tạo
+            Trạng thái nhóm khởi tạo · tổng{" "}
+            {summary?.created.transactionCount ?? 0}
           </p>
           {summary?.created.transactionCount ? (
             <Doughnut data={pieData} options={pieOptions} />

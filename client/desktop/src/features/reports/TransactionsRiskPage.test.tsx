@@ -71,6 +71,12 @@ describe("TransactionsRiskPage single report contract", () => {
     ).toContain("2");
     const pie = JSON.parse(screen.getByTestId("pie-data").textContent || "{}");
     expect(pie.datasets[0].data).toEqual([0, 0, 0, 1, 1, 0]);
+    expect(screen.getByTestId("chart-reconciliation").textContent).toContain(
+      "Khởi tạo: 2/2",
+    );
+    expect(screen.getByTestId("chart-reconciliation").textContent).toContain(
+      "Doanh số: 700.000 VND/700.000 VND",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Doanh số" }));
     const bar = JSON.parse(screen.getByTestId("bar-data").textContent || "{}");
     expect(bar.datasets).toHaveLength(1);
