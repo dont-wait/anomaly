@@ -26,7 +26,7 @@ import {
 } from "@/features/auth/api/adminSession";
 import { navigate, routes, type ProtectedRoute } from "@/app/routes";
 import { useAdminAlertCount } from "@/features/alerts/adminAlertCountContext";
-import { ThemeToggle } from "@/theme/ThemeToggle";
+import { ThemeToggle } from "@/shared/theme/ThemeToggle";
 
 interface NavigationItem {
   label: string;

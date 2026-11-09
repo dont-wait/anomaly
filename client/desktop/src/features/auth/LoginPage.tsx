@@ -9,7 +9,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { routes, navigate } from "@/app/routes";
 import { loginAdmin } from "./api/adminAuth";
-import { ThemeToggle } from "@/theme/ThemeToggle";
+import { ThemeToggle } from "@/shared/theme/ThemeToggle";
 
 interface LoginErrors {
   cccdNumber?: string;

@@ -10,7 +10,7 @@ import {
   Tooltip,
 } from "chart.js";
 import type { TransactionReportHourly, TransactionReportSummary } from "./api/transactionsReportApi";
-import { useAdminTheme } from "@/theme/theme";
+import { useAdminTheme } from "@/shared/theme/theme";
 
 ChartJS.register(
   ArcElement,

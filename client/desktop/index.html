@@ -21,10 +21,14 @@
             .querySelector('meta[name="theme-color"]')
             ?.setAttribute("content", theme === "dark" ? "#09090b" : "#f6f8fc");
         } catch {
-          document.documentElement.dataset.theme = "dark";
+          const theme = window.matchMedia?.("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
           document
             .querySelector('meta[name="theme-color"]')
-            ?.setAttribute("content", "#09090b");
+            ?.setAttribute("content", theme === "dark" ? "#09090b" : "#f6f8fc");
         }
       })();
     </script>

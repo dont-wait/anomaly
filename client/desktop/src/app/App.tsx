@@ -25,7 +25,7 @@ import {
   routes,
   type ProtectedRoute,
 } from "./routes";
-import { ThemeProvider } from "@/theme/ThemeProvider";
+import { ThemeProvider } from "@/shared/theme/ThemeProvider";
 
 function subscribe(onChange: () => void) {
   window.addEventListener("hashchange", onChange);

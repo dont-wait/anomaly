@@ -11,7 +11,7 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import type { RiskSeriesPoint, TimeRange } from "../model";
-import { useAdminTheme, type AdminTheme } from "@/theme/theme";
+import { useAdminTheme, type AdminTheme } from "@/shared/theme/theme";
 
 const dashboardCard =
   "bg-(--admin-dashboard-card-background) border border-(--admin-dashboard-card-border) shadow-(--admin-dashboard-card-shadow)";
