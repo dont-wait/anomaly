@@ -9,10 +9,8 @@ import {
   LinearScale,
   Tooltip,
 } from "chart.js";
-import type {
-  TransactionReportHourly,
-  TransactionReportSummary,
-} from "./api/transactionsReportApi";
+import type { TransactionReportHourly, TransactionReportSummary } from "./api/transactionsReportApi";
+import { useAdminTheme } from "@/shared/theme/theme";
 
 ChartJS.register(
   ArcElement,
@@ -39,110 +37,29 @@ export function DailyReportChart({
   summary?: TransactionReportSummary;
 }) {
   const [mode, setMode] = useState<ChartMode>("count");
+  const { theme } = useAdminTheme();
+  const chartColors = useMemo(() => theme === "dark" ? { success: "#75d9a4", failure: "#ff8f86", pending: "#f6d58a", border: "#202125", muted: "#8d90a0", grid: "#272b33" } : { success: "#047857", failure: "#b91c1c", pending: "#b45309", border: "#d6dee9", muted: "#64748b", grid: "#d6dee9" }, [theme]);
   const labels = hourly.map((point) => point.hour);
-  const barData = useMemo(
-    () => ({
-      labels,
-      datasets: [
-        {
-          label: "Hoàn tất",
-          data: hourly.map((point) =>
-            mode === "count" ? point.success : point.successAmount,
-          ),
-          backgroundColor: "#75d9a4",
-          borderRadius: 3,
-          stack: "status",
-        },
-        {
-          label: "Thất bại",
-          data: hourly.map((point) =>
-            mode === "count" ? point.failed : point.failedAmount,
-          ),
-          backgroundColor: "#ff8f86",
-          borderRadius: 3,
-          stack: "status",
-        },
-        {
-          label: "Đang xử lý",
-          data: hourly.map((point) =>
-            mode === "count" ? point.pending : point.pendingAmount,
-          ),
-          backgroundColor: "#f6d58a",
-          borderRadius: 3,
-          stack: "status",
-        },
-      ],
-    }),
-    [hourly, labels, mode],
-  );
+  const barData = useMemo(() => ({
+    labels,
+    datasets: [
+      { label: "Hoàn tất", data: hourly.map((point) => mode === "count" ? point.success : point.successAmount), backgroundColor: chartColors.success, borderRadius: 3, stack: "status" },
+      { label: "Thất bại", data: hourly.map((point) => mode === "count" ? point.failed : point.failedAmount), backgroundColor: chartColors.failure, borderRadius: 3, stack: "status" },
+      { label: "Đang xử lý", data: hourly.map((point) => mode === "count" ? point.pending : point.pendingAmount), backgroundColor: chartColors.pending, borderRadius: 3, stack: "status" },
+    ],
+  }), [chartColors, hourly, labels, mode]);
   const pieData = {
     labels: ["Hoàn tất", "Thất bại khác", "Bị chặn"],
-    datasets: [
-      {
-        data: [
-          summary?.successCount || 0,
-          Math.max(
-            0,
-            (summary?.failedCount || 0) - (summary?.blockedCount || 0),
-          ),
-          summary?.blockedCount || 0,
-        ],
-        backgroundColor: ["#75d9a4", "#ff8f86", "#f6d58a"],
-        borderColor: "#202125",
-        borderWidth: 3,
-        hoverOffset: 5,
-      },
-    ],
+    datasets: [{ data: [summary?.successCount || 0, Math.max(0, (summary?.failedCount || 0) - (summary?.blockedCount || 0)), summary?.blockedCount || 0], backgroundColor: [chartColors.success, chartColors.failure, chartColors.pending], borderColor: chartColors.border, borderWidth: 3, hoverOffset: 5 }],
   };
   const barOptions = {
     responsive: true,
     maintainAspectRatio: false,
     interaction: { mode: "index" as const, intersect: false },
-    plugins: {
-      legend: {
-        position: "top" as const,
-        align: "end" as const,
-        labels: { color: "#8d90a0", boxWidth: 10, font: { size: 10 } },
-      },
-      tooltip: {
-        callbacks: {
-          label: (context: {
-            dataset: { label?: string };
-            parsed: { y: number };
-          }) =>
-            `${context.dataset.label}: ${mode === "amount" ? money(context.parsed.y) : context.parsed.y}`,
-        },
-      },
-    },
-    scales: {
-      x: {
-        stacked: true,
-        grid: { display: false },
-        ticks: { color: "#8d90a0", maxTicksLimit: 12 },
-      },
-      y: {
-        stacked: true,
-        beginAtZero: true,
-        grid: { color: "#272b33" },
-        ticks: {
-          color: "#8d90a0",
-          precision: 0,
-          callback: (tick: string | number) =>
-            mode === "amount" ? `${Number(tick) / 1000000}M` : tick,
-        },
-      },
-    },
+    plugins: { legend: { position: "top" as const, align: "end" as const, labels: { color: chartColors.muted, boxWidth: 10, font: { size: 10 } } }, tooltip: { callbacks: { label: (context: { dataset: { label?: string }; parsed: { y: number } }) => `${context.dataset.label}: ${mode === "amount" ? money(context.parsed.y) : context.parsed.y}` } } },
+    scales: { x: { stacked: true, grid: { display: false }, ticks: { color: chartColors.muted, maxTicksLimit: 12 } }, y: { stacked: true, beginAtZero: true, grid: { color: chartColors.grid }, ticks: { color: chartColors.muted, precision: 0, callback: (tick: string | number) => mode === "amount" ? `${Number(tick) / 1000000}M` : tick } } },
   };
-  const pieOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: "right" as const,
-        labels: { color: "#8d90a0", boxWidth: 10, font: { size: 10 } },
-      },
-    },
-  };
+  const pieOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right" as const, labels: { color: chartColors.muted, boxWidth: 10, font: { size: 10 } } } } };
 
   return (
     <section

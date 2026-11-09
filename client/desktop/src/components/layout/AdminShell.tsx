@@ -26,6 +26,7 @@ import {
 } from "@/features/auth/api/adminSession";
 import { navigate, routes, type ProtectedRoute } from "@/app/routes";
 import { useAdminAlertCount } from "@/features/alerts/adminAlertCountContext";
+import { ThemeToggle } from "@/shared/theme/ThemeToggle";
 
 interface NavigationItem {
   label: string;
@@ -160,7 +161,7 @@ export function AdminShell({
       className={`grid min-h-dvh ${shellColumns} bg-(--admin-background) text-(--admin-text) transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:transition-none max-[900px]:grid-cols-[64px_minmax(0,1fr)]`}
     >
       <aside
-        className="sticky top-0 flex h-dvh min-h-0 self-start flex-col overflow-hidden border-r border-(--admin-border) bg-(--admin-surface)"
+        className="sticky top-0 flex h-dvh min-h-0 self-start flex-col overflow-hidden border-r border-(--admin-border) bg-(--admin-surface) shadow-(--admin-shadow-card)"
         aria-label="Điều hướng admin"
       >
         <div
@@ -190,12 +191,12 @@ export function AdminShell({
         </div>
 
         <nav
-          className={`min-h-0 w-full flex-1 overscroll-y-contain overflow-y-auto py-4 ${isCollapsed ? "px-2" : "px-3"} max-[900px]:px-2`}
+          className={`min-h-0 w-full flex-1 overscroll-y-contain overflow-y-auto py-5 ${isCollapsed ? "px-2" : "px-3.5"} max-[900px]:px-2`}
           aria-label="Menu admin"
         >
           {navigationGroups.map((group) => (
             <div
-              className={`transition-[margin] duration-200 ease-in-out motion-reduce:transition-none max-[900px]:mb-2 ${isCollapsed ? "mb-2" : "mb-5"}`}
+              className={`transition-[margin] duration-200 ease-in-out motion-reduce:transition-none max-[900px]:mb-2 ${isCollapsed ? "mb-2" : "mb-4"}`}
               key={group.label}
             >
               <div
@@ -210,7 +211,7 @@ export function AdminShell({
                     <button
                       className={`relative flex h-10 w-full items-center gap-3 rounded-(--admin-radius-md) border px-3 text-left text-[13px] font-medium transition-colors focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-(--admin-primary) max-[900px]:justify-center max-[900px]:px-0 ${isCollapsed ? "justify-center px-0" : ""} ${
                         active
-                          ? "border-(--admin-border) bg-(--admin-surface-hover) text-(--admin-text) before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:bg-(--admin-primary)"
+                          ? "border-(--admin-nav-active-border) bg-(--admin-nav-active-background) text-(--admin-nav-active-foreground) before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:bg-(--admin-primary)"
                           : "border-transparent text-(--admin-text-secondary) hover:bg-(--admin-surface-subtle) hover:text-(--admin-text)"
                       }`}
                       key={item.route}
@@ -232,7 +233,7 @@ export function AdminShell({
                       {(item.badge ||
                         (item.route === routes.alerts && alertBadge)) && (
                         <span
-                          className={`border border-[#7f1d1d] bg-[#c1121f] font-(family-name:--admin-font-mono) text-white max-[900px]:absolute max-[900px]:top-1.5 max-[900px]:right-1.5 max-[900px]:h-1.5 max-[900px]:min-w-0 max-[900px]:w-1.5 max-[900px]:rounded-full max-[900px]:p-0 max-[900px]:text-[0px] ${isCollapsed ? "absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full p-0 text-[0px]" : "min-w-5 rounded-[3px] px-1.5 py-0.5 text-center text-[10px] leading-4"}`}
+                          className={`border border-(--admin-alert-border) bg-(--admin-alert-background) font-(family-name:--admin-font-mono) text-white max-[900px]:absolute max-[900px]:top-1.5 max-[900px]:right-1.5 max-[900px]:h-1.5 max-[900px]:min-w-0 max-[900px]:w-1.5 max-[900px]:rounded-full max-[900px]:p-0 max-[900px]:text-[0px] ${isCollapsed ? "absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full p-0 text-[0px]" : "min-w-5 rounded-[3px] px-1.5 py-0.5 text-center text-[10px] leading-4"}`}
                           aria-label={`${item.badge ?? alertBadge} mục cần xử lý`}
                         >
                           {item.badge ?? alertBadge}
@@ -251,7 +252,7 @@ export function AdminShell({
             className={`flex min-h-16 items-center gap-3 px-3 py-2.5 max-[900px]:justify-center max-[900px]:px-2 ${isCollapsed ? "flex-col justify-center px-2" : "justify-between"}`}
           >
             <div
-              className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#b4c5ff] text-[#002a78] max-[900px]:hidden ${isCollapsed ? "hidden" : ""}`}
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-(--admin-avatar-background) text-(--admin-avatar-foreground) max-[900px]:hidden ${isCollapsed ? "hidden" : ""}`}
               role="img"
               aria-label={`Tài khoản ${user.fullName}`}
               title={user.fullName}
@@ -286,7 +287,7 @@ export function AdminShell({
       </aside>
 
       <div className="min-w-0 bg-(--admin-background)">
-        <header className="flex h-17.5 items-center justify-between gap-4 border-b border-(--admin-border) bg-(--admin-surface) px-5 max-[900px]:px-3">
+        <header className="flex h-18 items-center justify-between gap-4 border-b border-(--admin-border) bg-(--admin-surface) px-6 shadow-(--admin-shadow-card) max-[900px]:px-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex shrink-0 items-center gap-1 font-(family-name:--admin-font-mono) text-[12px] tracking-[0.02em] text-(--admin-text-secondary) max-[700px]:hidden">
               <span>ADMIN</span>
@@ -294,7 +295,7 @@ export function AdminShell({
               <span>CONSOLE</span>
               <span className="text-(--admin-primary)">/ WORKSPACE</span>
             </div>
-            <label className="flex h-9 w-82.5 items-center gap-2.5 rounded-(--admin-radius-md) border border-(--admin-border) bg-(--admin-background) px-3 text-(--admin-text-muted) focus-within:border-(--admin-primary) focus-within:shadow-(--admin-focus-ring) max-[1100px]:hidden">
+            <label className="flex h-10 w-82.5 items-center gap-2.5 rounded-(--admin-radius-md) border border-(--admin-border) bg-(--admin-background) px-3 text-(--admin-text-muted) focus-within:border-(--admin-primary) focus-within:shadow-(--admin-focus-ring) max-[1100px]:hidden">
               <FontAwesomeIcon
                 icon={faMagnifyingGlass}
                 className="w-3.5 text-[12px]"
@@ -311,6 +312,7 @@ export function AdminShell({
             </label>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <button
               className="relative grid h-8 w-8 place-items-center text-(--admin-text-secondary) hover:text-(--admin-text)"
               type="button"
@@ -319,7 +321,7 @@ export function AdminShell({
             >
               <FontAwesomeIcon icon={faBell} aria-hidden="true" />
               <span
-                className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#c1121f]"
+                className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-(--admin-alert-background)"
                 aria-hidden="true"
               />
             </button>
@@ -332,7 +334,7 @@ export function AdminShell({
               </span>
             </div>
             <div
-              className="grid h-9 w-9 place-items-center rounded-full bg-[#b4c5ff] text-[#002a78]"
+              className="grid h-9 w-9 place-items-center rounded-full bg-(--admin-avatar-background) text-(--admin-avatar-foreground)"
               role="img"
               aria-label={`Tài khoản ${user.fullName}`}
               title={`${user.fullName} · ${user.email}`}
@@ -354,7 +356,7 @@ export function AdminShell({
           </div>
         </header>
 
-        <main className="w-full p-4 max-[900px]:p-3">{children}</main>
+        <main className="w-full p-6 max-[900px]:p-3">{children}</main>
       </div>
     </div>
   );

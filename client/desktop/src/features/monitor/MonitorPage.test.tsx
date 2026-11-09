@@ -4,6 +4,7 @@ import { MonitorPage } from "./MonitorPage";
 import { MonitorDashboardSkeleton } from "./components/MonitorDashboardSkeleton";
 import { RiskTrendChart } from "./components/RiskTrendChart";
 import { routes } from "@/app/routes";
+import { ThemeProvider } from "@/shared/theme/ThemeProvider";
 
 vi.mock("./api/monitorApi", () => ({
   consumeRiskStream: vi.fn(() => new Promise<void>(() => undefined)),
@@ -78,6 +79,23 @@ describe("MonitorPage", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
   });
+
+  it.each(["light", "dark"] as const)(
+    "renders the authenticated monitoring dashboard in %s theme",
+    async (theme) => {
+      window.localStorage.setItem("anomaly.admin.theme", theme);
+      render(
+        <ThemeProvider>
+          <MonitorPage />
+        </ThemeProvider>,
+      );
+      expect(
+        await screen.findByRole("heading", { name: /Giám sát rủi ro/i }),
+      ).toBeTruthy();
+      expect(document.documentElement.dataset.theme).toBe(theme);
+      expect(screen.getByTestId("chart-canvas")).toBeTruthy();
+    },
+  );
 
   it("renders model assessment data from the snapshot", async () => {
     render(<MonitorPage />);
