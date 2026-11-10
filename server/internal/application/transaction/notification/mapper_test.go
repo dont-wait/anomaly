@@ -81,7 +81,10 @@ func TestMapNotifiesBothParties(t *testing.T) {
 
 func TestMapRequestsRenderThroughRegisteredTemplates(t *testing.T) {
 	m, record := fixture()
-	requests, _ := m.Map(context.Background(), record)
+	requests, err := m.Map(context.Background(), record)
+	if err != nil || len(requests) != 2 {
+		t.Fatalf("requests=%d err=%v", len(requests), err)
+	}
 	want := []string{"-1.500.000 VND tới Tran Thi B (•••• 0222).", "+1.500.000 VND từ Nguyen Van A (•••• 0111)."}
 	for i, r := range requests {
 		tmpl, ok := notificationapp.Lookup(r.Type)
