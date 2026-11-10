@@ -23,8 +23,32 @@ ChartJS.register(
 
 type ChartMode = "count" | "amount";
 
+const statuses = [
+  { key: "successCount", label: "Hoàn tất", color: "#75d9a4" },
+  { key: "failedCount", label: "Thất bại", color: "#ff8f86" },
+  { key: "cancelledCount", label: "Đã huỷ", color: "#b599e8" },
+  { key: "expiredCount", label: "Hết hạn OTP", color: "#eda668" },
+  { key: "pendingCount", label: "Đang xử lý", color: "#f6d58a" },
+  { key: "unknownCount", label: "Chưa xác định", color: "#8d90a0" },
+] as const;
+
 function money(value: number) {
   return `${value.toLocaleString("vi-VN")} VND`;
+}
+
+function totalCreated(hourly: TransactionReportHourly["created"]) {
+  return hourly.reduce((total, point) => total + point.count, 0);
+}
+
+function totalCompleted(hourly: TransactionReportHourly["completed"]) {
+  return hourly.reduce(
+    (total, point) => ({
+      count: total.count + point.count,
+      amount: total.amount + point.totalAmount,
+      fee: total.fee + point.totalFee,
+    }),
+    { count: 0, amount: 0, fee: 0 },
+  );
 }
 
 export function DailyReportChart({
@@ -32,34 +56,128 @@ export function DailyReportChart({
   date,
   summary,
 }: {
-  hourly: TransactionReportHourly[];
+  hourly: TransactionReportHourly;
   date: string;
   summary?: TransactionReportSummary;
 }) {
   const [mode, setMode] = useState<ChartMode>("count");
   const { theme } = useAdminTheme();
-  const chartColors = useMemo(() => theme === "dark" ? { success: "#75d9a4", failure: "#ff8f86", pending: "#f6d58a", border: "#202125", muted: "#8d90a0", grid: "#272b33" } : { success: "#047857", failure: "#b91c1c", pending: "#b45309", border: "#d6dee9", muted: "#64748b", grid: "#d6dee9" }, [theme]);
-  const labels = hourly.map((point) => point.hour);
-  const barData = useMemo(() => ({
+  const chartColors = useMemo(
+    () =>
+      theme === "dark"
+        ? {
+            success: "#75d9a4",
+            failure: "#ff8f86",
+            pending: "#f6d58a",
+            border: "#202125",
+            muted: "#8d90a0",
+            grid: "#272b33",
+          }
+        : {
+            success: "#047857",
+            failure: "#b91c1c",
+            pending: "#b45309",
+            border: "#d6dee9",
+            muted: "#64748b",
+            grid: "#d6dee9",
+          },
+    [theme],
+  );
+  const chartStatuses = statuses.map((status) => ({
+    ...status,
+    color:
+      status.key === "successCount"
+        ? chartColors.success
+        : status.key === "failedCount"
+          ? chartColors.failure
+          : status.key === "pendingCount"
+            ? chartColors.pending
+            : status.color,
+  }));
+  const labels = (mode === "count" ? hourly.created : hourly.completed).map(
+    (point) => point.hour,
+  );
+  const barData = {
     labels,
-    datasets: [
-      { label: "Hoàn tất", data: hourly.map((point) => mode === "count" ? point.success : point.successAmount), backgroundColor: chartColors.success, borderRadius: 3, stack: "status" },
-      { label: "Thất bại", data: hourly.map((point) => mode === "count" ? point.failed : point.failedAmount), backgroundColor: chartColors.failure, borderRadius: 3, stack: "status" },
-      { label: "Đang xử lý", data: hourly.map((point) => mode === "count" ? point.pending : point.pendingAmount), backgroundColor: chartColors.pending, borderRadius: 3, stack: "status" },
-    ],
-  }), [chartColors, hourly, labels, mode]);
+    datasets:
+      mode === "count"
+        ? chartStatuses.map(({ key, label, color }) => ({
+            label,
+            data: hourly.created.map((point) => point[key]),
+            backgroundColor: color,
+            borderRadius: 3,
+            stack: "status",
+          }))
+        : [
+            {
+              label: "Doanh số theo giờ hoàn tất",
+              data: hourly.completed.map((point) => point.totalAmount),
+              backgroundColor: chartColors.success,
+              borderRadius: 3,
+              stack: "status",
+            },
+          ],
+  };
   const pieData = {
-    labels: ["Hoàn tất", "Thất bại khác", "Bị chặn"],
-    datasets: [{ data: [summary?.successCount || 0, Math.max(0, (summary?.failedCount || 0) - (summary?.blockedCount || 0)), summary?.blockedCount || 0], backgroundColor: [chartColors.success, chartColors.failure, chartColors.pending], borderColor: chartColors.border, borderWidth: 3, hoverOffset: 5 }],
+    labels: statuses.map((status) => status.label),
+    datasets: [
+      {
+        data: statuses.map(({ key }) => summary?.created[key] ?? 0),
+        backgroundColor: chartStatuses.map((status) => status.color),
+        borderColor: chartColors.border,
+        borderWidth: 3,
+        hoverOffset: 5,
+      },
+    ],
   };
   const barOptions = {
     responsive: true,
     maintainAspectRatio: false,
     interaction: { mode: "index" as const, intersect: false },
-    plugins: { legend: { position: "top" as const, align: "end" as const, labels: { color: chartColors.muted, boxWidth: 10, font: { size: 10 } } }, tooltip: { callbacks: { label: (context: { dataset: { label?: string }; parsed: { y: number } }) => `${context.dataset.label}: ${mode === "amount" ? money(context.parsed.y) : context.parsed.y}` } } },
-    scales: { x: { stacked: true, grid: { display: false }, ticks: { color: chartColors.muted, maxTicksLimit: 12 } }, y: { stacked: true, beginAtZero: true, grid: { color: chartColors.grid }, ticks: { color: chartColors.muted, precision: 0, callback: (tick: string | number) => mode === "amount" ? `${Number(tick) / 1000000}M` : tick } } },
+    plugins: {
+      legend: {
+        position: "top" as const,
+        align: "end" as const,
+        labels: { color: chartColors.muted, boxWidth: 10, font: { size: 10 } },
+      },
+      tooltip: {
+        callbacks: {
+          label: (context: { dataset: { label?: string }; parsed: { y: number } }) =>
+            `${context.dataset.label}: ${mode === "amount" ? money(context.parsed.y) : context.parsed.y}`,
+        },
+      },
+    },
+    scales: {
+      x: {
+        stacked: true,
+        grid: { display: false },
+        ticks: { color: chartColors.muted, maxTicksLimit: 12 },
+      },
+      y: {
+        stacked: true,
+        beginAtZero: true,
+        grid: { color: chartColors.grid },
+        ticks: {
+          color: chartColors.muted,
+          precision: 0,
+          callback: (tick: string | number) =>
+            mode === "amount" ? `${Number(tick) / 1000000}M` : tick,
+        },
+      },
+    },
   };
-  const pieOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right" as const, labels: { color: chartColors.muted, boxWidth: 10, font: { size: 10 } } } } };
+  const pieOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: "right" as const,
+        labels: { color: chartColors.muted, boxWidth: 10, font: { size: 10 } },
+      },
+    },
+  };
+  const completedTotals = totalCompleted(hourly.completed);
+  const createdTotal = totalCreated(hourly.created);
 
   return (
     <section
@@ -72,8 +190,26 @@ export function DailyReportChart({
             Tổng quan trong ngày
           </h2>
           <p className="text-[11px] text-(--admin-text-muted)">
-            Phân bổ theo giờ · {date}
+            {mode === "count"
+              ? "Theo giờ khởi tạo"
+              : "Doanh số theo giờ hoàn tất"}{" "}
+            · {date}
           </p>
+          <div
+            className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-(--admin-text-muted)"
+            data-testid="chart-reconciliation"
+          >
+            <span>
+              Khởi tạo: {createdTotal}/{summary?.created.transactionCount ?? 0}
+            </span>
+            <span>
+              Hoàn tất: {completedTotals.count}/{summary?.completed.count ?? 0}
+            </span>
+            <span>
+              Doanh số: {money(completedTotals.amount)}/
+              {money(summary?.completed.totalAmount ?? 0)}
+            </span>
+          </div>
         </div>
         <div
           className="bg-(--admin-surface) flex rounded-sm p-0.5"
@@ -95,7 +231,11 @@ export function DailyReportChart({
       </div>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(220px,0.8fr)]">
         <div className="h-70 min-w-0">
-          {hourly.length ? (
+          {(
+            mode === "count"
+              ? summary?.created.transactionCount
+              : summary?.completed.count
+          ) ? (
             <Bar data={barData} options={barOptions} />
           ) : (
             <div className="grid h-full place-items-center text-[12px] text-(--admin-text-muted)">
@@ -104,7 +244,17 @@ export function DailyReportChart({
           )}
         </div>
         <div className="h-70 min-w-0">
-          <Doughnut data={pieData} options={pieOptions} />
+          <p className="text-[11px] text-(--admin-text-muted)">
+            Trạng thái nhóm khởi tạo · tổng{" "}
+            {summary?.created.transactionCount ?? 0}
+          </p>
+          {summary?.created.transactionCount ? (
+            <Doughnut data={pieData} options={pieOptions} />
+          ) : (
+            <p className="mt-4 text-[12px] text-(--admin-text-muted)">
+              Không có giao dịch khởi tạo trong ngày.
+            </p>
+          )}
         </div>
       </div>
     </section>
