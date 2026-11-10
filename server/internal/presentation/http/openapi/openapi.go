@@ -32,6 +32,10 @@ type Parameter struct {
 	Type     string
 	Format   string
 	Example  string
+	Default  string
+	Enum     []string
+	Minimum  int
+	Maximum  int
 }
 
 type Operation struct {
@@ -267,6 +271,24 @@ func parameterSchema(parameter Parameter) map[string]any {
 	if parameter.Format != "" {
 		schema["format"] = parameter.Format
 	}
+	if parameter.Default != "" {
+		if parameter.Type == "integer" {
+			if v, err := strconv.Atoi(parameter.Default); err == nil {
+				schema["default"] = v
+			}
+		} else {
+			schema["default"] = parameter.Default
+		}
+	}
+	if len(parameter.Enum) > 0 {
+		schema["enum"] = parameter.Enum
+	}
+	if parameter.Minimum != 0 {
+		schema["minimum"] = parameter.Minimum
+	}
+	if parameter.Maximum != 0 {
+		schema["maximum"] = parameter.Maximum
+	}
 	if parameter.Example != "" {
 		schema["example"] = parameter.Example
 		if parameter.Type == "integer" {
@@ -355,6 +377,17 @@ func structSchema(t reflect.Type) map[string]any {
 	for index := 0; index < t.NumField(); index++ {
 		field := t.Field(index)
 		if field.PkgPath != "" {
+			continue
+		}
+		// encoding/json flattens exported embedded structs with no named tag.
+		if field.Anonymous && field.Tag.Get("json") == "" && field.Type.Kind() == reflect.Struct {
+			embedded := structSchema(field.Type)
+			for name, property := range embedded["properties"].(map[string]any) {
+				properties[name] = property
+			}
+			if fields, ok := embedded["required"].([]string); ok {
+				required = append(required, fields...)
+			}
 			continue
 		}
 		name, options := jsonFieldName(field)

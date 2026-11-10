@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUserPen } from "@fortawesome/free-solid-svg-icons";
-import { request } from "@/features/loans/api/loansApi";
+import { LoansApiError, request } from "@/features/loans/api/loansApi";
 import { explainLoanError } from "@/features/loans/format";
 
 type FieldKey =
@@ -23,14 +24,34 @@ const FIELDS = Object.keys(FIELD_LABELS) as FieldKey[];
 export interface ProfileChangeItem {
   accountId: string;
   username: string;
+  email?: string;
+  identityType?: string;
+  identityNumberMasked?: string;
   current: Record<FieldKey, string>;
+  currentKnown?: boolean;
   change: Partial<Record<FieldKey, string>> & {
     id: string;
     requestedAt: string;
+    status: "PENDING" | "APPROVED" | "REJECTED" | "SUPERSEDED";
+    rejectionReason?: string;
+    reviewedAt?: string;
   };
 }
 
+type ReviewStatus = "PENDING" | "APPROVED" | "REJECTED" | "ALL";
+
+interface ProfileChangesPageData {
+  items: ProfileChangeItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  nextCursor?: string;
+  legacyFallback?: boolean;
+}
+
 const ROOT = "/api/admin/profile-changes";
+const PAGE_ROOT = `${ROOT}/page`;
 
 const panel =
   "rounded-(--admin-radius-md) border border-(--admin-border) bg-(--admin-surface)";
@@ -49,6 +70,7 @@ function ChangeCard({
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const changed = FIELDS.filter((key) => item.change[key]);
+  const pending = item.change.status === "PENDING";
 
   return (
     <article className={`${panel} grid gap-3 p-4`}>
@@ -60,6 +82,15 @@ function ChangeCard({
           Gửi {new Date(item.change.requestedAt).toLocaleString("vi-VN")}
         </span>
       </div>
+      {(item.email || item.identityType || item.identityNumberMasked) && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-(--admin-text-muted)">
+          {item.email && <span>Email: {item.email}</span>}
+          {item.identityType && <span>Giấy tờ: {item.identityType}</span>}
+          {item.identityNumberMasked && (
+            <span>Số giấy tờ: {item.identityNumberMasked}</span>
+          )}
+        </div>
+      )}
       <table className="w-full text-left text-[12px]">
         <thead className="text-(--admin-text-muted)">
           <tr>
@@ -72,13 +103,36 @@ function ChangeCard({
           {changed.map((key) => (
             <tr key={key} className="border-t border-(--admin-border)">
               <td className="py-1.5 pr-2">{FIELD_LABELS[key]}</td>
-              <td className="py-1.5 pr-2">{item.current[key] || "Chưa có"}</td>
+              <td className="py-1.5 pr-2">
+                {item.currentKnown === false
+                  ? "Không có bản ghi trước duyệt"
+                  : item.current[key] || "Chưa có"}
+              </td>
               <td className="py-1.5 font-semibold">{item.change[key]}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {rejecting ? (
+      {!pending ? (
+        <div className="grid gap-1 text-[12px] text-(--admin-text-muted)">
+          <p className="font-semibold">
+            {item.change.status === "APPROVED"
+              ? "Đã duyệt"
+              : item.change.status === "SUPERSEDED"
+                ? "Đã thay thế"
+                : "Đã từ chối"}
+          </p>
+          {item.change.rejectionReason && (
+            <p>Lý do: {item.change.rejectionReason}</p>
+          )}
+          {item.change.reviewedAt && (
+            <p>
+              Ngày xử lý:{" "}
+              {new Date(item.change.reviewedAt).toLocaleString("vi-VN")}
+            </p>
+          )}
+        </div>
+      ) : rejecting ? (
         <div className="grid gap-2">
           <label className="grid gap-1 text-[11px] font-semibold text-(--admin-text-muted)">
             Lý do từ chối
@@ -133,19 +187,103 @@ function ChangeCard({
 }
 
 export function ProfileChangesPage() {
-  const [items, setItems] = useState<ProfileChangeItem[] | null>(null);
+  const [data, setData] = useState<ProfileChangesPageData | null>(null);
+  const [status, setStatus] = useState<ReviewStatus>("PENDING");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  // Cursor changes should not recreate `load` and trigger duplicate effects.
+  const cursors = useRef<(string | null)[]>([null]);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    setLoading(true);
+    setError("");
+    const query = new URLSearchParams({
+      page: String(page),
+      pageSize: "10",
+      status,
+      search,
+    });
+    const cursor = cursors.current[page - 1];
+    if (cursor) query.set("cursor", cursor);
     try {
-      const body = await request<{ data: ProfileChangeItem[] }>(ROOT);
-      setItems(body.data);
+      let result: ProfileChangesPageData;
+      try {
+        const body = await request<{ data: ProfileChangesPageData }>(
+          `${PAGE_ROOT}?${query.toString()}`,
+        );
+        result = body.data;
+      } catch (cause) {
+        // Only an unstructured route-level 404 may indicate an old API.
+        // Structured 404s are real API errors, not signals to hide failures.
+        if (
+          !(
+            cause instanceof LoansApiError &&
+            cause.status === 404 &&
+            !cause.codes?.length
+          )
+        ) {
+          throw cause;
+        }
+        // Older API: the original route returns an array of pending requests.
+        // This compatibility path is intentionally temporary during rollout.
+        const legacy = await request<{
+          data: ProfileChangeItem[] | ProfileChangesPageData;
+        }>(ROOT);
+        const legacyItems = Array.isArray(legacy.data)
+          ? legacy.data
+          : legacy.data?.items;
+        if (!Array.isArray(legacyItems))
+          throw Object.assign(
+            new Error("Invalid legacy profile-change response"),
+            { cause }
+          );
+        const normalized = search.toLocaleLowerCase();
+        const filtered = legacyItems.filter(
+          (item) =>
+            (status === "ALL" || item.change.status === status) &&
+            (!normalized ||
+              [
+                item.accountId,
+                item.username,
+                item.current.fullName,
+                item.change.fullName ?? "",
+              ].some((value) =>
+                value.toLocaleLowerCase().includes(normalized),
+              )),
+        );
+        result = {
+          items: filtered.slice((page - 1) * 10, page * 10),
+          page,
+          pageSize: 10,
+          total: filtered.length,
+          totalPages: Math.ceil(filtered.length / 10),
+          legacyFallback: true,
+        };
+      }
+      if (sequence !== loadSequence.current) return;
+      // If a review removed the last item on the last page, show the last
+      // available page rather than leaving the admin on an empty page.
+      if (page > Math.max(1, result.totalPages)) {
+        const last = Math.max(1, result.totalPages);
+        cursors.current = cursors.current.slice(0, last);
+        setPage(last);
+        return;
+      }
+      setData(result);
     } catch (cause) {
-      setItems([]);
+      if (sequence !== loadSequence.current) return;
+      setData(null);
       setError(explainLoanError(cause));
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
     }
-  }, []);
+  }, [page, status, search]);
 
   useEffect(() => {
     void Promise.resolve().then(load);
@@ -163,15 +301,34 @@ export function ProfileChangesPage() {
         `${ROOT}/${encodeURIComponent(item.accountId)}/${encodeURIComponent(item.change.id)}/decision`,
         { method: "POST", body: JSON.stringify({ decision, reason }) },
       );
-      setItems((old) =>
-        (old ?? []).filter((other) => other.accountId !== item.accountId),
-      );
+      // Refresh from the server so totals, filters and other admin decisions
+      // cannot be desynchronized by optimistic removal.
+      if (page > 1) {
+        cursors.current = [null];
+        setPage(1);
+      } else {
+        await load();
+      }
     } catch (cause) {
       setError(explainLoanError(cause));
-      await load();
     } finally {
       setBusy(false);
     }
+  };
+
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = searchInput.trim();
+    if (page === 1 && search === query) {
+      // A repeated search must still reload, otherwise clearing data blanks UI.
+      void load();
+      return;
+    }
+    setData(null);
+    cursors.current = [null];
+    setLoading(true);
+    setPage(1);
+    setSearch(query);
   };
 
   return (
@@ -190,6 +347,66 @@ export function ProfileChangesPage() {
           </p>
         </div>
       </section>
+      <section className={`${panel} flex flex-wrap items-end gap-3 p-3`}>
+        <label className="grid min-w-40 gap-1 text-[12px] text-(--admin-text)">
+          Trạng thái yêu cầu
+          <select
+            aria-label="Trạng thái yêu cầu"
+            value={status}
+            disabled={busy}
+            onChange={(event) => {
+              setData(null);
+              cursors.current = [null];
+              setLoading(true);
+              setPage(1);
+              setStatus(event.target.value as ReviewStatus);
+            }}
+            className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-(--admin-text)"
+          >
+            <option value="PENDING">Chờ duyệt</option>
+            <option value="APPROVED">Đã duyệt</option>
+            <option value="REJECTED">Đã từ chối</option>
+            <option value="ALL">Tất cả</option>
+          </select>
+        </label>
+        <form
+          onSubmit={submitSearch}
+          className="flex flex-1 flex-wrap items-end gap-2"
+        >
+          <label className="grid min-w-48 flex-1 gap-1 text-[12px] text-(--admin-text)">
+            Tìm theo tên hoặc mã tài khoản
+            <input
+              aria-label="Tìm khách hàng"
+              value={searchInput}
+              maxLength={120}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Tên khách hàng, username, mã tài khoản"
+              className="h-9 rounded-sm border border-(--admin-border) bg-(--admin-background) px-2 text-(--admin-text)"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy}
+            className={`${button} bg-(--admin-primary) text-white`}
+          >
+            Tìm kiếm
+          </button>
+        </form>
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={busy || loading}
+          className={`${button} border border-(--admin-border) text-(--admin-text)`}
+        >
+          Làm mới
+        </button>
+      </section>
+      {data?.legacyFallback && (
+        <p role="status" className="rounded-sm border border-(--admin-border) bg-(--admin-surface) px-3 py-2 text-[12px] text-(--admin-text-muted)">
+          Đang kết nối API phiên bản cũ: chỉ có danh sách duyệt giới hạn,
+          lịch sử và phân trang có thể chưa đầy đủ. Hãy cập nhật Backend.
+        </p>
+      )}
       {error && (
         <p
           role="alert"
@@ -198,17 +415,17 @@ export function ProfileChangesPage() {
           {error}
         </p>
       )}
-      {items === null && (
+      {loading && (
         <p role="status" className="text-[12px] text-(--admin-text-muted)">
           Đang tải...
         </p>
       )}
-      {items?.length === 0 && !error && (
+      {data?.items.length === 0 && !error && !loading && (
         <p className="rounded-sm border border-dashed border-(--admin-border) px-3 py-6 text-center text-[12px] text-(--admin-text-muted)">
-          Không có yêu cầu nào đang chờ duyệt.
+          Không có yêu cầu phù hợp với bộ lọc.
         </p>
       )}
-      {items?.map((item) => (
+      {data?.items.map((item) => (
         <ChangeCard
           key={item.change.id}
           item={item}
@@ -216,6 +433,55 @@ export function ProfileChangesPage() {
           onDecide={(decision, reason) => void decide(item, decision, reason)}
         />
       ))}
+      {data && !error && (
+        <footer
+          className={`${panel} flex flex-wrap items-center justify-between gap-2 p-3 text-[12px] text-(--admin-text-muted)`}
+        >
+          <span>
+            {data.total} yêu cầu · Trang {data.page}/
+            {Math.max(1, data.totalPages)}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={loading || busy || page <= 1}
+              onClick={() => {
+                setLoading(true);
+                setData(null);
+                setPage((value) => value - 1);
+              }}
+              className={`${button} border border-(--admin-border) text-(--admin-text)`}
+            >
+              Trang trước
+            </button>
+            <button
+              type="button"
+              disabled={
+                loading ||
+                busy ||
+                !(
+                  data.nextCursor ||
+                  (data.legacyFallback && page < data.totalPages)
+                )
+              }
+              onClick={() => {
+                if (data.nextCursor) {
+                  cursors.current = [
+                    ...cursors.current.slice(0, page),
+                    data.nextCursor,
+                  ];
+                }
+                setLoading(true);
+                setData(null);
+                setPage((value) => value + 1);
+              }}
+              className={`${button} border border-(--admin-border) text-(--admin-text)`}
+            >
+              Trang sau
+            </button>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }

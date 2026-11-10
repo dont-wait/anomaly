@@ -45,6 +45,7 @@
 }
 
 .admin-login-page {
+  position: relative;
   display: grid;
   min-height: 100vh;
   place-items: center;
@@ -61,6 +62,12 @@
   border-radius: var(--admin-radius-lg);
   background: var(--admin-surface);
   box-shadow: var(--admin-shadow-floating);
+}
+
+.admin-login-theme-toggle {
+  position: absolute;
+  top: var(--admin-space-4);
+  right: var(--admin-space-4);
 }
 
 .admin-brand {
@@ -215,7 +222,7 @@
   padding: var(--admin-space-2) var(--admin-space-3);
   border: 1px solid var(--admin-danger);
   border-radius: var(--admin-radius-md);
-  color: #f87171;
+  color: var(--admin-danger-foreground);
   background: var(--admin-danger-soft);
   font-family: var(--admin-font-mono);
   font-size: 11px;
@@ -231,7 +238,7 @@
   margin-top: var(--admin-space-2);
   border: 1px solid var(--admin-primary-strong);
   border-radius: var(--admin-radius-md);
-  color: #ffffff;
+  color: var(--admin-on-primary);
   background: var(--admin-primary);
   font-family: var(--admin-font-mono);
   font-size: 11px;

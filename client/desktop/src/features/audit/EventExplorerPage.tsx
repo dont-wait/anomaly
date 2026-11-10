@@ -20,6 +20,7 @@ import type {
   EventExplorerListItem,
   EventExplorerResponse,
 } from "./model";
+import { useAdminTheme } from "@/shared/theme/theme";
 
 const surface = "bg-(--admin-surface)";
 const subtle = "bg-(--admin-surface-subtle)";
@@ -307,6 +308,7 @@ function EventDetailDrawer({
 }
 
 export function EventExplorerPage() {
+  const { theme } = useAdminTheme();
   const [query, setQuery] = useState<EventExplorerQuery>(initialQuery);
   const [appliedQuery, setAppliedQuery] = useState<EventExplorerQuery | null>(
     null,
@@ -501,7 +503,7 @@ export function EventExplorerPage() {
               <span className="sr-only">Từ ngày</span>
               <input
                 className="h-full w-full rounded-sm border border-(--admin-border) bg-(--admin-background) px-2.5 text-[12px] text-(--admin-text) outline-none transition-colors focus:border-(--admin-primary)"
-                style={{ colorScheme: "dark" }}
+                style={{ colorScheme: theme }}
                 type="date"
                 aria-label="Từ ngày"
                 value={query.from}
@@ -514,7 +516,7 @@ export function EventExplorerPage() {
               <span className="sr-only">Đến ngày</span>
               <input
                 className="h-full w-full rounded-sm border border-(--admin-border) bg-(--admin-background) px-2.5 text-[12px] text-(--admin-text) outline-none transition-colors focus:border-(--admin-primary)"
-                style={{ colorScheme: "dark" }}
+                style={{ colorScheme: theme }}
                 type="date"
                 aria-label="Đến ngày"
                 value={query.to}
