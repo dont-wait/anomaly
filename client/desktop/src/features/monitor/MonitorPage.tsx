@@ -35,6 +35,10 @@ import {
 const surface = "bg-(--admin-surface)";
 const surfaceSubtle = "bg-(--admin-surface-subtle)";
 const surfaceHover = "hover:bg-(--admin-surface-hover)";
+const dashboardCard =
+  "bg-(--admin-dashboard-card-background) border border-(--admin-dashboard-card-border) shadow-(--admin-dashboard-card-shadow)";
+const dashboardControl =
+  "bg-(--admin-dashboard-control-background) border border-(--admin-dashboard-control-border)";
 const mono = "font-(family-name:--admin-font-mono)";
 const LOADING_SKELETON_DELAY_MS = 100;
 const MIN_SKELETON_VISIBLE_MS = 240;
@@ -88,11 +92,11 @@ function TransactionStatusIcon({ status }: { status?: string }) {
     : faCircleQuestion;
   const color =
     status === "success"
-      ? "text-[#75d9a4]"
+      ? "text-(--admin-success-foreground)"
       : status === "awaiting_otp"
-        ? "text-[#f6d58a]"
+        ? "text-(--admin-warning-foreground)"
         : status === "failed" || status === "cancelled" || status === "expired"
-          ? "text-[#ff8f86]"
+          ? "text-(--admin-danger-foreground)"
           : "text-(--admin-text-muted)";
   return (
     <span
@@ -110,7 +114,7 @@ interface Metric {
   value: string;
   note?: string;
   icon: IconDefinition;
-  tone?: "default" | "danger" | "primary";
+  tone?: "default" | "danger" | "primary" | "warning";
   change?: string;
   trend?: "up" | "down" | "flat";
 }
@@ -119,31 +123,35 @@ function MetricCard({ metric }: { metric: Metric }) {
   const valueClass =
     metric.tone === "danger"
       ? "text-(--admin-danger)"
-      : metric.tone === "primary"
-        ? "text-(--admin-primary)"
-        : "text-(--admin-text)";
+      : metric.tone === "warning"
+        ? "text-(--admin-metric-warning)"
+        : metric.tone === "primary"
+          ? "text-(--admin-primary)"
+          : "text-(--admin-text)";
   const changeClass =
-    metric.trend === "up" ? "text-[#ffb4ab]" : "text-(--admin-text-secondary)";
+    metric.trend === "up"
+      ? "text-(--admin-trend-up)"
+      : "text-(--admin-text-secondary)";
 
   return (
     <article
-      className={`${surfaceSubtle} flex min-h-23 flex-col justify-between rounded-(--admin-radius-md) p-3`}
+      className={`${dashboardCard} flex min-h-28 flex-col justify-between rounded-(--admin-radius-lg) p-4`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span
-          className={`${mono} text-[11px] font-semibold uppercase tracking-[0.04em] text-(--admin-text-muted)`}
-        >
+        <span className="text-[11px] font-semibold tracking-[0.02em] text-(--admin-text-secondary)">
           {metric.label}
         </span>
-        <FontAwesomeIcon
-          icon={metric.icon}
-          className="shrink-0 text-[13px] text-(--admin-text-muted)"
-          aria-hidden="true"
-        />
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-(--admin-radius-md) bg-(--admin-metric-icon-background) text-(--admin-metric-icon-foreground)">
+          <FontAwesomeIcon
+            icon={metric.icon}
+            className="text-[13px]"
+            aria-hidden="true"
+          />
+        </span>
       </div>
       <div className="mt-2 flex items-baseline justify-between gap-2">
         <strong
-          className={`${mono} text-[22px] leading-6 font-bold ${valueClass}`}
+          className={`${mono} text-[26px] leading-7 font-bold tracking-[-0.03em] ${valueClass}`}
         >
           {metric.value}
         </strong>
@@ -161,7 +169,7 @@ function MetricCard({ metric }: { metric: Metric }) {
         )}
       </div>
       {metric.note && (
-        <span className="mt-1 text-[11px] leading-4 text-(--admin-text-muted)">
+        <span className="mt-2 text-[11px] leading-4 text-(--admin-text-muted)">
           {metric.note}
         </span>
       )}
@@ -184,39 +192,39 @@ function MonitorHeader({
 }) {
   return (
     <section
-      className={`${surfaceSubtle} flex flex-col justify-between gap-3 rounded-(--admin-radius-md) p-3 md:flex-row md:items-center`}
+      className={`${dashboardCard} flex flex-col justify-between gap-4 rounded-(--admin-radius-lg) p-4 md:flex-row md:items-center`}
     >
       <div className="flex min-w-0 items-start gap-2.5">
         <span
-          className="mt-1 h-7 w-1.5 shrink-0 rounded-sm bg-(--admin-danger)"
+          className="mt-1 h-9 w-1.5 shrink-0 rounded-full bg-(--admin-primary)"
           aria-hidden="true"
         />
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-[18px] leading-6 font-bold tracking-[-0.02em] text-(--admin-text) uppercase">
+            <p
+              className={`${mono} text-[10px] font-semibold tracking-[0.08em] text-(--admin-primary) uppercase`}
+            >
+              OPERATIONS / RISK MONITOR
+            </p>
+            <h1 className="mt-1 text-[20px] leading-6 font-bold tracking-[-0.025em] text-(--admin-text)">
               Giám sát rủi ro giao dịch
             </h1>
-            <span
-              className={`${mono} rounded-sm bg-(--admin-surface-hover) px-1.5 py-0.5 text-[10px] tracking-[0.03em] text-(--admin-primary)`}
-            >
-              TRỰC TIẾP
-            </span>
           </div>
-          <p className="mt-0.5 text-[13px] leading-5 text-(--admin-text-muted)">
+          <p className="mt-1 text-[12px] leading-5 text-(--admin-text-muted)">
             Theo dõi yêu cầu giao dịch và cảnh báo rủi ro theo thời gian thực
           </p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
         <div
-          className={`${surface} flex rounded-sm p-0.5`}
+          className={`${dashboardControl} flex rounded-(--admin-radius-md) p-1`}
           role="group"
           aria-label="Khoảng thời gian"
         >
           {ranges.map((item) => (
             <button
               key={item.value}
-              className={`rounded-sm px-2.5 py-1 text-[12px] font-semibold transition-colors ${range === item.value ? "bg-(--admin-primary) text-white" : "text-(--admin-text-muted) hover:text-(--admin-text)"}`}
+              className={`rounded-(--admin-radius-sm) px-3 py-1.5 text-[11px] font-semibold transition-colors ${range === item.value ? "bg-(--admin-primary-soft) text-(--admin-primary)" : "text-(--admin-text-muted) hover:bg-(--admin-surface-hover) hover:text-(--admin-text)"}`}
               type="button"
               aria-pressed={range === item.value}
               onClick={() => onRangeChange(item.value)}
@@ -225,21 +233,19 @@ function MonitorHeader({
             </button>
           ))}
         </div>
-        <div
-          className={`${surface} flex items-center gap-1.5 rounded-sm px-2.5 py-1.5`}
-        >
+        <div className="flex items-center gap-2 rounded-(--admin-radius-md) border border-(--admin-live-border) bg-(--admin-live-background) px-3 py-2">
           <span
-            className="h-2 w-2 animate-pulse rounded-full bg-(--admin-primary)"
+            className="h-2 w-2 animate-pulse rounded-full bg-(--admin-live-dot)"
             aria-hidden="true"
           />
           <span
-            className={`${mono} text-[10px] uppercase tracking-[0.06em] text-(--admin-text-secondary)`}
+            className={`${mono} text-[10px] font-semibold uppercase tracking-[0.06em] text-(--admin-live-foreground)`}
           >
             {streamStatus}
           </span>
         </div>
         <button
-          className={`${surface} ${surfaceHover} flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-[12px] font-semibold text-(--admin-text) transition-colors`}
+          className={`${dashboardControl} ${surfaceHover} flex h-9 items-center gap-2 rounded-(--admin-radius-md) px-3 text-[11px] font-semibold text-(--admin-text) shadow-(--admin-shadow-card) transition-colors`}
           type="button"
           onClick={onRefresh}
           disabled={isRefreshing}
@@ -258,6 +264,10 @@ function MonitorHeader({
 
 function RiskBreakdown({ snapshot }: { snapshot: MonitorSnapshot }) {
   const totalAssessments = snapshot.totalAssessments;
+  const maxModelVersionCount = Math.max(
+    ...snapshot.modelVersions.map((item) => item.count),
+    1,
+  );
   const labelItems = [
     { label: "Bình thường", value: snapshot.normalCount, tone: "primary" },
     { label: "Cảnh báo", value: snapshot.warningCount, tone: "secondary" },
@@ -266,23 +276,23 @@ function RiskBreakdown({ snapshot }: { snapshot: MonitorSnapshot }) {
   const severityTone: Record<string, string> = {
     danger: "bg-(--admin-danger)",
     primary: "bg-(--admin-primary)",
-    secondary: "bg-[#3c4a5e]",
+    secondary: "bg-(--admin-risk-secondary)",
     muted: "bg-(--admin-surface-hover)",
   };
   return (
     <section
-      className={`${surfaceSubtle} h-full flex flex-col justify-between gap-6 rounded-(--admin-radius-md) p-3`}
+      className={`${dashboardCard} h-full flex flex-col justify-between gap-6 rounded-(--admin-radius-lg) p-4`}
     >
       <div>
         <div className="flex items-center justify-between gap-2 pb-2">
-          <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text)">
+          <h2 className="text-[14px] leading-5 font-semibold text-(--admin-text)">
             Phân bố mức rủi ro
           </h2>
           <span className={`${mono} text-[11px] text-(--admin-text-muted)`}>
             {totalAssessments} yêu cầu
           </span>
         </div>
-        <div className="my-2 flex h-3 overflow-hidden rounded-sm bg-(--admin-surface-hover)">
+        <div className="my-3 flex h-2.5 overflow-hidden rounded-full bg-(--admin-surface-hover)">
           {labelItems.map((item) => (
             <div
               key={item.label}
@@ -300,7 +310,7 @@ function RiskBreakdown({ snapshot }: { snapshot: MonitorSnapshot }) {
           {labelItems.map((item) => (
             <div
               key={item.label}
-              className={`${surface} flex items-center justify-between rounded-sm px-2 py-1`}
+              className={`${dashboardControl} flex items-center justify-between rounded-(--admin-radius-sm) px-2 py-1.5`}
             >
               <span className="flex items-center gap-1 text-[11px] font-semibold uppercase text-(--admin-text-muted)">
                 <span
@@ -319,7 +329,7 @@ function RiskBreakdown({ snapshot }: { snapshot: MonitorSnapshot }) {
       </div>
       <div>
         <span
-          className={`${mono} mb-2 block text-[11px] font-semibold uppercase tracking-[0.04em] text-(--admin-text-muted)`}
+          className={`${mono} mb-3 block text-[10px] font-semibold uppercase tracking-[0.06em] text-(--admin-text-muted)`}
         >
           Phiên bản mô hình
         </span>
@@ -329,6 +339,14 @@ function RiskBreakdown({ snapshot }: { snapshot: MonitorSnapshot }) {
               <div className="mb-0.5 flex items-center justify-between gap-2 text-[12px] text-(--admin-text-secondary)">
                 <span className="truncate">{item.label}</span>
                 <span className={mono}>{item.count}</span>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-(--admin-surface-hover)">
+                <div
+                  className="h-full rounded-full bg-(--admin-primary)"
+                  style={{
+                    width: `${(item.count / maxModelVersionCount) * 100}%`,
+                  }}
+                />
               </div>
             </div>
           ))}
@@ -355,21 +373,21 @@ function RiskRequestsTable({
 
   return (
     <section
-      className={`${surfaceSubtle} flex min-h-80 flex-col justify-between rounded-(--admin-radius-md) p-3`}
+      className={`${dashboardCard} flex min-h-80 flex-col justify-between rounded-(--admin-radius-lg) p-4`}
     >
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-[16px] leading-5 font-semibold text-(--admin-text) uppercase">
+            <h2 className="text-[14px] leading-5 font-semibold text-(--admin-text)">
               Các yêu cầu gần đây
             </h2>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-[12px] text-(--admin-text-muted)">
-              {recentAssessments.length} yêu cầu mới nhất
+              Hiển thị {recentAssessments.length} yêu cầu mới nhất
             </span>
             <button
-              className="h-7 rounded-sm border border-(--admin-primary-strong) bg-(--admin-primary) px-2.5 text-[12px] font-semibold text-white transition-colors hover:bg-(--admin-primary-strong)"
+              className="h-9 rounded-(--admin-radius-md) border border-(--admin-primary) bg-(--admin-primary) px-3 text-[11px] font-semibold text-white shadow-(--admin-shadow-card) transition-colors hover:bg-(--admin-primary-strong)"
               type="button"
               onClick={() => navigate(routes.audit)}
             >
@@ -388,7 +406,7 @@ function RiskRequestsTable({
             <table className="w-full min-w-250 text-left">
               <thead>
                 <tr
-                  className={`${surface} h-7 text-[10px] font-semibold uppercase tracking-[0.04em] text-(--admin-text-muted)`}
+                  className={`${dashboardControl} h-9 text-[10px] font-semibold uppercase tracking-[0.05em] text-(--admin-text-muted)`}
                 >
                   <th className="px-2">Mã giao dịch</th>
                   <th className="px-2">Tài khoản gửi</th>
@@ -401,7 +419,7 @@ function RiskRequestsTable({
                   <th className="px-2 text-right">Thời điểm</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-(--admin-dashboard-divider)">
                 {[...filteredAssessments].reverse().map((assessment) => (
                   <tr
                     key={assessment.assessmentId}
@@ -412,7 +430,7 @@ function RiskRequestsTable({
                     }}
                     role="button"
                     tabIndex={0}
-                    className={`h-9 cursor-pointer transition-colors ${surfaceHover}`}
+                    className={`h-12 cursor-pointer transition-colors ${surfaceHover}`}
                   >
                     <td
                       className={`${mono} px-2 text-[11px] font-bold text-(--admin-primary)`}
@@ -444,7 +462,7 @@ function RiskRequestsTable({
                     </td>
                     <td className="px-2 text-center">
                       <span
-                        className={`${mono} rounded-sm px-1.5 py-1 text-[10px] font-bold ${assessment.riskLevel === "BLOCK" ? "bg-[#5b2427] text-[#ffb4ab]" : assessment.riskLevel === "WARNING" ? "bg-[#4b3b1d] text-[#f6d58a]" : "bg-(--admin-surface-hover) text-(--admin-text-secondary)"}`}
+                        className={`${mono} rounded-sm px-1.5 py-1 text-[10px] font-bold ${assessment.riskLevel === "BLOCK" ? "bg-(--admin-risk-block-background) text-(--admin-risk-block-foreground)" : assessment.riskLevel === "WARNING" ? "bg-(--admin-risk-warning-background) text-(--admin-risk-warning-foreground)" : "bg-(--admin-surface-hover) text-(--admin-text-secondary)"}`}
                       >
                         {riskLevelLabel(assessment.riskLevel)}
                       </span>
@@ -1066,7 +1084,7 @@ export function MonitorPage() {
 
   return (
     <div
-      className="grid gap-1"
+      className="grid gap-4"
       aria-busy={busy}
       aria-label="Dashboard giám sát rủi ro"
     >
@@ -1083,20 +1101,20 @@ export function MonitorPage() {
         <MonitorDashboardSkeleton />
       ) : snapshot ? (
         <>
-          <div className="grid grid-cols-2 gap-1 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
             {metricsForSnapshot(snapshot).map((metric) => (
               <MetricCard key={metric.label} metric={metric} />
             ))}
           </div>
-          <div className="grid grid-cols-12 items-stretch gap-1">
-            <div className="col-span-12 xl:col-span-8 h-full">
+          <div className="grid grid-cols-12 items-stretch gap-4">
+            <div className="col-span-12 h-full xl:col-span-8">
               <RiskTrendChart series={snapshot.timeseries} range={range} />
             </div>
-            <div className="col-span-12 xl:col-span-4 h-full">
+            <div className="col-span-12 h-full xl:col-span-4">
               <RiskBreakdown snapshot={snapshot} />
             </div>
           </div>
-          <div className="grid grid-cols-12 gap-1">
+          <div className="grid grid-cols-12 gap-4">
             <div className="col-span-12">
               <RiskRequestsTable
                 assessments={snapshot.recentAssessments}
@@ -1159,7 +1177,7 @@ function metricsForSnapshot(snapshot: MonitorSnapshot): Metric[] {
       label: "Cảnh báo",
       value: String(snapshot.warningCount),
       note: "Cần lưu ý",
-      tone: "primary",
+      tone: "warning",
       icon: faCircleExclamation,
     },
     {
