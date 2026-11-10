@@ -118,8 +118,13 @@ func TestMapFallsBackWhenProfileHasNoName(t *testing.T) {
 	m, record := fixture()
 	m.customers = fakeCustomers{}
 	requests, err := m.Map(context.Background(), record)
-	if err != nil || requests[0].Params["counterpartyName"] != "tài khoản •••• 0222" {
+	if err != nil || requests[0].Params["counterpartyName"] != "tài khoản" {
 		t.Fatalf("fallback: %v err=%v", requests, err)
+	}
+	tmpl, _ := notificationapp.Lookup(requests[0].Type)
+	_, body, _, err := tmpl.Render(requests[0].Params)
+	if err != nil || body != "-1.500.000 VND tới tài khoản (•••• 0222)." {
+		t.Fatalf("body=%q err=%v", body, err)
 	}
 }
 

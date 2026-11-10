@@ -92,8 +92,9 @@ func (m *Mapper) request(owner *accountdomain.UserAccount, t notification.Type, 
 	}
 }
 
-// displayName falls back to the masked account number so a missing profile
-// never blocks the notification.
+// displayName falls back to a generic label so a missing profile never blocks
+// the notification. The template already appends the masked account number, so
+// the fallback must not repeat it.
 func (m *Mapper) displayName(ctx context.Context, account *accountdomain.UserAccount) (string, error) {
 	customer, err := m.customers.FindByID(ctx, account.CustomerId)
 	if err != nil {
@@ -104,7 +105,7 @@ func (m *Mapper) displayName(ctx context.Context, account *accountdomain.UserAcc
 			return name, nil
 		}
 	}
-	return "tài khoản •••• " + last4(account.AccountNo), nil
+	return "tài khoản", nil
 }
 
 func last4(accountNo string) string {
