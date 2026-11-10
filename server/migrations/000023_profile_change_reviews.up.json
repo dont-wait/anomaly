@@ -1,0 +1,64 @@
+[
+  {
+    "create": "profile_change_requests",
+    "validator": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["_id", "account_id", "customer_id", "username", "search_text", "status", "requested_at", "proposed", "previous", "has_previous"],
+        "properties": {
+          "_id": {"bsonType": "string"},
+          "account_id": {"bsonType": "string"},
+          "customer_id": {"bsonType": "objectId"},
+          "username": {"bsonType": "string"},
+          "search_text": {"bsonType": "string"},
+          "status": {"enum": ["PENDING", "APPROVED", "REJECTED", "SUPERSEDED"]},
+          "requested_at": {"bsonType": "date"},
+          "proposed": {"bsonType": "object"},
+          "previous": {"bsonType": "object"},
+          "has_previous": {"bsonType": "bool"}
+        }
+      }
+    },
+    "validationLevel": "strict",
+    "validationAction": "error"
+  },
+  {
+    "createIndexes": "profile_change_requests",
+    "indexes": [
+      {"key": {"status": 1, "requested_at": -1, "_id": 1}, "name": "idx_review_status_newest"},
+      {"key": {"requested_at": -1, "_id": 1}, "name": "idx_review_newest"},
+      {"key": {"account_id": 1, "requested_at": -1}, "name": "idx_review_account"},
+      {"key": {"account_id": 1, "status": 1}, "name": "uniq_review_pending_account", "unique": true, "partialFilterExpression": {"status": "PENDING"}}
+    ]
+  },
+  {
+    "aggregate": "customers",
+    "pipeline": [
+      {"$match": {"profile_change.id": {"$type": "string"}}},
+      {"$lookup": {"from": "accounts", "localField": "_id", "foreignField": "customer_id", "as": "linked_accounts"}},
+      {"$unwind": "$linked_accounts"},
+      {"$project": {
+        "_id": "$profile_change.id",
+        "account_id": {"$toString": "$linked_accounts._id"},
+        "customer_id": "$_id",
+        "username": "$linked_accounts.username",
+        "search_text": {"$toLower": {"$concat": [
+          {"$toString": "$linked_accounts._id"}, " ",
+          {"$ifNull": ["$linked_accounts.username", ""]}, " ",
+          {"$ifNull": ["$profile.full_name", ""]}, " ",
+          {"$ifNull": ["$profile_change.full_name", ""]}
+        ]}},
+        "status": "$profile_change.status",
+        "requested_at": "$profile_change.requested_at",
+        "proposed": "$profile_change",
+        "previous": {"full_name": "", "address_line": "", "province_code": "", "issued_place": "", "permanent_address": ""},
+        "has_previous": {"$literal": false},
+        "reviewed_at": "$profile_change.reviewed_at",
+        "reviewed_by": {"$ifNull": ["$profile_change.reviewed_by", ""]},
+        "rejection_reason": {"$ifNull": ["$profile_change.rejection_reason", ""]}
+      }},
+      {"$merge": {"into": "profile_change_requests", "on": "_id", "whenMatched": "keepExisting", "whenNotMatched": "insert"}}
+    ],
+    "cursor": {}
+  }
+]

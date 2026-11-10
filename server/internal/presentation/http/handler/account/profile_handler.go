@@ -14,10 +14,13 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -235,29 +238,213 @@ func (h *Handler) RequestProfileChange(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteSuccess(w, http.StatusOK, "Profile change submitted", h.profileResponse(r.Context(), account))
 }
 
-// ListProfileChanges trả các đề nghị đang chờ admin duyệt.
-func (h *Handler) ListProfileChanges(w http.ResponseWriter, r *http.Request) {
+const profileChangeMaxPageSize = 50
+
+type profileChangeListParams struct {
+	Page     int
+	PageSize int
+	Status   string
+	Search   string
+	Cursor   string
+}
+
+func parseProfileChangeListParams(values url.Values) (profileChangeListParams, error) {
+	params := profileChangeListParams{Page: 1, PageSize: 10, Status: accountdomain.ProfileChangePending}
+	if raw := values.Get("page"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 {
+			return params, errors.New("page must be a positive integer")
+		}
+		params.Page = value
+	}
+	if raw := values.Get("pageSize"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > profileChangeMaxPageSize {
+			return params, errors.New("pageSize must be between 1 and 50")
+		}
+		params.PageSize = value
+	}
+	if status := strings.ToUpper(strings.TrimSpace(values.Get("status"))); status != "" {
+		switch status {
+		case accountdomain.ProfileChangePending, accountdomain.ProfileChangeApproved,
+			accountdomain.ProfileChangeRejected, "ALL":
+			params.Status = status
+		default:
+			return params, errors.New("invalid profile change status")
+		}
+	}
+	params.Search = strings.ToLower(strings.TrimSpace(values.Get("search")))
+	params.Cursor = strings.TrimSpace(values.Get("cursor"))
+	if len(params.Cursor) > 1024 {
+		return params, errors.New("cursor is too long")
+	}
+	if utf8.RuneCountInString(params.Search) > 120 {
+		return params, errors.New("search must be at most 120 characters")
+	}
+	return params, nil
+}
+
+// maskReviewIdentity only exposes the final four characters to the review UI.
+func maskReviewIdentity(number string) string {
+	if number == "" {
+		return ""
+	}
+	chars := []rune(number)
+	if len(chars) <= 4 {
+		return strings.Repeat("*", len(chars))
+	}
+	return strings.Repeat("*", len(chars)-4) + string(chars[len(chars)-4:])
+}
+
+// profileChangePage sorts newest-first before slicing. Tie-breaking by account ID
+// makes successive pages deterministic for unchanged data.
+func profileChangePage(accounts []*accountdomain.UserAccount, params profileChangeListParams) ProfileChangesPageResponse {
+	// Normalize here too: callers may construct params without the HTTP parser.
+	search := strings.ToLower(strings.TrimSpace(params.Search))
+	items := make([]ProfileChangeReviewItem, 0)
+	for _, account := range accounts {
+		if account == nil || account.Customer == nil || account.Customer.ProfileChange == nil {
+			continue
+		}
+		customer := account.Customer
+		change := customer.ProfileChange
+		if params.Status != "ALL" && change.Status != params.Status {
+			continue
+		}
+		if search != "" &&
+			!strings.Contains(strings.ToLower(account.Id), search) &&
+			!strings.Contains(strings.ToLower(account.Username), search) &&
+			!strings.Contains(strings.ToLower(customer.Profile.FullName), search) &&
+			!strings.Contains(strings.ToLower(change.FullName), search) {
+			continue
+		}
+		items = append(items, ProfileChangeReviewItem{
+			AccountID:    account.Id,
+			Username:     account.Username,
+			CurrentKnown: true,
+			Current: ProfileChangeCurrent{
+				FullName: customer.Profile.FullName, AddressLine: customer.Profile.Address.Line,
+				ProvinceCode: customer.Profile.Address.ProvinceCode,
+				IssuedPlace:  customer.Identity.IssuedPlace, PermanentAddress: customer.Identity.PermanentAddress,
+			},
+			Change: toProfileChangeResponse(change),
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		a, b := items[i], items[j]
+		if !a.Change.RequestedAt.Equal(b.Change.RequestedAt) {
+			return a.Change.RequestedAt.After(b.Change.RequestedAt)
+		}
+		return a.AccountID < b.AccountID
+	})
+	total := len(items)
+	pages := (total + params.PageSize - 1) / params.PageSize
+	result := ProfileChangesPageResponse{
+		Items: make([]ProfileChangeReviewItem, 0), Total: total,
+		Page: params.Page, PageSize: params.PageSize, TotalPages: pages,
+	}
+	// Avoid integer overflow from an extremely large page parameter.
+	if params.Page > pages {
+		return result
+	}
+	start := (params.Page - 1) * params.PageSize
+	end := min(start+params.PageSize, total)
+	result.Items = items[start:end]
+	return result
+}
+
+// profileChangePageFromStore converts the database read-model into the public
+// shape without reconstructing past values from the now-updated customer profile.
+func profileChangePageFromStore(list accountdomain.ProfileChangeListResult, params profileChangeListParams) ProfileChangesPageResponse {
+	result := ProfileChangesPageResponse{
+		Items: make([]ProfileChangeReviewItem, 0, len(list.Items)), Total: list.Total,
+		Page: params.Page, PageSize: params.PageSize,
+		TotalPages: (list.Total + params.PageSize - 1) / params.PageSize, NextCursor: list.NextCursor,
+	}
+	for _, item := range list.Items {
+		result.Items = append(result.Items, ProfileChangeReviewItem{
+			AccountID: item.AccountID, Username: item.Username, CurrentKnown: item.HasPrevious,
+			Current: ProfileChangeCurrent{
+				FullName: item.Previous.FullName, AddressLine: item.Previous.AddressLine,
+				ProvinceCode: item.Previous.ProvinceCode, IssuedPlace: item.Previous.IssuedPlace,
+				PermanentAddress: item.Previous.PermanentAddress,
+			}, Change: toProfileChangeResponse(&item.Change),
+		})
+	}
+	return result
+}
+
+func (h *Handler) loadProfileChangePage(ctx context.Context, params profileChangeListParams) (ProfileChangesPageResponse, error) {
+	if h.profileChange != nil {
+		store, ok, err := h.profileChange.List(ctx, accountdomain.ProfileChangeListOptions{
+			Page: params.Page, PageSize: params.PageSize, Status: params.Status,
+			Search: params.Search, Cursor: params.Cursor,
+		})
+		if ok {
+			return profileChangePageFromStore(store, params), err
+		}
+	}
+	accounts, err := h.getAll.Handle(ctx, queries.GetAllAccountsQuery{})
+	if err != nil {
+		return ProfileChangesPageResponse{}, err
+	}
+	return profileChangePage(accounts, params), nil
+}
+
+// ListProfileChangesPage is the versioned admin endpoint. New clients use this
+// object response and opaque cursors; the pre-existing array API remains stable.
+func (h *Handler) ListProfileChangesPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	accounts, err := h.getAll.Handle(r.Context(), queries.GetAllAccountsQuery{})
+	params, err := parseProfileChangeListParams(r.URL.Query())
+	if err != nil {
+		httpx.WriteError(w, h.logger, err, func(error) int { return http.StatusBadRequest })
+		return
+	}
+	result, err := h.loadProfileChangePage(r.Context(), params)
 	if err != nil {
 		httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
 		return
 	}
+	httpx.WriteSuccess(w, http.StatusOK, "Profile changes retrieved", result)
+}
+
+// Legacy path deliberately preserves the pre-#212 array response so older
+// desktop builds can coexist with a newer API during rollout.
+func (h *Handler) ListProfileChanges(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	const chunk = 50
+	params := profileChangeListParams{Page: 1, PageSize: chunk, Status: accountdomain.ProfileChangePending}
 	items := make([]ProfileChangeReviewItem, 0)
-	for _, account := range accounts {
-		if account.Customer == nil || account.Customer.ProfileChange == nil || account.Customer.ProfileChange.Status != accountdomain.ProfileChangePending {
-			continue
+	seenRequests := make(map[string]struct{})
+	for {
+		result, err := h.loadProfileChangePage(r.Context(), params)
+		if err != nil {
+			httpx.WriteError(w, h.logger, err, accountErrorStatus, accountErrorCode)
+			return
 		}
-		customer := account.Customer
-		items = append(items, ProfileChangeReviewItem{
-			AccountID: account.Id,
-			Username:  account.Username,
-			Current: ProfileChangeCurrent{
-				FullName: customer.Profile.FullName, AddressLine: customer.Profile.Address.Line, ProvinceCode: customer.Profile.Address.ProvinceCode,
-				IssuedPlace: customer.Identity.IssuedPlace, PermanentAddress: customer.Identity.PermanentAddress,
-			},
-			Change: toProfileChangeResponse(customer.ProfileChange),
-		})
+		for _, item := range result.Items {
+			if item.Change == nil {
+				continue
+			}
+			if _, exists := seenRequests[item.Change.ID]; exists {
+				continue
+			}
+			seenRequests[item.Change.ID] = struct{}{}
+			items = append(items, item)
+		}
+		if result.NextCursor != "" {
+			params.Cursor = result.NextCursor
+			params.Page++
+		} else if params.Cursor != "" {
+			// The cursor traversal ended. Do not retry an old cursor merely
+			// because the live total count changed during this request.
+			break
+		} else if result.Page < result.TotalPages {
+			params.Cursor = ""
+			params.Page++
+		} else {
+			break
+		}
 	}
 	httpx.WriteSuccess(w, http.StatusOK, "Profile changes retrieved", items)
 }

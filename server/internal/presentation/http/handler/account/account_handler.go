@@ -142,7 +142,7 @@ func accountErrorStatus(err error) int {
 	case errors.Is(err, accountdomain.ErrCurrentPassword), errors.Is(err, appotp.ErrInvalid),
 		errors.Is(err, appotp.ErrExpired), errors.Is(err, appotp.ErrExceeded):
 		return http.StatusBadRequest
-	case errors.Is(err, accountdomain.ErrRegistrationPending):
+	case errors.Is(err, accountdomain.ErrRegistrationPending), errors.Is(err, accountdomain.ErrProfileReviewUnavailable):
 		return http.StatusServiceUnavailable
 	case errors.Is(err, accountdomain.ErrInvalidCredentials):
 		return http.StatusUnauthorized

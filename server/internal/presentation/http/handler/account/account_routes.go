@@ -153,8 +153,21 @@ func RegisterRoutes(
 		FailureStatuses: []int{400, 401, 404, 409, 500}, Auth: true,
 	})
 	router.Handle("GET /api/admin/profile-changes", adminOnly(http.HandlerFunc(h.ListProfileChanges)), openapi.Operation{
-		ID: "listProfileChanges", Summary: "List profile changes awaiting approval", Tags: []string{"Profile"},
-		Response: httpx.SuccessResponse[[]ProfileChangeReviewItem]{}, FailureStatuses: []int{401, 403, 500}, Auth: true,
+		ID: "listProfileChanges", Summary: "Legacy pending profile changes (array response)", Tags: []string{"Profile"},
+		Description: "Kept for existing desktop clients. New clients should use /api/admin/profile-changes/page.",
+		Response:    httpx.SuccessResponse[[]ProfileChangeReviewItem]{}, FailureStatuses: []int{401, 403, 500}, Auth: true,
+	})
+	router.Handle("GET /api/admin/profile-changes/page", adminOnly(http.HandlerFunc(h.ListProfileChangesPage)), openapi.Operation{
+		ID: "listProfileChangesPage", Summary: "Cursor-paginated profile change review history", Tags: []string{"Profile"},
+		Description: "Use nextCursor for the next page; reset cursor when status or search changes. Empty cursor starts a new review pass.",
+		Parameters: []openapi.Parameter{
+			{Name: "page", In: "query", Type: "integer", Example: "1", Default: "1", Minimum: 1},
+			{Name: "pageSize", In: "query", Type: "integer", Example: "10", Default: "10", Minimum: 1, Maximum: 50},
+			{Name: "status", In: "query", Type: "string", Default: "PENDING", Enum: []string{"PENDING", "APPROVED", "REJECTED", "ALL"}},
+			{Name: "search", In: "query", Type: "string", Example: "nguyen"},
+			{Name: "cursor", In: "query", Type: "string"},
+		},
+		Response: httpx.SuccessResponse[ProfileChangesPageResponse]{}, FailureStatuses: []int{400, 401, 403, 500}, Auth: true,
 	})
 	router.Handle("POST /api/admin/profile-changes/{accountId}/{requestId}/decision", adminOnly(http.HandlerFunc(h.DecideProfileChange)), openapi.Operation{
 		ID: "decideProfileChange", Summary: "Approve or reject a profile change", Tags: []string{"Profile"},

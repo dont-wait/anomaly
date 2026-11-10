@@ -1,0 +1,80 @@
+[
+  {
+    "update": "profile_change_requests",
+    "updates": [
+      {
+        "q": {},
+        "u": [
+          {
+            "$set": {
+              "search_keys": {
+                "$setUnion": [
+                  {
+                    "$split": [
+                      {
+                        "$toLower": {
+                          "$ifNull": [
+                            "$search_text",
+                            ""
+                          ]
+                        }
+                      },
+                      " "
+                    ]
+                  },
+                  [
+                    {
+                      "$toLower": {
+                        "$ifNull": [
+                          "$proposed.full_name",
+                          ""
+                        ]
+                      }
+                    },
+                    {
+                      "$toLower": {
+                        "$ifNull": [
+                          "$previous.full_name",
+                          ""
+                        ]
+                      }
+                    },
+                    {
+                      "$toLower": {
+                        "$ifNull": [
+                          "$username",
+                          ""
+                        ]
+                      }
+                    },
+                    {
+                      "$toLower": {
+                        "$ifNull": [
+                          "$account_id",
+                          ""
+                        ]
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          }
+        ],
+        "multi": true
+      }
+    ]
+  },
+  {
+    "createIndexes": "profile_change_requests",
+    "indexes": [
+      {
+        "key": {
+          "search_keys": 1,
+          "status": 1
+        },
+        "name": "idx_review_search_keys"
+      }
+    ]
+  }
+]
