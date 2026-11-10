@@ -66,3 +66,19 @@ func TestProfileChangeGuards(t *testing.T) {
 		t.Fatalf("empty request error = %v", err)
 	}
 }
+
+// A repository that ignores profile_change must not return a false success.
+type droppingMirrorRepo struct{ *profileRepoStub }
+
+func (r *droppingMirrorRepo) Save(_ context.Context, account *accountdomain.UserAccount) error {
+	account.Customer.ProfileChange = nil
+	return nil
+}
+
+func TestProfileChangeFallbackDetectsDiscardedMirror(t *testing.T) {
+	repo := &droppingMirrorRepo{&profileRepoStub{account: customerAccount()}}
+	_, err := NewProfileChangeHandler(repo).Submit(context.Background(), "owner", ProfileChangeInput{FullName: "Tên mới"})
+	if !errors.Is(err, accountdomain.ErrProfileReviewUnavailable) {
+		t.Fatalf("expected unavailable store, got %v", err)
+	}
+}

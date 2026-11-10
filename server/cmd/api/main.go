@@ -74,6 +74,12 @@ func main() {
 	if err := notificationAPI.Repository.EnsureIndexes(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("ensure notification indexes failed")
 	}
+	// Migrations own review-index creation and historical backfill. If rollout
+	// is incomplete, log a warning instead of crash-looping unrelated APIs.
+	profileStore := mongo.NewAccountAggregateRepository(mongoClient, config.MongoConfig.MongoDBName)
+	if err := profileStore.VerifyProfileChangeMigration(ctx); err != nil {
+		logger.Warn().Err(err).Msg("profile review unavailable until migration 24 completes")
+	}
 	// Producers only write to Mongo; every API instance pushes to the SSE
 	// clients it holds from the change stream. A normal stop resumes from the
 	// last token, so nothing is skipped. When the oplog no longer has that token
