@@ -56,3 +56,20 @@ it("opens loan repayment reminders at their own loan contract", () => {
     routes.notifications,
   );
 });
+
+it("opens loan disbursement and repayment notifications at the loan contract", () => {
+  for (const type of ["LOAN_DISBURSED", "LOAN_INSTALLMENT_PAID"]) {
+    expect(routeForNotification(notification(type, { loanId: "loan 9" }))).toBe(
+      loanContract("loan 9"),
+    );
+    expect(routeForNotification(notification(type))).toBe(routes.notifications);
+  }
+});
+
+it("opens savings notifications at the savings list", () => {
+  for (const type of ["SAVINGS_OPENED", "SAVINGS_MATURED"]) {
+    expect(routeForNotification(notification(type, { savingsId: "s1" }))).toBe(
+      routes.savings,
+    );
+  }
+});

@@ -69,10 +69,10 @@ func (m *Mapper) Map(ctx context.Context, record journal.Record) ([]notification
 	params := func(counterpartyName string, counterparty *accountdomain.UserAccount) map[string]string {
 		return map[string]string{
 			"transferId":       event.TransactionID,
-			"amount":           formatVND(event.Payload.Amount),
+			"amount":           notificationapp.FormatVND(event.Payload.Amount),
 			"amountRaw":        strconv.FormatInt(event.Payload.Amount, 10),
 			"counterpartyName": counterpartyName,
-			"last4":            last4(counterparty.AccountNo),
+			"last4":            notificationapp.Last4(counterparty.AccountNo),
 		}
 	}
 	return []notificationapp.Request{
@@ -106,29 +106,4 @@ func (m *Mapper) displayName(ctx context.Context, account *accountdomain.UserAcc
 		}
 	}
 	return "tài khoản", nil
-}
-
-func last4(accountNo string) string {
-	runes := []rune(accountNo)
-	if len(runes) <= 4 {
-		return accountNo
-	}
-	return string(runes[len(runes)-4:])
-}
-
-// formatVND groups thousands with dots: 1500000 -> "1.500.000".
-func formatVND(amount int64) string {
-	digits := strconv.FormatInt(amount, 10)
-	sign := ""
-	if strings.HasPrefix(digits, "-") {
-		sign, digits = "-", digits[1:]
-	}
-	var out []byte
-	for i := range len(digits) {
-		if i > 0 && (len(digits)-i)%3 == 0 {
-			out = append(out, '.')
-		}
-		out = append(out, digits[i])
-	}
-	return sign + string(out)
 }

@@ -29,3 +29,34 @@ func init() {
 		},
 	})
 }
+
+// Giải ngân và trả nợ: chỉ số tiền và 4 số cuối tài khoản, không có số dư hay
+// mã hợp đồng trong câu chữ (có thể hiện trên màn hình khóa). Xem specs/noti-loan.md.
+func init() {
+	Register(Template{
+		Type:     notification.TypeLoanDisbursed,
+		Category: notification.CategoryLoan,
+		Severity: notification.SeveritySuccess,
+		Render: func(p map[string]string) (string, string, map[string]string, error) {
+			if err := RequireParams(p, "loanId", "amount", "amountRaw", "last4"); err != nil {
+				return "", "", nil, err
+			}
+			body := "+" + p["amount"] + " VND vào tài khoản •••• " + p["last4"] + "."
+			data := map[string]string{"loanId": p["loanId"], "amount": p["amountRaw"], "currency": "VND"}
+			return "Giải ngân thành công", body, data, nil
+		},
+	})
+	Register(Template{
+		Type:     notification.TypeLoanInstallmentPaid,
+		Category: notification.CategoryLoan,
+		Severity: notification.SeveritySuccess,
+		Render: func(p map[string]string) (string, string, map[string]string, error) {
+			if err := RequireParams(p, "loanId", "amount", "amountRaw", "installmentNo", "last4"); err != nil {
+				return "", "", nil, err
+			}
+			body := "-" + p["amount"] + " VND từ tài khoản •••• " + p["last4"] + " để thanh toán kỳ " + p["installmentNo"] + " của khoản vay."
+			data := map[string]string{"loanId": p["loanId"], "amount": p["amountRaw"], "currency": "VND", "installmentNo": p["installmentNo"]}
+			return "Thanh toán khoản vay thành công", body, data, nil
+		},
+	})
+}

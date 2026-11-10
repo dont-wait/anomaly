@@ -10,7 +10,7 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: help start-app start-worker start-notifier start-relay start-api seed add-money migrate migrate-up migrate-up-one migrate-new migrate-version migrate-status migrate-down test test-api test-account-e2e
+.PHONY: help start-app start-worker start-notifier start-loan-reminder start-relay start-api seed add-money migrate migrate-up migrate-up-one migrate-new migrate-version migrate-status migrate-down test test-api test-account-e2e
 
 start-app:
 	docker compose --profile app up --build
@@ -22,6 +22,7 @@ help:
 	@echo "  start-app         Build and start the Docker Compose app profile"
 	@echo "  start-worker      Project the banking stream into MongoDB"
 	@echo "  start-notifier    Turn banking stream events into notifications"
+	@echo "  start-loan-reminder Loan repayment reminders (dry-run unless LOAN_REMINDER_NOTIFICATIONS_ENABLED=true)"
 	@echo "  start-relay       Publish EventStoreDB events to Kafka"
 	@echo "  import-bank       Offline import of legacy EventStore account streams"
 	@echo "  import-mongo-bank  Offline adoption of audited direct-Mongo MVP data"
@@ -79,6 +80,9 @@ start-worker:
 
 start-notifier:
 	go run ./cmd/notifier
+
+start-loan-reminder:
+	go run ./cmd/loan-reminder
 
 start-relay:
 	go run ./cmd/relay
