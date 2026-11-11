@@ -94,7 +94,15 @@ Chi tiết API: `server/README.md`. Tài khoản admin demo (`admin.staff`) đư
 make -C deploy/swarm build-ml    # tạo image anomaly-ml-service:swarm
 ```
 
-Dockerfile cần repo `GATv2/` nằm cùng cấp với repo này (xem `anomaly-service/README.md`, mục Docker image).
+Dockerfile cần mã nguồn mô hình `GATv2/` nằm cùng cấp với thư mục `anomaly/` (không đóng kèm trong file nén). Clone về trước khi build:
+
+```bash
+# từ thư mục cha của anomaly/
+git clone https://github.com/pdmh18/GATv2.git GATv2
+make -C anomaly/deploy/swarm build-ml
+```
+
+(Xem thêm `anomaly-service/README.md`, mục Docker image.)
 
 Trọng số mô hình, bundle và ngưỡng đã hiệu chỉnh nằm ngoài mã nguồn (`anomaly-service/models`, `anomaly-service/data`); hãy giữ nguyên các thư mục này. KYC chế độ thật cũng cần model ở `kyc-service/models` (mount qua `KYC_MODEL_DIR`). Khi chưa có, dùng `consumer-mock/` để mô phỏng.
 
