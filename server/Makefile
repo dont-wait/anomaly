@@ -10,7 +10,7 @@ else
 MIGRATE_CMD := go run ./cmd/migrate
 endif
 
-.PHONY: help start-app start-worker start-notifier start-relay start-api seed add-money migrate migrate-up migrate-up-one migrate-new migrate-version migrate-status migrate-down test test-api test-account-e2e
+.PHONY: help start-app start-worker start-notifier start-relay start-api seed seed-anomaly-data add-money migrate migrate-up migrate-up-one migrate-new migrate-version migrate-status migrate-down test test-api test-account-e2e
 
 start-app:
 	docker compose --profile app up --build
@@ -31,6 +31,7 @@ help:
 	@echo "  test-loan-hurl-e2e  Run loan E2E plus Hurl against isolated containers"
 	@echo "  start-api         Run API development"
 	@echo "  seed              Run all registered development seeders"
+	@echo "  seed-anomaly-data Import the generated A-F anomaly fixture into EventStoreDB"
 	@echo "  add-money         Add AMOUNT to an account: make add-money ACCOUNT_NO=<no_account> AMOUNT=<amount>"
 	@echo "  migrate           Alias for migrate-up"
 	@echo "  migrate-up        Apply all pending migrations"
@@ -88,6 +89,9 @@ start-api:
 
 seed:
 	go run ./cmd/seed
+
+seed-anomaly-data:
+	go run ./cmd/seed-anomaly-data
 
 add-money:
 	go run ./cmd/add-money -account-no "$(ACCOUNT_NO)" -amount "$(AMOUNT)"

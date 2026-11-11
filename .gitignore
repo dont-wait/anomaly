@@ -216,3 +216,6 @@ opencode.json
 
 # Local Stitch output, intentionally not versioned
 /stitch_remix_of_anomaly/
+
+# Local anomaly test fixture output contains generated credentials.
+/tools/test-data/output/
