@@ -114,6 +114,28 @@ services:
     networks:
       - anomaly-network
 
+  anomaly-loan-reminder:
+    container_name: anomaly-loan-reminder
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/loan-reminder"]
+    environment:
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=rs0
+      MONGO_DB: anomaly
+      LOAN_REMINDER_NOTIFICATIONS_ENABLED: ${LOAN_REMINDER_NOTIFICATIONS_ENABLED:-false}
+      NOTIFICATION_RETENTION_DAYS: ${NOTIFICATION_RETENTION_DAYS:-90}
+      NOTIFICATION_MAX_EVENT_AGE: ${NOTIFICATION_MAX_EVENT_AGE:-24h}
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
+      mongo:
+        condition: service_healthy
+      anomaly-migrate:
+        condition: service_completed_successfully
+    networks:
+      - anomaly-network
+
   anomaly-relay:
     container_name: anomaly-relay
     restart: unless-stopped

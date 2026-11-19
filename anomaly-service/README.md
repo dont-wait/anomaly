@@ -386,6 +386,21 @@ request. Không train lại, không publish Kafka, không ghi DB và không thay
 của giao dịch thật. Đây là bằng chứng chạy inference, chưa phải đánh giá chất lượng
 phát hiện gian lận hay bằng chứng Kafka E2E.
 
+### Benchmark inference bundle
+
+Từ root repo Anomaly, chạy benchmark trên bundle và request tổng hợp trong Nix
+shell có dependencies GATv2:
+
+```bash
+nix develop --impure --expr 'let f = builtins.getFlake (toString ./server); p = f.inputs.nixpkgs.legacyPackages.x86_64-linux; libs = [ p.stdenv.cc.cc.lib p.zlib ]; in p.mkShell { packages = [ (p.python3.withPackages (ps: with ps; [ pytest numpy torch torch-geometric ])) ] ++ libs; shellHook = "export LD_LIBRARY_PATH=${p.lib.makeLibraryPath libs}:$LD_LIBRARY_PATH"; }' --command bash -c 'cd anomaly-service && python3 scripts/benchmark_inference.py --iterations 200 --warmup 20 --device cpu'
+```
+
+Có thể đổi `--iterations`, `--warmup`, `--device`, `--bundle` hoặc `--gatv2-src`.
+Benchmark khởi tạo bundle một lần, warm up rồi đo `LocalBundlePredictor.predict`;
+in ra mean, p50/p95/p99 latency và throughput. Đây là benchmark inference cục bộ
+trên một request với history rỗng, không bao gồm Kafka/EventStoreDB và không đại
+diện cho latency online hay chất lượng phát hiện trên dữ liệu thật.
+
 ## Output Kafka
 
 Topic: `anomaly.bank.risk-decisions.v1` (cấu hình được).
@@ -488,7 +503,8 @@ Ghi JSONL tại `TRAINING_DATA_PATH` và publish cùng record lên
   operator khắc phục trước khi retry, tránh restart loop.
 - Output decision và HMAC bám theo consumer Go; cần cùng signing key/topic ở
   hai bên. Vẫn cần xác minh Kafka E2E sau khi cập nhật source serving GATv2.
-- Chưa benchmark latency online và chưa kiểm chứng trên dữ liệu thật.
+- Benchmark inference cục bộ dùng request tổng hợp; latency online và chất lượng
+  trên dữ liệu thật chưa được kiểm chứng.
 - `TRAINING_DATA_PATH` và topic training chứa account/device ID gốc (không bị
   pseudonymize) vì cần cho graph GATv2. Cần giới hạn quyền đọc, retention và mã
   hóa phù hợp; risk topic thì chỉ chứa transaction ID và kết quả model.
