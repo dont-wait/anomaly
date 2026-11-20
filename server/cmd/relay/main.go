@@ -246,6 +246,9 @@ func recoverUnresolvedRiskRequests(ctx context.Context, client *esdb.Client, fea
 		}
 		transactionID := record.Event.TransactionID
 		if recorded.EventType == journal.Created {
+			if record.Historical {
+				continue
+			}
 			created[transactionID] = recorded
 			continue
 		}
@@ -438,6 +441,13 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 				Msg("event skipped; not published to kafka")
 			continue
 		}
+		historical, decodeErr := historicalRecord(recorded)
+		if decodeErr != nil {
+			if nackErr := subscription.Nack("invalid transfer record: "+decodeErr.Error(), esdb.NackActionPark, resolved); nackErr != nil {
+				return nackErr
+			}
+			continue
+		}
 		envelope, pendingFeatureUpdate, err := buildEnrichedEnvelope(ctx, recorded, featureStore)
 		if err != nil {
 			action := esdb.NackActionPark
@@ -460,7 +470,7 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 			continue
 		}
 
-		if recorded.EventType == journal.Created {
+		if recorded.EventType == journal.Created && !historical {
 			if err := producer.Publish(ctx, envelope); err != nil {
 				if nackErr := subscription.Nack("kafka publish failed: "+err.Error(), esdb.NackActionRetry, resolved); nackErr != nil {
 					return nackErr
@@ -490,9 +500,17 @@ func consume(ctx context.Context, subscription *esdb.PersistentSubscription, pro
 			Str("event_id", envelope.EventID).
 			Str("event_type", envelope.EventType).
 			Uint64("stream_revision", envelope.StreamRevision).
-			Msg(map[bool]string{true: "event published to kafka", false: "completed event applied to feature state"}[recorded.EventType == journal.Created])
+			Msg(map[bool]string{true: "event published to kafka", false: "completed event applied to feature state"}[recorded.EventType == journal.Created && !historical])
 	}
 	return ctx.Err()
+}
+
+func historicalRecord(recorded *esdb.RecordedEvent) (bool, error) {
+	record, err := journal.DecodeRecord(recorded.Data, recorded.EventID.String(), recorded.EventType)
+	if err != nil {
+		return false, err
+	}
+	return record.Historical, nil
 }
 
 func loadSubscriptionCheckpoint(ctx context.Context, client *esdb.Client, group string) (uint64, bool, error) {
