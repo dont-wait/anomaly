@@ -37,6 +37,45 @@ type HistoricalTransferInput struct {
 	DestinationBalanceAfter  int64
 }
 
+// SetFixtureBalanceOnce funds a fixture account exactly once. The stable
+// operation ID is replay-safe and, unlike a current-balance check, cannot
+// restore a balance after a manual probe has drained the account.
+func (r *BankRepository) SetFixtureBalanceOnce(ctx context.Context, accountID string, balance int64, operationID string) error {
+	if accountID == "" || balance < 0 {
+		return fmt.Errorf("invalid fixture balance input")
+	}
+	if _, err := uuid.Parse(operationID); err != nil {
+		return fmt.Errorf("fixture balance operation id: %w", err)
+	}
+	_, err := r.mutate(ctx, func(s *bankState) (*journal.Record, any, error) {
+		if s.Accounts[accountID] == nil {
+			return nil, nil, fmt.Errorf("fixture balance account %s not found", accountID)
+		}
+		if s.SeedBalanceMarkers[accountID] == operationID {
+			return nil, nil, nil
+		}
+		current := s.Balances[financialID(accountID).Hex()]
+		if current != 0 || s.SeedBalanceMarkers[accountID] != "" {
+			return nil, nil, fmt.Errorf("fixture balance for %s already has canonical state", accountID)
+		}
+		return &journal.Record{
+			ID: operationID, Type: journal.BalanceSeeded, At: time.Now().UTC(),
+			AccountID: accountID, Balance: &balance,
+		}, nil, nil
+	})
+	return err
+}
+
+// CurrentRevision returns the canonical banking stream revision observed by
+// this repository. It is used by the development importer readiness check.
+func (r *BankRepository) CurrentRevision(ctx context.Context) (uint64, error) {
+	s, err := r.load(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return s.Revision, nil
+}
+
 // SeedHistoricalTransfer appends an idempotent TransferCreated ->
 // TransferCompleted pair for a development/test fixture. It intentionally
 // uses the same journal format as live transfers instead of writing MongoDB
@@ -116,7 +155,7 @@ func (r *BankRepository) seedHistoricalCompleted(ctx context.Context, in Histori
 			return nil, nil, fmt.Errorf("historical transfer %s: creation event missing", in.ID)
 		}
 		if state.Tx.Status == "success" {
-			if sameHistoricalTransfer(state.Tx, in) {
+			if sameHistoricalTransfer(state.Tx, in) && sameHistoricalCompletion(state, in) {
 				return nil, nil, nil
 			}
 			return nil, nil, fmt.Errorf("historical transfer %s: completed transaction conflict", in.ID)
@@ -184,6 +223,17 @@ func sameHistoricalTransfer(tx mongorepo.TransferDocument, in HistoricalTransfer
 		tx.Amount == in.Amount && tx.Fee == in.Fee && tx.Currency == in.Currency &&
 		tx.Channel == in.Channel && tx.DeviceID == in.DeviceID && tx.Platform == in.Platform &&
 		tx.Note == in.Note && tx.CreatedAt.Equal(in.OccurredAt)
+}
+
+func sameHistoricalCompletion(state transferState, in HistoricalTransferInput) bool {
+	tx := state.Tx
+	payload := state.Event.Payload
+	return tx.CompletedAt != nil && tx.CompletedAt.Equal(in.CompletedAt) &&
+		tx.PostedAt.Equal(in.CompletedAt) && tx.OTPVerifiedAt != nil && tx.OTPVerifiedAt.Equal(in.CompletedAt) &&
+		payload.SourceBalanceBefore != nil && *payload.SourceBalanceBefore == in.SourceBalanceBefore &&
+		payload.SourceBalanceAfter != nil && *payload.SourceBalanceAfter == in.SourceBalanceAfter &&
+		payload.DestinationBalanceBefore != nil && *payload.DestinationBalanceBefore == in.DestinationBalanceBefore &&
+		payload.DestinationBalanceAfter != nil && *payload.DestinationBalanceAfter == in.DestinationBalanceAfter
 }
 
 func historicalTransferReference(id string) string {

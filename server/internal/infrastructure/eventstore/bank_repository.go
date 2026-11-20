@@ -54,6 +54,7 @@ type loanCreditState struct {
 type bankState struct {
 	Accounts              map[string]*accountdomain.UserAccount
 	Balances              map[string]int64
+	SeedBalanceMarkers    map[string]string
 	Transfers             map[string]transferState
 	Keys                  map[string]string
 	Exists                bool
@@ -94,6 +95,7 @@ func cloneBankState(s *bankState) *bankState {
 	copy := *s
 	copy.Accounts = maps.Clone(s.Accounts)
 	copy.Balances = maps.Clone(s.Balances)
+	copy.SeedBalanceMarkers = maps.Clone(s.SeedBalanceMarkers)
 	copy.Transfers = maps.Clone(s.Transfers)
 	copy.Keys = maps.Clone(s.Keys)
 	copy.LoanCredits = maps.Clone(s.LoanCredits)
@@ -115,7 +117,7 @@ func (r *BankRepository) load(ctx context.Context) (*bankState, error) {
 	s := cloneBankState(r.cached)
 	var from esdb.StreamPosition = esdb.Start{}
 	if s == nil {
-		s = &bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}, Transfers: map[string]transferState{}, Keys: map[string]string{}, LoanCredits: map[string]loanCreditState{}, LoanPayments: map[string]journal.LoanInstallmentPayment{}, Savings: map[string]journal.SavingsMovement{}, SavingsKeys: map[string]string{}, SavingsQuotes: map[string]string{}, SavingsWithdrawalKeys: map[string]string{}}
+		s = &bankState{Accounts: map[string]*accountdomain.UserAccount{}, Balances: map[string]int64{}, SeedBalanceMarkers: map[string]string{}, Transfers: map[string]transferState{}, Keys: map[string]string{}, LoanCredits: map[string]loanCreditState{}, LoanPayments: map[string]journal.LoanInstallmentPayment{}, Savings: map[string]journal.SavingsMovement{}, SavingsKeys: map[string]string{}, SavingsQuotes: map[string]string{}, SavingsWithdrawalKeys: map[string]string{}}
 	} else if s.Exists {
 		from = esdb.Revision(s.Revision + 1)
 	}
@@ -188,6 +190,10 @@ func (s *bankState) apply(record journal.Record) error {
 			return accountdomain.ErrAccountNotFound
 		}
 		s.Balances[financialID(record.AccountID).Hex()] = *record.Balance
+		if s.SeedBalanceMarkers == nil {
+			s.SeedBalanceMarkers = map[string]string{}
+		}
+		s.SeedBalanceMarkers[record.AccountID] = record.ID
 	case journal.BankImported:
 		if s.Exists || len(s.Accounts) != 0 {
 			return fmt.Errorf("bank import must be the first record")

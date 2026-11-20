@@ -9,6 +9,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,9 +20,12 @@ import (
 	"github.com/dont-wait/anomaly/internal/domain"
 	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	"github.com/dont-wait/anomaly/internal/infrastructure/eventstore"
+	mongorepo "github.com/dont-wait/anomaly/internal/infrastructure/mongo"
 	"github.com/dont-wait/anomaly/internal/logger"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -78,6 +83,7 @@ type importedAccount struct {
 type importManifest struct {
 	SchemaVersion string            `json:"schema_version"`
 	DatasetID     string            `json:"dataset_id"`
+	Status        string            `json:"status"`
 	ImportedAt    string            `json:"imported_at"`
 	Accounts      []importedAccount `json:"accounts"`
 }
@@ -86,22 +92,22 @@ func main() {
 	log := logger.NewLogger(zerolog.InfoLevel)
 	file := flag.String("file", "../tools/test-data/output/anomaly-a-f.json", "generated anomaly fixture JSON")
 	manifest := flag.String("manifest", "", "optional output path for actual account numbers and credentials")
+	waitForReady := flag.Duration("wait-for-ready", 0, "wait until banking projection and model feature state catch up")
 	flag.Parse()
-
-	if err := validateEnvironment(); err != nil {
-		log.Fatal().Err(err).Msg("anomaly fixture import refused")
-	}
 
 	data, err := readDataset(*file)
 	if err != nil {
 		log.Fatal().Err(err).Msg("read anomaly fixture failed")
 	}
-	if data.DatasetID == "" || len(data.Accounts) == 0 {
-		log.Fatal().Msg("anomaly fixture is empty or missing dataset_id")
+	if err := validateDataset(data); err != nil {
+		log.Fatal().Err(err).Msg("anomaly fixture validation failed")
 	}
 
 	loader := domain.GetEnvLoader().Load(log)
 	config := loader.LoadEventStoreConfig()
+	if err := validateEnvironment(config.EventStoreConnString); err != nil {
+		log.Fatal().Err(err).Msg("anomaly fixture import refused")
+	}
 	client, err := eventstore.NewEventStoreClient(config)
 	if err != nil {
 		log.Fatal().Err(err).Msg("connect eventstore failed")
@@ -111,17 +117,31 @@ func main() {
 	repo := eventstore.SeedRepository{BankRepository: eventstore.NewBankRepository(client, nil)}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
+	manifestPath := *manifest
+	if manifestPath == "" {
+		manifestPath = filepath.Join(filepath.Dir(*file), "anomaly-a-f.imported.json")
+	}
+	if err := writeManifest(manifestPath, data.DatasetID, "in_progress", nil); err != nil {
+		log.Fatal().Err(err).Msg("write in-progress anomaly manifest failed")
+	}
 
 	accounts, err := importDataset(ctx, &repo, data)
 	if err != nil {
 		log.Fatal().Err(err).Msg("import anomaly fixture failed")
 	}
 
-	manifestPath := *manifest
-	if manifestPath == "" {
-		manifestPath = filepath.Join(filepath.Dir(*file), "anomaly-a-f.imported.json")
+	targetRevision, err := repo.CurrentRevision(ctx)
+	if err != nil {
+		log.Fatal().Err(err).Msg("read imported EventStoreDB revision failed")
 	}
-	if err := writeManifest(manifestPath, data.DatasetID, accounts); err != nil {
+	if *waitForReady > 0 {
+		readyCtx, readyCancel := context.WithTimeout(context.Background(), *waitForReady)
+		defer readyCancel()
+		if err := waitForReadiness(readyCtx, loader.LoadMongoConfig(), targetRevision); err != nil {
+			log.Fatal().Err(err).Msg("anomaly fixture readiness check failed")
+		}
+	}
+	if err := writeManifest(manifestPath, data.DatasetID, "complete", accounts); err != nil {
 		log.Fatal().Err(err).Msg("write anomaly fixture manifest failed")
 	}
 
@@ -132,13 +152,32 @@ func main() {
 	fmt.Printf("Manifest: %s\n", manifestPath)
 }
 
-func validateEnvironment() error {
+func validateEnvironment(eventStoreConnString string) error {
 	appEnv := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-	if appEnv != "development" && appEnv != "dev" && appEnv != "local" {
-		return fmt.Errorf("APP_ENV must be development, dev, or local; got %q", appEnv)
+	if appEnv != "development" && appEnv != "dev" && appEnv != "local" && appEnv != "test" {
+		return fmt.Errorf("APP_ENV must be development, dev, local, or test; got %q", appEnv)
 	}
 	if !strings.EqualFold(strings.TrimSpace(os.Getenv("SEED_DEMO_ENABLED")), "true") {
 		return errors.New("SEED_DEMO_ENABLED=true is required")
+	}
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("SEED_ANOMALY_ALLOW_TARGET")), "true") {
+		return errors.New("SEED_ANOMALY_ALLOW_TARGET=true is required")
+	}
+	parsed, err := url.Parse(eventStoreConnString)
+	if err != nil || (parsed.Scheme != "esdb" && parsed.Scheme != "esdb+discover") {
+		return errors.New("anomaly fixture requires an esdb development connection string")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	switch host {
+	case "localhost", "127.0.0.1", "::1", "eventstore", "kurrentdb":
+	default:
+		return fmt.Errorf("refusing non-local EventStoreDB target %q", host)
+	}
+	if parsed.User != nil {
+		return errors.New("refusing EventStoreDB connection strings with credentials")
+	}
+	if strings.EqualFold(parsed.Query().Get("tls"), "true") {
+		return errors.New("refusing TLS EventStoreDB targets; fixture import is local-only")
 	}
 	return nil
 }
@@ -155,9 +194,80 @@ func readDataset(path string) (dataset, error) {
 	return result, nil
 }
 
+func validateDataset(data dataset) error {
+	if data.SchemaVersion != 1 {
+		return fmt.Errorf("unsupported schema_version %d", data.SchemaVersion)
+	}
+	if strings.TrimSpace(data.DatasetID) == "" || len(data.Accounts) == 0 {
+		return errors.New("dataset_id and accounts are required")
+	}
+	accounts := make(map[string]fixtureAccount, len(data.Accounts))
+	for _, account := range data.Accounts {
+		if account.ID == "" || account.CCCD == "" || accounts[account.ID].ID != "" {
+			return fmt.Errorf("invalid or duplicate account id %q", account.ID)
+		}
+		if account.Kind != "source" && account.Kind != "receiver" {
+			return fmt.Errorf("account %s has unsupported kind %q", account.ID, account.Kind)
+		}
+		if account.StartingBalance < 0 || account.ExpectedBalanceAfterHistory < 0 {
+			return fmt.Errorf("account %s has negative balance", account.ID)
+		}
+		accounts[account.ID] = account
+	}
+	transferIDs := map[string]struct{}{}
+	idempotencyKeys := map[string]struct{}{}
+	for _, account := range data.Accounts {
+		if account.Kind != "source" {
+			continue
+		}
+		var history []fixtureTransfer
+		if err := json.Unmarshal(account.History, &history); err != nil {
+			return fmt.Errorf("decode history for %s: %w", account.ID, err)
+		}
+		var total int64
+		for _, transfer := range history {
+			if _, exists := transferIDs[transfer.ID]; exists {
+				return fmt.Errorf("duplicate transfer id %s", transfer.ID)
+			}
+			transferIDs[transfer.ID] = struct{}{}
+			if _, exists := idempotencyKeys[strings.ToLower(transfer.IdempotencyKey)]; exists {
+				return fmt.Errorf("duplicate idempotency key %s", transfer.IdempotencyKey)
+			}
+			idempotencyKeys[strings.ToLower(transfer.IdempotencyKey)] = struct{}{}
+			if _, err := uuid.Parse(transfer.ID); err != nil {
+				return fmt.Errorf("transfer %s has invalid id: %w", transfer.ID, err)
+			}
+			if _, err := uuid.Parse(transfer.IdempotencyKey); err != nil {
+				return fmt.Errorf("transfer %s has invalid idempotency key: %w", transfer.ID, err)
+			}
+			if transfer.Amount < 1000 || transfer.Amount > math.MaxInt64-total {
+				return fmt.Errorf("transfer %s has invalid amount", transfer.ID)
+			}
+			if transfer.Currency != "VND" || (transfer.Platform != "mobile" && transfer.Platform != "web" && transfer.Platform != "desktop") {
+				return fmt.Errorf("transfer %s has invalid currency or platform", transfer.ID)
+			}
+			if accounts[transfer.DestinationAccount].ID == "" || accounts[transfer.DestinationAccount].Kind != "receiver" {
+				return fmt.Errorf("transfer %s references unknown receiver %q", transfer.ID, transfer.DestinationAccount)
+			}
+			occurredAt, err := time.Parse(time.RFC3339Nano, transfer.OccurredAt)
+			if err != nil {
+				return fmt.Errorf("transfer %s occurred_at: %w", transfer.ID, err)
+			}
+			completedAt, err := time.Parse(time.RFC3339Nano, transfer.CompletedAt)
+			if err != nil || !completedAt.After(occurredAt) {
+				return fmt.Errorf("transfer %s has invalid completed_at", transfer.ID)
+			}
+			total += transfer.Amount
+		}
+		if total > account.StartingBalance || account.StartingBalance-total != account.ExpectedBalanceAfterHistory {
+			return fmt.Errorf("account %s history exceeds or disagrees with starting balance", account.ID)
+		}
+	}
+	return nil
+}
+
 func importDataset(ctx context.Context, repo *eventstore.SeedRepository, data dataset) ([]importedAccount, error) {
 	accountIDs := make(map[string]string, len(data.Accounts))
-	accountNumbers := make(map[string]string, len(data.Accounts))
 	imported := make([]importedAccount, 0, len(data.Accounts))
 
 	for _, fixture := range data.Accounts {
@@ -166,14 +276,9 @@ func importDataset(ctx context.Context, repo *eventstore.SeedRepository, data da
 			return nil, fmt.Errorf("account %s: %w", fixture.ID, err)
 		}
 		if fixture.ExpectedBalanceAfterHistory > 0 {
-			current, err := repo.FindByID(ctx, account.Id)
-			if err != nil {
-				return nil, fmt.Errorf("read balance for %s: %w", fixture.ID, err)
-			}
-			if current.Balance.Current == 0 {
-				if err := repo.SetSeedBalance(ctx, account.Id, fixture.ExpectedBalanceAfterHistory); err != nil {
-					return nil, fmt.Errorf("fund %s: %w", fixture.ID, err)
-				}
+			operationID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("anomaly-balance:"+data.DatasetID+":"+fixture.ID)).String()
+			if err := repo.SetFixtureBalanceOnce(ctx, account.Id, fixture.ExpectedBalanceAfterHistory, operationID); err != nil {
+				return nil, fmt.Errorf("fund %s: %w", fixture.ID, err)
 			}
 		}
 		if created {
@@ -185,7 +290,6 @@ func importDataset(ctx context.Context, repo *eventstore.SeedRepository, data da
 			}
 		}
 		accountIDs[fixture.ID] = account.Id
-		accountNumbers[fixture.ID] = account.AccountNo
 
 		historyCount := 0
 		if fixture.Kind == "source" {
@@ -342,9 +446,65 @@ func sumHistoryBefore(history []fixtureTransfer, currentID string) int64 {
 	return total
 }
 
-func writeManifest(path, datasetID string, accounts []importedAccount) error {
+func waitForReadiness(ctx context.Context, config *domain.MongoConfig, targetRevision uint64) error {
+	client, err := mongorepo.NewMongoClient(ctx, config)
+	if err != nil {
+		return fmt.Errorf("connect MongoDB: %w", err)
+	}
+	defer func() {
+		disconnectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		mongorepo.Disconnect(client, disconnectCtx, cancel)
+	}()
+
+	deadline := time.NewTicker(500 * time.Millisecond)
+	defer deadline.Stop()
+	for {
+		projectionRevision, projectionFound, projectionErr := mongoRevision(ctx, client, config.MongoDBName, "banking-projection")
+		featureRevision, featureFound, featureErr := mongoRevision(ctx, client, config.MongoDBName, "relay")
+		if projectionErr != nil {
+			return fmt.Errorf("check banking projection: %w", projectionErr)
+		}
+		if featureErr != nil {
+			return fmt.Errorf("check model feature progress: %w", featureErr)
+		}
+		if projectionFound && featureFound && projectionRevision >= targetRevision && featureRevision >= targetRevision {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("projection/feature state did not reach revision %d", targetRevision)
+		case <-deadline.C:
+		}
+	}
+}
+
+func mongoRevision(ctx context.Context, client *mongodrv.Client, database, id string) (uint64, bool, error) {
+	var row struct {
+		Revision       int64  `bson:"revision"`
+		StreamRevision uint64 `bson:"stream_revision"`
+	}
+	err := client.Database(database).Collection(map[string]string{
+		"banking-projection": "checkpoints",
+		"relay":              "model_feature_progress",
+	}[id]).FindOne(ctx, bson.M{"_id": id}).Decode(&row)
+	if errors.Is(err, mongodrv.ErrNoDocuments) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if id == "relay" {
+		return row.StreamRevision, true, nil
+	}
+	if row.Revision < 0 {
+		return 0, false, errors.New("MongoDB checkpoint revision is negative")
+	}
+	return uint64(row.Revision), true, nil
+}
+
+func writeManifest(path, datasetID, status string, accounts []importedAccount) error {
 	manifest := importManifest{
-		SchemaVersion: "1", DatasetID: datasetID, ImportedAt: time.Now().UTC().Format(time.RFC3339), Accounts: accounts,
+		SchemaVersion: "1", DatasetID: datasetID, Status: status, ImportedAt: time.Now().UTC().Format(time.RFC3339), Accounts: accounts,
 	}
 	content, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -353,5 +513,14 @@ func writeManifest(path, datasetID string, accounts []importedAccount) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(content, '\n'), 0o600)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if err := file.Chmod(0o600); err != nil {
+		return err
+	}
+	_, err = file.Write(append(content, '\n'))
+	return err
 }

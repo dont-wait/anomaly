@@ -68,6 +68,35 @@ func TestBuildEnvelopeRejectsInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestHistoricalRecordIsDetected(t *testing.T) {
+	id := uuid.NewString()
+	event := journal.Event{
+		ID: journal.EventID(id, journal.Created), TransactionID: id, Type: journal.Created,
+		SchemaVersion: journal.SchemaVersion, Sequence: 1, OccurredAt: time.Now().UTC(),
+		Payload: journal.Payload{
+			SourceAccountID: "source", DestinationAccountID: "destination",
+			Amount: 1000, Currency: "VND", Channel: "mobile", Status: "awaiting_otp",
+		},
+	}
+	record := journal.Record{
+		ID: event.ID, Type: event.Type, At: event.OccurredAt, Event: &event, Historical: true,
+		Transfer: json.RawMessage(`{"ID":"` + id + `"}`),
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	historical, err := historicalRecord(&esdb.RecordedEvent{
+		EventID: uuid.MustParse(event.ID), EventType: journal.Created, Data: data,
+	})
+	if err != nil {
+		t.Fatalf("historicalRecord() error = %v", err)
+	}
+	if !historical {
+		t.Fatal("historicalRecord() = false, want true")
+	}
+}
+
 type relayFeatureStoreFake struct {
 	state       modelfeature.State
 	decision    modelfeature.Decision

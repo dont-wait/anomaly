@@ -321,6 +321,125 @@ class RealtimeAlertSseUser(AlertFlowMixin, AuthenticatedUser):
                 self._sse_stop.wait(1)
 
 
+class VelocityBurstUser(AlertFlowMixin, AuthenticatedUser):
+    """Create six transfers on a strict 15-second schedule for case E."""
+
+    weight = 1 if _env("LOCUST_ENABLE_VELOCITY", "false").lower() == "true" else 0
+    wait_time = between(0, 0)
+
+    def on_start(self) -> None:
+        self.customer_token = self._login(
+            _env("LOCUST_VELOCITY_CCCD"),
+            _env("LOCUST_VELOCITY_PASSWORD"),
+            "POST /api/auth/login [velocity source]",
+        )
+        self.admin_token = self._login(
+            SETTINGS.admin_cccd,
+            SETTINGS.admin_password,
+            "POST /api/auth/login [velocity admin]",
+        )
+        self.destination_account = _env(
+            "LOCUST_VELOCITY_DESTINATION_ACCOUNT",
+            SETTINGS.destination_account,
+        )
+        if not self.destination_account:
+            raise StopUser("LOCUST_VELOCITY_DESTINATION_ACCOUNT is required")
+        self._has_run = False
+
+    @task
+    def run_velocity_burst(self) -> None:
+        if self._has_run:
+            raise StopUser()
+        self._has_run = True
+
+        count = int(_env("LOCUST_VELOCITY_REQUESTS", "6"))
+        interval = float(_env("LOCUST_VELOCITY_INTERVAL", "15"))
+        amount = int(_env("LOCUST_VELOCITY_AMOUNT", "20000"))
+        device_id = _env("LOCUST_VELOCITY_DEVICE_ID")
+        platform = _env("LOCUST_VELOCITY_PLATFORM", "mobile")
+        if count <= 0 or interval <= 0 or amount < 1000:
+            raise StopUser("invalid velocity settings")
+
+        transaction_ids: list[tuple[int, str, float]] = []
+        schedule_started = time.perf_counter()
+        for sequence in range(1, count + 1):
+            target = schedule_started + (sequence - 1) * interval
+            remaining = target - time.perf_counter()
+            if remaining > 0:
+                gevent.sleep(remaining)
+            request_started = time.perf_counter()
+            transaction_id = self._create_velocity_transfer(
+                sequence, count, amount, device_id, platform
+            )
+            if transaction_id:
+                transaction_ids.append((sequence, transaction_id, request_started))
+
+        self._collect_velocity_assessments(transaction_ids, interval)
+        raise StopUser()
+
+    def _create_velocity_transfer(
+        self,
+        sequence: int,
+        total: int,
+        amount: int,
+        device_id: str,
+        platform: str,
+    ) -> str | None:
+        headers = {
+            **self._headers(self.customer_token),
+            "Idempotency-Key": str(uuid.uuid4()),
+            "X-Platform": platform,
+        }
+        if device_id:
+            headers["X-Device-ID"] = device_id
+        with self.client.post(
+            "/api/transfers",
+            json={
+                "toBankCode": SETTINGS.transfer_bank_code,
+                "toAccountNo": self.destination_account,
+                "amount": amount,
+                "note": f"locust velocity burst {sequence}/{total}",
+            },
+            headers=headers,
+            name=f"POST /api/transfers [velocity #{sequence}]",
+            catch_response=True,
+        ) as response:
+            if response.status_code != 201:
+                response.failure(f"velocity request returned HTTP {response.status_code}")
+                return None
+            payload = _payload(response)
+            transaction_id = payload.get("transferId") or payload.get("id")
+            if not isinstance(transaction_id, str) or not transaction_id:
+                response.failure("velocity response missing transferId")
+                return None
+            return transaction_id
+
+    def _collect_velocity_assessments(
+        self,
+        transactions: list[tuple[int, str, float]],
+        interval: float,
+    ) -> None:
+        timeout = SETTINGS.alert_timeout
+        for sequence, transaction_id, started in transactions:
+            deadline = time.perf_counter() + timeout
+            assessment = None
+            while time.perf_counter() < deadline:
+                assessment = self._find_assessment(transaction_id)
+                if assessment is not None:
+                    break
+                gevent.sleep(min(SETTINGS.poll_interval, interval))
+            self._record_custom_latency(
+                f"E2E velocity request #{sequence} -> risk decision",
+                started,
+                response_length=len(str(assessment or {})),
+                error=(
+                    TimeoutError(f"risk decision not visible for velocity request #{sequence}")
+                    if assessment is None
+                    else None
+                ),
+            )
+
+
 class AuditUser(AuthenticatedUser):
     """Exercise admin monitor, account timeline, event explorer, and history APIs."""
 

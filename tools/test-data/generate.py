@@ -25,8 +25,38 @@ DEFAULT_SEED = 20261110
 DEFAULT_HISTORY_COUNT = 30
 DEFAULT_HISTORY_DAYS = 7
 TEST_PASSWORD = "Password123@"
+NO_HISTORY_ALIASES = {"E"}
 SOURCE_ALIASES = ("A", "B", "C", "D", "E", "F")
 NAMESPACE = uuid.UUID("2d0e0e4d-b3d0-4a5a-8c2b-8dcf9ccf6f8b")
+VIETNAM_TIMEZONE = timezone(timedelta(hours=7))
+
+
+def history_times(seed: int, alias: str, reference_time: datetime,
+                  history_count: int, history_days: int) -> list[datetime]:
+    """Sample daytime slots with >=30-minute gaps, returning UTC timestamps."""
+    if history_count < 0 or history_days <= 0:
+        raise ValueError("history-count must be non-negative and history-days must be positive")
+    if history_count == 0:
+        return []
+    end = reference_time.astimezone(VIETNAM_TIMEZONE)
+    start = end - timedelta(days=history_days)
+    rng = Generic(Locale.EN, seed=f"{seed}:schedule:{alias}").random
+    candidates = []
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    while day <= end:
+        for hour in range(7, 22):
+            slot = day.replace(hour=hour)
+            # Adjacent hourly slots remain at least 30 minutes apart even
+            # after jitter. Require the complete slot inside the history window.
+            if slot >= start and slot + timedelta(minutes=30, seconds=10) < end:
+                candidates.append(slot + timedelta(seconds=rng.randint(0, 1799)))
+        day += timedelta(days=1)
+    if history_count > len(candidates):
+        raise ValueError(
+            f"history-count {history_count} exceeds {len(candidates)} available daytime "
+            "slots; increase --history-days or reduce --history-count"
+        )
+    return sorted(at.astimezone(timezone.utc) for at in rng.sample(candidates, history_count))
 
 
 def parse_reference_time(value: str) -> datetime:
@@ -192,14 +222,12 @@ def build_dataset(seed: int, reference_time: datetime, history_count: int, histo
         accounts.append(account)
         by_alias[receiver_id] = account
 
-    start = reference_time - timedelta(days=history_days)
-    interval_seconds = (history_days * 24 * 60 * 60) // (history_count + 1)
     for source_alias in SOURCE_ALIASES:
         source = by_alias[f"source-{source_alias}"]
         known_receiver = by_alias[f"receiver-{source_alias}-known"]
-        for index in range(history_count):
-            jitter = generic.random.randint(-120, 120)
-            occurred_at = start + timedelta(seconds=(index + 1) * interval_seconds + jitter)
+        source_history_count = 0 if source_alias in NO_HISTORY_ALIASES else history_count
+        schedule = history_times(seed, source_alias, reference_time, source_history_count, history_days)
+        for index, occurred_at in enumerate(schedule):
             completed_at = occurred_at + timedelta(seconds=10)
             amount = amount_for(source_alias, generic)
             transfer_id = stable_uuid("history", source["id"], str(index))
@@ -225,6 +253,11 @@ def build_dataset(seed: int, reference_time: datetime, history_count: int, histo
         if account["kind"] == "source":
             outgoing = sum(item["amount"] for item in account["history"])
             account["expected_balance_after_history"] = account["starting_balance"] - outgoing
+            if account["expected_balance_after_history"] < 0:
+                raise ValueError(
+                    f"history for {account['alias']} exceeds starting balance; "
+                    "increase the fixture balance or reduce --history-count"
+                )
         else:
             # Receiver history stores IDs only; calculate incoming amounts from
             # the source records so the fixture remains easy to inspect.
@@ -239,14 +272,20 @@ def build_dataset(seed: int, reference_time: datetime, history_count: int, histo
 
     return {
         "schema_version": 1,
-        "dataset_id": "anomaly-manual-a-f-v1",
+        "dataset_id": "anomaly-manual-a-f-v2",
         "seed": seed,
         "reference_time": reference_time.isoformat().replace("+00:00", "Z"),
         "history_days": history_days,
         "history_per_source_account": history_count,
+        "history_counts": {
+            account["alias"]: len(account["history"])
+            for account in accounts
+            if account["kind"] == "source"
+        },
         "probe_transactions_generated": False,
         "notes": [
             "This fixture contains baseline history only; manual probe transactions are intentionally absent.",
+            "Account E intentionally has no baseline history; use VelocityBurstUser for its six-request probe.",
             "The receiver/network expansion is intentionally out of scope for this dataset version.",
             "The fixture is not a direct database dump. A development/test seeder must translate it into canonical events.",
         ],
@@ -280,7 +319,11 @@ def main() -> int:
         print(f"invalid --reference-time: {error}", file=sys.stderr)
         return 2
 
-    dataset = build_dataset(args.seed, reference_time, args.history_count, args.history_days)
+    try:
+        dataset = build_dataset(args.seed, reference_time, args.history_count, args.history_days)
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 2
     write_dataset(dataset, args.output)
     source_accounts = [account for account in dataset["accounts"] if account["kind"] == "source"]
     receiver_accounts = [account for account in dataset["accounts"] if account["kind"] == "receiver"]
