@@ -84,15 +84,16 @@ future, from the time You sign it. It does not end if You stop contributing.
 
 ## How to sign
 
-Every pull request description contains this checkbox in the checklist:
+Every pull request description is created with this checkbox already ticked
+in the checklist:
 
 ```
-- [ ] Tôi đã đọc và đồng ý CLA
+- [x] I have read and agree to the CLA for every contribution in this PR
 ```
 
-By ticking it, You agree to this Agreement for every Contribution in that pull
-request. A pull request without the box ticked will not be merged. The pull
-request description is kept as the record of Your agreement, so do not remove
-the checkbox after ticking it. If You contribute on behalf of a company,
+By opening a pull request and leaving the box ticked, You agree to this
+Agreement for every Contribution in that pull request. A pull request with the
+box unticked or removed will not be merged. The pull request description is
+kept as the record of Your agreement. If You contribute on behalf of a company,
 contact sangnguyentan154@gmail.com first so a corporate agreement can be
 arranged.

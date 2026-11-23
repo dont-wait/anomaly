@@ -121,4 +121,4 @@ Anomaly là dự án source-available, phát hành theo [PolyForm Noncommercial 
 
 ### Đóng góp
 
-Mọi pull request cần tick ô đồng ý [CLA](CLA.md) trong PR template; PR chưa tick sẽ không được merge. CLA giữ bản quyền cho bạn và cho phép chủ dự án cấp license thương mại riêng cho toàn bộ code.
+Mọi pull request mặc định đã tick ô đồng ý [CLA](CLA.md) trong PR template; hãy giữ nguyên, PR bỏ tick hoặc xóa ô này sẽ không được merge. CLA giữ bản quyền cho bạn và cho phép chủ dự án cấp license thương mại riêng cho toàn bộ code.

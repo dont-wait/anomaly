@@ -43,7 +43,7 @@ Phương án thay thế đã cân nhắc: BUSL 1.1 (tự chuyển sang Apache-2.
   5. Đóng góp được cung cấp nguyên trạng, không bảo hành.
 - [ ] Cân nhắc Corporate CLA nếu có tổ chức đóng góp (làm khi có nhu cầu).
 - [ ] Nên nhờ người có chuyên môn pháp lý xem lại `CLA.md` trước khi áp dụng; mẫu trên chỉ là điểm xuất phát, không phải tư vấn pháp lý.
-- [x] Ký CLA bằng cách tick checkbox trong PR template (không dùng bot). Bản ghi là mô tả PR; chấp nhận mức bằng chứng yếu hơn chữ ký có lưu trữ.
+- [x] Đồng ý CLA bằng checkbox đã tick sẵn trong PR template (không dùng bot). Bản ghi là mô tả PR; chấp nhận mức bằng chứng yếu hơn chữ ký có lưu trữ.
 - [x] `.github/pull_request_template.md`: thêm checkbox "Tôi đồng ý CLA".
 - [x] Thêm mục "Đóng góp" vào `README.md` (hoặc `CONTRIBUTING.md`) giải thích CLA.
 
