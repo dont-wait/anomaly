@@ -21,8 +21,9 @@ Phương án thay thế đã cân nhắc: BUSL 1.1 (tự chuyển sang Apache-2.
 
 - [x] Liệt kê license của dependency: Go (`go-licenses report ./...` trong `server/`, `consumer-mock/`), npm (`yarn licenses list` trong `client/`), Python (`pip-licenses` trong `kyc-service/`, `anomaly-service/`). Báo cáo lưu ở `docs/THIRD_PARTY_LICENSES.md`.
 - [x] Loại hoặc thay dependency có license copyleft mạnh (GPL/AGPL) nếu xung đột với PolyForm.
-- [x] Kiểm tra license của model, trọng số, dataset và ảnh/font/icon. Artifact không có trong repo thì ghi rõ trong `NOTICE`.
-- [x] Quét secret và dữ liệu cá nhân trong git history (`gitleaks detect`). Các file `*.docx` chưa track ở root không được commit.
+- [ ] Kiểm tra license của model, trọng số, dataset và ảnh/font/icon (chưa xác minh nguồn `model.pt` và ảnh). Artifact không có trong repo thì ghi rõ trong `NOTICE`.
+- [ ] Quét secret và dữ liệu cá nhân trong git history (`gitleaks detect`; mới grep 400 commit gần nhất, chưa chạy gitleaks). Các file `*.docx` chưa track ở root không được commit.
+- [ ] **Chặn công bố:** xin xác nhận bằng văn bản (tin nhắn/email/PR comment) của các tác giả khác trong git history (`MyNameIsKry`/Kry, `pdmh18`) đồng ý relicense phần code của họ theo PolyForm và theo `CLA.md`. Nếu không có, phải viết lại phần của họ. Kiểm tra bằng `git log --format='%an <%ae>' | sort | uniq -c`.
 - [ ] Hỏi trường/giảng viên xem đồ án có ràng buộc về quyền sở hữu hoặc công bố không.
 
 ### 3.2 File license và thông báo

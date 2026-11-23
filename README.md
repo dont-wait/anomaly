@@ -117,7 +117,7 @@ yarn dev:desktop    # app admin, http://localhost:1422
 
 ## License
 
-Anomaly là dự án source-available, phát hành theo [PolyForm Noncommercial 1.0.0](LICENSE). Bạn được đọc, chạy, học và nghiên cứu, nhưng không được dùng cho mục đích thương mại hoặc bán lại. Tên "Anomaly" và logo không nằm trong license, xem [NOTICE](NOTICE). Cần license thương mại: sangnguyentan154@gmail.com.
+Anomaly là dự án source-available, phát hành theo [PolyForm Noncommercial 1.0.0](LICENSE). Bạn được đọc, chạy, học và nghiên cứu, nhưng không được dùng cho mục đích thương mại hoặc bán lại (trừ các trường hợp tổ chức phi lợi nhuận, giáo dục, nghiên cứu mà license cho phép). Tên "Anomaly" và logo không nằm trong license, xem [NOTICE](NOTICE). Cần license thương mại: sangnguyentan154@gmail.com.
 
 ### Đóng góp
 
