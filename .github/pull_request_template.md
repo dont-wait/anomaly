@@ -65,6 +65,7 @@ Run these commands in each affected app's `src-tauri/` directory:
 <!-- If UI-related, add before/after screenshots or a short recording -->
 
 ## Checklist
+- [x] I have read and agree to the [CLA](../CLA.md) for every contribution in this PR (required; leave it ticked, a PR with it unticked or removed will not be merged)
 - [ ] Code builds and runs locally
 - [ ] Ran all relevant automated tests before opening this PR and recorded the exact commands in `Validation`
 - [ ] Tested on affected platform(s)

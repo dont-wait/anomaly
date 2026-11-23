@@ -1,6 +1,7 @@
 [project]
 name = "anomaly-ml-pipeline"
 version = "0.1.0"
+license = { text = "PolyForm-Noncommercial-1.0.0" }
 description = "Kafka publisher and training-data collector for the Anomaly model pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
