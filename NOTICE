@@ -1,0 +1,23 @@
+Anomaly
+Copyright (c) 2026 dont-wait (sangnguyentan154@gmail.com)
+
+This source code is licensed under the PolyForm Noncommercial License 1.0.0
+(see LICENSE). It is source-available, not open source: commercial use,
+including selling the software or a product or service based on it, is not
+permitted without a separate written license.
+
+Name and branding
+-----------------
+The name "Anomaly", its logos and visual identity are not licensed under
+LICENSE. You may not use them to name, promote or sell a fork, derivative
+work or service, or to suggest endorsement by the project owner.
+
+Commercial licensing
+--------------------
+For a commercial license or any other permission, contact:
+sangnguyentan154@gmail.com
+
+Third-party components and artifacts
+------------------------------------
+Dependencies, model weights, bundles and datasets are governed by their own
+licenses and are not covered by LICENSE.

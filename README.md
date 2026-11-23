@@ -114,3 +114,11 @@ corepack enable && yarn install
 yarn dev:mobile     # app khách hàng, http://localhost:1420
 yarn dev:desktop    # app admin, http://localhost:1422
 ```
+
+## License
+
+Anomaly là dự án source-available, phát hành theo [PolyForm Noncommercial 1.0.0](LICENSE). Bạn được đọc, chạy, học và nghiên cứu, nhưng không được dùng cho mục đích thương mại hoặc bán lại. Tên "Anomaly" và logo không nằm trong license, xem [NOTICE](NOTICE). Cần license thương mại: sangnguyentan154@gmail.com.
+
+### Đóng góp
+
+Mọi đóng góp cần ký [CLA](CLA.md) một lần. Bot sẽ nhắc ở pull request đầu tiên; trả lời đúng câu `I have read the CLA Document and I hereby sign the CLA`. CLA giữ bản quyền cho bạn và cho phép chủ dự án cấp license thương mại riêng cho toàn bộ code.
