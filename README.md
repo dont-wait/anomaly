@@ -121,4 +121,4 @@ Anomaly là dự án source-available, phát hành theo [PolyForm Noncommercial 
 
 ### Đóng góp
 
-Mọi đóng góp cần ký [CLA](CLA.md) một lần. Bot sẽ nhắc ở pull request đầu tiên; trả lời đúng câu `I have read the CLA Document and I hereby sign the CLA`. CLA giữ bản quyền cho bạn và cho phép chủ dự án cấp license thương mại riêng cho toàn bộ code.
+Mọi pull request cần tick ô đồng ý [CLA](CLA.md) trong PR template; PR chưa tick sẽ không được merge. CLA giữ bản quyền cho bạn và cho phép chủ dự án cấp license thương mại riêng cho toàn bộ code.

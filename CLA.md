@@ -84,14 +84,15 @@ future, from the time You sign it. It does not end if You stop contributing.
 
 ## How to sign
 
-When you open your first pull request, the CLA bot will comment. Reply to that
-comment with exactly:
+Every pull request description contains this checkbox in the checklist:
 
 ```
-I have read the CLA Document and I hereby sign the CLA
+- [ ] Tôi đã đọc và đồng ý CLA
 ```
 
-Your GitHub username and the time of signing are recorded in
-`signatures/cla.json` on the `cla-signatures` branch. You only need to sign
-once. If you contribute on behalf of a company, contact
-sangnguyentan154@gmail.com first so a corporate agreement can be arranged.
+By ticking it, You agree to this Agreement for every Contribution in that pull
+request. A pull request without the box ticked will not be merged. The pull
+request description is kept as the record of Your agreement, so do not remove
+the checkbox after ticking it. If You contribute on behalf of a company,
+contact sangnguyentan154@gmail.com first so a corporate agreement can be
+arranged.

@@ -65,7 +65,7 @@ Run these commands in each affected app's `src-tauri/` directory:
 <!-- If UI-related, add before/after screenshots or a short recording -->
 
 ## Checklist
-- [ ] Tôi đã đọc và đồng ý [CLA](../CLA.md) (bot sẽ hướng dẫn ký ở lần PR đầu tiên)
+- [ ] Tôi đã đọc và đồng ý [CLA](../CLA.md) cho mọi đóng góp trong PR này (bắt buộc, không tick thì PR không được merge)
 - [ ] Code builds and runs locally
 - [ ] Ran all relevant automated tests before opening this PR and recorded the exact commands in `Validation`
 - [ ] Tested on affected platform(s)

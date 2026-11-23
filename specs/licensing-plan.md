@@ -10,7 +10,7 @@ Công khai source để mọi người đọc, học, chạy và nghiên cứu, 
 |---|---|---|
 | License | PolyForm Noncommercial 1.0.0 (`PolyForm-Noncommercial-1.0.0`) | Cấm mục đích thương mại, văn bản ngắn, có SPDX id |
 | Tên và logo | Không nằm trong license, ghi ở `NOTICE` | License không bảo vệ tên; nhãn hiệu là bước riêng |
-| Đóng góp | CLA, ký qua PR bằng bot | Để chủ dự án còn cấp license thương mại riêng được |
+| Đóng góp | CLA, đồng ý bằng checkbox trong PR template | Để chủ dự án còn cấp license thương mại riêng được |
 | Cách gọi | "source-available", không gọi "open source" | Không đạt định nghĩa OSI |
 
 Phương án thay thế đã cân nhắc: BUSL 1.1 (tự chuyển sang Apache-2.0 sau tối đa 4 năm, cần điền *Additional Use Grant*), Elastic License 2.0 (chỉ cấm bán dạng managed service, yếu hơn). AGPL, MIT, Apache không ngăn việc bán lại nên loại.
@@ -43,8 +43,7 @@ Phương án thay thế đã cân nhắc: BUSL 1.1 (tự chuyển sang Apache-2.
   5. Đóng góp được cung cấp nguyên trạng, không bảo hành.
 - [ ] Cân nhắc Corporate CLA nếu có tổ chức đóng góp (làm khi có nhu cầu).
 - [ ] Nên nhờ người có chuyên môn pháp lý xem lại `CLA.md` trước khi áp dụng; mẫu trên chỉ là điểm xuất phát, không phải tư vấn pháp lý.
-- [x] Tự động hóa việc ký: dùng GitHub Action `contributor-assistant/github-action`, lưu chữ ký ở `signatures/cla.json` trên nhánh riêng `cla-signatures`. Thêm workflow `.github/workflows/cla.yml` chạy khi có `pull_request_target` và comment `I have read the CLA Document and I hereby sign the CLA`. Bật làm required check cho `main`.
-- [x] Bỏ qua bot (dependabot) và chủ dự án trong allowlist.
+- [x] Ký CLA bằng cách tick checkbox trong PR template (không dùng bot). Bản ghi là mô tả PR; chấp nhận mức bằng chứng yếu hơn chữ ký có lưu trữ.
 - [x] `.github/pull_request_template.md`: thêm checkbox "Tôi đồng ý CLA".
 - [x] Thêm mục "Đóng góp" vào `README.md` (hoặc `CONTRIBUTING.md`) giải thích CLA.
 
