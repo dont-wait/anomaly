@@ -39,7 +39,7 @@
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
     "@vitejs/plugin-react": "6.0.5",
-    "eslint": "10.8.1",
+    "eslint": "10.14.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-prettier": "5.5.7",
     "eslint-plugin-react-hooks": "7.1.1",
