@@ -39,3 +39,20 @@ func TestModelResponseValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestNewAssessmentKeepsDecisionReasonAndFactors(t *testing.T) {
+	z := 4.2
+	response := ModelResponse{
+		SchemaVersion: 1, EventID: "e", TransactionID: "t", RiskScore: 0.9, PredictedLabel: 1,
+		Threshold: 0.5, ModelVersion: "m", FeatureVersion: "f", Signature: "s",
+		OccurredAt: time.Now(), ScoredAt: time.Now(),
+		TopFactors: []Factor{{Feature: "log_amount", ZScore: &z}},
+	}
+	got, err := NewAssessment(response, time.Time{}, "topic", 0, 1, "id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Decision != "BLOCK" || got.DecisionReason == "" || len(got.TopFactors) != 1 {
+		t.Fatalf("unexpected assessment: %+v", got)
+	}
+}
