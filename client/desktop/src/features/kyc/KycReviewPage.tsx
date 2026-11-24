@@ -62,13 +62,15 @@ function MediaBox({
   kind: "image" | "video";
 }) {
   const [url, setUrl] = useState<string>();
-  const [error, setError] = useState("");
+  // Keyed by path so a stale error never shows for a newly selected file and the
+  // effect does not need to reset it synchronously.
+  const [failure, setFailure] = useState<{ path: string; message: string }>();
+  const error = failure && failure.path === path ? failure.message : "";
 
   useEffect(() => {
     if (!path) return;
     let active = true;
     let objectUrl: string | undefined;
-    setError("");
     void downloadKycMedia(path)
       .then((blob) => {
         if (!active) return;
@@ -76,7 +78,7 @@ function MediaBox({
         setUrl(objectUrl);
       })
       .catch((cause) => {
-        if (active) setError(explainKycError(cause));
+        if (active) setFailure({ path, message: explainKycError(cause) });
       });
     return () => {
       active = false;
@@ -163,11 +165,6 @@ function ReviewDetail({
 }) {
   const [mode, setMode] = useState<"idle" | "approve" | "reject">("idle");
   const [reason, setReason] = useState("");
-
-  useEffect(() => {
-    setMode("idle");
-    setReason("");
-  }, [item.accountId]);
 
   return (
     <article className="grid gap-3">
