@@ -18,8 +18,10 @@ func TestProfileReviewCursorRejectsWrongFilter(t *testing.T) {
 		t.Fatalf("cursor %#v: %v", got, err)
 	}
 	for _, test := range []struct{ raw, status, search string }{
-		{cursor, "APPROVED", "nguyen"}, {cursor, "PENDING", "other"},
-		{"not base64", "PENDING", "nguyen"}, {strings.Repeat("a", 1025), "PENDING", "nguyen"},
+		{cursor, "APPROVED", "nguyen"},
+		{cursor, "PENDING", "other"},
+		{"not base64", "PENDING", "nguyen"},
+		{strings.Repeat("a", 1025), "PENDING", "nguyen"},
 	} {
 		if _, err := decodeReviewCursor(test.raw, test.status, test.search); !errors.Is(err, accountdomain.ErrInvalidProfile) {
 			t.Errorf("accepted %q: %v", test.raw, err)

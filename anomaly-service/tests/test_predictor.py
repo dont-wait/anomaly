@@ -255,3 +255,40 @@ def test_dynamic_account_predictor_receives_distinct_original_objectids(monkeypa
     assert calls["request"]["payload"]["sourceAccountId"] != calls["request"]["payload"][
         "destinationAccountId"
     ]
+
+
+def test_top_factors_include_raised_flags_and_rare_fractions():
+    from app.predictor import LocalBundlePredictor
+
+    names = ["log_amount", "new_receiver", "new_device", "channel_prior_fraction"]
+    fake = type("P", (), {
+        "manifest": {"feature_names": names},
+        "preprocessing": {"numeric_indices": [0]},
+    })()
+    predictor = object.__new__(LocalBundlePredictor)
+    predictor.predictor = fake
+    row = [[3.5, 1.0, 0.0, 0.01]]
+    assert predictor._top_factors({"edge_features": row}) == (
+        {"feature": "log_amount", "z_score": 3.5},
+        {"feature": "new_receiver", "value": 1},
+        {"feature": "channel_prior_fraction", "value": 0.01},
+    )
+
+
+def test_top_factors_match_the_server_wire_contract():
+    """Keys and size must satisfy the Go riskassessment.Factor decoder (strict, max 8)."""
+    from app.predictor import LocalBundlePredictor
+
+    names = [f"n{i}" for i in range(6)] + ["new_receiver", "new_device", "channel_prior_fraction"]
+    fake = type("P", (), {
+        "manifest": {"feature_names": names},
+        "preprocessing": {"numeric_indices": list(range(6))},
+    })()
+    predictor = object.__new__(LocalBundlePredictor)
+    predictor.predictor = fake
+    row = [[5.0, -4.0, 3.0, 2.0, 1.0, 0.5, 1.0, 1.0, 0.0]]
+    factors = predictor._top_factors({"edge_features": row})
+    assert 0 < len(factors) <= 8
+    for factor in factors:
+        assert set(factor) in ({"feature", "z_score"}, {"feature", "value"})
+        assert isinstance(factor["feature"], str) and 0 < len(factor["feature"]) <= 64

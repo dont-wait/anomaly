@@ -37,6 +37,45 @@ func DecisionForScore(score float64) string {
 	return risk.DecisionAllow
 }
 
+// DecisionReasonForScore explains, for tracing, why DecisionForScore chose its
+// result. It is derived on the server and is not part of the signed payload.
+func DecisionReasonForScore(score float64) string {
+	if score > RiskBlockScore {
+		return fmt.Sprintf("risk_score %v > block threshold %v", score, RiskBlockScore)
+	}
+	return fmt.Sprintf("risk_score %v <= block threshold %v", score, RiskBlockScore)
+}
+
+// MaxTopFactors bounds the trace-only factor list accepted from the ML service.
+const MaxTopFactors = 8
+
+// Factor is a trace-only note about an unusual model input, in the wire format the
+// ML service publishes (snake_case, like the rest of ModelResponse). Numeric
+// features carry ZScore (standard deviations from the training mean); binary flags
+// and rare fractions carry Value. It describes how atypical an input is, not how
+// much it contributed to the score, and it is not covered by the signature, so it
+// is advisory data that must not drive decisions.
+type Factor struct {
+	Feature string   `json:"feature" bson:"feature"`
+	ZScore  *float64 `json:"z_score,omitempty" bson:"z_score,omitempty"`
+	Value   *float64 `json:"value,omitempty" bson:"value,omitempty"`
+}
+
+func (f Factor) validate() error {
+	if strings.TrimSpace(f.Feature) == "" || len(f.Feature) > 64 {
+		return fmt.Errorf("top_factors feature must be 1-64 characters")
+	}
+	if (f.ZScore == nil) == (f.Value == nil) {
+		return fmt.Errorf("top_factors %q needs exactly one of z_score and value", f.Feature)
+	}
+	for _, v := range []*float64{f.ZScore, f.Value} {
+		if v != nil && (math.IsNaN(*v) || math.IsInf(*v, 0)) {
+			return fmt.Errorf("top_factors %q must be finite", f.Feature)
+		}
+	}
+	return nil
+}
+
 // ModelResponse is the scoring contract emitted by the ML service. It is an
 // assessment only; predicted_label must not be treated as an ALLOW/BLOCK
 // business decision.
@@ -54,6 +93,11 @@ type ModelResponse struct {
 	Signature      string    `json:"signature" bson:"signature"`
 	RiskLevel      string    `json:"riskLevel" bson:"risk_level"`
 	Decision       string    `json:"decision" bson:"decision"`
+	// DecisionReason is derived by the server for tracing; never signed.
+	DecisionReason string `json:"decisionReason,omitempty" bson:"decision_reason,omitempty"`
+	// TopFactors is sent by the ML service for tracing. It is NOT covered by the
+	// signature, so treat it as unverified, advisory data.
+	TopFactors []Factor `json:"top_factors,omitempty" bson:"top_factors,omitempty"`
 }
 
 func (r ModelResponse) Validate() error {
@@ -88,6 +132,14 @@ func (r ModelResponse) Validate() error {
 	if strings.TrimSpace(r.FeatureVersion) == "" {
 		return fmt.Errorf("feature_version is required")
 	}
+	if len(r.TopFactors) > MaxTopFactors {
+		return fmt.Errorf("top_factors accepts at most %d entries", MaxTopFactors)
+	}
+	for _, factor := range r.TopFactors {
+		if err := factor.validate(); err != nil {
+			return err
+		}
+	}
 	if strings.TrimSpace(r.Signature) == "" {
 		return fmt.Errorf("signature is required")
 	}
@@ -114,6 +166,8 @@ type Assessment struct {
 	Signature      string     `json:"-" bson:"signature"`
 	RiskLevel      string     `json:"riskLevel" bson:"risk_level"`
 	Decision       string     `json:"decision" bson:"decision"`
+	DecisionReason string     `json:"decisionReason,omitempty" bson:"decision_reason,omitempty"`
+	TopFactors     []Factor   `json:"topFactors,omitempty" bson:"top_factors,omitempty"`
 	Finalized      bool       `json:"-" bson:"finalized"`
 	FinalizedAt    *time.Time `json:"-" bson:"finalized_at,omitempty"`
 	ReceivedAt     time.Time  `json:"receivedAt" bson:"received_at"`
@@ -151,6 +205,8 @@ func NewAssessment(response ModelResponse, receivedAt time.Time, topic string, p
 		Signature:      response.Signature,
 		RiskLevel:      LevelForScore(response.RiskScore),
 		Decision:       DecisionForScore(response.RiskScore),
+		DecisionReason: DecisionReasonForScore(response.RiskScore),
+		TopFactors:     response.TopFactors,
 		ReceivedAt:     receivedAt,
 		KafkaTopic:     topic,
 		KafkaPartition: partition,

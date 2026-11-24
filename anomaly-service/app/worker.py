@@ -35,7 +35,7 @@ def handle_message(raw, predictor, output_publisher, training_sink):
     # Training metadata uses canonical business time, not relay persistence time.
     occurred_at = result.request.get("occurredAt")
     event = replace(event, occurred_at=occurred_at, occurred_at_us=microseconds(occurred_at))
-    risk_event = build_risk_event(event, prediction)
+    risk_event = build_risk_event(event, prediction, factors=result.factors)
     output_publisher.publish(risk_event)
     training_sink.record(event, result.request, prediction)
     return risk_event

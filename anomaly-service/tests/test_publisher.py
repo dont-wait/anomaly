@@ -126,3 +126,13 @@ def test_signatures_match_shared_go_contract_vectors():
 def test_extra_unsigned_fields_are_rejected():
     with pytest.raises(ValueError, match="model response fields"):
         sign_risk_event({**assessment(), "decision": "ALLOW"}, "secret")
+
+
+def test_top_factors_are_carried_but_not_signed():
+    event = assessment()
+    factors = [{"feature": "log_amount", "z_score": 4.2}]
+    plain = sign_risk_event(event, "test-secret")
+    traced = sign_risk_event({**event, "top_factors": factors}, "test-secret")
+    assert traced["signature"] == plain["signature"]
+    assert traced["top_factors"] == factors
+    assert "top_factors" not in plain

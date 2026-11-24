@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from .contracts import Prediction
+from .contracts import TOP_FACTORS_FIELD, Prediction
 
 RISK_EVENT_METADATA_FIELDS = ("schema_version", "event_id", "occurred_at", "scored_at")
 TIMESTAMP_FIELDS = ("occurred_at", "scored_at")
@@ -47,7 +47,10 @@ def _go_json(value):
 
 def canonical_risk_event(risk_event):
     """Match riskassessment.CanonicalJSON in the server: a sorted-key Go map."""
-    unsigned = {key: value for key, value in risk_event.items() if key != "signature"}
+    unsigned = {
+        key: value for key, value in risk_event.items()
+        if key not in ("signature", TOP_FACTORS_FIELD)
+    }
     metadata = {}
     for key in RISK_EVENT_METADATA_FIELDS:
         if key not in unsigned:
@@ -72,7 +75,11 @@ def sign_risk_event(risk_event, signing_key):
         raise ValueError("KAFKA_RISK_DECISION_SIGNING_KEY is required")
     unsigned, canonical = canonical_risk_event(risk_event)
     signature = hmac.new(signing_key.encode("utf-8"), canonical, hashlib.sha256).hexdigest()
-    return {**unsigned, "signature": signature}
+    signed = {**unsigned, "signature": signature}
+    if risk_event.get(TOP_FACTORS_FIELD):
+        # Trace-only: carried beside, but not covered by, the signature.
+        signed[TOP_FACTORS_FIELD] = risk_event[TOP_FACTORS_FIELD]
+    return signed
 
 
 class KafkaOutputPublisher:

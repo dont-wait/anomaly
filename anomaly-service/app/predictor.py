@@ -6,6 +6,13 @@ from pathlib import Path
 
 from .contracts import Prediction, PredictorResult
 
+TOP_FACTOR_COUNT = 3  # at most 3 + len(RISK_FLAGS) + len(RARE_FRACTIONS) entries; server accepts 8
+# Not standardized by preprocessing.json, so z-scores can't surface them. Binary
+# flags are reported when raised; channel_prior_fraction is reported when rare (low).
+RISK_FLAGS = ("new_receiver", "new_device")
+RARE_FRACTIONS = ("channel_prior_fraction",)
+RARE_FRACTION_MAX = 0.05
+
 
 class UnsupportedIdentityError(ValueError):
     """The bundle cannot preserve the supplied account identities."""
@@ -109,8 +116,56 @@ class LocalBundlePredictor:
                     previous = identities.setdefault(target, source)
                     if previous != source:
                         raise UnsupportedIdentityError("account mapping merges distinct identities")
-        payload = self.predictor.predict(model_request, model_prefix)
-        return PredictorResult(prediction=Prediction.from_payload(payload), request=request)
+        captured = {}
+        original_inputs = getattr(self.predictor, "inputs", None)
+        if original_inputs is not None:
+            def capture_inputs(*args, **kwargs):
+                captured["inputs"] = original_inputs(*args, **kwargs)
+                return captured["inputs"]
+
+            # Reuse the inputs predict() already builds instead of replaying history twice.
+            self.predictor.inputs = capture_inputs
+        try:
+            payload = self.predictor.predict(model_request, model_prefix)
+        finally:
+            if original_inputs is not None:
+                del self.predictor.inputs
+        return PredictorResult(
+            prediction=Prediction.from_payload(payload),
+            request=request,
+            factors=self._top_factors(captured.get("inputs")),
+        )
+
+    def _top_factors(self, inputs):
+        """Inputs that look most unusual for this request, as trace-only notes.
+
+        edge_features are already standardized by preprocessing.json for the numeric
+        columns, so a value is a z-score against the training distribution. This
+        ranks atypical inputs, not model attribution: a large |z| does not mean the
+        feature raised the score. The result is advisory, unsigned, and capped well
+        below the server's MaxTopFactors.
+        """
+        try:
+            row = inputs["edge_features"][0]
+            names = self.predictor.manifest["feature_names"]
+            columns = self.predictor.preprocessing["numeric_indices"]
+            ranked = sorted(((float(row[i]), names[i]) for i in columns), key=lambda x: -abs(x[0]))
+            factors = [
+                {"feature": name, "z_score": round(z, 3)}
+                for z, name in ranked[:TOP_FACTOR_COUNT]
+            ]
+            for name in RISK_FLAGS:
+                if name in names and float(row[names.index(name)]) >= 0.5:
+                    factors.append({"feature": name, "value": 1})
+            for name in RARE_FRACTIONS:
+                if name not in names:
+                    continue
+                value = float(row[names.index(name)])
+                if value <= RARE_FRACTION_MAX:
+                    factors.append({"feature": name, "value": round(value, 4)})
+            return tuple(factors)
+        except Exception:  # explanation must never break scoring
+            return ()
 
     def close(self):
         close = getattr(self.history, "close", None)

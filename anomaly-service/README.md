@@ -41,7 +41,7 @@ output không được coi là input có thể bỏ qua.
 Output dùng đúng schema `ModelResponse` của server và `consumer-mock`:
 `schema_version`, `event_id`, `transaction_id`, `occurred_at`, `scored_at`,
 `risk_score`, `predicted_label`, `threshold`, `model_version`, `feature_version`,
-`signature`. Label đã được kiểm tra bằng `int(risk_score >= threshold)` theo
+`signature`, cộng `top_factors` (tùy chọn, xem bên dưới). Label đã được kiểm tra bằng `int(risk_score >= threshold)` theo
 threshold của bundle. Worker không quyết định ALLOW/BLOCK: server suy ra quyết định
 từ `risk_score` (`DecisionForScore`). Không sinh kết quả thay thế khi inference lỗi:
 worker giữ offset và dừng để retry.
@@ -143,7 +143,8 @@ signature = HMAC-SHA256(secret_key_utf8, canonical_json_without_signature_utf8)
 ```
 
 Canonical JSON theo đúng `riskassessment.CanonicalJSON` của server Go và mock:
-mười field của `ModelResponse` với key sắp xếp theo alphabet, bỏ `signature`.
+mười field của `ModelResponse` với key sắp xếp theo alphabet, bỏ `signature` và
+`top_factors` (trường tùy chọn chỉ để truy vết, không được ký).
 JSON compact UTF-8, escape HTML (`<`, `>`, `&`) và U+2028/U+2029 như `encoding/json`;
 số thực theo cách biểu diễn của Go (ví dụ `0.0 → 0`, `1e-07 → 1e-7`), thời gian UTC
 RFC3339Nano bỏ zero thừa. Server xác minh HMAC
@@ -420,6 +421,23 @@ Topic: `anomaly.bank.risk-decisions.v1` (cấu hình được).
   "signature": "<64-lowercase-hex-HMAC-SHA256-characters>"
 }
 ```
+
+`top_factors` (tùy chọn) liệt kê tối đa 6 đầu vào bất thường của request này, mỗi
+phần tử là `{"feature", "z_score"}` (đặc trưng số, độ lệch chuẩn so với trung bình
+train) hoặc `{"feature", "value"}` (cờ nhị phân như `new_receiver`, `new_device` khi
+bật, hoặc tỷ lệ hiếm như `channel_prior_fraction`). Đây là mức độ *bất thường của
+đầu vào*, không phải đóng góp của đặc trưng vào điểm số. Vì không được ký nên server
+coi đây là dữ liệu tham khảo chưa xác minh: có thể bị sửa mà chữ ký vẫn hợp lệ, không
+được dùng để ra quyết định. Server từ chối (park) message có quá 8 phần tử, thiếu
+hoặc thừa số, hoặc key lạ (decoder nghiêm ngặt, `DisallowUnknownFields`).
+
+**Thứ tự triển khai:** phải nâng cấp server (consumer) lên bản nhận `top_factors`
+trước khi chạy `anomaly-service` mới. Server cũ từ chối key lạ `top_factors` và park
+message thay vì lưu assessment.
+
+Server tự suy ra `decisionReason` từ `risk_score` (`DecisionReasonForScore`); bản
+ghi cũ chưa có lý do được suy ra khi đọc nếu khớp với `decision` đã lưu. Admin
+monitor trả `decisionReason` và `topFactors` (camelCase: `zScore`, `value`).
 
 - Kafka key: `transaction_id:model_version:feature_version`, giống `consumer-mock`.
 - `event_id` giữ nguyên ID trigger relay; `occurred_at` là thời gian của request gốc.

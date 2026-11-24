@@ -36,9 +36,13 @@ func TestParseProfileChangeListParams(t *testing.T) {
 		t.Fatalf("unexpected parsing: %#v %v", got, err)
 	}
 	for _, values := range []url.Values{
-		{"page": {"0"}}, {"page": {"x"}}, {"page": {"99999999999999999999999999999"}},
-		{"pageSize": {"51"}}, {"pageSize": {"-1"}},
-		{"status": {"UNKNOWN"}}, {"search": {string(make([]byte, 121))}},
+		{"page": {"0"}},
+		{"page": {"x"}},
+		{"page": {"99999999999999999999999999999"}},
+		{"pageSize": {"51"}},
+		{"pageSize": {"-1"}},
+		{"status": {"UNKNOWN"}},
+		{"search": {string(make([]byte, 121))}},
 	} {
 		if _, err := parseProfileChangeListParams(values); err == nil {
 			t.Fatalf("accepted invalid parameters: %#v", values)

@@ -15,6 +15,7 @@ PREDICTION_FIELDS = (
 )
 TRAINING_SCHEMA_VERSION = 1
 RISK_EVENT_SCHEMA_VERSION = 1
+TOP_FACTORS_FIELD = "top_factors"
 
 
 class ContractError(ValueError):
@@ -80,20 +81,25 @@ class Prediction:
 class PredictorResult:
     prediction: Prediction
     request: dict
+    # Trace-only notes on unusual inputs (z-scores / raised flags), not attribution. Never signed.
+    factors: tuple = ()
 
 
-def build_risk_event(event, prediction, *, scored_at=None):
+def build_risk_event(event, prediction, *, scored_at=None, factors=()):
     """Adapt a prediction to the server's riskassessment.ModelResponse contract."""
     prediction = _prediction(prediction)
     if prediction.transaction_id != event.transaction_id:
         raise ContractError("model response transaction_id differs from the Kafka trigger")
-    return {
+    risk_event = {
         "schema_version": RISK_EVENT_SCHEMA_VERSION,
         "event_id": event.event_id,
         "occurred_at": event.occurred_at,
         "scored_at": scored_at or utc_now(),
         **prediction.as_dict(),
     }
+    if factors:
+        risk_event[TOP_FACTORS_FIELD] = [dict(f) for f in factors]
+    return risk_event
 
 
 def build_training_record(event, request, prediction, *, recorded_at=None):
