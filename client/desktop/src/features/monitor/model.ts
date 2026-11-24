@@ -7,6 +7,10 @@ export interface RiskAssessment {
   predictedLabel: 0 | 1;
   riskLevel: "NORMAL" | "WARNING" | "BLOCK";
   decision: "ALLOW" | "BLOCK";
+  /** Server-derived explanation of `decision`; absent for old records that cannot be derived. */
+  decisionReason?: string;
+  /** Unverified, unsigned notes on unusual inputs from the model service. Not feature attribution. */
+  topFactors?: RiskFactor[];
   threshold: number;
   modelVersion: string;
   featureVersion: string;
@@ -15,6 +19,14 @@ export interface RiskAssessment {
   handledAt?: string;
   handledBy?: string;
   transaction: RiskTransactionContext | null;
+}
+
+export interface RiskFactor {
+  feature: string;
+  /** Standard deviations from the training mean (numeric features). */
+  zScore?: number;
+  /** Raw value for binary flags and rare fractions. */
+  value?: number;
 }
 
 export interface RiskTransactionContext {

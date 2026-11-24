@@ -81,7 +81,7 @@ class Prediction:
 class PredictorResult:
     prediction: Prediction
     request: dict
-    # Trace-only explanation (top standardized features). Never signed.
+    # Trace-only notes on unusual inputs (z-scores / raised flags), not attribution. Never signed.
     factors: tuple = ()
 
 

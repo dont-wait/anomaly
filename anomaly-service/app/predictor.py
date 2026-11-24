@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .contracts import Prediction, PredictorResult
 
-TOP_FACTOR_COUNT = 3
+TOP_FACTOR_COUNT = 3  # at most 3 + len(RISK_FLAGS) + len(RARE_FRACTIONS) entries; server accepts 8
 # Not standardized by preprocessing.json, so z-scores can't surface them. Binary
 # flags are reported when raised; channel_prior_fraction is reported when rare (low).
 RISK_FLAGS = ("new_receiver", "new_device")
@@ -137,10 +137,13 @@ class LocalBundlePredictor:
         )
 
     def _top_factors(self, inputs):
-        """Numeric features furthest from the training mean, as trace-only z-scores.
+        """Inputs that look most unusual for this request, as trace-only notes.
 
         edge_features are already standardized by preprocessing.json for the numeric
-        columns, so the value is a z-score against the training distribution.
+        columns, so a value is a z-score against the training distribution. This
+        ranks atypical inputs, not model attribution: a large |z| does not mean the
+        feature raised the score. The result is advisory, unsigned, and capped well
+        below the server's MaxTopFactors.
         """
         try:
             row = inputs["edge_features"][0]

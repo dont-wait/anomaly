@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -108,5 +109,43 @@ func TestWriteUnhandledAlertCountEvent(t *testing.T) {
 	}
 	if got := recorder.Body.String(); got != "event: risk_alert_count\ndata: {\"count\":12}\n\n" {
 		t.Fatalf("unexpected SSE event: %q", got)
+	}
+}
+
+func TestAssessmentDTOUsesCamelCaseFactorsAndFallsBackToDerivedReason(t *testing.T) {
+	z := 4.2
+	item := riskassessment.Assessment{
+		ID: "a", TransactionID: "t", RiskScore: 0.99, Decision: riskassessment.DecisionForScore(0.99),
+		TopFactors: []riskassessment.Factor{{Feature: "log_amount", ZScore: &z}},
+	}
+	dto := (&MonitorHandler{}).assessmentDTO(item, mongorepo.RiskTransactionContext{})
+	raw, err := json.Marshal(dto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	factors, _ := got["topFactors"].([]any)
+	if len(factors) != 1 || factors[0].(map[string]any)["zScore"] != 4.2 {
+		t.Fatalf("topFactors = %v", got["topFactors"])
+	}
+	if _, snake := factors[0].(map[string]any)["z_score"]; snake {
+		t.Fatalf("API must not leak the wire key: %v", factors[0])
+	}
+	if want := riskassessment.DecisionReasonForScore(0.99); got["decisionReason"] != want {
+		t.Fatalf("legacy assessment reason = %v, want %q", got["decisionReason"], want)
+	}
+
+	stale := item
+	stale.Decision = "ALLOW" // stored outcome differs from today's rule: do not invent a reason
+	if reason := decisionReasonFor(stale); reason != "" {
+		t.Fatalf("reason for mismatched decision = %q", reason)
+	}
+	stored := item
+	stored.DecisionReason = "stored reason"
+	if reason := decisionReasonFor(stored); reason != "stored reason" {
+		t.Fatalf("stored reason overwritten: %q", reason)
 	}
 }

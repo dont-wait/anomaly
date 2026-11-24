@@ -96,3 +96,52 @@ func TestDecodeModelResponseAcceptsExplicitZeroValues(t *testing.T) {
 		}
 	}
 }
+
+// pythonRiskPayload mirrors what anomaly-service publishes: snake_case keys, with
+// top_factors attached beside (not inside) the signed fields.
+func pythonRiskPayload(t *testing.T, factors []any) []byte {
+	t.Helper()
+	base := signedModelPayload(t, []byte(`{"schema_version":1,"event_id":"event-1","transaction_id":"TX001","occurred_at":"2026-10-28T10:00:00Z","scored_at":"2026-10-28T10:00:01Z","risk_score":0.9821,"predicted_label":1,"threshold":0.9517361521720886,"model_version":"gatv2-device-control-v1","feature_version":"schema-3-0b9efd44d793"}`))
+	var wire map[string]any
+	if err := json.Unmarshal(base, &wire); err != nil {
+		t.Fatal(err)
+	}
+	wire["top_factors"] = factors
+	payload, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+func TestDecodeModelResponseAcceptsPythonTopFactors(t *testing.T) {
+	payload := pythonRiskPayload(t, []any{
+		map[string]any{"feature": "log_amount", "z_score": 4.213},
+		map[string]any{"feature": "new_receiver", "value": 1},
+		map[string]any{"feature": "channel_prior_fraction", "value": 0.0123},
+	})
+	response, err := decodeModelResponse(payload, testRiskSigningKey)
+	if err != nil {
+		t.Fatalf("response with python top_factors rejected: %v", err)
+	}
+	if len(response.TopFactors) != 3 || response.TopFactors[0].ZScore == nil || *response.TopFactors[0].ZScore != 4.213 ||
+		response.TopFactors[1].Value == nil || *response.TopFactors[1].Value != 1 {
+		t.Fatalf("unexpected factors: %+v", response.TopFactors)
+	}
+}
+
+func TestDecodeModelResponseRejectsCamelCaseFactorKey(t *testing.T) {
+	payload := pythonRiskPayload(t, []any{map[string]any{"feature": "log_amount", "zScore": 4.2}})
+	if _, err := decodeModelResponse(payload, testRiskSigningKey); err == nil {
+		t.Fatal("camelCase zScore must not be accepted on the wire")
+	}
+}
+
+func TestDecodeModelResponseTopFactorsAreNotSigned(t *testing.T) {
+	// Documents the contract: factors are advisory, so editing them keeps the signature valid.
+	payload := pythonRiskPayload(t, []any{map[string]any{"feature": "log_amount", "z_score": 1.0}})
+	tampered := strings.Replace(string(payload), `"z_score":1`, `"z_score":9`, 1)
+	if _, err := decodeModelResponse([]byte(tampered), testRiskSigningKey); err != nil {
+		t.Fatalf("expected unsigned factors to be ignored by verification: %v", err)
+	}
+}

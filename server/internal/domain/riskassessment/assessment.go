@@ -46,12 +46,34 @@ func DecisionReasonForScore(score float64) string {
 	return fmt.Sprintf("risk_score %v <= block threshold %v", score, RiskBlockScore)
 }
 
-// Factor is a trace-only explanation. Numeric features carry ZScore (standard
-// deviations from the training mean); binary flags and rare fractions carry Value.
+// MaxTopFactors bounds the trace-only factor list accepted from the ML service.
+const MaxTopFactors = 8
+
+// Factor is a trace-only note about an unusual model input, in the wire format the
+// ML service publishes (snake_case, like the rest of ModelResponse). Numeric
+// features carry ZScore (standard deviations from the training mean); binary flags
+// and rare fractions carry Value. It describes how atypical an input is, not how
+// much it contributed to the score, and it is not covered by the signature, so it
+// is advisory data that must not drive decisions.
 type Factor struct {
 	Feature string   `json:"feature" bson:"feature"`
-	ZScore  *float64 `json:"zScore,omitempty" bson:"z_score,omitempty"`
+	ZScore  *float64 `json:"z_score,omitempty" bson:"z_score,omitempty"`
 	Value   *float64 `json:"value,omitempty" bson:"value,omitempty"`
+}
+
+func (f Factor) validate() error {
+	if strings.TrimSpace(f.Feature) == "" || len(f.Feature) > 64 {
+		return fmt.Errorf("top_factors feature must be 1-64 characters")
+	}
+	if (f.ZScore == nil) == (f.Value == nil) {
+		return fmt.Errorf("top_factors %q needs exactly one of z_score and value", f.Feature)
+	}
+	for _, v := range []*float64{f.ZScore, f.Value} {
+		if v != nil && (math.IsNaN(*v) || math.IsInf(*v, 0)) {
+			return fmt.Errorf("top_factors %q must be finite", f.Feature)
+		}
+	}
+	return nil
 }
 
 // ModelResponse is the scoring contract emitted by the ML service. It is an
@@ -73,7 +95,8 @@ type ModelResponse struct {
 	Decision       string    `json:"decision" bson:"decision"`
 	// DecisionReason is derived by the server for tracing; never signed.
 	DecisionReason string `json:"decisionReason,omitempty" bson:"decision_reason,omitempty"`
-	// TopFactors is sent by the ML service for tracing; never signed.
+	// TopFactors is sent by the ML service for tracing. It is NOT covered by the
+	// signature, so treat it as unverified, advisory data.
 	TopFactors []Factor `json:"top_factors,omitempty" bson:"top_factors,omitempty"`
 }
 
@@ -108,6 +131,14 @@ func (r ModelResponse) Validate() error {
 	}
 	if strings.TrimSpace(r.FeatureVersion) == "" {
 		return fmt.Errorf("feature_version is required")
+	}
+	if len(r.TopFactors) > MaxTopFactors {
+		return fmt.Errorf("top_factors accepts at most %d entries", MaxTopFactors)
+	}
+	for _, factor := range r.TopFactors {
+		if err := factor.validate(); err != nil {
+			return err
+		}
 	}
 	if strings.TrimSpace(r.Signature) == "" {
 		return fmt.Errorf("signature is required")
