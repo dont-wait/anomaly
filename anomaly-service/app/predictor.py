@@ -6,7 +6,6 @@ from pathlib import Path
 
 from .contracts import Prediction, PredictorResult
 
-
 TOP_FACTOR_COUNT = 3
 # Not standardized by preprocessing.json, so z-scores can't surface them. Binary
 # flags are reported when raised; channel_prior_fraction is reported when rare (low).
@@ -156,8 +155,11 @@ class LocalBundlePredictor:
                 if name in names and float(row[names.index(name)]) >= 0.5:
                     factors.append({"feature": name, "value": 1})
             for name in RARE_FRACTIONS:
-                if name in names and float(row[names.index(name)]) <= RARE_FRACTION_MAX:
-                    factors.append({"feature": name, "value": round(float(row[names.index(name)]), 4)})
+                if name not in names:
+                    continue
+                value = float(row[names.index(name)])
+                if value <= RARE_FRACTION_MAX:
+                    factors.append({"feature": name, "value": round(value, 4)})
             return tuple(factors)
         except Exception:  # explanation must never break scoring
             return ()
