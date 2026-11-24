@@ -222,9 +222,11 @@ func (r *AccountAggregateRepository) DecideProfileChange(ctx context.Context, ad
 	_, err = session.WithTransaction(ctx, func(tx context.Context) (any, error) {
 		filter := bson.M{"_id": requestID, "account_id": accountID, "status": accountdomain.ProfileChangePending}
 		// First take the pending request with an atomic conditional update.
-		update := bson.M{"$set": bson.M{"status": decision, "proposed.status": decision,
+		update := bson.M{"$set": bson.M{
+			"status": decision, "proposed.status": decision,
 			"reviewed_at": reviewedAt, "reviewed_by": adminID, "rejection_reason": reason,
-			"proposed.reviewed_at": reviewedAt, "proposed.reviewed_by": adminID, "proposed.rejection_reason": reason}}
+			"proposed.reviewed_at": reviewedAt, "proposed.reviewed_by": adminID, "proposed.rejection_reason": reason,
+		}}
 		var review profileChangeReviewRecord
 		err := r.profileChangeReviews.FindOneAndUpdate(tx, filter, update).Decode(&review)
 		if errors.Is(err, mongodrv.ErrNoDocuments) {
@@ -306,6 +308,7 @@ func encodeReviewCursor(at time.Time, id, status, search string) string {
 	raw, _ := json.Marshal(reviewCursor{At: at, ID: id, Status: status, Search: search})
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
+
 func decodeReviewCursor(raw, status, search string) (reviewCursor, error) {
 	if raw == "" {
 		return reviewCursor{}, nil

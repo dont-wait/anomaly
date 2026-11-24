@@ -1,9 +1,10 @@
 package account
 
 import (
-	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 	"testing"
 	"time"
+
+	accountdomain "github.com/dont-wait/anomaly/internal/domain/account"
 )
 
 func TestApprovedHistoryUsesImmutableBeforeImage(t *testing.T) {

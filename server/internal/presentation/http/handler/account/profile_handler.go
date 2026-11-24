@@ -284,18 +284,6 @@ func parseProfileChangeListParams(values url.Values) (profileChangeListParams, e
 	return params, nil
 }
 
-// maskReviewIdentity only exposes the final four characters to the review UI.
-func maskReviewIdentity(number string) string {
-	if number == "" {
-		return ""
-	}
-	chars := []rune(number)
-	if len(chars) <= 4 {
-		return strings.Repeat("*", len(chars))
-	}
-	return strings.Repeat("*", len(chars)-4) + string(chars[len(chars)-4:])
-}
-
 // profileChangePage sorts newest-first before slicing. Tie-breaking by account ID
 // makes successive pages deterministic for unchanged data.
 func profileChangePage(accounts []*accountdomain.UserAccount, params profileChangeListParams) ProfileChangesPageResponse {

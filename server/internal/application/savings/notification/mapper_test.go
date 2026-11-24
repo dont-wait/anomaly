@@ -30,14 +30,20 @@ func mapper() *Mapper {
 }
 
 func opened() journal.Record {
-	return journal.Record{ID: "evt-o", Type: journal.SavingsOpened, At: at, AccountID: "fin-1",
-		Savings: &journal.SavingsMovement{Contract: savings.Contract{ID: "sav-1", Principal: 10000000, TermMonths: 6}}}
+	return journal.Record{
+		ID: "evt-o", Type: journal.SavingsOpened, At: at, AccountID: "fin-1",
+		Savings: &journal.SavingsMovement{Contract: savings.Contract{ID: "sav-1", Principal: 10000000, TermMonths: 6}},
+	}
 }
 
 func settled() journal.Record {
-	return journal.Record{ID: "evt-s", Type: journal.SavingsSettled, At: at, AccountID: "fin-1",
-		Savings: &journal.SavingsMovement{Contract: savings.Contract{ID: "sav-1", Principal: 10000000,
-			Settlement: &savings.Settlement{InterestAmount: 250000, TotalAmount: 10250000}}}}
+	return journal.Record{
+		ID: "evt-s", Type: journal.SavingsSettled, At: at, AccountID: "fin-1",
+		Savings: &journal.SavingsMovement{Contract: savings.Contract{
+			ID: "sav-1", Principal: 10000000,
+			Settlement: &savings.Settlement{InterestAmount: 250000, TotalAmount: 10250000},
+		}},
+	}
 }
 
 func render(t *testing.T, r notificationapp.Request) (string, string, map[string]string) {

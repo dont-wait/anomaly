@@ -66,8 +66,10 @@ func TestDisbursementNotifiesAccountOwner(t *testing.T) {
 }
 
 func TestInstallmentPaidNotifiesPayer(t *testing.T) {
-	record := journal.Record{ID: "evt-p", Type: journal.LoanInstallmentPaid, At: at, AccountID: "fin-1", LoanID: "loan-1",
-		LoanPayment: &journal.LoanInstallmentPayment{LoanID: "loan-1", InstallmentNo: 3, Amount: 1500000}}
+	record := journal.Record{
+		ID: "evt-p", Type: journal.LoanInstallmentPaid, At: at, AccountID: "fin-1", LoanID: "loan-1",
+		LoanPayment: &journal.LoanInstallmentPayment{LoanID: "loan-1", InstallmentNo: 3, Amount: 1500000},
+	}
 	requests, err := mapper().Map(context.Background(), record)
 	if err != nil || len(requests) != 1 || requests[0].Type != notification.TypeLoanInstallmentPaid {
 		t.Fatalf("requests=%v err=%v", requests, err)
