@@ -16,6 +16,8 @@ import {
 } from "./api/alertsApi";
 import { AccountStatusConfirmation } from "./AccountStatusConfirmation";
 import { AlertHandlingConfirmation } from "./AlertHandlingConfirmation";
+import { RiskReasons } from "./RiskReasons";
+import { severityClass } from "./scenarioSeverity";
 import type {
   MonitorDashboardResponse,
   RiskAssessment,
@@ -346,6 +348,7 @@ export function AlertsPage() {
                 <th className="px-2">Tài khoản nguồn</th>
                 <th className="px-2">Tài khoản đích</th>
                 <th className="px-2">Điểm rủi ro</th>
+                <th className="px-2">Tình huống</th>
               </tr>
             </thead>
             <tbody>
@@ -399,6 +402,24 @@ export function AlertsPage() {
                     className={`${mono} px-2 text-[11px] text-(--admin-text)`}
                   >
                     {item.riskScore.toFixed(4)}
+                  </td>
+                  <td className="px-2 text-[11px]">
+                    {item.scenarios?.length ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className={`${severityClass[item.scenarios[0].severity]} rounded-sm px-1.5 py-0.5 font-semibold`}
+                        >
+                          {item.scenarios[0].title}
+                        </span>
+                        {item.scenarios.length > 1 && (
+                          <span className="text-(--admin-text-muted)">
+                            +{item.scenarios.length - 1}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-(--admin-text-muted)">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -507,6 +528,11 @@ export function AlertsPage() {
                 </dd>
               </div>
             </dl>
+            <RiskReasons
+              decisionReason={selected.decisionReason}
+              scenarios={selected.scenarios}
+              topFactors={selected.topFactors}
+            />
             <div className="mt-4 border-t border-(--admin-border) pt-4">
               <h3 className="text-[13px] font-semibold text-(--admin-text)">
                 Thông tin giao dịch
