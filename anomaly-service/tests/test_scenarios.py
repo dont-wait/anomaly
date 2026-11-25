@@ -151,6 +151,16 @@ def test_unreliable_baseline_never_triggers_amount_spike():
     ("qty", "severity"),
     [
         ({"log_src_request_count_300s": 2}, None),
+        ({"log_src_request_count_120s": 1, "log_src_request_count_300s": 1}, None),
+        # Third request of a 15-second burst: two prior requests within 2 minutes.
+        (
+            {
+                "log_src_request_count_120s": 2,
+                "log_src_request_count_300s": 2,
+                "log_src_request_count_3600s": 2,
+            },
+            "medium",
+        ),
         ({"log_src_request_count_300s": 3}, "medium"),
         ({"log_src_request_count_120s": 1, "log_src_request_count_3600s": 3}, "medium"),
         ({"log_src_request_count_120s": 3}, "high"),

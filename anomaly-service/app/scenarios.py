@@ -180,7 +180,7 @@ def _velocity(s):
     n120, n300, n3600 = round(n120), round(n300), round(n3600)
     if n120 >= 3 or n300 >= 5 or n3600 >= 15:
         severity = "high"
-    elif (n120 >= 1 and n3600 >= 3) or n300 >= 3 or n3600 >= 8:
+    elif n120 >= 2 or (n120 >= 1 and n3600 >= 3) or n300 >= 3 or n3600 >= 8:
         severity = "medium"
     else:
         return None

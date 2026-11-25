@@ -462,7 +462,7 @@ nhiều tín hiệu cùng lúc. Mỗi phần tử:
 | `AMOUNT_SPIKE` | medium / high | số tiền ≥ 5 / ≥ 10 lần trung vị (hoặc trung bình) của tài khoản |
 | `LARGE_AMOUNT_LOW_HISTORY` | medium | tài khoản < 20 yêu cầu, chưa có mốc so sánh, số tiền z ≥ 2 |
 | `DORMANT_REACTIVATION` | medium | ≥ 30 ngày không hoạt động rồi chuyển số tiền lớn |
-| `VELOCITY_BURST` | medium / high | nhiều yêu cầu trước đó trong 2 phút / 5 phút / 1 giờ |
+| `VELOCITY_BURST` | medium / high | yêu cầu trước đó: medium khi ≥ 2 trong 2 phút, ≥ 3 trong 5 phút hoặc ≥ 8 trong 1 giờ; high khi ≥ 3 / ≥ 5 / ≥ 15 |
 | `MULE_COLLECTOR` | medium / high | tài khoản nhận đã nhận từ ≥ 2 / ≥ 4 nguồn trong 10 phút |
 | `PASS_THROUGH` | medium / high | số vừa nhận trong 10 phút ≥ 50% / ≥ 90% số đang chuyển |
 | `MULE_RELAY` | high | nhận từ ≥ 2 nguồn rồi chuyển đi ≥ 50% số vừa nhận |
