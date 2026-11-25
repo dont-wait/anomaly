@@ -109,6 +109,16 @@ func handleModelResponse(
 func runRiskDecisionConsumer(ctx context.Context, config *domain.KafkaConfig, store *mongorepo.RiskAssessmentRepository, log zerolog.Logger) {
 	retryDelay := time.Second
 	for ctx.Err() == nil {
+		// Create the topic before joining the group; otherwise an API started
+		// before the ML service's first publish is assigned no partitions.
+		if err := kafkainfra.EnsureTopic(ctx, config.Brokers, config.RiskDecisionTopic); err != nil {
+			log.Error().Err(err).Str("topic", config.RiskDecisionTopic).Msg("ensure risk decision topic failed")
+			if !waitRiskConsumerRetry(ctx, retryDelay) {
+				return
+			}
+			retryDelay = nextRiskConsumerRetry(retryDelay)
+			continue
+		}
 		consumer, err := kafkainfra.NewConsumer(config.Brokers, config.RiskDecisionTopic, config.RiskDecisionGroup)
 		if err != nil {
 			log.Error().Err(err).Msg("create risk decision consumer failed")

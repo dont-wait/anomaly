@@ -75,20 +75,34 @@ func (p *Producer) EnsureTopic(ctx context.Context) error {
 	if p == nil || len(p.brokers) == 0 {
 		return fmt.Errorf("kafka producer is not initialized")
 	}
-	client := &kafkago.Client{Addr: kafkago.TCP(p.brokers[0])}
+	return EnsureTopic(ctx, p.brokers, p.topic)
+}
+
+// EnsureTopic creates a single-partition development topic when it does not
+// exist. Consumers call it before joining their group: a group that joins
+// before its topic exists is assigned no partitions and kafka-go does not
+// rebalance when the topic appears later, so it would never receive messages.
+func EnsureTopic(ctx context.Context, brokers []string, topic string) error {
+	if len(brokers) == 0 || strings.TrimSpace(brokers[0]) == "" {
+		return fmt.Errorf("kafka brokers are required")
+	}
+	if strings.TrimSpace(topic) == "" {
+		return fmt.Errorf("kafka topic is required")
+	}
+	client := &kafkago.Client{Addr: kafkago.TCP(brokers[0])}
 	response, err := client.CreateTopics(ctx, &kafkago.CreateTopicsRequest{
 		Addr: client.Addr,
 		Topics: []kafkago.TopicConfig{{
-			Topic:             p.topic,
+			Topic:             topic,
 			NumPartitions:     1,
 			ReplicationFactor: 1,
 		}},
 	})
 	if err != nil {
-		return fmt.Errorf("create kafka topic %q: %w", p.topic, err)
+		return fmt.Errorf("create kafka topic %q: %w", topic, err)
 	}
-	if topicErr := response.Errors[p.topic]; topicErr != nil && !errors.Is(topicErr, kafkago.TopicAlreadyExists) {
-		return fmt.Errorf("create kafka topic %q: %w", p.topic, topicErr)
+	if topicErr := response.Errors[topic]; topicErr != nil && !errors.Is(topicErr, kafkago.TopicAlreadyExists) {
+		return fmt.Errorf("create kafka topic %q: %w", topic, topicErr)
 	}
 	return nil
 }
