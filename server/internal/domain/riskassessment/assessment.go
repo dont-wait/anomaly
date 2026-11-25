@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dont-wait/anomaly/internal/domain/risk"
 )
@@ -59,11 +61,19 @@ type Factor struct {
 	Feature string   `json:"feature" bson:"feature"`
 	ZScore  *float64 `json:"z_score,omitempty" bson:"z_score,omitempty"`
 	Value   *float64 `json:"value,omitempty" bson:"value,omitempty"`
+	// Reason is a one-line human-readable explanation written by the ML service.
+	Reason string `json:"reason,omitempty" bson:"reason,omitempty"`
 }
+
+// MaxFactorReasonLen bounds Reason, which is unsigned text from the ML service.
+const MaxFactorReasonLen = 200
 
 func (f Factor) validate() error {
 	if strings.TrimSpace(f.Feature) == "" || len(f.Feature) > 64 {
 		return fmt.Errorf("top_factors feature must be 1-64 characters")
+	}
+	if utf8.RuneCountInString(f.Reason) > MaxFactorReasonLen {
+		return fmt.Errorf("top_factors reason accepts at most %d characters", MaxFactorReasonLen)
 	}
 	if (f.ZScore == nil) == (f.Value == nil) {
 		return fmt.Errorf("top_factors %q needs exactly one of z_score and value", f.Feature)
@@ -71,6 +81,57 @@ func (f Factor) validate() error {
 	for _, v := range []*float64{f.ZScore, f.Value} {
 		if v != nil && (math.IsNaN(*v) || math.IsInf(*v, 0)) {
 			return fmt.Errorf("top_factors %q must be finite", f.Feature)
+		}
+	}
+	return nil
+}
+
+// Scenario limits. Scenarios are unsigned text from the ML service, so they are
+// bounded and shape-checked rather than trusted.
+const (
+	MaxScenarios            = 8
+	MaxScenarioEvidence     = 8
+	MaxScenarioTitleLen     = 80
+	MaxScenarioReasonLen    = 300
+	MaxScenarioEvidenceName = 64
+)
+
+var scenarioCodePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{2,47}$`)
+
+// Scenario is a named fraud pattern matched by rules in the ML service (for
+// example ACCOUNT_TAKEOVER), with a one-line reason quoting the numbers. It tells
+// an investigator which pattern to look at. It is not model attribution, is not
+// covered by the signature, and must not drive decisions. Code is a stable
+// identifier for filtering and grouping; Evidence lists the model inputs involved.
+type Scenario struct {
+	Code     string   `json:"code" bson:"code"`
+	Severity string   `json:"severity" bson:"severity"`
+	Title    string   `json:"title" bson:"title"`
+	Reason   string   `json:"reason" bson:"reason"`
+	Evidence []string `json:"evidence" bson:"evidence"`
+}
+
+func (s Scenario) validate() error {
+	if !scenarioCodePattern.MatchString(s.Code) {
+		return fmt.Errorf("scenarios code %q must match %s", s.Code, scenarioCodePattern)
+	}
+	switch s.Severity {
+	case "low", "medium", "high":
+	default:
+		return fmt.Errorf("scenarios %q severity must be low, medium or high", s.Code)
+	}
+	if t := strings.TrimSpace(s.Title); t == "" || utf8.RuneCountInString(s.Title) > MaxScenarioTitleLen {
+		return fmt.Errorf("scenarios %q title must be 1-%d characters", s.Code, MaxScenarioTitleLen)
+	}
+	if r := strings.TrimSpace(s.Reason); r == "" || utf8.RuneCountInString(s.Reason) > MaxScenarioReasonLen {
+		return fmt.Errorf("scenarios %q reason must be 1-%d characters", s.Code, MaxScenarioReasonLen)
+	}
+	if len(s.Evidence) > MaxScenarioEvidence {
+		return fmt.Errorf("scenarios %q accepts at most %d evidence entries", s.Code, MaxScenarioEvidence)
+	}
+	for _, name := range s.Evidence {
+		if strings.TrimSpace(name) == "" || len(name) > MaxScenarioEvidenceName {
+			return fmt.Errorf("scenarios %q evidence must be 1-%d characters", s.Code, MaxScenarioEvidenceName)
 		}
 	}
 	return nil
@@ -98,6 +159,9 @@ type ModelResponse struct {
 	// TopFactors is sent by the ML service for tracing. It is NOT covered by the
 	// signature, so treat it as unverified, advisory data.
 	TopFactors []Factor `json:"top_factors,omitempty" bson:"top_factors,omitempty"`
+	// Scenarios is sent by the ML service for tracing. Like TopFactors it is NOT
+	// covered by the signature, so treat it as unverified, advisory data.
+	Scenarios []Scenario `json:"scenarios,omitempty" bson:"scenarios,omitempty"`
 }
 
 func (r ModelResponse) Validate() error {
@@ -140,6 +204,14 @@ func (r ModelResponse) Validate() error {
 			return err
 		}
 	}
+	if len(r.Scenarios) > MaxScenarios {
+		return fmt.Errorf("scenarios accepts at most %d entries", MaxScenarios)
+	}
+	for _, scenario := range r.Scenarios {
+		if err := scenario.validate(); err != nil {
+			return err
+		}
+	}
 	if strings.TrimSpace(r.Signature) == "" {
 		return fmt.Errorf("signature is required")
 	}
@@ -168,6 +240,7 @@ type Assessment struct {
 	Decision       string     `json:"decision" bson:"decision"`
 	DecisionReason string     `json:"decisionReason,omitempty" bson:"decision_reason,omitempty"`
 	TopFactors     []Factor   `json:"topFactors,omitempty" bson:"top_factors,omitempty"`
+	Scenarios      []Scenario `json:"scenarios,omitempty" bson:"scenarios,omitempty"`
 	Finalized      bool       `json:"-" bson:"finalized"`
 	FinalizedAt    *time.Time `json:"-" bson:"finalized_at,omitempty"`
 	ReceivedAt     time.Time  `json:"receivedAt" bson:"received_at"`
@@ -207,6 +280,7 @@ func NewAssessment(response ModelResponse, receivedAt time.Time, topic string, p
 		Decision:       DecisionForScore(response.RiskScore),
 		DecisionReason: DecisionReasonForScore(response.RiskScore),
 		TopFactors:     response.TopFactors,
+		Scenarios:      response.Scenarios,
 		ReceivedAt:     receivedAt,
 		KafkaTopic:     topic,
 		KafkaPartition: partition,

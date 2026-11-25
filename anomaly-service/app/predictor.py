@@ -1,10 +1,17 @@
 """Local GATv2 bundle inference; no HTTP model service required."""
 
+import logging
+import math
 import sys
 from copy import deepcopy
 from pathlib import Path
 
 from .contracts import Prediction, PredictorResult
+from .reasons import describe_factor
+from .scenarios import detect_scenarios
+from .signals import Signals
+
+log = logging.getLogger(__name__)
 
 TOP_FACTOR_COUNT = 3  # at most 3 + len(RISK_FLAGS) + len(RARE_FRACTIONS) entries; server accepts 8
 # Not standardized by preprocessing.json, so z-scores can't surface them. Binary
@@ -130,42 +137,72 @@ class LocalBundlePredictor:
         finally:
             if original_inputs is not None:
                 del self.predictor.inputs
+        factors, scenarios = self._explain(captured.get("inputs"))
         return PredictorResult(
             prediction=Prediction.from_payload(payload),
             request=request,
-            factors=self._top_factors(captured.get("inputs")),
+            factors=factors,
+            scenarios=scenarios,
         )
 
-    def _top_factors(self, inputs):
+    def _signals(self, inputs):
+        row = inputs["edge_features"][0]
+        names = self.predictor.manifest["feature_names"]
+        preprocessing = self.predictor.preprocessing
+        columns = preprocessing["numeric_indices"]
+        return Signals(
+            names, row, columns, preprocessing.get("mean"), preprocessing.get("scale")
+        )
+
+    def _explain(self, inputs):
+        """(factors, scenarios) for one request; never raises, scoring must not depend on it."""
+        try:
+            signals = self._signals(inputs)
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+            log.warning("explanation skipped: model inputs have an unexpected shape", exc_info=True)
+            return (), ()
+        try:
+            factors = self._top_factors(inputs, signals)
+        except Exception:
+            log.warning("top_factors skipped", exc_info=True)
+            factors = ()
+        try:
+            scenarios = tuple(detect_scenarios(signals))
+        except Exception:
+            log.warning("scenarios skipped", exc_info=True)
+            scenarios = ()
+        return factors, scenarios
+
+    def _top_factors(self, inputs, signals=None):
         """Inputs that look most unusual for this request, as trace-only notes.
 
         edge_features are already standardized by preprocessing.json for the numeric
         columns, so a value is a z-score against the training distribution. This
         ranks atypical inputs, not model attribution: a large |z| does not mean the
-        feature raised the score. The result is advisory, unsigned, and capped well
-        below the server's MaxTopFactors.
+        feature raised the score. Columns that only hold a placeholder because the
+        account has no history (see signals.GATES) are skipped. The result is
+        advisory, unsigned, and capped well below the server's MaxTopFactors.
         """
-        try:
-            row = inputs["edge_features"][0]
-            names = self.predictor.manifest["feature_names"]
-            columns = self.predictor.preprocessing["numeric_indices"]
-            ranked = sorted(((float(row[i]), names[i]) for i in columns), key=lambda x: -abs(x[0]))
-            factors = [
-                {"feature": name, "z_score": round(z, 3)}
-                for z, name in ranked[:TOP_FACTOR_COUNT]
-            ]
-            for name in RISK_FLAGS:
-                if name in names and float(row[names.index(name)]) >= 0.5:
-                    factors.append({"feature": name, "value": 1})
-            for name in RARE_FRACTIONS:
-                if name not in names:
-                    continue
-                value = float(row[names.index(name)])
-                if value <= RARE_FRACTION_MAX:
-                    factors.append({"feature": name, "value": round(value, 4)})
-            return tuple(factors)
-        except Exception:  # explanation must never break scoring
-            return ()
+        signals = signals or self._signals(inputs)
+        ranked = sorted(
+            (
+                (signals.z(name), name)
+                for name in signals.names
+                if signals.is_numeric(name) and not math.isnan(signals.z(name))
+            ),
+            key=lambda item: -abs(item[0]),
+        )
+        factors = [
+            {"feature": name, "z_score": round(z, 3)} for z, name in ranked[:TOP_FACTOR_COUNT]
+        ]
+        for name in RISK_FLAGS:
+            if signals.flag(name):
+                factors.append({"feature": name, "value": 1})
+        for name in RARE_FRACTIONS:
+            value = signals.raw(name)
+            if not math.isnan(value) and value <= RARE_FRACTION_MAX:
+                factors.append({"feature": name, "value": round(value, 4)})
+        return tuple({**f, "reason": describe_factor(f, signals)} for f in factors)
 
     def close(self):
         close = getattr(self.history, "close", None)

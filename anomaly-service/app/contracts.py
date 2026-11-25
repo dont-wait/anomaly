@@ -16,6 +16,7 @@ PREDICTION_FIELDS = (
 TRAINING_SCHEMA_VERSION = 1
 RISK_EVENT_SCHEMA_VERSION = 1
 TOP_FACTORS_FIELD = "top_factors"
+SCENARIOS_FIELD = "scenarios"
 
 
 class ContractError(ValueError):
@@ -83,9 +84,11 @@ class PredictorResult:
     request: dict
     # Trace-only notes on unusual inputs (z-scores / raised flags), not attribution. Never signed.
     factors: tuple = ()
+    # Named fraud patterns matched by rules (app/scenarios.py). Also trace-only, never signed.
+    scenarios: tuple = ()
 
 
-def build_risk_event(event, prediction, *, scored_at=None, factors=()):
+def build_risk_event(event, prediction, *, scored_at=None, factors=(), scenarios=()):
     """Adapt a prediction to the server's riskassessment.ModelResponse contract."""
     prediction = _prediction(prediction)
     if prediction.transaction_id != event.transaction_id:
@@ -99,6 +102,8 @@ def build_risk_event(event, prediction, *, scored_at=None, factors=()):
     }
     if factors:
         risk_event[TOP_FACTORS_FIELD] = [dict(f) for f in factors]
+    if scenarios:
+        risk_event[SCENARIOS_FIELD] = [dict(item) for item in scenarios]
     return risk_event
 
 

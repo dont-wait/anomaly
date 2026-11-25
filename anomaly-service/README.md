@@ -425,7 +425,9 @@ Topic: `anomaly.bank.risk-decisions.v1` (cấu hình được).
 `top_factors` (tùy chọn) liệt kê tối đa 6 đầu vào bất thường của request này, mỗi
 phần tử là `{"feature", "z_score"}` (đặc trưng số, độ lệch chuẩn so với trung bình
 train) hoặc `{"feature", "value"}` (cờ nhị phân như `new_receiver`, `new_device` khi
-bật, hoặc tỷ lệ hiếm như `channel_prior_fraction`). Đây là mức độ *bất thường của
+bật, hoặc tỷ lệ hiếm như `channel_prior_fraction`). Mỗi phần tử còn có `reason`: một câu tiếng Việt (tối đa 200 ký tự, sinh ở
+`app/reasons.py`) mô tả điều bất thường, ví dụ "Số tiền chuyển lớn hơn bình thường
+(+4.2 độ lệch chuẩn)", để BE/admin đọc được mà không cần biết tên feature. Đây là mức độ *bất thường của
 đầu vào*, không phải đóng góp của đặc trưng vào điểm số. Vì không được ký nên server
 coi đây là dữ liệu tham khảo chưa xác minh: có thể bị sửa mà chữ ký vẫn hợp lệ, không
 được dùng để ra quyết định. Server từ chối (park) message có quá 8 phần tử, thiếu
@@ -435,9 +437,55 @@ hoặc thừa số, hoặc key lạ (decoder nghiêm ngặt, `DisallowUnknownFie
 trước khi chạy `anomaly-service` mới. Server cũ từ chối key lạ `top_factors` và park
 message thay vì lưu assessment.
 
+### Tình huống gian lận (`scenarios`)
+
+`top_factors` chỉ nói *đầu vào nào lệch*. `scenarios` (tùy chọn, tối đa 6) nói *mẫu gian
+lận nào có vẻ đang xảy ra*, do các luật viết tay trong `app/scenarios.py` nhận diện từ
+nhiều tín hiệu cùng lúc. Mỗi phần tử:
+
+```json
+{"code": "ACCOUNT_TAKEOVER", "severity": "high", "title": "Nghi chiếm đoạt tài khoản",
+ "reason": "Thiết bị mới + người nhận mới + số tiền gấp 9.0 lần mức trung vị 30 ngày ...",
+ "evidence": ["new_device", "new_receiver", "log_amount_to_type_median"]}
+```
+
+`code` ổn định để BE lọc/nhóm, `reason` có số thật (đã đổi ngược z-score về số lượng bằng
+`mean`/`scale` trong `preprocessing.json`, xem `app/signals.py`). Worker cũng log
+`scored transaction=... scenarios=CODE1,CODE2` để trace bằng log.
+
+| Code | Mức | Điều kiện chính |
+|---|---|---|
+| `ACCOUNT_TAKEOVER` | high | thiết bị mới (đã có thiết bị cũ) + người nhận mới + số tiền lớn |
+| `NEW_DEVICE_NEW_RECEIVER` | medium | thiết bị mới + người nhận mới, số tiền bình thường |
+| `NEW_DEVICE_LARGE_AMOUNT` | medium | thiết bị mới + số tiền lớn, người nhận quen |
+| `UNVERIFIED_LARGE_TRANSFER` | medium | số tiền lớn nhưng phiên chưa xác thực |
+| `AMOUNT_SPIKE` | medium / high | số tiền ≥ 5 / ≥ 10 lần trung vị (hoặc trung bình) của tài khoản |
+| `LARGE_AMOUNT_LOW_HISTORY` | medium | tài khoản < 20 yêu cầu, chưa có mốc so sánh, số tiền z ≥ 2 |
+| `DORMANT_REACTIVATION` | medium | ≥ 30 ngày không hoạt động rồi chuyển số tiền lớn |
+| `VELOCITY_BURST` | medium / high | nhiều yêu cầu trước đó trong 2 phút / 5 phút / 1 giờ |
+| `MULE_COLLECTOR` | medium / high | tài khoản nhận đã nhận từ ≥ 2 / ≥ 4 nguồn trong 10 phút |
+| `PASS_THROUGH` | medium / high | số vừa nhận trong 10 phút ≥ 50% / ≥ 90% số đang chuyển |
+| `MULE_RELAY` | high | nhận từ ≥ 2 nguồn rồi chuyển đi ≥ 50% số vừa nhận |
+| `HABIT_DEVIATION` | low / medium | giờ ≤ 2% và kênh ≤ 5% lịch sử (không tính tài khoản mới); medium nếu người nhận mới |
+
+"Số tiền lớn" = gấp ≥ 5 lần mốc của tài khoản khi có mốc đáng tin
+(`type_amount_reference_reliable`), nếu không thì z ≥ 2 trên `log_amount`.
+
+Lưu ý:
+- Ngưỡng là giá trị khởi điểm chọn theo thang train, **chưa hiệu chỉnh trên dữ liệu gian lận
+  có nhãn**. Chỉnh trong `app/scenarios.py` và cập nhật `tests/test_scenarios.py`.
+- Đây là gợi ý điều tra, không phải giải thích điểm của model: một tình huống có thể khớp
+  với giao dịch model chấm thấp, và ngược lại.
+- Giống `top_factors`: không được ký, server chỉ kiểm hình dạng (mã `^[A-Z][A-Z0-9_]{2,47}$`,
+  severity `low|medium|high`, title ≤ 80, reason ≤ 300, evidence ≤ 8 tên ≤ 64 ký tự, tối đa 8
+  tình huống) và coi là dữ liệu tham khảo. Thêm tình huống mới không cần đổi server miễn
+  đúng hình dạng. Server cũ vẫn từ chối key lạ `scenarios`, nên **nâng cấp server trước**.
+- Cột số mã hóa "chưa có dữ liệu" bằng 0 kèm cờ (`has_previous`, ...). Cột đó bị bỏ qua khi cờ
+  tắt để tài khoản mới không bị báo nhầm là "dồn dập" hay "kênh hiếm".
+
 Server tự suy ra `decisionReason` từ `risk_score` (`DecisionReasonForScore`); bản
 ghi cũ chưa có lý do được suy ra khi đọc nếu khớp với `decision` đã lưu. Admin
-monitor trả `decisionReason` và `topFactors` (camelCase: `zScore`, `value`).
+monitor trả `decisionReason`, `topFactors` và `scenarios` (camelCase: `zScore`, `value`, `reason`).
 
 - Kafka key: `transaction_id:model_version:feature_version`, giống `consumer-mock`.
 - `event_id` giữ nguyên ID trigger relay; `occurred_at` là thời gian của request gốc.

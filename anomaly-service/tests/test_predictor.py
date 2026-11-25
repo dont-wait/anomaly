@@ -268,11 +268,15 @@ def test_top_factors_include_raised_flags_and_rare_fractions():
     predictor = object.__new__(LocalBundlePredictor)
     predictor.predictor = fake
     row = [[3.5, 1.0, 0.0, 0.01]]
-    assert predictor._top_factors({"edge_features": row}) == (
-        {"feature": "log_amount", "z_score": 3.5},
-        {"feature": "new_receiver", "value": 1},
-        {"feature": "channel_prior_fraction", "value": 0.01},
-    )
+    factors = predictor._top_factors({"edge_features": row})
+    assert [(f["feature"], f.get("z_score", f.get("value"))) for f in factors] == [
+        ("log_amount", 3.5),
+        ("new_receiver", 1),
+        ("channel_prior_fraction", 0.01),
+    ]
+    assert factors[0]["reason"] == "Số tiền chuyển lớn hơn bình thường (z=+3.5)"
+    assert "Người nhận mới" in factors[1]["reason"]
+    assert "1.0% giao dịch trước đó" in factors[2]["reason"]
 
 
 def test_top_factors_match_the_server_wire_contract():
@@ -290,5 +294,9 @@ def test_top_factors_match_the_server_wire_contract():
     factors = predictor._top_factors({"edge_features": row})
     assert 0 < len(factors) <= 8
     for factor in factors:
-        assert set(factor) in ({"feature", "z_score"}, {"feature", "value"})
+        assert set(factor) in (
+            {"feature", "z_score", "reason"},
+            {"feature", "value", "reason"},
+        )
+        assert factor["reason"] and len(factor["reason"]) <= 200
         assert isinstance(factor["feature"], str) and 0 < len(factor["feature"]) <= 64
