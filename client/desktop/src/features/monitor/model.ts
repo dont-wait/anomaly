@@ -11,6 +11,8 @@ export interface RiskAssessment {
   decisionReason?: string;
   /** Unverified, unsigned notes on unusual inputs from the model service. Not feature attribution. */
   topFactors?: RiskFactor[];
+  /** Named fraud patterns matched by rules, most severe first. Advisory, unsigned. */
+  scenarios?: RiskScenario[];
   threshold: number;
   modelVersion: string;
   featureVersion: string;
@@ -21,12 +23,28 @@ export interface RiskAssessment {
   transaction: RiskTransactionContext | null;
 }
 
+export type RiskScenarioSeverity = "low" | "medium" | "high";
+
+export interface RiskScenario {
+  /** Stable identifier for filtering and grouping, e.g. ACCOUNT_TAKEOVER. */
+  code: string;
+  severity: RiskScenarioSeverity;
+  /** Short Vietnamese label. */
+  title: string;
+  /** One sentence quoting the actual numbers. */
+  reason: string;
+  /** Model input names the rule looked at. */
+  evidence: string[];
+}
+
 export interface RiskFactor {
   feature: string;
   /** Standard deviations from the training mean (numeric features). */
   zScore?: number;
   /** Raw value for binary flags and rare fractions. */
   value?: number;
+  /** One-line explanation for admins and devs, written by the ML service. */
+  reason?: string;
 }
 
 export interface RiskTransactionContext {

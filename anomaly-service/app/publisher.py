@@ -7,7 +7,9 @@ import re
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from .contracts import TOP_FACTORS_FIELD, Prediction
+from .contracts import SCENARIOS_FIELD, TOP_FACTORS_FIELD, Prediction
+
+TRACE_FIELDS = (TOP_FACTORS_FIELD, SCENARIOS_FIELD)
 
 RISK_EVENT_METADATA_FIELDS = ("schema_version", "event_id", "occurred_at", "scored_at")
 TIMESTAMP_FIELDS = ("occurred_at", "scored_at")
@@ -49,7 +51,7 @@ def canonical_risk_event(risk_event):
     """Match riskassessment.CanonicalJSON in the server: a sorted-key Go map."""
     unsigned = {
         key: value for key, value in risk_event.items()
-        if key not in ("signature", TOP_FACTORS_FIELD)
+        if key != "signature" and key not in TRACE_FIELDS
     }
     metadata = {}
     for key in RISK_EVENT_METADATA_FIELDS:
@@ -76,9 +78,10 @@ def sign_risk_event(risk_event, signing_key):
     unsigned, canonical = canonical_risk_event(risk_event)
     signature = hmac.new(signing_key.encode("utf-8"), canonical, hashlib.sha256).hexdigest()
     signed = {**unsigned, "signature": signature}
-    if risk_event.get(TOP_FACTORS_FIELD):
-        # Trace-only: carried beside, but not covered by, the signature.
-        signed[TOP_FACTORS_FIELD] = risk_event[TOP_FACTORS_FIELD]
+    for field in TRACE_FIELDS:
+        if risk_event.get(field):
+            # Trace-only: carried beside, but not covered by, the signature.
+            signed[field] = risk_event[field]
     return signed
 
 

@@ -1,9 +1,15 @@
 """Offline tests: python -m unittest discover -s tools/test-data."""
 
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
-from generate import VIETNAM_TIMEZONE, build_dataset, history_times, parse_reference_time
+from generate import (
+    VIETNAM_TIMEZONE,
+    build_dataset,
+    default_reference_time,
+    history_times,
+    parse_reference_time,
+)
 
 
 class HistoryScheduleTests(unittest.TestCase):
@@ -46,6 +52,17 @@ class HistoryScheduleTests(unittest.TestCase):
                 expected = 0 if account["alias"] == "E" else 30
                 self.assertEqual(len(account["history"]), expected)
                 self.assertEqual(account["password"], "Password123@")
+
+
+    def test_default_reference_time_is_one_hour_before_now(self):
+        now = datetime(2026, 11, 25, 10, 30, 15, 987654, tzinfo=timezone.utc)
+        self.assertEqual(
+            default_reference_time(now),
+            datetime(2026, 11, 25, 9, 30, 15, tzinfo=timezone.utc),
+        )
+        # History therefore ends at least an hour before a probe sent "now".
+        for at in history_times(42, "A", default_reference_time(now), 30, 7):
+            self.assertLess(at, now - timedelta(hours=1))
 
 
 if __name__ == "__main__":

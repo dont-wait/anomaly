@@ -46,3 +46,15 @@ func (w validationWriter) WriteMessages(context.Context, ...kafkago.Message) err
 }
 
 func (validationWriter) Close() error { return nil }
+
+func TestEnsureTopicValidatesInput(t *testing.T) {
+	if err := EnsureTopic(context.Background(), nil, "topic"); err == nil {
+		t.Fatal("expected error for missing brokers")
+	}
+	if err := EnsureTopic(context.Background(), []string{" "}, "topic"); err == nil {
+		t.Fatal("expected error for blank broker")
+	}
+	if err := EnsureTopic(context.Background(), []string{"localhost:9092"}, " "); err == nil {
+		t.Fatal("expected error for blank topic")
+	}
+}

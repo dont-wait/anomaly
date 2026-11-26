@@ -23,13 +23,21 @@ The default command creates:
 - random baseline timestamps between 07:00 and 22:00 Vietnam time, with
   variable daily counts and at least 30 minutes between transfers per source;
 - no probe transactions, because those are performed manually;
-- a reproducible fixture using seed `20261110` and reference time
-  `2026-11-10T12:00:00Z`.
+- seed `20261110` and a reference time (end of the history window) of one
+  hour before the command runs.
+
+The history therefore ends shortly before you probe: the 7-day mean, 24-hour
+counts and time since the previous transfer reflect recent activity, while the
+2-minute, 5-minute and 1-hour velocity windows are still empty. Probe soon after
+importing; the older the history gets, the more every account looks dormant.
+The reference time is written to the JSON; pass it back with
+`--reference-time` to regenerate the same fixture.
 
 The output is written to `tools/test-data/output/anomaly-a-f.json`, which is
 ignored by Git because it contains local test credentials.
 
-The schedule is reproducible and different for each account. Days without
+For a given seed and reference time the schedule is reproducible and different
+for each account. Days without
 transfers are possible, not guaranteed. This changes baseline timestamps only;
 the manual velocity probe for E still uses 15-second intervals.
 
@@ -40,7 +48,9 @@ tools/test-data/.venv/bin/python -m unittest discover -s tools/test-data
 ```
 
 If you already imported an older fixture, do not import a regenerated fixture
-over it: the stable transfer IDs will conflict with changed timestamps. Keep
+over it: the stable transfer IDs will conflict with changed timestamps. Because
+the default reference time follows the clock, every run without
+`--reference-time` produces new timestamps. Keep
 the original fixture for that environment; use a fresh isolated test environment
 for the new schedule. Regenerating JSON does not update stored events.
 

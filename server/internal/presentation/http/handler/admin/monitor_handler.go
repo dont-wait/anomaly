@@ -63,26 +63,28 @@ type riskFactorDTO struct {
 	Feature string   `json:"feature"`
 	ZScore  *float64 `json:"zScore,omitempty"`
 	Value   *float64 `json:"value,omitempty"`
+	Reason  string   `json:"reason,omitempty"`
 }
 
 type riskAssessmentDTO struct {
-	AssessmentID   string                 `json:"assessmentId"`
-	TransactionID  string                 `json:"transactionId"`
-	RiskScore      float64                `json:"riskScore"`
-	PredictedLabel int                    `json:"predictedLabel"`
-	RiskLevel      string                 `json:"riskLevel"`
-	Decision       string                 `json:"decision"`
-	DecisionReason string                 `json:"decisionReason,omitempty"`
-	TopFactors     []riskFactorDTO        `json:"topFactors,omitempty"`
-	Threshold      float64                `json:"threshold"`
-	ModelVersion   string                 `json:"modelVersion"`
-	FeatureVersion string                 `json:"featureVersion"`
-	ReceivedAt     time.Time              `json:"receivedAt"`
-	Handled        bool                   `json:"handled"`
-	HandledAt      *time.Time             `json:"handledAt,omitempty"`
-	HandledBy      string                 `json:"handledBy,omitempty"`
-	Transaction    *transactionContextDTO `json:"transaction"`
-	Cursor         int64                  `json:"-"`
+	AssessmentID   string                    `json:"assessmentId"`
+	TransactionID  string                    `json:"transactionId"`
+	RiskScore      float64                   `json:"riskScore"`
+	PredictedLabel int                       `json:"predictedLabel"`
+	RiskLevel      string                    `json:"riskLevel"`
+	Decision       string                    `json:"decision"`
+	DecisionReason string                    `json:"decisionReason,omitempty"`
+	TopFactors     []riskFactorDTO           `json:"topFactors,omitempty"`
+	Scenarios      []riskassessment.Scenario `json:"scenarios,omitempty"`
+	Threshold      float64                   `json:"threshold"`
+	ModelVersion   string                    `json:"modelVersion"`
+	FeatureVersion string                    `json:"featureVersion"`
+	ReceivedAt     time.Time                 `json:"receivedAt"`
+	Handled        bool                      `json:"handled"`
+	HandledAt      *time.Time                `json:"handledAt,omitempty"`
+	HandledBy      string                    `json:"handledBy,omitempty"`
+	Transaction    *transactionContextDTO    `json:"transaction"`
+	Cursor         int64                     `json:"-"`
 }
 
 type transactionContextDTO struct {
@@ -612,13 +614,13 @@ func factorDTOs(factors []riskassessment.Factor) []riskFactorDTO {
 	}
 	out := make([]riskFactorDTO, len(factors))
 	for i, f := range factors {
-		out[i] = riskFactorDTO{Feature: f.Feature, ZScore: f.ZScore, Value: f.Value}
+		out[i] = riskFactorDTO{Feature: f.Feature, ZScore: f.ZScore, Value: f.Value, Reason: f.Reason}
 	}
 	return out
 }
 
 func (h *MonitorHandler) assessmentDTO(item riskassessment.Assessment, transaction mongorepo.RiskTransactionContext) riskAssessmentDTO {
-	dto := riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, RiskLevel: item.RiskLevel, Decision: item.Decision, DecisionReason: decisionReasonFor(item), TopFactors: factorDTOs(item.TopFactors), Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt, Handled: item.Handled, HandledAt: item.HandledAt, HandledBy: item.HandledBy, Cursor: item.Cursor}
+	dto := riskAssessmentDTO{AssessmentID: item.ID, TransactionID: item.TransactionID, RiskScore: item.RiskScore, PredictedLabel: item.PredictedLabel, RiskLevel: item.RiskLevel, Decision: item.Decision, DecisionReason: decisionReasonFor(item), TopFactors: factorDTOs(item.TopFactors), Scenarios: item.Scenarios, Threshold: item.Threshold, ModelVersion: item.ModelVersion, FeatureVersion: item.FeatureVersion, ReceivedAt: item.ReceivedAt, Handled: item.Handled, HandledAt: item.HandledAt, HandledBy: item.HandledBy, Cursor: item.Cursor}
 	if transaction.TransactionID != "" {
 		dto.Transaction = &transactionContextDTO{TransactionID: transaction.TransactionID, SourceAccountID: transaction.SourceAccountID, SourceAccountNo: transaction.SourceAccountNo, SourceAccountName: transaction.SourceAccountName, DestinationAccountID: transaction.DestinationAccountID, DestinationAccountNo: transaction.DestinationAccountNo, DestinationName: transaction.DestinationName, Amount: transaction.Amount, Fee: transaction.Fee, Currency: transaction.Currency, Channel: transaction.Channel, Status: transaction.Status, CreatedAt: transaction.CreatedAt, OTPExpiresAt: transaction.OTPExpiresAt, OTPVerifiedAt: transaction.OTPVerifiedAt, CompletedAt: transaction.CompletedAt, FailedAt: transaction.FailedAt, CancelledAt: transaction.CancelledAt}
 	}

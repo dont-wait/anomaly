@@ -20,7 +20,10 @@ from mimesis import Generic
 from mimesis.enums import Locale
 
 
-DEFAULT_REFERENCE_TIME = "2026-11-10T12:00:00Z"
+# History ends this long before generation, so a probe sent soon after import sees
+# recent history (7-day mean, 24h counts, time since previous) but empty 2m/5m/1h
+# velocity windows. Pass --reference-time to reproduce an older fixture exactly.
+DEFAULT_PROBE_GAP = timedelta(hours=1)
 DEFAULT_SEED = 20261110
 DEFAULT_HISTORY_COUNT = 30
 DEFAULT_HISTORY_DAYS = 7
@@ -57,6 +60,12 @@ def history_times(seed: int, alias: str, reference_time: datetime,
             "slots; increase --history-days or reduce --history-count"
         )
     return sorted(at.astimezone(timezone.utc) for at in rng.sample(candidates, history_count))
+
+
+def default_reference_time(now: datetime | None = None) -> datetime:
+    """End of the history window: DEFAULT_PROBE_GAP before now, whole seconds, UTC."""
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    return (now - DEFAULT_PROBE_GAP).replace(microsecond=0)
 
 
 def parse_reference_time(value: str) -> datetime:
@@ -302,7 +311,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("tools/test-data/output/anomaly-a-f.json"))
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
-    parser.add_argument("--reference-time", default=DEFAULT_REFERENCE_TIME)
+    parser.add_argument(
+        "--reference-time",
+        help="end of the history window (RFC3339); default: one hour before now",
+    )
     parser.add_argument("--history-count", type=int, default=DEFAULT_HISTORY_COUNT)
     parser.add_argument("--history-days", type=int, default=DEFAULT_HISTORY_DAYS)
     return parser.parse_args()
@@ -314,7 +326,11 @@ def main() -> int:
         print("history-count and history-days must be positive", file=sys.stderr)
         return 2
     try:
-        reference_time = parse_reference_time(args.reference_time)
+        reference_time = (
+            parse_reference_time(args.reference_time)
+            if args.reference_time
+            else default_reference_time()
+        )
     except ValueError as error:
         print(f"invalid --reference-time: {error}", file=sys.stderr)
         return 2
@@ -329,7 +345,7 @@ def main() -> int:
     receiver_accounts = [account for account in dataset["accounts"] if account["kind"] == "receiver"]
     print(f"Generated {len(source_accounts)} source accounts and {len(receiver_accounts)} receiver accounts")
     print(f"Generated {sum(len(account['history']) for account in source_accounts)} baseline transactions")
-    print(f"Wrote {args.output}")
+    print(f"Wrote {args.output} (reference time {dataset['reference_time']})")
     for account in source_accounts:
         print(f"  {account['alias']}: case={account['case']}, history={len(account['history'])}")
     return 0

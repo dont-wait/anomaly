@@ -145,3 +145,19 @@ func TestDecodeModelResponseTopFactorsAreNotSigned(t *testing.T) {
 		t.Fatalf("expected unsigned factors to be ignored by verification: %v", err)
 	}
 }
+
+// The exact JSON shape anomaly-service publishes (top_factors with reason, and
+// scenarios), including keys that are not covered by the signature.
+func TestDecodeModelResponseAcceptsTraceFieldsFromMLService(t *testing.T) {
+	payload := signedModelPayload(t, []byte(`{"schema_version":1,"event_id":"event-1","transaction_id":"TX001","occurred_at":"2026-10-28T10:00:00Z","scored_at":"2026-10-28T10:00:01Z","risk_score":0.9821,"predicted_label":1,"threshold":0.9517361521720886,"model_version":"gatv2-device-control-v1","feature_version":"schema-3-0b9efd44d793","top_factors":[{"feature":"log_amount_to_type_median","z_score":4.2,"reason":"Số tiền gấp 8.0 lần mức trung vị 30 ngày của các giao dịch cùng loại (z=+4.2)"},{"feature":"new_device","value":1,"reason":"Giao dịch từ thiết bị mới, chưa từng dùng với tài khoản này"}],"scenarios":[{"code":"ACCOUNT_TAKEOVER","severity":"high","title":"Nghi chiếm đoạt tài khoản","reason":"Thiết bị mới + người nhận mới + số tiền gấp 9.0 lần mức trung vị 30 ngày của tài khoản","evidence":["new_device","new_receiver","log_amount_to_type_median"]}]}`))
+	response, err := decodeModelResponse(payload, testRiskSigningKey)
+	if err != nil {
+		t.Fatalf("trace fields from the ML service rejected: %v", err)
+	}
+	if len(response.TopFactors) != 2 || response.TopFactors[0].Reason == "" {
+		t.Fatalf("top_factors not decoded: %+v", response.TopFactors)
+	}
+	if len(response.Scenarios) != 1 || response.Scenarios[0].Code != "ACCOUNT_TAKEOVER" || len(response.Scenarios[0].Evidence) != 3 {
+		t.Fatalf("scenarios not decoded: %+v", response.Scenarios)
+	}
+}

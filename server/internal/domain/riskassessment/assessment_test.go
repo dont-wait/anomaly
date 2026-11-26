@@ -66,11 +66,14 @@ func TestNewAssessmentKeepsDecisionReasonAndFactors(t *testing.T) {
 }
 
 func TestDecisionReasonForScoreStatesTheComparison(t *testing.T) {
-	if got := DecisionReasonForScore(RiskBlockScore + 0.01); !strings.Contains(got, ">") {
-		t.Fatalf("score above threshold: %q", got)
+	if got, want := DecisionReasonForScore(0.93), "risk_score 0.93 > block threshold 0.7"; got != want {
+		t.Fatalf("score above threshold: got %q, want %q", got, want)
 	}
-	if got := DecisionReasonForScore(RiskBlockScore); !strings.Contains(got, "<=") {
-		t.Fatalf("score at threshold: %q", got)
+	if got, want := DecisionReasonForScore(RiskBlockScore), "risk_score 0.7 <= block threshold 0.7"; got != want {
+		t.Fatalf("score at threshold: got %q, want %q", got, want)
+	}
+	if got, want := DecisionReasonForScore(0.25), "risk_score 0.25 <= block threshold 0.7"; got != want {
+		t.Fatalf("score below threshold: got %q, want %q", got, want)
 	}
 }
 
@@ -93,6 +96,7 @@ func TestModelResponseValidatesTopFactors(t *testing.T) {
 		"non finite":       {{Feature: "log_amount", ZScore: &nan}},
 		"too many":         tooMany,
 		"feature too long": {{Feature: strings.Repeat("x", 65), ZScore: &z}},
+		"reason too long":  {{Feature: "log_amount", ZScore: &z, Reason: strings.Repeat("ọ", MaxFactorReasonLen+1)}},
 	}
 	for name, factors := range cases {
 		candidate := base
@@ -102,8 +106,82 @@ func TestModelResponseValidatesTopFactors(t *testing.T) {
 		}
 	}
 	ok := base
-	ok.TopFactors = []Factor{{Feature: "log_amount", ZScore: &z}, {Feature: "new_receiver", Value: &v}}
+	ok.TopFactors = []Factor{
+		{Feature: "log_amount", ZScore: &z, Reason: "Số tiền chuyển lớn hơn bình thường"},
+		{Feature: "new_receiver", Value: &v},
+	}
 	if err := ok.Validate(); err != nil {
 		t.Fatalf("valid factors rejected: %v", err)
+	}
+}
+
+func validScenario() Scenario {
+	return Scenario{
+		Code: "ACCOUNT_TAKEOVER", Severity: "high", Title: "Nghi chiếm đoạt tài khoản",
+		Reason:   "Thiết bị mới + người nhận mới + số tiền gấp 9.0 lần mức trung vị 30 ngày",
+		Evidence: []string{"new_device", "new_receiver"},
+	}
+}
+
+func TestModelResponseValidatesScenarios(t *testing.T) {
+	base := ModelResponse{
+		SchemaVersion: 1, EventID: "e", TransactionID: "t", RiskScore: 0.1, PredictedLabel: 0,
+		Threshold: 0.5, ModelVersion: "m", FeatureVersion: "f", Signature: "s",
+		OccurredAt: time.Now(), ScoredAt: time.Now(),
+	}
+	mutate := func(f func(*Scenario)) []Scenario {
+		s := validScenario()
+		f(&s)
+		return []Scenario{s}
+	}
+	tooMany := make([]Scenario, MaxScenarios+1)
+	for i := range tooMany {
+		tooMany[i] = validScenario()
+	}
+	cases := map[string][]Scenario{
+		"lowercase code":  mutate(func(s *Scenario) { s.Code = "account_takeover" }),
+		"empty code":      mutate(func(s *Scenario) { s.Code = "" }),
+		"code too long":   mutate(func(s *Scenario) { s.Code = "A" + strings.Repeat("B", 60) }),
+		"bad severity":    mutate(func(s *Scenario) { s.Severity = "critical" }),
+		"empty title":     mutate(func(s *Scenario) { s.Title = " " }),
+		"title too long":  mutate(func(s *Scenario) { s.Title = strings.Repeat("ọ", MaxScenarioTitleLen+1) }),
+		"empty reason":    mutate(func(s *Scenario) { s.Reason = "" }),
+		"reason too long": mutate(func(s *Scenario) { s.Reason = strings.Repeat("ọ", MaxScenarioReasonLen+1) }),
+		"too much evidence": mutate(func(s *Scenario) {
+			s.Evidence = make([]string, MaxScenarioEvidence+1)
+			for i := range s.Evidence {
+				s.Evidence[i] = "f"
+			}
+		}),
+		"evidence name too long": mutate(func(s *Scenario) { s.Evidence = []string{strings.Repeat("x", 65)} }),
+		"too many scenarios":     tooMany,
+	}
+	for name, scenarios := range cases {
+		candidate := base
+		candidate.Scenarios = scenarios
+		if err := candidate.Validate(); err == nil {
+			t.Errorf("%s: expected validation error", name)
+		}
+	}
+	ok := base
+	ok.Scenarios = []Scenario{validScenario()}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("valid scenarios rejected: %v", err)
+	}
+}
+
+func TestNewAssessmentKeepsScenarios(t *testing.T) {
+	scenarios := []Scenario{validScenario()}
+	response := ModelResponse{
+		SchemaVersion: 1, EventID: "e", TransactionID: "t", RiskScore: 0.9, PredictedLabel: 1,
+		Threshold: 0.5, ModelVersion: "m", FeatureVersion: "f", Signature: "s",
+		OccurredAt: time.Now(), ScoredAt: time.Now(), Scenarios: scenarios,
+	}
+	got, err := NewAssessment(response, time.Time{}, "topic", 0, 1, "id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Scenarios, scenarios) {
+		t.Fatalf("scenarios changed: %+v", got.Scenarios)
 	}
 }

@@ -136,3 +136,21 @@ def test_top_factors_are_carried_but_not_signed():
     assert traced["signature"] == plain["signature"]
     assert traced["top_factors"] == factors
     assert "top_factors" not in plain
+
+
+def test_scenarios_are_carried_but_not_signed():
+    event = assessment()
+    scenarios = [
+        {
+            "code": "VELOCITY_BURST",
+            "severity": "high",
+            "title": "Chuyển tiền dồn dập",
+            "reason": "3 yêu cầu trong 2 phút",
+            "evidence": ["log_src_request_count_120s"],
+        }
+    ]
+    plain = sign_risk_event(event, "test-secret")
+    traced = sign_risk_event({**event, "scenarios": scenarios}, "test-secret")
+    assert traced["signature"] == plain["signature"]
+    assert traced["scenarios"] == scenarios
+    assert "scenarios" not in plain
