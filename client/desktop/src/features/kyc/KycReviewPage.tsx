@@ -76,6 +76,7 @@ function MediaBox({
         if (!active) return;
         objectUrl = URL.createObjectURL(blob);
         setUrl(objectUrl);
+        setFailure((current) => (current?.path === path ? undefined : current));
       })
       .catch((cause) => {
         if (active) setFailure({ path, message: explainKycError(cause) });

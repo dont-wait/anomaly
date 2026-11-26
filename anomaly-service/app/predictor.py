@@ -17,6 +17,9 @@ TOP_FACTOR_COUNT = 3  # at most 3 + len(RISK_FLAGS) + len(RARE_FRACTIONS) entrie
 # Not standardized by preprocessing.json, so z-scores can't surface them. Binary
 # flags are reported when raised; channel_prior_fraction is reported when rare (low).
 RISK_FLAGS = ("new_receiver", "new_device")
+# A flag is only meaningful when its baseline exists: an account's first-ever
+# device is "new" but not unusual. Mirrors scenarios._new_device_seen.
+RISK_FLAG_GATES = {"new_device": "has_device_history"}
 RARE_FRACTIONS = ("channel_prior_fraction",)
 RARE_FRACTION_MAX = 0.05
 
@@ -196,7 +199,8 @@ class LocalBundlePredictor:
             {"feature": name, "z_score": round(z, 3)} for z, name in ranked[:TOP_FACTOR_COUNT]
         ]
         for name in RISK_FLAGS:
-            if signals.flag(name):
+            gate = RISK_FLAG_GATES.get(name)
+            if signals.flag(name) and (gate is None or signals.flag(gate)):
                 factors.append({"feature": name, "value": 1})
         for name in RARE_FRACTIONS:
             value = signals.raw(name)

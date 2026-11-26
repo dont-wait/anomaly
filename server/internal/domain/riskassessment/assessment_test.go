@@ -66,11 +66,14 @@ func TestNewAssessmentKeepsDecisionReasonAndFactors(t *testing.T) {
 }
 
 func TestDecisionReasonForScoreStatesTheComparison(t *testing.T) {
-	if got := DecisionReasonForScore(RiskBlockScore + 0.01); !strings.Contains(got, ">") {
-		t.Fatalf("score above threshold: %q", got)
+	if got, want := DecisionReasonForScore(0.93), "risk_score 0.93 > block threshold 0.7"; got != want {
+		t.Fatalf("score above threshold: got %q, want %q", got, want)
 	}
-	if got := DecisionReasonForScore(RiskBlockScore); !strings.Contains(got, "<=") {
-		t.Fatalf("score at threshold: %q", got)
+	if got, want := DecisionReasonForScore(RiskBlockScore), "risk_score 0.7 <= block threshold 0.7"; got != want {
+		t.Fatalf("score at threshold: got %q, want %q", got, want)
+	}
+	if got, want := DecisionReasonForScore(0.25), "risk_score 0.25 <= block threshold 0.7"; got != want {
+		t.Fatalf("score below threshold: got %q, want %q", got, want)
 	}
 }
 

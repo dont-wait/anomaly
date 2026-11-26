@@ -279,6 +279,24 @@ def test_top_factors_include_raised_flags_and_rare_fractions():
     assert "1.0% giao dịch trước đó" in factors[2]["reason"]
 
 
+def test_new_device_needs_device_history():
+    from app.predictor import LocalBundlePredictor
+
+    names = ["log_amount", "new_device", "has_device_history"]
+    fake = type("P", (), {
+        "manifest": {"feature_names": names},
+        "preprocessing": {"numeric_indices": [0]},
+    })()
+    predictor = object.__new__(LocalBundlePredictor)
+    predictor.predictor = fake
+
+    def features(row):
+        return [f["feature"] for f in predictor._top_factors({"edge_features": [row]})]
+
+    assert "new_device" not in features([0.1, 1.0, 0.0])  # first-ever device
+    assert "new_device" in features([0.1, 1.0, 1.0])  # unseen device, history exists
+
+
 def test_top_factors_match_the_server_wire_contract():
     """Keys and size must satisfy the Go riskassessment.Factor decoder (strict, max 8)."""
     from app.predictor import LocalBundlePredictor

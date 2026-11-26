@@ -46,10 +46,17 @@ it("shows the decision reason, scenarios and factor reasons", () => {
   expect(within(section).getByText(/không nằm trong chữ ký/)).toBeTruthy();
 });
 
-it("says so when the model sent no reasons", () => {
-  render(<RiskReasons />);
+it("keeps the decision reason when the model sent no notes", () => {
+  render(
+    <RiskReasons decisionReason="risk_score 0.25 <= block threshold 0.7" />,
+  );
   expect(
-    screen.getByText("Mô hình không gửi kèm lý do cho giao dịch này."),
+    screen.getByText("risk_score 0.25 <= block threshold 0.7"),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(
+      "Mô hình không gửi tình huống hay đầu vào bất thường cho giao dịch này.",
+    ),
   ).toBeTruthy();
   expect(screen.queryByText("Tình huống nghi vấn")).toBeNull();
 });

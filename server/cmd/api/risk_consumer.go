@@ -111,13 +111,10 @@ func runRiskDecisionConsumer(ctx context.Context, config *domain.KafkaConfig, st
 	for ctx.Err() == nil {
 		// Create the topic before joining the group; otherwise an API started
 		// before the ML service's first publish is assigned no partitions.
+		// Failure is not fatal: where topics are provisioned externally the API
+		// may lack CREATE permission but can still consume the existing topic.
 		if err := kafkainfra.EnsureTopic(ctx, config.Brokers, config.RiskDecisionTopic); err != nil {
-			log.Error().Err(err).Str("topic", config.RiskDecisionTopic).Msg("ensure risk decision topic failed")
-			if !waitRiskConsumerRetry(ctx, retryDelay) {
-				return
-			}
-			retryDelay = nextRiskConsumerRetry(retryDelay)
-			continue
+			log.Warn().Err(err).Str("topic", config.RiskDecisionTopic).Msg("ensure risk decision topic failed; consuming anyway")
 		}
 		consumer, err := kafkainfra.NewConsumer(config.Brokers, config.RiskDecisionTopic, config.RiskDecisionGroup)
 		if err != nil {

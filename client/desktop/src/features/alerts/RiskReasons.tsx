@@ -91,7 +91,7 @@ export function RiskReasons({ decisionReason, scenarios, topFactors }: Props) {
         </p>
       ) : (
         <p className="mt-2 text-[12px] text-(--admin-text-muted)">
-          Mô hình không gửi kèm lý do cho giao dịch này.
+          Mô hình không gửi tình huống hay đầu vào bất thường cho giao dịch này.
         </p>
       )}
     </section>

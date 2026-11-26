@@ -226,6 +226,12 @@ def test_most_severe_first_and_capped():
     }
     found = detect_scenarios(build(flags, qty))
     assert len(found) == MAX_SCENARIOS
+    # Nine rules match; the medium ones sit between high ones in rule order, so
+    # sorting must happen before the cap for every high match to survive.
+    assert [item["code"] for item in found] == [
+        "ACCOUNT_TAKEOVER", "AMOUNT_SPIKE", "VELOCITY_BURST",
+        "MULE_COLLECTOR", "PASS_THROUGH", "MULE_RELAY",
+    ]
     ranks = [SEVERITY_ORDER[item["severity"]] for item in found]
     assert ranks == sorted(ranks)
 
